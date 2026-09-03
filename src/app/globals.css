@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+/* RJL Capital Advisors brand tokens (from logo) */
+@theme {
+  --color-ink: #1a2321;
+  --color-ink-soft: #3a4441;
+  --color-cream: #fff8d9;
+  --color-cream-50: #fffcf0;
+  --color-sky: #b7cfe8;
+  --color-sky-600: #5b8bbf;
+  --color-sky-50: #eef4fa;
+  --color-paper: #ffffff;
+  --color-line: #e6e2d3;
+  --color-muted: #6b716e;
+  --font-sans: "Helvetica Neue", Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-cream-50);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  /* Reusable primitives */
+  .btn {
+    @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 bg-ink text-cream hover:bg-ink-soft;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 border border-line bg-paper text-ink hover:bg-cream;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 text-ink hover:bg-cream;
+  }
+  .input {
+    @apply w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky/60;
+  }
+  .card {
+    @apply rounded-lg border border-line bg-paper shadow-[0_1px_2px_rgba(26,35,33,0.04)];
+  }
+  .label {
+    @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-muted;
+  }
+  .table th {
+    @apply sticky top-0 z-10 border-b border-line bg-cream px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-soft;
+  }
+  .table td {
+    @apply border-b border-line px-3 py-2 align-top text-sm;
+  }
+  .table tr:hover td {
+    @apply bg-cream-50;
+  }
+  .chip {
+    @apply inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+}

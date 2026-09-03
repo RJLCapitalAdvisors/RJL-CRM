@@ -1,0 +1,231 @@
+// RJL Capital Advisors CRM - data model v1
+// Multi-select fields are stored as JSON string arrays (SQLite has no array type).
+// Switching to Postgres later only requires changing the datasource provider.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?  @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  companies Company[]
+  contacts  Contact[]
+  deals     Deal[]
+}
+
+model Company {
+  id            String   @id @default(cuid())
+  hubspotId     String?  @unique
+  name          String
+  roles         String   @default("[]") // JSON: Sponsor | Investor | Retail Investor | Lender | Broker
+  website       String?
+  streetAddress String?
+  city          String?
+  state         String?
+  yearFounded   Int?
+  notes         String?
+
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id])
+
+  criteria   InvestorCriteria?
+  contacts   Contact[]
+  deals      Deal[]
+  activities Activity[]
+
+  lastActivityAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([name])
+  @@index([state])
+}
+
+model Contact {
+  id            String   @id @default(cuid())
+  hubspotId     String?  @unique
+  firstName     String?
+  lastName      String?
+  email         String?  @unique
+  phone         String?
+  title         String?
+  roles         String   @default("[]")
+  accredited    Boolean?
+  streetAddress String?
+  notes         String?
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id])
+
+  marketingContact Boolean @default(false)
+  unsubscribed     Boolean @default(false)
+  bounceReason     String?
+
+  criteria   InvestorCriteria?
+  activities Activity[]
+  recipients CampaignRecipient[]
+
+  lastActivityAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([lastName, firstName])
+  @@index([companyId])
+}
+
+// LP / capital-source criteria. Lives on the Company; a Contact may carry an override.
+model InvestorCriteria {
+  id String @id @default(cuid())
+
+  companyId String?  @unique
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId String?  @unique
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  assetClasses    String  @default("[]") // JSON array
+  checkSizes      String  @default("[]")
+  dealSizes       String  @default("[]")
+  investmentTypes String  @default("[]") // JV Equity, Co-GP Equity, Preferred Equity, Senior Debt, Mezz Debt
+  strategy        String? // Development | Acquisitions | Both
+  geographies     String  @default("[]") // normalized region / state tags
+  geographyNotes  String? // original free text
+  vintages        String  @default("[]")
+  openToFunds     Boolean?
+  lenderPricing   String?
+  aum             String?
+  unitsManaged    String?
+
+  updatedAt DateTime @updatedAt
+}
+
+model Deal {
+  id        String  @id @default(cuid())
+  hubspotId String? @unique
+  name      String
+  stage     String  @default("Deal Received")
+  position  Int     @default(0)
+
+  sponsorName      String?
+  sponsorCompanyId String?
+  sponsorCompany   Company? @relation(fields: [sponsorCompanyId], references: [id])
+
+  propertyName    String?
+  propertyAddress String?
+  city            String?
+  state           String?
+  assetClass      String?
+  strategy        String? // Development | Acquisitions
+  onMarket        Boolean?
+
+  requestType     String? // Equity | Debt | Both
+  requestedAmount Float?
+  totalEquity     Float?
+  purchasePrice   Float?
+  ltv             Float?
+  loanTerm        String?
+  equityMultiple  Float?
+  occupancy       Float?
+  sponsorExperience String?
+  summary         String?
+
+  closeDate DateTime?
+  ownerId   String?
+  owner     User?     @relation(fields: [ownerId], references: [id])
+
+  activities Activity[]
+  campaigns  Campaign[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stage])
+}
+
+model Activity {
+  id         String   @id @default(cuid())
+  type       String // EMAIL | CALL | MEETING | NOTE
+  subject    String?
+  body       String?
+  direction  String? // OUTBOUND | INBOUND
+  occurredAt DateTime @default(now())
+  externalId String?  @unique // Graph message id / Fireflies transcript id
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id])
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+  dealId    String?
+  deal      Deal?    @relation(fields: [dealId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([contactId, occurredAt])
+  @@index([dealId, occurredAt])
+}
+
+// Mail-merge templates. Merge fields use {{deal.propertyName}}, {{contact.firstName}}, etc.
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  subject   String
+  bodyHtml  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns Campaign[]
+}
+
+model Campaign {
+  id         String   @id @default(cuid())
+  name       String
+  status     String   @default("DRAFT") // DRAFT | SCHEDULED | SENDING | SENT
+  templateId String?
+  template   EmailTemplate? @relation(fields: [templateId], references: [id])
+  dealId     String?
+  deal       Deal?    @relation(fields: [dealId], references: [id])
+  sentAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  recipients CampaignRecipient[]
+}
+
+model CampaignRecipient {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId  String
+  contact    Contact  @relation(fields: [contactId], references: [id])
+  status     String   @default("PENDING") // PENDING | SENT | OPENED | CLICKED | BOUNCED | UNSUBSCRIBED
+  providerId String?
+  sentAt     DateTime?
+  openedAt   DateTime?
+
+  @@unique([campaignId, contactId])
+}
+
+// Proposed criteria changes from Fireflies calls or emails. Applied only when approved.
+model CriteriaProposal {
+  id         String   @id @default(cuid())
+  source     String // FIREFLIES | EMAIL | MANUAL
+  sourceRef  String? // transcript id / message id
+  companyId  String?
+  contactId  String?
+  summary    String
+  changes    String // JSON: [{ field, from, to, evidence }]
+  status     String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  reviewedAt DateTime?
+  createdAt  DateTime @default(now())
+}
