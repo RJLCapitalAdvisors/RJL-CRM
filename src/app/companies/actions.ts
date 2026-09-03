@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { toJson } from "@/lib/taxonomy";
+import { parseList, toJson } from "@/lib/taxonomy";
+import { syncContactRolesForCompany } from "@/lib/roles";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -56,7 +57,12 @@ export async function createCompany(fd: FormData) {
 }
 
 export async function updateCompany(id: string, fd: FormData) {
-  await prisma.company.update({ where: { id }, data: companyData(fd) });
+  const before = await prisma.company.findUnique({ where: { id }, select: { roles: true } });
+  const data = companyData(fd);
+  await prisma.company.update({ where: { id }, data });
+  // Company roles flow down to its contacts (blasts are segmented by contact role).
+  await syncContactRolesForCompany(id, parseList(before?.roles), parseList(data.roles));
+  revalidatePath("/contacts");
   revalidatePath(`/companies/${id}`);
   revalidatePath("/companies");
 }

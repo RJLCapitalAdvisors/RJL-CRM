@@ -19,6 +19,7 @@ import {
   normalizeVintages,
   toJson,
 } from "../src/lib/taxonomy";
+import { backfillContactRoles } from "../src/lib/roles";
 
 const prisma = new PrismaClient();
 const dir = process.env.HUBSPOT_EXPORT_DIR;
@@ -271,6 +272,9 @@ async function main() {
   await importCompanies();
   await importContacts();
   await importDeals();
+  console.log("Syncing company roles down to contacts...");
+  const synced = await backfillContactRoles(console.log);
+  console.log(`  updated ${synced} contacts`);
   const [c, k, d, u] = await Promise.all([prisma.company.count(), prisma.contact.count(), prisma.deal.count(), prisma.user.count()]);
   console.log(`\nTotals: ${c} companies, ${k} contacts, ${d} deals, ${u} users`);
 }

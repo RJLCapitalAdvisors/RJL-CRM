@@ -140,6 +140,7 @@ model Deal {
   occupancy       Float?
   sponsorExperience String?
   summary         String?
+  details         String  @default("{}") // JSON: checklist answers keyed by src/lib/checklist.ts item key
 
   closeDate DateTime?
   ownerId   String?
@@ -191,13 +192,21 @@ model EmailTemplate {
 model Campaign {
   id         String   @id @default(cuid())
   name       String
-  status     String   @default("DRAFT") // DRAFT | SCHEDULED | SENDING | SENT
+  status     String   @default("DRAFT") // DRAFT | SENDING | SENT | PARTIAL
   templateId String?
   template   EmailTemplate? @relation(fields: [templateId], references: [id])
   dealId     String?
   deal       Deal?    @relation(fields: [dealId], references: [id])
+  // Snapshot of the template at campaign creation so later edits do not change what was sent
+  subject    String
+  bodyHtml   String
+  roleFilter String? // Investor | Sponsor | ...
+  minScore   Int      @default(0)
+  fromName   String?
+  replyTo    String?
   sentAt     DateTime?
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   recipients CampaignRecipient[]
 }
@@ -208,10 +217,13 @@ model CampaignRecipient {
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   contactId  String
   contact    Contact  @relation(fields: [contactId], references: [id])
-  status     String   @default("PENDING") // PENDING | SENT | OPENED | CLICKED | BOUNCED | UNSUBSCRIBED
-  providerId String?
-  sentAt     DateTime?
-  openedAt   DateTime?
+  status       String   @default("PENDING") // PENDING | SENT | FAILED | OPENED | CLICKED | BOUNCED | UNSUBSCRIBED
+  matchScore   Int      @default(0)
+  matchReasons String   @default("[]") // JSON array of strings
+  providerId   String?
+  error        String?
+  sentAt       DateTime?
+  openedAt     DateTime?
 
   @@unique([campaignId, contactId])
 }
@@ -228,4 +240,24 @@ model CriteriaProposal {
   status     String   @default("PENDING") // PENDING | APPROVED | REJECTED
   reviewedAt DateTime?
   createdAt  DateTime @default(now())
+}
+
+// A forwarded deal email awaiting review. Extracted fields become a Deal once approved.
+model DealIntake {
+  id          String   @id @default(cuid())
+  source      String   @default("PASTE") // PASTE | WEBHOOK
+  fromEmail   String?
+  fromName    String?
+  toEmail     String?
+  subject     String?
+  rawText     String
+  attachments String   @default("[]") // JSON array of file names
+  extracted   String   @default("{}") // JSON: extracted deal fields
+  missing     String   @default("[]") // JSON array of missing item keys
+  notes       String?  // extractor commentary / confidence notes
+  extractor   String?  // claude | heuristic
+  status      String   @default("PENDING") // PENDING | CONVERTED | DISMISSED
+  dealId      String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

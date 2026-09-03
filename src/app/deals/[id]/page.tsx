@@ -5,7 +5,9 @@ import { stageTone } from "@/lib/taxonomy";
 import { PageHeader } from "@/components/ui";
 import { DealForm } from "@/components/deal-form";
 import { fmtDate, fullName } from "@/lib/format";
-import { addDealNote, updateDeal } from "../actions";
+import { addDealNote, updateDeal, updateDealDetails } from "../actions";
+import { ChecklistFields } from "@/components/checklist-fields";
+import { applicableItems, completeness, followUpText } from "@/lib/checklist";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,9 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   if (!deal) notFound();
   const update = updateDeal.bind(null, deal.id);
   const addNote = addDealNote.bind(null, deal.id);
+  const updateDetails = updateDealDetails.bind(null, deal.id);
+  const { answered, total } = completeness(deal);
+  const followUp = followUpText(deal, deal.propertyName);
 
   return (
     <>
@@ -37,19 +42,53 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
               deal.sponsorName && <span>{deal.sponsorName}</span>
             )}
             {deal.owner && <span>· {deal.owner.name}</span>}
+            <span className={`chip ${answered === total ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>
+              {answered}/{total} checklist items
+            </span>
             {deal.hubspotId && <span className="text-xs">· HubSpot {deal.hubspotId}</span>}
           </span>
         }
         actions={
-          <Link href="/deals" className="btn-secondary">
-            Back to board
-          </Link>
+          <>
+            <Link href="/deals" className="btn-secondary">
+              Back to board
+            </Link>
+            <Link href={`/campaigns/new?dealId=${deal.id}`} className="btn-primary">
+              New campaign
+            </Link>
+          </>
         }
       />
       <div className="grid grid-cols-3 gap-6 px-8 py-6">
-        <section className="card col-span-2 p-5">
-          <DealForm deal={deal} users={users} action={update} />
-        </section>
+        <div className="col-span-2 space-y-6">
+          <section className="card p-5">
+            <DealForm deal={deal} users={users} action={update} />
+          </section>
+          <section className="card p-5">
+            <div className="mb-1 flex items-center justify-between">
+              <h2 className="font-semibold">Deal ticket checklist</h2>
+              <span className="text-xs text-muted">
+                {deal.strategy ? `${deal.strategy} list` : "Set acquisition/development above to narrow the list"}
+                {deal.assetClass ? ` · ${deal.assetClass}` : ""} · {applicableItems(deal.strategy, deal.assetClass).length} items
+              </span>
+            </div>
+            <p className="mb-4 text-xs text-muted">What we ask the sponsor for. Answers feed email templates via {"{{deal.facts}}"} or {"{{deal.details.<item>}}"}. Items tied to the form above are shown read-only.</p>
+            <form action={updateDetails}>
+              <ChecklistFields deal={deal} />
+              <div className="mt-5 flex justify-end">
+                <button className="btn-primary" type="submit">
+                  Save checklist
+                </button>
+              </div>
+            </form>
+            {followUp && (
+              <div className="mt-5 rounded-md border border-line bg-cream-50 p-3 text-xs">
+                <div className="mb-1 font-semibold">Follow-up to sponsor (copy and paste)</div>
+                <p className="whitespace-pre-wrap">{followUp}</p>
+              </div>
+            )}
+          </section>
+        </div>
         <section className="card self-start">
           <div className="border-b border-line px-5 py-3">
             <h2 className="font-semibold">Activity</h2>

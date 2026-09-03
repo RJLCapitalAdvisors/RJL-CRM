@@ -4,25 +4,28 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { toJson } from "@/lib/taxonomy";
+import { inheritRoles } from "@/lib/roles";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
   return typeof v === "string" && v.trim() ? v.trim() : null;
 };
 
-function contactData(fd: FormData) {
+async function contactData(fd: FormData) {
   const acc = s(fd, "accredited");
+  const companyId = s(fd, "companyId");
+  const roles = await inheritRoles(fd.getAll("roles").map(String), companyId);
   return {
     firstName: s(fd, "firstName"),
     lastName: s(fd, "lastName"),
     email: s(fd, "email")?.toLowerCase() ?? null,
     phone: s(fd, "phone"),
     title: s(fd, "title"),
-    roles: toJson(fd.getAll("roles").map(String)),
+    roles: toJson(roles),
     accredited: acc == null ? null : acc === "yes",
     streetAddress: s(fd, "streetAddress"),
     notes: s(fd, "notes"),
-    companyId: s(fd, "companyId"),
+    companyId,
     ownerId: s(fd, "ownerId"),
     marketingContact: fd.get("marketingContact") === "on",
     unsubscribed: fd.get("unsubscribed") === "on",
@@ -30,13 +33,13 @@ function contactData(fd: FormData) {
 }
 
 export async function createContact(fd: FormData) {
-  const c = await prisma.contact.create({ data: contactData(fd) });
+  const c = await prisma.contact.create({ data: await contactData(fd) });
   revalidatePath("/contacts");
   redirect(`/contacts/${c.id}`);
 }
 
 export async function updateContact(id: string, fd: FormData) {
-  await prisma.contact.update({ where: { id }, data: contactData(fd) });
+  await prisma.contact.update({ where: { id }, data: await contactData(fd) });
   revalidatePath(`/contacts/${id}`);
   revalidatePath("/contacts");
 }

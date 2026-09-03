@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { DEAL_STAGES } from "@/lib/taxonomy";
+import { parseDetails } from "@/lib/checklist";
+import { detailsFromForm } from "@/components/checklist-fields";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -85,5 +87,12 @@ export async function addDealNote(id: string, fd: FormData) {
   if (!body) return;
   const deal = await prisma.deal.findUnique({ where: { id }, select: { sponsorCompanyId: true } });
   await prisma.activity.create({ data: { type: "NOTE", body, dealId: id, companyId: deal?.sponsorCompanyId ?? null } });
+  revalidatePath(`/deals/${id}`);
+}
+
+export async function updateDealDetails(id: string, fd: FormData) {
+  const deal = await prisma.deal.findUniqueOrThrow({ where: { id }, select: { details: true } });
+  const details = detailsFromForm(fd, parseDetails(deal.details));
+  await prisma.deal.update({ where: { id }, data: { details: JSON.stringify(details) } });
   revalidatePath(`/deals/${id}`);
 }
