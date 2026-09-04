@@ -139,7 +139,7 @@ export function AudienceTable({ rows, minScore, templateChosen }: { rows: Audien
       <div className="flex items-center justify-between border-t border-line px-5 py-3">
         <div className="text-xs text-muted">Unsubscribed, hard-bounced, and no-email contacts are excluded automatically.</div>
         <button className="btn-primary" type="submit" disabled={!templateChosen || selected.size === 0} title={!templateChosen ? "Choose a template above and click Build list" : ""}>
-          Create campaign with {selected.size.toLocaleString()} recipient{selected.size === 1 ? "" : "s"}
+          Continue with {selected.size.toLocaleString()} recipient{selected.size === 1 ? "" : "s"}
         </button>
       </div>
     </div>

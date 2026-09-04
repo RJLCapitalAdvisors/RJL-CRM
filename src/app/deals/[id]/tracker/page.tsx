@@ -57,7 +57,7 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
             <a href={`/deals/${deal.id}/tracker/export`} className="btn-secondary" title="Standalone HTML file in the old Google Drive format">
               Export HTML
             </a>
-            <form action={createFollowUpCampaign.bind(null, deal.id)} className="flex items-center gap-1">
+            <form id="followup" action={createFollowUpCampaign.bind(null, deal.id)} className="flex items-center gap-1">
               {followUpTemplates.length > 1 && (
                 <select name="templateId" className="input w-56 text-xs" defaultValue={followUpTemplates[0]?.id}>
                   {followUpTemplates.map((t) => (

@@ -28,7 +28,7 @@ export default async function NewCampaignPage({ searchParams }: { searchParams: 
 
   return (
     <>
-      <PageHeader title="New campaign" subtitle="Pick a deal and a template, choose who receives it, then send one at a time with a personal opener or all at once as a blast" />
+      <PageHeader title="Send deal or email blast" subtitle="Pick a deal and a template, choose who receives it, then send one at a time with a personal opener or all at once as a blast" />
       <div className="space-y-6 px-8 py-6">
         <form method="get" className="card grid grid-cols-6 gap-4 p-5">
           <div>
@@ -116,7 +116,7 @@ export default async function NewCampaignPage({ searchParams }: { searchParams: 
               <div className="card grid grid-cols-3 gap-4 p-5">
                 <div>
                   <label className="label" htmlFor="name">
-                    Campaign name
+                    Name
                   </label>
                   <input id="name" name="name" className="input" defaultValue={deal ? `${deal.propertyName ?? deal.name} – ${role || "All"}s` : `Blast to ${role || "everyone"}${role ? "s" : ""} – ${new Date().toLocaleDateString("en-US")}`} />
                 </div>

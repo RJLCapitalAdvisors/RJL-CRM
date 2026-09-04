@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Sparkles, Search } from "lucide-react";
+import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Sparkles, Search, ClipboardList } from "lucide-react";
 import "./globals.css";
 import { NavLink } from "@/components/nav-link";
 
@@ -16,7 +16,8 @@ const nav = [
   { href: "/companies", label: "Companies", icon: Building2 },
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/investors", label: "Investor search", icon: Search },
-  { href: "/campaigns", label: "Campaigns", icon: Mail },
+  { href: "/reports", label: "Active progress reports", icon: ClipboardList },
+  { href: "/campaigns", label: "Email blasts", icon: Mail },
   { href: "/templates", label: "Templates", icon: FileText },
 ];
 

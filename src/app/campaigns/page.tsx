@@ -21,25 +21,25 @@ export default async function CampaignsPage() {
   return (
     <>
       <PageHeader
-        title="Campaigns"
-        subtitle="Deal emails sent to matched investors or sponsors"
+        title="Email blasts"
+        subtitle="Blasts to a group, and the one-at-a-time deal sends, with their status"
         actions={
           <Link href="/campaigns/new" className="btn-primary">
-            New campaign
+            New email blast
           </Link>
         }
       />
       <div className="px-8 py-6">
         {campaigns.length === 0 ? (
           <Empty>
-            No campaigns yet. Open a deal and choose <strong>New campaign</strong>, or start one here.
+            Nothing sent yet. Open a deal and choose <strong>Send deal</strong>, or start a blast here.
           </Empty>
         ) : (
           <div className="overflow-hidden rounded-lg border border-line bg-paper">
             <table className="table w-full">
               <thead>
                 <tr>
-                  <th>Campaign</th>
+                  <th>Name</th>
                   <th>Deal</th>
                   <th>Mode</th>
                   <th>Audience</th>
