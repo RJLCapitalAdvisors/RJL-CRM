@@ -5,7 +5,7 @@ import { investorLabel, statusOf } from "@/lib/tracker";
  * Read-only rendering of the progress report in the legacy Drive style.
  * Used for the sponsor share page; the in-app tracker adds editing on top of the same layout.
  */
-export function ReportView({ report, showEmails = false }: { report: Report; showEmails?: boolean }) {
+export function ReportView({ report, showEmails = false, showActions = false }: { report: Report; showEmails?: boolean; showActions?: boolean }) {
   const { deal, name, rows, lastUpdated, itemsNeeded, chips } = report;
   const openActions = deal.actions.filter((a) => !a.done);
   const items = [...itemsNeeded, ...(deal.trackerItemsNote ? deal.trackerItemsNote.split(/\n+/).map((x) => x.trim()).filter(Boolean) : [])];
@@ -59,7 +59,7 @@ export function ReportView({ report, showEmails = false }: { report: Report; sho
         </section>
       </div>
 
-      {openActions.length > 0 && (
+      {showActions && openActions.length > 0 && (
         <section className="mx-5 mb-4 rounded-lg border border-line">
           <div className="bg-[#111827] px-4 py-2 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-[#60A5FA]">Action items</div>
           <ul className="px-4 py-2 text-sm">
