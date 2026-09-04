@@ -3,10 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { stageTone } from "@/lib/taxonomy";
 import { DealForm } from "@/components/deal-form";
-import { DealPreview } from "@/components/deal-preview";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { CompanyLogo } from "@/components/company-logo";
-import { parseDetails } from "@/lib/checklist";
 import { fmtDate, fullName } from "@/lib/format";
 import { TRACKER_STATUSES, investorLabel, statusOf } from "@/lib/tracker";
 import { addDealNote, updateDeal } from "../actions";
@@ -15,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DealPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [deal, users, templates] = await Promise.all([
+  const [deal, users] = await Promise.all([
     prisma.deal.findUnique({
       where: { id },
       include: {
@@ -27,7 +25,6 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
       },
     }),
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    prisma.emailTemplate.findMany({ where: { kind: "DEAL", NOT: { name: { contains: "Engagement" } } }, orderBy: { name: "asc" }, select: { id: true, name: true, subject: true, bodyHtml: true } }),
   ]);
   if (!deal) notFound();
   const update = updateDeal.bind(null, deal.id);
@@ -75,7 +72,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
         <>
           <div className="card">
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <h2 className="text-sm font-semibold">Activity</h2>
+              <h2 className="text-sm font-semibold">Emails and notes on this deal</h2>
               <span className="text-xs text-muted">{sent} deal emails sent</span>
             </div>
             <form action={addNote} className="flex gap-2 border-b border-line p-3">
@@ -109,9 +106,6 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
               ))}
               {deal.activities.length === 0 && <li className="px-4 py-8 text-center text-sm text-muted">Nothing yet. Emails you send from the outreach queue, forwarded emails, and notes land here.</li>}
             </ul>
-          </div>
-          <div className="card">
-            <DealPreview templates={templates} initial={{ ...deal, details: parseDetails(deal.details) }} senderName={deal.owner?.name ?? "RJL Capital Advisors"} />
           </div>
         </>
       }

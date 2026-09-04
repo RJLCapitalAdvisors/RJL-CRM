@@ -56,7 +56,7 @@ async function dealData(fd: FormData) {
     assetClass: s(fd, "assetClass"),
     strategy: s(fd, "strategy"),
     onMarket: onMarketRaw == null ? null : onMarketRaw === "on",
-    requestType: s(fd, "requestType"),
+    requestType: s(fd, "requestType") ?? (/Debt/.test(s(fd, "executionType") ?? "") ? "Debt" : s(fd, "executionType") ? "Equity" : null),
     requestedAmount: num(fd, "requestedAmount"),
     // Total equity is derived: total capitalization minus total debt (falls back to a typed value if only that exists).
     totalEquity: num(fd, "totalCapitalization") != null && num(fd, "totalDebt") != null ? num(fd, "totalCapitalization")! - num(fd, "totalDebt")! : num(fd, "totalEquity"),

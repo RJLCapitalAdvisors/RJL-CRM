@@ -1,6 +1,7 @@
 import { US_STATES } from "@/lib/taxonomy";
 import { CHECKLIST, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
 import { intro, metricsHtml, subjectLine, usd } from "@/lib/deal-copy";
+import { prefMetrics } from "@/lib/pref";
 
 // Merge fields available in templates. Syntax: {{deal.propertyName}} or with a fallback {{contact.firstName|there}}
 export const MERGE_FIELDS: { key: string; label: string }[] = [
@@ -52,6 +53,12 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.subjectLine", label: "House-style subject: Asset Acquisition Opportunity in City, ST | $X of JV Equity" },
   { key: "deal.intro", label: "House-style intro paragraph (adapts to asset class and development vs acquisition)" },
   { key: "deal.metrics", label: "Deal Metrics bullet list (per foot / per unit as the asset class calls for)" },
+  { key: "deal.lastDollar", label: "Last dollar exposure (pref/mezz)" },
+  { key: "deal.prefLtc", label: "Pref LTC %" },
+  { key: "deal.prefLtv", label: "Pref LTV %" },
+  { key: "deal.goingInYieldLD", label: "Going-in yield on last dollar %" },
+  { key: "deal.stabilizedYieldLD", label: "Stabilized yield on last dollar %" },
+  { key: "deal.basisLD", label: "Stabilized basis on last pref dollar" },
   { key: "deal.facts", label: "Bulleted list of every answered checklist item" },
   ...CHECKLIST.filter((it) => !it.core).map((it) => ({ key: `deal.details.${it.key}`, label: it.label })),
   { key: "openingLine", label: "Personal opening line (set per recipient in deal outreach)" },
@@ -81,6 +88,16 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "unsubscribeUrl") return ctx.unsubscribeUrl;
   if (path === "openingLine") return ctx.openingLine ?? "";
   if (path === "deal.facts") return ctx.deal ? factsBlock(ctx.deal as DealLikeForChecklist) : "";
+  if (["deal.lastDollar", "deal.prefLtc", "deal.prefLtv", "deal.goingInYieldLD", "deal.stabilizedYieldLD", "deal.basisLD"].includes(path)) {
+    if (!ctx.deal) return "";
+    const pm = prefMetrics(ctx.deal);
+    const k = path.slice(5) as keyof typeof pm;
+    const v = pm[k];
+    if (v == null || typeof v !== "number") return "";
+    if (k === "lastDollar") return usd(v);
+    if (k === "basisLD") return `${usd(v)} per ${pm.basisUnit}`;
+    return `${v.toFixed(2)}%`;
+  }
   if (path === "deal.subjectLine") return ctx.deal ? subjectLine(ctx.deal) : "";
   if (path === "deal.intro") return ctx.deal ? intro(ctx.deal) : "";
   if (path === "deal.metrics") return ctx.deal ? metricsHtml(ctx.deal) : "";

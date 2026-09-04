@@ -78,6 +78,12 @@ const TOKEN_MAP: Record<string, string> = {
   "deal.expected_closed_date": "deal.expectedClose",
   "deal.closedate": "deal.expectedClose",
   "deal.loan_expectations": "deal.details.debtTerms",
+  "deal.last_dollar_exposure____amount__ltc__ltv_on_pp_": "deal.lastDollar",
+  "deal.pref_ltc": "deal.prefLtc",
+  "deal.pref_ltv": "deal.prefLtv",
+  "deal.going_in_yield_on_last_dollar": "deal.goingInYieldLD",
+  "deal.stabilized_yield_on_last_dollar": "deal.stabilizedYieldLD",
+  "deal.stabilized_basis_on_last_pref_dollar": "deal.basisLD",
   "owner.firstname": "sender.name",
   "owner.fullname": "sender.name",
 };

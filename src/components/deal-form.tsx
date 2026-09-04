@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AMORTIZATIONS, ASSET_CLASSES, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES, US_STATES } from "@/lib/taxonomy";
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
 import { NumberInput } from "./number-input";
+import { isPref, prefMetrics } from "@/lib/pref";
 
 export const EXECUTION_TYPES = ["Senior Debt", "Mezz Debt", "Preferred Equity", "JV Equity", "Co-GP Equity", "LP Equity", "Fund Investment"] as const;
 
@@ -115,6 +116,10 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
   const d = deal;
   const details = parseDetailsSafe(d?.details);
   const [assetClass, setAssetClass] = useState(d?.assetClass ?? "");
+  const [execType, setExecType] = useState(d?.executionType ?? "");
+  const [ask, setAsk] = useState<number | null>(d?.requestedAmount ?? null);
+  const [t12, setT12] = useState<number | null>(d?.capRateT12 ?? null);
+  const [yoc, setYoc] = useState<number | null>(d?.yieldOnCost ?? null);
   const [price, setPrice] = useState<number | null>(d?.purchasePrice ?? null);
   const [cap, setCap] = useState<number | null>(d?.totalCapitalization ?? null);
   const [debt, setDebt] = useState<number | null>(d?.totalDebt ?? null);
@@ -125,6 +130,9 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
   const per = perCountWord(p.countLabel);
   const equity = cap != null && debt != null ? cap - debt : cap != null && debt == null ? null : null;
   const lost = d?.stage === "Deal Lost";
+  const pref = isPref(execType);
+  const pm = prefMetrics({ totalDebt: debt, requestedAmount: ask, totalCapitalization: cap, purchasePrice: price, capRateT12: t12, yieldOnCost: yoc, units: count, squareFeet: sf, assetClass });
+  const pct = (v: number | null) => (v == null ? "—" : `${v.toFixed(2)}%`);
 
   return (
     <form id="deal-form" action={action}>
@@ -214,14 +222,11 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
       </Group>
 
       <Group title="Capital request">
-        <Row label="Equity or debt">
-          <Select name="requestType" value={d?.requestType ?? "Equity"} options={["Equity", "Debt"]} blank="" />
+        <Row label="Type of investment" hint={pref ? "Pref / mezz: returns below switch to last-dollar metrics" : undefined}>
+          <Select name="executionType" value={execType} options={EXECUTION_TYPES} onChange={setExecType} />
         </Row>
-        <Row label="Type of investment">
-          <Select name="executionType" value={d?.executionType ?? ""} options={EXECUTION_TYPES} />
-        </Row>
-        <Row label="Requested amount ($)">
-          <NumberInput name="requestedAmount" defaultValue={d?.requestedAmount} decimals={false} />
+        <Row label={pref ? "Requested pref / mezz amount ($)" : "Requested amount ($)"}>
+          <NumberInput name="requestedAmount" defaultValue={d?.requestedAmount} decimals={false} onValue={setAsk} />
         </Row>
         <Row label="Purchase price ($)" hint={d?.strategy === "Development" ? "Land price for developments" : undefined}>
           <NumberInput name="purchasePrice" defaultValue={d?.purchasePrice} decimals={false} onValue={setPrice} />
@@ -262,26 +267,39 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
         </Row>
       </Group>
 
-      <Group title="Returns">
+      <Group title={pref ? "Pref / mezz position" : "Returns"}>
         <Row label="T12 cap rate %">
-          <NumberInput name="capRateT12" defaultValue={d?.capRateT12} />
+          <NumberInput name="capRateT12" defaultValue={d?.capRateT12} onValue={setT12} />
         </Row>
         <Row label="Year 1 cap rate %">
           <NumberInput name="capRateY1" defaultValue={d?.capRateY1} />
         </Row>
-        <Row label="IRR %">
-          <NumberInput name="irr" defaultValue={d?.irr} />
-        </Row>
-        <Row label="Equity multiple (x)">
-          <NumberInput name="equityMultiple" defaultValue={d?.equityMultiple} />
-        </Row>
         <Row label="Yield on cost at stabilization %">
-          <NumberInput name="yieldOnCost" defaultValue={d?.yieldOnCost} />
+          <NumberInput name="yieldOnCost" defaultValue={d?.yieldOnCost} onValue={setYoc} />
         </Row>
-        <Row label="Stabilized cash-on-cash %">
-          <NumberInput name="cashOnCash" defaultValue={d?.cashOnCash} />
-        </Row>
-        <Row label="Hold period">
+        {pref ? (
+          <>
+            <Calc label="Last dollar exposure" value={money(pm.lastDollar)} hint="requested pref / mezz amount + total debt" />
+            <Calc label="Pref LTC" value={pct(pm.prefLtc)} hint="(total debt + pref amount) ÷ total capitalization" />
+            <Calc label="Pref LTV" value={pct(pm.prefLtv)} hint="(total debt + pref amount) ÷ purchase price" />
+            <Calc label="Going-in yield on last dollar" value={pct(pm.goingInYieldLD)} hint="T12 NOI ÷ last dollar (T12 NOI = T12 cap rate × purchase price)" />
+            <Calc label="Stabilized yield on last dollar" value={pct(pm.stabilizedYieldLD)} hint="stabilized NOI ÷ last dollar (stabilized NOI = yield on cost × total capitalization)" />
+            <Calc label={`Stabilized basis on last pref dollar per ${pm.basisUnit}`} value={money(pm.basisLD)} hint={`last dollar ÷ ${pm.basisUnit === "SF" ? "square feet" : pm.basisUnit + "s"}`} />
+          </>
+        ) : (
+          <>
+            <Row label="IRR %">
+              <NumberInput name="irr" defaultValue={d?.irr} />
+            </Row>
+            <Row label="Equity multiple (x)">
+              <NumberInput name="equityMultiple" defaultValue={d?.equityMultiple} />
+            </Row>
+            <Row label="Stabilized cash-on-cash %">
+              <NumberInput name="cashOnCash" defaultValue={d?.cashOnCash} />
+            </Row>
+          </>
+        )}
+        <Row label={pref ? "Pref / mezz term" : "Hold period"}>
           <Select name="holdPeriod" value={d?.holdPeriod ?? ""} options={["1 year", "2 year", "3 year", "4 year", "5 year", "6 year", "7 year", "8 year", "10 year"]} />
         </Row>
       </Group>
