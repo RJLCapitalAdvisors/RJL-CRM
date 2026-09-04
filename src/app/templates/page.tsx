@@ -27,6 +27,7 @@ export default async function TemplatesPage() {
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Used for</th>
                   <th>Subject</th>
                   <th className="text-right">Campaigns</th>
                   <th>Updated</th>
@@ -40,6 +41,7 @@ export default async function TemplatesPage() {
                         {t.name}
                       </Link>
                     </td>
+                    <td className="text-xs">{t.kind === "BLAST" ? "Blast" : "Deal outreach"}</td>
                     <td className="text-muted">{t.subject}</td>
                     <td className="text-right">{t._count.campaigns}</td>
                     <td className="whitespace-nowrap text-muted">{fmtDate(t.updatedAt)}</td>

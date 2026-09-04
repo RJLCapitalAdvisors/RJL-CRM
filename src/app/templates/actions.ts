@@ -12,6 +12,7 @@ const s = (fd: FormData, k: string) => {
 function data(fd: FormData) {
   return {
     name: s(fd, "name") ?? "Untitled template",
+    kind: s(fd, "kind") === "BLAST" ? "BLAST" : "DEAL",
     subject: s(fd, "subject") ?? "",
     bodyHtml: (fd.get("bodyHtml") as string | null) ?? "",
   };
@@ -31,7 +32,7 @@ export async function updateTemplate(id: string, fd: FormData) {
 
 export async function duplicateTemplate(id: string) {
   const t = await prisma.emailTemplate.findUniqueOrThrow({ where: { id } });
-  const copy = await prisma.emailTemplate.create({ data: { name: `${t.name} (copy)`, subject: t.subject, bodyHtml: t.bodyHtml } });
+  const copy = await prisma.emailTemplate.create({ data: { name: `${t.name} (copy)`, kind: t.kind, subject: t.subject, bodyHtml: t.bodyHtml } });
   revalidatePath("/templates");
   redirect(`/templates/${copy.id}`);
 }

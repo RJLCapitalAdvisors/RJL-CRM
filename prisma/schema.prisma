@@ -203,6 +203,7 @@ model Activity {
 model EmailTemplate {
   id        String   @id @default(cuid())
   name      String
+  kind      String   @default("DEAL") // DEAL (one-to-one deal outreach) | BLAST (marketing blast)
   subject   String
   bodyHtml  String
   createdAt DateTime @default(now())
@@ -214,6 +215,7 @@ model EmailTemplate {
 model Campaign {
   id         String   @id @default(cuid())
   name       String
+  mode       String   @default("OUTREACH") // OUTREACH (one at a time, personalized) | BLAST (send all at once)
   status     String   @default("DRAFT") // DRAFT | SENDING | SENT | PARTIAL
   templateId String?
   template   EmailTemplate? @relation(fields: [templateId], references: [id])
@@ -242,6 +244,9 @@ model CampaignRecipient {
   status       String   @default("PENDING") // PENDING | SENT | FAILED | OPENED | CLICKED | BOUNCED | UNSUBSCRIBED
   matchScore   Int      @default(0)
   matchReasons String   @default("[]") // JSON array of strings
+  openingLine  String?  // per-recipient personal opener, merged via {{openingLine}}
+  bodyOverride String?  // full custom body for this recipient (optional)
+  sentVia      String?  // resend | outlook | manual
   providerId   String?
   error        String?
   sentAt       DateTime?

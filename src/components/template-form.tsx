@@ -1,6 +1,6 @@
 import { MERGE_FIELDS } from "@/lib/merge";
 
-type T = { name: string; subject: string; bodyHtml: string } | null;
+type T = { name: string; kind?: string; subject: string; bodyHtml: string } | null;
 
 export function TemplateForm({ template, action, submitLabel = "Save template" }: { template: T; action: (fd: FormData) => void | Promise<void>; submitLabel?: string }) {
   return (
@@ -11,6 +11,15 @@ export function TemplateForm({ template, action, submitLabel = "Save template" }
             Template name
           </label>
           <input id="name" name="name" required defaultValue={template?.name ?? ""} className="input" placeholder="Deal intro to investors" />
+        </div>
+        <div>
+          <label className="label" htmlFor="kind">
+            Used for
+          </label>
+          <select id="kind" name="kind" defaultValue={template?.kind ?? "DEAL"} className="input w-72">
+            <option value="DEAL">Deal outreach (one at a time, personal opener)</option>
+            <option value="BLAST">Email blast (all at once, unsubscribe footer added)</option>
+          </select>
         </div>
         <div>
           <label className="label" htmlFor="subject">

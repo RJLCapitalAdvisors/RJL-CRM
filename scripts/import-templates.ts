@@ -134,7 +134,6 @@ function translate(text: string, templateName: string): string {
     });
 }
 
-const FOOTER = `\n<p style="font-size:12px;color:#6b716e">If you'd prefer not to receive deal emails from RJL Capital Advisors, <a href="{{unsubscribeUrl}}">unsubscribe here</a>.</p>`;
 
 (async () => {
   const rows = parseCSV(fs.readFileSync(file, "utf8").replace(/^﻿/, ""));
@@ -147,15 +146,15 @@ const FOOTER = `\n<p style="font-size:12px;color:#6b716e">If you'd prefer not to
     const name = col(r, "Name").trim();
     const subject = translate(col(r, "Subject"), name);
     let body = translate(col(r, "Body"), name);
-    const oneToOne = /engagement letter/i.test(name);
-    if (!oneToOne && !body.includes("{{unsubscribeUrl}}")) body += FOOTER;
+    // The generic opener becomes a per-recipient personal line in deal outreach.
+    body = body.replace(/(\s*[-–—]\s*)hope you are well\.?/i, "$1{{openingLine|hope you are well.}}");
     const sends = col(r, "Send Count");
     const existing = await prisma.emailTemplate.findFirst({ where: { name } });
     if (existing) {
-      await prisma.emailTemplate.update({ where: { id: existing.id }, data: { subject, bodyHtml: body } });
+      await prisma.emailTemplate.update({ where: { id: existing.id }, data: { subject, bodyHtml: body, kind: "DEAL" } });
       updated++;
     } else {
-      await prisma.emailTemplate.create({ data: { name, subject, bodyHtml: body } });
+      await prisma.emailTemplate.create({ data: { name, subject, bodyHtml: body, kind: "DEAL" } });
       added++;
     }
     console.log(`${existing ? "updated" : "added  "} ${name}  (HubSpot sends: ${sends})`);

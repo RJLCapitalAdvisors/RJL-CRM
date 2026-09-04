@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 const tone: Record<string, string> = {
   DRAFT: "bg-cream text-ink border-line",
   SENDING: "bg-sky text-ink border-sky",
+  IN_PROGRESS: "bg-sky-50 text-ink border-sky",
   SENT: "bg-emerald-100 text-emerald-900 border-emerald-200",
   PARTIAL: "bg-amber-100 text-amber-900 border-amber-200",
 };
@@ -40,6 +41,7 @@ export default async function CampaignsPage() {
                 <tr>
                   <th>Campaign</th>
                   <th>Deal</th>
+                  <th>Mode</th>
                   <th>Audience</th>
                   <th>Status</th>
                   <th className="text-right">Recipients</th>
@@ -67,9 +69,10 @@ export default async function CampaignsPage() {
                           </Link>
                         )}
                       </td>
+                      <td className="text-xs">{c.mode === "BLAST" ? "Blast" : "One at a time"}</td>
                       <td>{c.roleFilter ?? "All roles"}</td>
                       <td>
-                        <span className={`chip border ${tone[c.status] ?? tone.DRAFT}`}>{c.status}</span>
+                        <span className={`chip border ${tone[c.status] ?? tone.DRAFT}`}>{c.status.replace("_", " ")}</span>
                       </td>
                       <td className="text-right">{c.recipients.length}</td>
                       <td className="text-right">{sent}</td>

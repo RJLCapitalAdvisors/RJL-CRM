@@ -51,6 +51,7 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.summary", label: "Deal summary / business plan" },
   { key: "deal.facts", label: "Bulleted list of every answered checklist item" },
   ...CHECKLIST.filter((it) => !it.core).map((it) => ({ key: `deal.details.${it.key}`, label: it.label })),
+  { key: "openingLine", label: "Personal opening line (set per recipient in deal outreach)" },
   { key: "sender.name", label: "Sender name" },
   { key: "unsubscribeUrl", label: "Unsubscribe link" },
 ];
@@ -61,6 +62,7 @@ export type MergeContext = {
   deal?: Record<string, unknown> | null;
   sender: { name: string };
   unsubscribeUrl: string;
+  openingLine?: string | null;
 };
 
 function fmt(key: string, v: unknown): string {
@@ -75,6 +77,7 @@ function fmt(key: string, v: unknown): string {
 
 function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "unsubscribeUrl") return ctx.unsubscribeUrl;
+  if (path === "openingLine") return ctx.openingLine ?? "";
   if (path === "deal.facts") return ctx.deal ? factsBlock(ctx.deal as DealLikeForChecklist) : "";
   if (path.startsWith("deal.details.")) return parseDetails(ctx.deal?.details)[path.slice("deal.details.".length)] ?? "";
   if (path.startsWith("deal.") && ["pricePerUnit", "pricePerFoot", "capPerUnit", "capPerFoot", "avgUnitSize"].includes(path.slice(5))) {
@@ -120,3 +123,25 @@ export function findUnknownFields(text: string): string[] {
   for (const m of text.matchAll(/\{\{\s*([a-zA-Z0-9_.]+)/g)) if (!known.has(m[1])) out.add(m[1]);
   return Array.from(out);
 }
+
+/** Plain-text version of an HTML (or plain) body, for mailto links and Outlook drafts. */
+export function toText(body: string): string {
+  if (!/<[a-z][\s\S]*>/i.test(body)) return body.trim();
+  return body
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export const UNSUBSCRIBE_FOOTER = `<p style="font-size:12px;color:#6b716e">If you'd prefer not to receive emails from RJL Capital Advisors, <a href="{{unsubscribeUrl}}">unsubscribe here</a>.</p>`;
