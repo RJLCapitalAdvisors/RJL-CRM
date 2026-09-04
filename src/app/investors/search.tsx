@@ -2,23 +2,17 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ASSET_CLASSES, CLOSING_TIMEFRAMES, HOLD_PERIODS, RETURN_PROFILES, US_STATES } from "@/lib/taxonomy";
-import { matchDeal } from "@/lib/matching";
+import { useRouter } from "next/navigation";
+import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, RETURN_PROFILES, VINTAGES } from "@/lib/taxonomy";
 import { CompanyLogo } from "@/components/company-logo";
 
 export type InvestorRow = {
-  id: string; // company id
-  name: string; // firm
+  id: string;
+  name: string;
   domain: string | null;
-  location: string;
-  retail: boolean;
-  contactCount: number;
-  bestContact: { id: string; name: string; email: string } | null;
-  lastActivity: string | null;
   crit: {
     assetClasses: string[];
     checkSizes: string[];
-    geographies: string[];
     geographyNotes: string | null;
     investmentTypes: string[];
     strategy: string | null;
@@ -33,107 +27,113 @@ export type InvestorRow = {
 
 export type Spec = {
   assetClass: string;
-  state: string;
-  amount: string;
+  checkSize: string;
   requestType: string;
   strategy: string;
   returnProfile: string;
   holdPeriod: string;
-  yearBuilt: string;
+  vintage: string;
   oz: string;
   closing: string;
   minority: string;
-  text: string;
-  fullOnly: boolean;
-  includeRetail: boolean;
 };
 
-const EMPTY: Spec = { assetClass: "", state: "", amount: "", requestType: "", strategy: "", returnProfile: "", holdPeriod: "", yearBuilt: "", oz: "", closing: "", minority: "", text: "", fullOnly: false, includeRetail: false };
+const EMPTY: Spec = { assetClass: "", checkSize: "", requestType: "", strategy: "", returnProfile: "", holdPeriod: "", vintage: "", oz: "", closing: "", minority: "" };
+const EQUITY = ["JV Equity", "Co-GP Equity", "Preferred Equity", "LP Equity"];
+const DEBT = ["Senior Debt", "Mezz Debt"];
 
-function vintageBucket(yearBuilt: string): string | null {
+/** Dollar amount -> the check-size bucket it falls in. */
+export function bucketForAmount(amount: number | null | undefined): string {
+  if (!amount) return "";
+  const mm = amount / 1_000_000;
+  for (const b of CHECK_SIZES) {
+    const m = b.match(/^\$(\d+)(?:-(\d+))?MM(\+)?$/);
+    if (!m) continue;
+    const lo = Number(m[1]);
+    const hi = m[3] ? Infinity : Number(m[2]);
+    if (mm >= lo && mm <= hi) return b;
+  }
+  return "";
+}
+
+/** Year built -> vintage bucket. */
+export function vintageForYear(yearBuilt: string | null | undefined): string {
+  if (!yearBuilt) return "";
   const y = Number((yearBuilt.match(/\d{4}/) ?? [])[0]);
-  if (!y) return /new|construction|2026|2025/i.test(yearBuilt) ? "New Construction" : null;
+  if (!y) return /new|construction/i.test(yearBuilt) ? "New Construction" : "";
   if (y >= 2024) return "New Construction";
   if (y < 1960) return "Older than 1960";
   return `${Math.floor(y / 10) * 10}s`;
 }
 
-function fmtInput(v: string) {
-  const digits = v.replace(/[^0-9]/g, "");
-  return digits ? Number(digits).toLocaleString("en-US") : "";
+/** A firm passes when every selected spec is satisfied by its criteria. Blank specs are ignored. */
+function passes(c: InvestorRow["crit"], s: Spec): boolean {
+  if (s.assetClass && !(c && (c.assetClasses.includes(s.assetClass) || c.assetClasses.includes("Asset Class Agnostic")))) return false;
+  if (s.checkSize && !(c && c.checkSizes.includes(s.checkSize))) return false;
+  if (s.requestType) {
+    const want = s.requestType === "Equity" ? EQUITY : s.requestType === "Debt" ? DEBT : [...EQUITY, ...DEBT];
+    if (!(c && c.investmentTypes.some((t) => want.includes(t)))) return false;
+  }
+  if (s.strategy && !(c && (c.strategy === s.strategy || c.strategy === "Both"))) return false;
+  if (s.returnProfile && !(c && c.returnProfile.includes(s.returnProfile))) return false;
+  if (s.holdPeriod && !(c && c.holdPeriods.includes(s.holdPeriod))) return false;
+  if (s.vintage && !(c && c.vintages.includes(s.vintage))) return false;
+  if (s.oz && !(c && c.ozInterest === (s.oz === "yes"))) return false;
+  if (s.closing && !(c && c.closingTimeframe === s.closing)) return false;
+  if (s.minority && !(c && c.openToMinority === (s.minority === "yes"))) return false;
+  return true;
 }
 
+type Opt = string | { v: string; l: string };
+
 export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; deals: { id: string; name: string }[] }) {
-  const [spec, setSpec] = useState<Spec>({ ...EMPTY, ...(preset ?? {}), amount: preset?.amount ? fmtInput(preset.amount) : "" });
   const PAGE = 100;
+  const router = useRouter();
+  const [spec, setSpec] = useState<Spec>({ ...EMPTY, ...(preset ?? {}) });
   const [page, setPage] = useState(1);
-  const set = (k: keyof Spec, v: string | boolean) => {
+  const set = (k: keyof Spec, v: string) => {
     setSpec((s) => ({ ...s, [k]: v }));
     setPage(1);
   };
+  const active = Object.values(spec).filter(Boolean).length;
+  const out = useMemo(() => rows.filter((r) => passes(r.crit, spec)), [rows, spec]);
+  const pages = Math.max(1, Math.ceil(out.length / PAGE));
+  const pageRows = out.slice((page - 1) * PAGE, page * PAGE);
 
-  const results = useMemo(() => {
-    const amount = spec.amount ? Number(spec.amount.replace(/[^0-9.]/g, "")) : null;
-    const dealLike = { assetClass: spec.assetClass || null, state: spec.state || null, requestedAmount: amount, requestType: spec.requestType || null, strategy: spec.strategy || null };
-    const vb = spec.yearBuilt ? vintageBucket(spec.yearBuilt) : null;
-    const q = spec.text.trim().toLowerCase();
-    const extraDims = [spec.returnProfile, spec.holdPeriod, vb, spec.oz, spec.closing, spec.minority].filter(Boolean).length;
-
-    const out = rows
-      .filter((r) => (spec.includeRetail ? true : !r.retail))
-      .filter((r) => !q || r.name.toLowerCase().includes(q) || r.location.toLowerCase().includes(q) || (r.bestContact?.name ?? "").toLowerCase().includes(q) || (r.bestContact?.email ?? "").toLowerCase().includes(q) || (r.crit?.geographyNotes ?? "").toLowerCase().includes(q))
-      .map((r) => {
-        const c = r.crit;
-        const base = matchDeal(c ? { assetClasses: JSON.stringify(c.assetClasses), checkSizes: JSON.stringify(c.checkSizes), investmentTypes: JSON.stringify(c.investmentTypes), geographies: JSON.stringify(c.geographies), strategy: c.strategy } : null, dealLike);
-        const reasons = [...base.reasons];
-        const misses = [...base.misses.filter((m) => m !== "No criteria on record")];
-        let score = base.score;
-        let possible = base.possible;
-        const check = (label: string, ok: boolean | null) => {
-          if (ok === null) return;
-          possible++;
-          if (ok) {
-            score++;
-            reasons.push(label);
-          } else misses.push(label.toLowerCase());
-        };
-        if (spec.returnProfile) check(`Return: ${spec.returnProfile}`, c?.returnProfile.length ? c.returnProfile.includes(spec.returnProfile) : false);
-        if (spec.holdPeriod) check(`Hold: ${spec.holdPeriod}`, c?.holdPeriods.length ? c.holdPeriods.includes(spec.holdPeriod) : false);
-        if (vb) check(`Vintage: ${vb}`, c?.vintages.length ? c.vintages.includes(vb) : false);
-        if (spec.oz) check("OZ", c?.ozInterest == null ? false : c.ozInterest === (spec.oz === "yes"));
-        if (spec.closing) check(`Closing: ${spec.closing}`, c?.closingTimeframe ? c.closingTimeframe === spec.closing : false);
-        if (spec.minority) check("Minority OK", c?.openToMinority == null ? false : c.openToMinority === (spec.minority === "yes"));
-        return { r, score, possible, reasons, misses, noCriteria: !c };
-      })
-      .filter((x) => (spec.fullOnly ? x.possible > 0 && x.score === x.possible : true))
-      .sort((a, b) => b.score - a.score || (b.score - b.possible) - (a.score - a.possible) || a.r.name.localeCompare(b.r.name));
-    return { out, dims: base(dealLike) + extraDims };
-    function base(d: typeof dealLike) {
-      return [d.assetClass, d.state, d.requestedAmount, d.requestType, d.strategy].filter(Boolean).length;
-    }
-  }, [rows, spec]);
-
-  const full = results.out.filter((x) => x.possible > 0 && x.score === x.possible).length;
-  const anySpec = results.dims > 0;
-  const pages = Math.max(1, Math.ceil(results.out.length / PAGE));
-  const pageRows = results.out.slice((page - 1) * PAGE, page * PAGE);
+  const sel = (k: keyof Spec, label: string, options: readonly Opt[]) => (
+    <label key={k} className="mb-2.5 block text-xs text-muted">
+      {label}
+      <select value={spec[k]} onChange={(e) => set(k, e.target.value)} className="input mt-1">
+        <option value="">Any</option>
+        {options.map((o) => {
+          const v = typeof o === "string" ? o : o.v;
+          const l = typeof o === "string" ? o : o.l;
+          return (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          );
+        })}
+      </select>
+    </label>
+  );
 
   return (
-    <div className="grid grid-cols-[320px_1fr] gap-6 px-8 py-6">
-      {/* Specs, one straight column */}
+    <div className="grid grid-cols-[300px_1fr] gap-6 px-8 py-6">
       <aside className="card self-start p-4">
-        <div className="mb-3 text-sm font-semibold">Deal specs</div>
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-sm font-semibold">Deal specs</span>
+          {active > 0 && (
+            <button type="button" className="text-xs text-sky-600 hover:underline" onClick={() => setSpec(EMPTY)}>
+              Clear
+            </button>
+          )}
+        </div>
         {deals.length > 0 && (
           <label className="mb-3 block text-xs text-muted">
-            Fill from a deal
-            <select
-              className="input mt-1"
-              defaultValue=""
-              onChange={(e) => {
-                if (e.target.value) window.location.href = `/investors?dealId=${e.target.value}`;
-              }}
-            >
-              <option value="">{presetDealName ? `Using: ${presetDealName}` : "Choose a deal…"}</option>
+            Choose from a deal
+            <select className="input mt-1" defaultValue="" onChange={(e) => e.target.value && router.push(`/investors?dealId=${e.target.value}`)}>
+              <option value="">{presetDealName ? `Using: ${presetDealName}` : "Pick a deal…"}</option>
               {deals.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -142,159 +142,69 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
             </select>
           </label>
         )}
-        <Row label="Asset class">
-          <select value={spec.assetClass} onChange={(e) => set("assetClass", e.target.value)} className="input">
-            <option value="">Any</option>
-            {ASSET_CLASSES.map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
-        </Row>
-        <Row label="State">
-          <select value={spec.state} onChange={(e) => set("state", e.target.value)} className="input">
-            <option value="">Any</option>
-            {Object.entries(US_STATES).map(([c, n]) => (
-              <option key={c} value={c}>
-                {c} · {n}
-              </option>
-            ))}
-          </select>
-        </Row>
-        <Row label="Check size needed ($)">
-          <input value={spec.amount} onChange={(e) => set("amount", fmtInput(e.target.value))} inputMode="numeric" placeholder="12,000,000" className="input tabular-nums" />
-        </Row>
-        <Row label="Equity or debt">
-          <select value={spec.requestType} onChange={(e) => set("requestType", e.target.value)} className="input">
-            <option value="">Any</option>
-            <option>Equity</option>
-            <option>Debt</option>
-            <option>Both</option>
-          </select>
-        </Row>
-        <Row label="Acquisition or development">
-          <select value={spec.strategy} onChange={(e) => set("strategy", e.target.value)} className="input">
-            <option value="">Any</option>
-            <option>Acquisitions</option>
-            <option>Development</option>
-          </select>
-        </Row>
-        <Row label="Return profile">
-          <select value={spec.returnProfile} onChange={(e) => set("returnProfile", e.target.value)} className="input">
-            <option value="">Any</option>
-            {RETURN_PROFILES.map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
-        </Row>
-        <Row label="Hold period">
-          <select value={spec.holdPeriod} onChange={(e) => set("holdPeriod", e.target.value)} className="input">
-            <option value="">Any</option>
-            {HOLD_PERIODS.map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
-        </Row>
-        <Row label="Year built">
-          <input value={spec.yearBuilt} onChange={(e) => set("yearBuilt", e.target.value)} placeholder="1985 or New Construction" className="input" />
-        </Row>
-        <Row label="Opportunity Zone deal">
-          <select value={spec.oz} onChange={(e) => set("oz", e.target.value)} className="input">
-            <option value="">Not relevant</option>
-            <option value="yes">Yes, needs OZ interest</option>
-          </select>
-        </Row>
-        <Row label="Closing speed">
-          <select value={spec.closing} onChange={(e) => set("closing", e.target.value)} className="input">
-            <option value="">Any</option>
-            {CLOSING_TIMEFRAMES.map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
-        </Row>
-        <Row label="Minority position">
-          <select value={spec.minority} onChange={(e) => set("minority", e.target.value)} className="input">
-            <option value="">Not relevant</option>
-            <option value="yes">Must be open to minority</option>
-          </select>
-        </Row>
-        <Row label="Name, firm, or location text">
-          <input value={spec.text} onChange={(e) => set("text", e.target.value)} placeholder="Sunbelt, Ardent, mlgcapital…" className="input" />
-        </Row>
-        <label className="mt-3 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={spec.fullOnly} onChange={(e) => set("fullOnly", e.target.checked)} className="accent-ink" /> Only full matches
-        </label>
-        <label className="mt-1 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={spec.includeRetail} onChange={(e) => set("includeRetail", e.target.checked)} className="accent-ink" /> Include retail investors
-        </label>
-        <button type="button" className="btn-ghost mt-3 w-full" onClick={() => setSpec(EMPTY)}>
-          Clear specs
-        </button>
+        {sel("assetClass", "Asset class", ASSET_CLASSES)}
+        {sel("checkSize", "Check size", CHECK_SIZES)}
+        {sel("requestType", "Equity or debt", ["Equity", "Debt", "Both"])}
+        {sel("strategy", "Acquisition or development", ["Acquisitions", "Development", "Both"])}
+        {sel("returnProfile", "Return profile", RETURN_PROFILES)}
+        {sel("holdPeriod", "Hold period", HOLD_PERIODS)}
+        {sel("vintage", "Year built", VINTAGES)}
+        {sel("oz", "Opportunity Zone", [{ v: "yes", l: "Yes" }, { v: "no", l: "No" }])}
+        {sel("closing", "Closing time frame", CLOSING_TIMEFRAMES)}
+        {sel("minority", "Open to minority position", [{ v: "yes", l: "Yes" }, { v: "no", l: "No" }])}
       </aside>
 
-      {/* Results: fixed window, scrolls inside itself */}
       <section className="card flex h-[calc(100vh-140px)] min-h-[480px] flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-line px-4 py-2 text-sm">
           <div>
-            <span className="font-semibold">{results.out.length.toLocaleString()}</span> investor firms{anySpec && <span className="text-muted"> · {full.toLocaleString()} match every spec you set</span>}
+            <span className="font-semibold">{out.length.toLocaleString()}</span> investor firms
+            {active > 0 && (
+              <span className="text-muted">
+                {" "}
+                matching {active} spec{active === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
           <span className="text-xs text-muted">
-            {results.out.length ? (page - 1) * PAGE + 1 : 0}–{Math.min(page * PAGE, results.out.length)} of {results.out.length.toLocaleString()}
+            {out.length ? (page - 1) * PAGE + 1 : 0}–{Math.min(page * PAGE, out.length)} of {out.length.toLocaleString()}
           </span>
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
-          <table className="table dense w-full min-w-[1360px]">
+          <table className="table dense w-full table-fixed min-w-[1400px]">
             <thead>
               <tr>
                 <th className="w-[240px]">Company name</th>
-                <th className="w-[170px]">Best contact</th>
-                {anySpec && <th className="w-[56px] text-center">Fit</th>}
-                <th className="w-[210px]">Check sizes</th>
-                <th className="w-[220px]">Asset classes</th>
-                <th className="w-[170px]">Type of investment</th>
+                <th className="w-[260px]">Deal locations</th>
+                <th className="w-[220px]">Check sizes</th>
+                <th className="w-[230px]">Asset classes</th>
+                <th className="w-[180px]">Type of investment</th>
                 <th className="w-[110px]">Acq / Dev</th>
-                <th className="w-[150px]">Return profile</th>
-                <th className="w-[130px]">Hold period</th>
-                {anySpec && <th>Gaps</th>}
+                <th className="w-[160px]">Return profile</th>
+                <th>Hold period</th>
               </tr>
             </thead>
             <tbody>
-              {pageRows.map(({ r, score, possible, misses }) => (
-                <tr key={r.id} className={anySpec && possible > 0 && score === 0 ? "opacity-60" : ""}>
+              {pageRows.map((r) => (
+                <tr key={r.id}>
                   <td>
                     <Link href={`/companies/${r.id}`} className="flex items-center gap-2 font-medium hover:underline">
                       <CompanyLogo domain={r.domain} name={r.name} />
                       <span className="truncate">{r.name}</span>
                     </Link>
                   </td>
-                  <td className="truncate">
-                    {r.bestContact ? (
-                      <Link href={`/contacts/${r.bestContact.id}`} className="hover:underline">
-                        {r.bestContact.name}
-                      </Link>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </td>
-                  {anySpec && (
-                    <td className="text-center">
-                      <span className={`chip ${possible > 0 && score === possible ? "bg-emerald-100 text-emerald-900" : score > 0 ? "bg-sky text-ink" : "bg-stone-100 text-muted"}`}>
-                        {score}/{possible}
-                      </span>
-                    </td>
-                  )}
+                  <Cell text={r.crit?.geographyNotes} />
                   <Cell items={r.crit?.checkSizes} />
                   <Cell items={r.crit?.assetClasses} />
                   <Cell items={r.crit?.investmentTypes} />
-                  <td className="truncate">{r.crit?.strategy ?? <span className="text-muted">—</span>}</td>
+                  <Cell text={r.crit?.strategy} />
                   <Cell items={r.crit?.returnProfile} />
                   <Cell items={r.crit?.holdPeriods} />
-                  {anySpec && <td className="truncate text-muted">{misses.join(", ")}</td>}
                 </tr>
               ))}
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-10 text-center text-muted">
-                    No firms match. Loosen a spec or clear them.
+                  <td colSpan={8} className="py-10 text-center text-muted">
+                    No firms match all of these specs.
                   </td>
                 </tr>
               )}
@@ -309,17 +219,16 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
   );
 }
 
-function Cell({ items }: { items?: string[] }) {
-  if (!items || items.length === 0) return <td className="text-muted">—</td>;
-  const text = items.join(", ");
+function Cell({ items, text }: { items?: string[]; text?: string | null }) {
+  const t = text ?? (items && items.length ? items.join(", ") : "");
+  if (!t) return <td className="text-muted">—</td>;
   return (
-    <td className="truncate" title={text}>
-      {text}
+    <td className="truncate" title={t}>
+      {t}
     </td>
   );
 }
 
-/** HubSpot-style pager: Prev, page numbers (window of 7), Next. */
 function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (p: number) => void }) {
   if (pages <= 1) return <span className="text-xs text-muted">Page 1 of 1</span>;
   const lo = Math.max(1, Math.min(page - 3, pages - 6));
@@ -339,14 +248,5 @@ function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (
         Next ›
       </button>
     </div>
-  );
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="mb-2.5 block text-xs text-muted">
-      {label}
-      <div className="mt-1">{children}</div>
-    </label>
   );
 }
