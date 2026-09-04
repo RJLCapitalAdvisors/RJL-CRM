@@ -11,7 +11,7 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   const dealId = str(sp.dealId);
   // Flat queries joined in code: SQLite caps query parameters, so nested includes over ~1,300 companies fail.
   const [companies, allCriteria, allContacts, deal, deals] = await Promise.all([
-    prisma.company.findMany({ where: { roles: { contains: "Investor" } }, select: { id: true, name: true, roles: true, city: true, state: true, lastActivityAt: true }, orderBy: { name: "asc" } }),
+    prisma.company.findMany({ where: { roles: { contains: "Investor" } }, select: { id: true, name: true, roles: true, domain: true, city: true, state: true, lastActivityAt: true }, orderBy: { name: "asc" } }),
     prisma.investorCriteria.findMany({ where: { companyId: { not: null } } }),
     prisma.contact.findMany({ where: { email: { not: null }, unsubscribed: false, companyId: { not: null } }, select: { id: true, firstName: true, lastName: true, email: true, lastActivityAt: true, companyId: true }, orderBy: { lastActivityAt: "desc" } }),
     dealId ? prisma.deal.findUnique({ where: { id: dealId } }) : null,
@@ -33,6 +33,7 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
     return {
       id: c.id,
       name: c.name,
+      domain: c.domain,
       location: [c.city, c.state].filter(Boolean).join(", "),
       retail: roles.includes("Retail Investor") && !roles.includes("Investor"),
       contactCount: contacts.length,

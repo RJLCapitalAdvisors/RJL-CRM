@@ -56,6 +56,12 @@ body {
   .table td {
     @apply border-b border-line px-3 py-2 align-top text-sm;
   }
+  .table.dense td {
+    @apply whitespace-nowrap py-1.5 text-[13px];
+  }
+  .table.dense th {
+    @apply py-1.5;
+  }
   .table tr:hover td {
     @apply bg-cream-50;
   }

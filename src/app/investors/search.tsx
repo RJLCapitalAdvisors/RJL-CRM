@@ -4,10 +4,12 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ASSET_CLASSES, CLOSING_TIMEFRAMES, HOLD_PERIODS, RETURN_PROFILES, US_STATES } from "@/lib/taxonomy";
 import { matchDeal } from "@/lib/matching";
+import { CompanyLogo } from "@/components/company-logo";
 
 export type InvestorRow = {
   id: string; // company id
   name: string; // firm
+  domain: string | null;
   location: string;
   retail: boolean;
   contactCount: number;
@@ -229,51 +231,46 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
         </button>
       </aside>
 
-      {/* Results */}
-      <section className="card">
-        <div className="flex items-center justify-between border-b border-line px-4 py-3 text-sm">
+      {/* Results: fixed window, scrolls inside itself */}
+      <section className="card flex h-[calc(100vh-140px)] min-h-[480px] flex-col overflow-hidden">
+        <div className="flex items-center justify-between border-b border-line px-4 py-2 text-sm">
           <div>
             <span className="font-semibold">{results.out.length.toLocaleString()}</span> investor firms{anySpec && <span className="text-muted"> · {full.toLocaleString()} match every spec you set</span>}
           </div>
-          <Pager page={page} pages={pages} onPage={setPage} />
+          <span className="text-xs text-muted">
+            {results.out.length ? (page - 1) * PAGE + 1 : 0}–{Math.min(page * PAGE, results.out.length)} of {results.out.length.toLocaleString()}
+          </span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="table w-full min-w-[1400px]">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="table dense w-full min-w-[1360px]">
             <thead>
               <tr>
-                <th className="w-[230px]">Firm</th>
-                <th className="w-[190px]">Best contact</th>
-                {anySpec && <th className="w-[60px] text-center">Fit</th>}
-                <th className="w-[200px]">Check sizes</th>
+                <th className="w-[240px]">Company name</th>
+                <th className="w-[170px]">Best contact</th>
+                {anySpec && <th className="w-[56px] text-center">Fit</th>}
+                <th className="w-[210px]">Check sizes</th>
                 <th className="w-[220px]">Asset classes</th>
-                <th className="w-[160px]">Type of investment</th>
+                <th className="w-[170px]">Type of investment</th>
                 <th className="w-[110px]">Acq / Dev</th>
-                <th className="w-[160px]">Return profile</th>
-                <th className="w-[140px]">Hold period</th>
+                <th className="w-[150px]">Return profile</th>
+                <th className="w-[130px]">Hold period</th>
                 {anySpec && <th>Gaps</th>}
               </tr>
             </thead>
             <tbody>
-              {pageRows.map(({ r, score, possible, misses, noCriteria }) => (
+              {pageRows.map(({ r, score, possible, misses }) => (
                 <tr key={r.id} className={anySpec && possible > 0 && score === 0 ? "opacity-60" : ""}>
                   <td>
-                    <Link href={`/companies/${r.id}`} className="font-medium hover:underline">
-                      {r.name}
+                    <Link href={`/companies/${r.id}`} className="flex items-center gap-2 font-medium hover:underline">
+                      <CompanyLogo domain={r.domain} name={r.name} />
+                      <span className="truncate">{r.name}</span>
                     </Link>
-                    <div className="text-xs text-muted">
-                      {r.location || "—"}
-                      {r.contactCount ? ` · ${r.contactCount} contact${r.contactCount === 1 ? "" : "s"}` : " · no contacts with email"}
-                    </div>
-                    {noCriteria && <div className="text-[11px] text-amber-700">no criteria on file</div>}
                   </td>
-                  <td>
+                  <td className="truncate">
                     {r.bestContact ? (
-                      <>
-                        <Link href={`/contacts/${r.bestContact.id}`} className="hover:underline">
-                          {r.bestContact.name}
-                        </Link>
-                        <div className="truncate text-xs text-muted">{r.bestContact.email}</div>
-                      </>
+                      <Link href={`/contacts/${r.bestContact.id}`} className="hover:underline">
+                        {r.bestContact.name}
+                      </Link>
                     ) : (
                       <span className="text-muted">—</span>
                     )}
@@ -288,10 +285,10 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
                   <Cell items={r.crit?.checkSizes} />
                   <Cell items={r.crit?.assetClasses} />
                   <Cell items={r.crit?.investmentTypes} />
-                  <td className="text-xs">{r.crit?.strategy ?? <span className="text-muted">—</span>}</td>
+                  <td className="truncate">{r.crit?.strategy ?? <span className="text-muted">—</span>}</td>
                   <Cell items={r.crit?.returnProfile} />
                   <Cell items={r.crit?.holdPeriods} />
-                  {anySpec && <td className="text-xs text-muted">{misses.join(", ")}</td>}
+                  {anySpec && <td className="truncate text-muted">{misses.join(", ")}</td>}
                 </tr>
               ))}
               {pageRows.length === 0 && (
@@ -304,10 +301,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-between border-t border-line px-4 py-3 text-xs text-muted">
-          <span>
-            Showing {results.out.length ? (page - 1) * PAGE + 1 : 0}–{Math.min(page * PAGE, results.out.length)} of {results.out.length.toLocaleString()}
-          </span>
+        <div className="flex items-center justify-center border-t border-line px-4 py-2">
           <Pager page={page} pages={pages} onPage={setPage} />
         </div>
       </section>
@@ -316,21 +310,32 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
 }
 
 function Cell({ items }: { items?: string[] }) {
-  if (!items || items.length === 0) return <td className="text-xs text-muted">—</td>;
-  return <td className="text-xs leading-relaxed">{items.join(", ")}</td>;
+  if (!items || items.length === 0) return <td className="text-muted">—</td>;
+  const text = items.join(", ");
+  return (
+    <td className="truncate" title={text}>
+      {text}
+    </td>
+  );
 }
 
+/** HubSpot-style pager: Prev, page numbers (window of 7), Next. */
 function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (p: number) => void }) {
   if (pages <= 1) return <span className="text-xs text-muted">Page 1 of 1</span>;
+  const lo = Math.max(1, Math.min(page - 3, pages - 6));
+  const nums = Array.from({ length: Math.min(7, pages) }, (_, i) => lo + i);
+  const btn = "min-w-[30px] rounded-md px-2 py-1 text-sm hover:bg-cream disabled:opacity-40";
   return (
-    <div className="flex items-center gap-1 text-xs">
-      <button type="button" className="btn-secondary px-2 py-1" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+    <div className="flex items-center gap-1">
+      <button type="button" className={btn} disabled={page <= 1} onClick={() => onPage(page - 1)}>
         ‹ Prev
       </button>
-      <span className="px-2 text-muted">
-        Page {page} of {pages}
-      </span>
-      <button type="button" className="btn-secondary px-2 py-1" disabled={page >= pages} onClick={() => onPage(page + 1)}>
+      {nums.map((n) => (
+        <button key={n} type="button" className={`${btn} ${n === page ? "border border-ink font-semibold" : ""}`} onClick={() => onPage(n)}>
+          {n}
+        </button>
+      ))}
+      <button type="button" className={btn} disabled={page >= pages} onClick={() => onPage(page + 1)}>
         Next ›
       </button>
     </div>

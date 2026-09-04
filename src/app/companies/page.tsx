@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { ROLES, US_STATES } from "@/lib/taxonomy";
 import { PageHeader, Pager, RoleChips, SearchForm, Chips } from "@/components/ui";
 import { fmtDate, str } from "@/lib/format";
+import { CompanyLogo } from "@/components/company-logo";
 
 export const dynamic = "force-dynamic";
 const PAGE = 50;
@@ -74,8 +75,9 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
           </select>
         </SearchForm>
       </div>
-      <div className="mx-8 overflow-x-auto rounded-lg border border-line bg-paper">
-        <table className="table w-full">
+      <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+        <div className="min-h-0 flex-1 overflow-auto">
+        <table className="table dense w-full min-w-[1100px]">
           <thead>
             <tr>
               <th>Company</th>
@@ -93,8 +95,9 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
             {rows.map((c) => (
               <tr key={c.id}>
                 <td>
-                  <Link href={`/companies/${c.id}`} className="font-medium hover:underline">
-                    {c.name}
+                  <Link href={`/companies/${c.id}`} className="flex items-center gap-2 font-medium hover:underline">
+                    <CompanyLogo domain={c.domain} name={c.name} />
+                    <span className="truncate">{c.name}</span>
                   </Link>
                 </td>
                 <td>
@@ -122,6 +125,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
             )}
           </tbody>
         </table>
+        </div>
       </div>
       <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
     </>

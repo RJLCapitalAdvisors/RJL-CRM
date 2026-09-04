@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { ROLES } from "@/lib/taxonomy";
 import { PageHeader, Pager, RoleChips, SearchForm } from "@/components/ui";
 import { fmtDate, fullName, str } from "@/lib/format";
+import { CompanyLogo } from "@/components/company-logo";
 
 export const dynamic = "force-dynamic";
 const PAGE = 50;
@@ -86,8 +87,9 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
           </select>
         </SearchForm>
       </div>
-      <div className="mx-8 overflow-x-auto rounded-lg border border-line bg-paper">
-        <table className="table w-full">
+      <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+        <div className="min-h-0 flex-1 overflow-auto">
+        <table className="table dense w-full min-w-[1100px]">
           <thead>
             <tr>
               <th>Name</th>
@@ -111,8 +113,9 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                 <td className="text-muted">{k.email}</td>
                 <td>
                   {k.company ? (
-                    <Link href={`/companies/${k.company.id}`} className="hover:underline">
-                      {k.company.name}
+                    <Link href={`/companies/${k.company.id}`} className="flex items-center gap-2 hover:underline">
+                      <CompanyLogo domain={k.company.domain} name={k.company.name} size={16} />
+                      <span className="truncate">{k.company.name}</span>
                     </Link>
                   ) : (
                     <span className="text-muted">—</span>
@@ -138,6 +141,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             )}
           </tbody>
         </table>
+        </div>
       </div>
       <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
     </>
