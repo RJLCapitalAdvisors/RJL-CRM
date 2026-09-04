@@ -11,7 +11,11 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "import": "tsx scripts/import-hubspot.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "import:templates": "tsx scripts/import-templates.ts",
+    "seed:templates": "tsx scripts/seed-templates.ts && tsx scripts/seed-blast-template.ts",
+    "users": "tsx scripts/set-users.ts",
+    "roles:backfill": "tsx scripts/backfill-roles.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
