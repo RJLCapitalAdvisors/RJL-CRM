@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const DAY = 86_400_000;
 
 /** Every deal that has a progress report, most in need of attention first. */
-export default async function ReportsPage() {
+async function loadRows() {
   const deals = await prisma.deal.findMany({
     where: { stage: { in: [...ACTIVE_STAGES] }, investors: { some: {} } },
     include: { sponsorCompany: { select: { domain: true, name: true } }, investors: { select: { status: true, updatedAt: true } } },
@@ -27,7 +27,11 @@ export default async function ReportsPage() {
       return { d, counts, awaiting: awaiting.length, staleDays, lastUpdated, responded: d.investors.filter((r) => r.status >= 4).length };
     })
     .sort((a, b) => b.staleDays - a.staleDays || b.awaiting - a.awaiting || b.lastUpdated.getTime() - a.lastUpdated.getTime());
+  return rows;
+}
 
+export default async function ReportsPage() {
+  const rows = await loadRows();
   return (
     <>
       <PageHeader title="Active progress reports" subtitle={`${rows.length} deals out to investors. Sorted by who has been waiting longest.`} />
