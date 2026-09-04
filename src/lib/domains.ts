@@ -80,7 +80,7 @@ export async function backfillDomains(log: (s: string) => void = () => {}) {
       const d = domainOf(k.email);
       if (d) counts.set(d, (counts.get(d) ?? 0) + 1);
     }
-    let best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    let best: string | null = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
     if (!best && c.website) best = domainOf(`x@${c.website.replace(/^https?:\/\//, "").replace(/\/.*$/, "")}`);
     if (best && !taken.has(best)) {
       await prisma.company.update({ where: { id: c.id }, data: { domain: best } });
