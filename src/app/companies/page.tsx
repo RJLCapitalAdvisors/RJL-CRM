@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { ROLES, US_STATES } from "@/lib/taxonomy";
-import { PageHeader, Pager, RoleChips, SearchForm, Chips } from "@/components/ui";
+import { PageHeader, Pager, RoleChips, SearchForm } from "@/components/ui";
+import { parseList } from "@/lib/taxonomy";
 import { fmtDate, str } from "@/lib/format";
 import { CompanyLogo } from "@/components/company-logo";
 
@@ -104,11 +105,11 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                   <RoleChips roles={c.roles} />
                 </td>
                 <td className="whitespace-nowrap">{[c.city, c.state].filter(Boolean).join(", ") || <span className="text-muted">—</span>}</td>
-                <td>
-                  <Chips items={c.criteria?.assetClasses ?? "[]"} max={3} />
+                <td className="max-w-[240px] truncate" title={parseList(c.criteria?.assetClasses).join(", ")}>
+                  {parseList(c.criteria?.assetClasses).join(", ") || <span className="text-muted">—</span>}
                 </td>
-                <td>
-                  <Chips items={c.criteria?.checkSizes ?? "[]"} tone="bg-sky-50 text-ink" max={3} />
+                <td className="max-w-[220px] truncate" title={parseList(c.criteria?.checkSizes).join(", ")}>
+                  {parseList(c.criteria?.checkSizes).join(", ") || <span className="text-muted">—</span>}
                 </td>
                 <td className="text-right">{c._count.contacts}</td>
                 <td className="text-right">{c._count.deals}</td>
