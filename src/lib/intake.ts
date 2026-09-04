@@ -57,16 +57,64 @@ export function claudeConfigured() {
 }
 
 // ---------- Claude extraction ----------
+// The API limits structured-output schemas to 16 nullable/union fields, so Claude returns plain
+// strings ("" = unknown) and we convert to the typed ExtractedDeal afterwards.
+const str = (desc: string) => z.string().describe(desc + " Empty string if not stated.");
+const ClaudeOutput = z.object({
+  sponsorName: str("Company sponsoring / acquiring the deal (not the broker or forwarder)."),
+  propertyName: str("Property or deal name."),
+  propertyAddress: str("Street address."),
+  city: str("City."),
+  state: str("Two-letter US state code."),
+  assetClass: z.enum([...ASSET_CLASSES, ""]).describe("Asset class, or empty."),
+  strategy: z.enum(["Acquisitions", "Development", ""]).describe("Development for ground-up/construction; Acquisitions for buying an existing asset."),
+  requestType: z.enum(["Equity", "Debt", "Both", ""]).describe("Equity for JV/LP/pref/co-GP raises; Debt for loans/bridge/construction/refi."),
+  requestedAmount: str("Requested amount in US dollars, digits only (12500000)."),
+  purchasePrice: str("Purchase price or total project cost in US dollars, digits only."),
+  totalEquity: str("Total equity in US dollars, digits only."),
+  ltv: str("LTV or LTC percent as a number (65)."),
+  loanTerm: str("Loan term and structure."),
+  equityMultiple: str("Projected equity multiple as a number (1.9)."),
+  occupancy: str("Occupancy percent as a number (91)."),
+  onMarket: z.enum(["on", "off", ""]).describe("on if marketed/listed, off if off-market."),
+  sponsorExperience: str("Sponsor bio: overall and local market experience, quoted or closely paraphrased."),
+  summary: str("2-4 sentence neutral summary of the deal and business plan for an investor email."),
+  details: z.object(Object.fromEntries(CHECKLIST.filter((it) => !it.core).map((it) => [it.key, str(`${it.label}. ${it.question}${it.kind === "doc" ? " Answer Received only if the document is attached or explicitly provided." : ""}`)]))),
+  contactName: str("Name of the person who sent the deal."),
+  contactEmail: str("Email of the person who sent the deal."),
+  confidenceNotes: str("Anything ambiguous or inferred."),
+});
+type ClaudeOutput = z.infer<typeof ClaudeOutput>;
+
+function fromClaude(o: ClaudeOutput): ExtractedDeal {
+  const n = (v: string) => {
+    const t = v.replace(/[^0-9.-]/g, "");
+    if (!t) return null;
+    const x = Number(t);
+    return isNaN(x) ? null : x;
+  };
+  const t = (v: string) => (v.trim() ? v.trim() : null);
+  const details = Object.fromEntries(Object.entries(o.details).map(([k, v]) => [k, t(v as string)])) as ExtractedDeal["details"];
+  return {
+    sponsorName: t(o.sponsorName), propertyName: t(o.propertyName), propertyAddress: t(o.propertyAddress), city: t(o.city),
+    state: t(o.state)?.toUpperCase() ?? null, assetClass: t(o.assetClass), strategy: (t(o.strategy) as ExtractedDeal["strategy"]) ?? null,
+    requestType: (t(o.requestType) as ExtractedDeal["requestType"]) ?? null, requestedAmount: n(o.requestedAmount), purchasePrice: n(o.purchasePrice),
+    totalEquity: n(o.totalEquity), ltv: n(o.ltv), loanTerm: t(o.loanTerm), equityMultiple: n(o.equityMultiple), occupancy: n(o.occupancy),
+    onMarket: o.onMarket === "on" ? true : o.onMarket === "off" ? false : null, sponsorExperience: t(o.sponsorExperience), summary: t(o.summary),
+    details, contactName: t(o.contactName), contactEmail: t(o.contactEmail), confidenceNotes: t(o.confidenceNotes),
+  };
+}
+
 const SYSTEM = `You extract commercial real estate deal details from emails forwarded to a capital advisory firm (RJL Capital Advisors) so the team can see what the sponsor provided and what is still missing.
 Read the email (including quoted/forwarded content) and fill the schema. Rules:
-- Use null for anything not stated. Never invent numbers or facts.
+- Use an empty string for anything not stated. Never invent numbers or facts.
 - Dollar amounts are plain numbers in USD ("$12.5MM" -> 12500000, "$3,200,000" -> 3200000).
 - Percentages are plain numbers (65% -> 65). LTV may appear as LTC or leverage.
 - requestType: "Equity" for JV/LP/pref/co-GP equity raises, "Debt" for loans/bridge/construction/refi, "Both" if both.
 - strategy: "Development" for ground-up / construction; "Acquisitions" for buying an existing asset.
 - assetClass must be one of the listed values; map synonyms (apartments -> Multifamily, BTR -> Build-For-Rent (SFR), hotel -> Hospitality, warehouse -> Industrial, shopping center -> Retail).
 - state is the two-letter code. If only a metro is given, infer the state and note it in confidenceNotes.
-- For each checklist item in details: quote or closely paraphrase what the sponsor said. For documents (proforma, rent roll/T12, trade-out report, capex budget, comps) answer "Received" only if the document is attached or explicitly provided; otherwise null.
+- For each checklist item in details: quote or closely paraphrase what the sponsor said. For documents (proforma, rent roll/T12, trade-out report, capex budget, comps) answer "Received" only if the document is attached or explicitly provided; otherwise empty.
 - summary is a neutral 2-4 sentence description suitable for an investor email.`;
 
 export async function extractWithClaude(rawText: string, subject?: string | null, attachments: string[] = []): Promise<ExtractedDeal> {
@@ -76,11 +124,11 @@ export async function extractWithClaude(rawText: string, subject?: string | null
     max_tokens: 16000,
     system: SYSTEM,
     messages: [{ role: "user", content: `Subject: ${subject ?? ""}\nAttachments: ${attachments.length ? attachments.join(", ") : "(none)"}\n\n${rawText}` }],
-    output_config: { format: zodOutputFormat(ExtractedDealSchema) },
+    output_config: { format: zodOutputFormat(ClaudeOutput) },
   });
   if (response.stop_reason === "refusal") throw new Error("Extraction was refused by the model");
   if (!response.parsed_output) throw new Error("Model returned no structured output");
-  return response.parsed_output;
+  return fromClaude(response.parsed_output);
 }
 
 // ---------- Heuristic fallback (no API key) ----------
@@ -188,8 +236,14 @@ export function extractHeuristic(rawText: string, subject?: string | null, fromN
 
 export async function extractDeal(rawText: string, subject?: string | null, fromName?: string | null, fromEmail?: string | null, attachments: string[] = []): Promise<{ data: ExtractedDeal; extractor: string }> {
   if (claudeConfigured()) {
-    const data = await extractWithClaude(rawText, subject, attachments);
-    return { data: { ...data, contactName: data.contactName ?? fromName ?? null, contactEmail: data.contactEmail ?? fromEmail ?? null }, extractor: "claude" };
+    try {
+      const data = await extractWithClaude(rawText, subject, attachments);
+      return { data: { ...data, contactName: data.contactName ?? fromName ?? null, contactEmail: data.contactEmail ?? fromEmail ?? null }, extractor: "claude" };
+    } catch (e) {
+      const data = extractHeuristic(rawText, subject, fromName, fromEmail, attachments);
+      data.confidenceNotes = `Claude extraction failed (${String(e).slice(0, 200)}). Fell back to the basic pattern matcher; verify every field.`;
+      return { data, extractor: "heuristic" };
+    }
   }
   return { data: extractHeuristic(rawText, subject, fromName, fromEmail, attachments), extractor: "heuristic" };
 }
