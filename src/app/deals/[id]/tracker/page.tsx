@@ -176,7 +176,7 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
         {/* Sort bar */}
         <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-cream-50 px-5 py-2.5">
           <span className="mr-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted">Sort</span>
-          <Link href={`/deals/${deal.id}/tracker`} className={`rounded-full border px-2.5 py-0.5 text-[11px] ${sortPriority === 0 ? "border-ink bg-ink text-cream" : "border-line text-muted"}`}>
+          <Link href={`/deals/${deal.id}/tracker`} className={`rounded-full border px-2.5 py-0.5 text-[11px] ${sortPriority === 0 ? "border-ink bg-ink text-white" : "border-line text-muted"}`}>
             Default (8→1)
           </Link>
           {[...TRACKER_STATUSES].reverse().map((s) => {

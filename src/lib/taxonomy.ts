@@ -216,7 +216,7 @@ export function normalizeGeographies(raw: string | undefined | null): string[] {
 export function roleColor(role: string): string {
   switch (role) {
     case "Sponsor":
-      return "bg-ink text-cream";
+      return "bg-ink text-white";
     case "Investor":
       return "bg-sky text-ink";
     case "Retail Investor":

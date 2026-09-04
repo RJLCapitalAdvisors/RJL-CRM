@@ -4,7 +4,7 @@ import { verifyContactToken } from "@/lib/tokens";
 const page = (title: string, body: string) =>
   new Response(
     `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Helvetica,Arial,sans-serif;background:#fffcf0;color:#1a2321;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0">
+<body style="font-family:Helvetica,Arial,sans-serif;background:#f6f9fc;color:#1a2321;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0">
 <div style="max-width:420px;padding:32px;background:#fff;border:1px solid #e6e2d3;border-radius:12px;text-align:center">
 <h1 style="font-size:20px;margin:0 0 8px">${title}</h1><p style="margin:0;color:#6b716e">${body}</p>
 <p style="margin:24px 0 0;font-size:12px;color:#6b716e">RJL Capital Advisors</p></div></body></html>`,

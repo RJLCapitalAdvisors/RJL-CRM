@@ -4,13 +4,13 @@
 @theme {
   --color-ink: #1a2321;
   --color-ink-soft: #3a4441;
-  --color-cream: #fff8d9;
-  --color-cream-50: #fffcf0;
+  --color-cream: #eef4fa; /* light blue tint (kept token name; replaces the old cream) */
+  --color-cream-50: #f6f9fc;
   --color-sky: #b7cfe8;
   --color-sky-600: #5b8bbf;
   --color-sky-50: #eef4fa;
   --color-paper: #ffffff;
-  --color-line: #e6e2d3;
+  --color-line: #dfe6ee;
   --color-muted: #6b716e;
   --font-sans: "Helvetica Neue", Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;
 }
@@ -21,7 +21,7 @@ body {
 }
 
 body {
-  background: var(--color-cream-50);
+  background: #f6f9fc;
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -33,7 +33,7 @@ body {
     @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50;
   }
   .btn-primary {
-    @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 bg-ink text-cream hover:bg-ink-soft;
+    @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 bg-ink text-white hover:bg-ink-soft;
   }
   .btn-secondary {
     @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 border border-line bg-paper text-ink hover:bg-cream;
