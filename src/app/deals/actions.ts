@@ -91,13 +91,18 @@ async function dealData(fd: FormData) {
 }
 
 export async function createDeal(fd: FormData) {
-  const d = await prisma.deal.create({ data: await dealData(fd) });
+  const details: Record<string, string | null> = {};
+  if (s(fd, "detail.acres")) details.acres = s(fd, "detail.acres");
+  const d = await prisma.deal.create({ data: { ...(await dealData(fd)), details: JSON.stringify(details) } });
   revalidatePath("/deals");
   redirect(`/deals/${d.id}`);
 }
 
 export async function updateDeal(id: string, fd: FormData) {
-  await prisma.deal.update({ where: { id }, data: await dealData(fd) });
+  const existing = await prisma.deal.findUniqueOrThrow({ where: { id }, select: { details: true } });
+  const details = parseDetails(existing.details);
+  if (fd.has("detail.acres")) details.acres = s(fd, "detail.acres");
+  await prisma.deal.update({ where: { id }, data: { ...(await dealData(fd)), details: JSON.stringify(details) } });
   revalidatePath(`/deals/${id}`);
   revalidatePath("/deals");
 }

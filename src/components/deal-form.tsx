@@ -1,4 +1,8 @@
+"use client";
+
+import { useMemo, useState } from "react";
 import { ASSET_CLASSES, DEAL_STAGES, US_STATES } from "@/lib/taxonomy";
+import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
 
 export const EXECUTION_TYPES = ["JV Equity", "LP Equity", "Co-GP Equity", "Preferred Equity", "Senior Debt", "Mezz Debt", "Fund Investment"] as const;
 
@@ -45,151 +49,251 @@ type DealLike = {
   summary: string | null;
   closeDate: Date | null;
   ownerId: string | null;
+  details?: string;
 } | null;
 
-function In({ id, label, defaultValue, placeholder, type = "text", span = 1 }: { id: string; label: string; defaultValue?: string | number | null; placeholder?: string; type?: string; span?: number }) {
+const money = (n: number | null) => (n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }));
+const num = (v: string) => {
+  const t = v.replace(/[^0-9.-]/g, "");
+  if (!t) return null;
+  const n = Number(t);
+  return isNaN(n) ? null : n;
+};
+
+/** One row: label on the left, control on the right. Everything stacks in a single straight column. */
+function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className={span === 2 ? "col-span-2" : span === 3 ? "col-span-3" : span === 4 ? "col-span-4" : ""}>
-      <label className="label" htmlFor={id}>
-        {label}
-      </label>
-      <input id={id} name={id} type={type} defaultValue={defaultValue ?? ""} placeholder={placeholder} className="input" />
+    <div className="grid grid-cols-[220px_1fr] items-center gap-4 border-b border-line py-2.5 last:border-0">
+      <div>
+        <div className="text-sm font-medium">{label}</div>
+        {hint && <div className="text-[11px] text-muted">{hint}</div>}
+      </div>
+      <div>{children}</div>
     </div>
   );
 }
-
-function Sel({ id, label, value, options, blank = "—" }: { id: string; label: string; value: string; options: readonly string[] | { v: string; l: string }[]; blank?: string }) {
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div>
-      <label className="label" htmlFor={id}>
-        {label}
-      </label>
-      <select id={id} name={id} defaultValue={value} className="input">
-        <option value="">{blank}</option>
-        {options.map((o) => {
-          const v = typeof o === "string" ? o : o.v;
-          const l = typeof o === "string" ? o : o.l;
-          return (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          );
-        })}
-      </select>
-    </div>
+    <section>
+      <h3 className="mb-1 mt-6 text-[11px] font-semibold uppercase tracking-wide text-sky-600 first:mt-0">{title}</h3>
+      <div>{children}</div>
+    </section>
   );
 }
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Calc({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-t border-line pt-4">
-      <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">{title}</div>
-      {children}
-    </div>
+    <Row label={label} hint="calculated">
+      <div className="rounded-md bg-cream px-3 py-2 text-sm font-medium tabular-nums">{value}</div>
+    </Row>
+  );
+}
+function Text({ name, value, placeholder, inputMode }: { name: string; value?: string | number | null; placeholder?: string; inputMode?: "decimal" | "numeric" }) {
+  return <input name={name} defaultValue={value ?? ""} placeholder={placeholder} inputMode={inputMode} className="input max-w-md" />;
+}
+function Select({ name, value, options, blank = "—" }: { name: string; value: string; options: readonly string[] | { v: string; l: string }[]; blank?: string }) {
+  return (
+    <select name={name} defaultValue={value} className="input max-w-md">
+      <option value="">{blank}</option>
+      {options.map((o) => {
+        const v = typeof o === "string" ? o : o.v;
+        const l = typeof o === "string" ? o : o.l;
+        return (
+          <option key={v} value={v}>
+            {l}
+          </option>
+        );
+      })}
+    </select>
   );
 }
 
 export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: DealLike; users: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; submitLabel?: string }) {
   const d = deal;
-  const closed = d?.stage === "Deal Closed" || d?.stage === "Deal Lost";
+  const [assetClass, setAssetClass] = useState(d?.assetClass ?? "");
+  const [stage, setStage] = useState(d?.stage ?? "Deal Received");
+  const [price, setPrice] = useState<number | null>(d?.purchasePrice ?? null);
+  const [cap, setCap] = useState<number | null>(d?.totalCapitalization ?? null);
+  const [count, setCount] = useState<number | null>(d?.units ?? null);
+  const [sf, setSf] = useState<number | null>(d?.squareFeet ?? null);
+  const [acres, setAcres] = useState<number | null>(num(JSON.parse(d?.details || "{}").acres ?? ""));
+  const p = useMemo(() => assetProfile(assetClass), [assetClass]);
+  const per = perCountWord(p.countLabel);
+  const closed = stage === "Deal Closed" || stage === "Deal Lost";
+
   return (
-    <form action={action} className="space-y-5">
-      <div className="grid grid-cols-3 gap-4">
-        <In id="sponsorName" label="Sponsor" defaultValue={d?.sponsorName} placeholder="Citivest Commercial" />
-        <In id="propertyName" label="Property / deal name" defaultValue={d?.propertyName} placeholder="Everett Mall Plaza" span={2} />
-      </div>
-      <div className="grid grid-cols-4 gap-4">
-        <Sel id="stage" label="Stage" value={d?.stage ?? "Deal Received"} options={DEAL_STAGES} blank="" />
-        <Sel id="ownerId" label="Owner" value={d?.ownerId ?? ""} options={users.map((u) => ({ v: u.id, l: u.name }))} blank="Unassigned" />
-        <In id="expectedClose" label="Expected close (text)" defaultValue={d?.expectedClose} placeholder="Q4 2026" />
-        <In id="closeDate" label="Close date" type="date" defaultValue={d?.closeDate ? d.closeDate.toISOString().slice(0, 10) : ""} />
-      </div>
-      {closed && (
-        <div className="grid grid-cols-2 gap-4">
-          <In id="closedLostReason" label="Closed lost reason" defaultValue={d?.closedLostReason} />
-          <In id="closedWonReason" label="Closed won reason" defaultValue={d?.closedWonReason} />
-        </div>
-      )}
+    <form action={action} className="max-w-3xl">
+      <Group title="Deal">
+        <Row label="Sponsor">
+          <Text name="sponsorName" value={d?.sponsorName} placeholder="Citivest Commercial" />
+        </Row>
+        <Row label="Property / deal name">
+          <Text name="propertyName" value={d?.propertyName} placeholder="Everett Mall Plaza" />
+        </Row>
+        <Row label="Asset class" hint="Sets which fields appear below">
+          <select name="assetClass" value={assetClass} onChange={(e) => setAssetClass(e.target.value)} className="input max-w-md">
+            <option value="">—</option>
+            {ASSET_CLASSES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </Row>
+        <Row label="Acquisition or development">
+          <Select name="strategy" value={d?.strategy ?? ""} options={["Acquisitions", "Development"]} />
+        </Row>
+        <Row label="Stage">
+          <select name="stage" value={stage} onChange={(e) => setStage(e.target.value)} className="input max-w-md">
+            {DEAL_STAGES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </Row>
+        {closed && (
+          <Row label={stage === "Deal Lost" ? "Why it died" : "Closed won notes"}>
+            <Text name={stage === "Deal Lost" ? "closedLostReason" : "closedWonReason"} value={stage === "Deal Lost" ? d?.closedLostReason : d?.closedWonReason} />
+          </Row>
+        )}
+        <Row label="Owner">
+          <Select name="ownerId" value={d?.ownerId ?? ""} options={users.map((u) => ({ v: u.id, l: u.name }))} blank="Unassigned" />
+        </Row>
+        <Row label="Expected close" hint="Free text, e.g. Q4 2026">
+          <Text name="expectedClose" value={d?.expectedClose} />
+        </Row>
+        <Row label="Close date">
+          <input type="date" name="closeDate" defaultValue={d?.closeDate ? d.closeDate.toISOString().slice(0, 10) : ""} className="input max-w-md" />
+        </Row>
+      </Group>
 
-      <Section title="Property">
-        <div className="grid grid-cols-4 gap-4">
-          <In id="propertyAddress" label="Address" defaultValue={d?.propertyAddress} span={2} />
-          <In id="city" label="City" defaultValue={d?.city} />
-          <Sel id="state" label="State" value={d?.state ?? ""} options={Object.keys(US_STATES)} />
-        </div>
-        <div className="mt-4 grid grid-cols-4 gap-4">
-          <Sel id="assetClass" label="Asset class" value={d?.assetClass ?? ""} options={ASSET_CLASSES} />
-          <Sel id="strategy" label="Strategy" value={d?.strategy ?? ""} options={["Acquisitions", "Development"]} />
-          <Sel id="onMarket" label="On / off market" value={d?.onMarket == null ? "" : d.onMarket ? "on" : "off"} options={[{ v: "on", l: "On market" }, { v: "off", l: "Off market" }]} />
-          <In id="occupancy" label="Occupancy %" defaultValue={d?.occupancy} />
-        </div>
-        <div className="mt-4 grid grid-cols-4 gap-4">
-          <In id="units" label="Units" defaultValue={d?.units} />
-          <In id="squareFeet" label="Square feet" defaultValue={d?.squareFeet} />
-          <In id="yearBuilt" label="Year built" defaultValue={d?.yearBuilt} />
-          <In id="unitMix" label="Unit mix" defaultValue={d?.unitMix} />
-        </div>
-      </Section>
+      <Group title="Property">
+        <Row label="Address">
+          <Text name="propertyAddress" value={d?.propertyAddress} />
+        </Row>
+        <Row label="City">
+          <Text name="city" value={d?.city} />
+        </Row>
+        <Row label="State">
+          <Select name="state" value={d?.state ?? ""} options={Object.keys(US_STATES)} />
+        </Row>
+        <Row label="On or off market">
+          <Select name="onMarket" value={d?.onMarket == null ? "" : d.onMarket ? "on" : "off"} options={[{ v: "on", l: "On market" }, { v: "off", l: "Off market" }]} />
+        </Row>
+        {p.countLabel && (
+          <Row label={p.countLabel}>
+            <input name="units" defaultValue={d?.units ?? ""} inputMode="numeric" onChange={(e) => setCount(num(e.target.value))} className="input max-w-md" />
+          </Row>
+        )}
+        {(p.perFoot || p.countLabel) && (
+          <Row label="Square feet">
+            <input name="squareFeet" defaultValue={d?.squareFeet ?? ""} inputMode="numeric" onChange={(e) => setSf(num(e.target.value))} className="input max-w-md" />
+          </Row>
+        )}
+        {p.perAcre && (
+          <Row label="Acres">
+            <input name="detail.acres" defaultValue={acres ?? ""} inputMode="decimal" onChange={(e) => setAcres(num(e.target.value))} className="input max-w-md" />
+          </Row>
+        )}
+        {p.showOccupancy && (
+          <Row label="Occupancy %">
+            <Text name="occupancy" value={d?.occupancy} inputMode="decimal" />
+          </Row>
+        )}
+        {p.showYearBuilt && (
+          <Row label="Year built">
+            <Text name="yearBuilt" value={d?.yearBuilt} />
+          </Row>
+        )}
+        {p.showUnitMix && (
+          <Row label="Unit mix">
+            <Text name="unitMix" value={d?.unitMix} placeholder="studios, one-bed, two-bed" />
+          </Row>
+        )}
+        {p.countLabel && p.perFoot && <Calc label={`Average ${per} size`} value={ratio(sf, count) ? `${Math.round(ratio(sf, count)!).toLocaleString()} SF` : "—"} />}
+      </Group>
 
-      <Section title="Capital request">
-        <div className="grid grid-cols-4 gap-4">
-          <Sel id="requestType" label="Request type" value={d?.requestType ?? ""} options={["Equity", "Debt", "Both"]} />
-          <Sel id="executionType" label="Execution type" value={d?.executionType ?? ""} options={EXECUTION_TYPES} />
-          <In id="requestedAmount" label="Requested amount ($)" defaultValue={d?.requestedAmount} />
-          <In id="purchasePrice" label="Purchase price ($)" defaultValue={d?.purchasePrice} />
-        </div>
-        <div className="mt-4 grid grid-cols-4 gap-4">
-          <In id="totalCapitalization" label="Total capitalization ($)" defaultValue={d?.totalCapitalization} />
-          <In id="totalEquity" label="Total equity ($)" defaultValue={d?.totalEquity} />
-          <In id="totalDebt" label="Total debt ($)" defaultValue={d?.totalDebt} />
-          <In id="holdPeriod" label="Hold period" defaultValue={d?.holdPeriod} placeholder="5 year" />
-        </div>
-      </Section>
+      <Group title="Capital request">
+        <Row label="Equity or debt">
+          <Select name="requestType" value={d?.requestType ?? ""} options={["Equity", "Debt", "Both"]} />
+        </Row>
+        <Row label="Execution type">
+          <Select name="executionType" value={d?.executionType ?? ""} options={EXECUTION_TYPES} />
+        </Row>
+        <Row label="Requested amount ($)">
+          <Text name="requestedAmount" value={d?.requestedAmount} inputMode="numeric" />
+        </Row>
+        <Row label="Purchase price ($)" hint={d?.strategy === "Development" ? "Land price for developments" : undefined}>
+          <input name="purchasePrice" defaultValue={d?.purchasePrice ?? ""} inputMode="numeric" onChange={(e) => setPrice(num(e.target.value))} className="input max-w-md" />
+        </Row>
+        {p.perCount && <Calc label={`Purchase price per ${per}`} value={money(ratio(price, count))} />}
+        {p.perFoot && <Calc label="Purchase price per SF" value={money(ratio(price, sf))} />}
+        {p.perAcre && <Calc label="Purchase price per acre" value={money(ratio(price, acres))} />}
+        <Row label="Total capitalization ($)" hint="From sources and uses">
+          <input name="totalCapitalization" defaultValue={d?.totalCapitalization ?? ""} inputMode="numeric" onChange={(e) => setCap(num(e.target.value))} className="input max-w-md" />
+        </Row>
+        {p.perCount && <Calc label={`Total capitalization per ${per}`} value={money(ratio(cap, count))} />}
+        {p.perFoot && <Calc label="Total capitalization per SF" value={money(ratio(cap, sf))} />}
+        {p.perAcre && <Calc label="Total capitalization per acre" value={money(ratio(cap, acres))} />}
+        <Row label="Total equity ($)">
+          <Text name="totalEquity" value={d?.totalEquity} inputMode="numeric" />
+        </Row>
+        <Row label="Total debt ($)">
+          <Text name="totalDebt" value={d?.totalDebt} inputMode="numeric" />
+        </Row>
+      </Group>
 
-      <Section title="Debt">
-        <div className="grid grid-cols-4 gap-4">
-          <In id="ltv" label="LTV %" defaultValue={d?.ltv} />
-          <In id="ltc" label="LTC %" defaultValue={d?.ltc} />
-          <In id="interestRate" label="Interest rate" defaultValue={d?.interestRate} placeholder="SOFR + 300" />
-          <In id="lenderType" label="Lender type" defaultValue={d?.lenderType} placeholder="Agency, Bank, Debt fund" />
-        </div>
-        <div className="mt-4 grid grid-cols-4 gap-4">
-          <In id="loanTerm" label="Loan term / I-O" defaultValue={d?.loanTerm} span={2} />
-        </div>
-      </Section>
+      <Group title="Debt terms">
+        <Row label="LTV %">
+          <Text name="ltv" value={d?.ltv} inputMode="decimal" />
+        </Row>
+        <Row label="LTC %">
+          <Text name="ltc" value={d?.ltc} inputMode="decimal" />
+        </Row>
+        <Row label="Interest rate">
+          <Text name="interestRate" value={d?.interestRate} placeholder="SOFR + 300" />
+        </Row>
+        <Row label="Loan term and I/O">
+          <Text name="loanTerm" value={d?.loanTerm} placeholder="5 year term, 2 years I/O" />
+        </Row>
+        <Row label="Lender type">
+          <Text name="lenderType" value={d?.lenderType} placeholder="Agency, bank, debt fund" />
+        </Row>
+      </Group>
 
-      <Section title="Returns">
-        <div className="grid grid-cols-4 gap-4">
-          <In id="equityMultiple" label="Equity multiple" defaultValue={d?.equityMultiple} />
-          <In id="irr" label="IRR %" defaultValue={d?.irr} />
-          <In id="yieldOnCost" label="Yield on cost %" defaultValue={d?.yieldOnCost} />
-          <In id="cashOnCash" label="Stabilized cash-on-cash %" defaultValue={d?.cashOnCash} />
-        </div>
-        <div className="mt-4 grid grid-cols-4 gap-4">
-          <In id="capRateY1" label="Year 1 cap rate %" defaultValue={d?.capRateY1} />
-          <In id="capRateT12" label="T12 cap rate %" defaultValue={d?.capRateT12} />
-          <In id="projectedReturns" label="Projected returns (text)" defaultValue={d?.projectedReturns} span={2} />
-        </div>
-      </Section>
+      <Group title="Returns">
+        <Row label="T12 cap rate %">
+          <Text name="capRateT12" value={d?.capRateT12} inputMode="decimal" />
+        </Row>
+        <Row label="Year 1 cap rate %">
+          <Text name="capRateY1" value={d?.capRateY1} inputMode="decimal" />
+        </Row>
+        <Row label="IRR %">
+          <Text name="irr" value={d?.irr} inputMode="decimal" />
+        </Row>
+        <Row label="Equity multiple (x)">
+          <Text name="equityMultiple" value={d?.equityMultiple} inputMode="decimal" />
+        </Row>
+        <Row label="Yield on cost at stabilization %">
+          <Text name="yieldOnCost" value={d?.yieldOnCost} inputMode="decimal" />
+        </Row>
+        <Row label="Stabilized cash-on-cash %">
+          <Text name="cashOnCash" value={d?.cashOnCash} inputMode="decimal" />
+        </Row>
+        <Row label="Hold period">
+          <Text name="holdPeriod" value={d?.holdPeriod} placeholder="5 year" />
+        </Row>
+        <Row label="Projected returns (as written)">
+          <Text name="projectedReturns" value={d?.projectedReturns} />
+        </Row>
+      </Group>
 
-      <Section title="Narrative">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label" htmlFor="sponsorExperience">
-              Sponsor bio / experience
-            </label>
-            <textarea id="sponsorExperience" name="sponsorExperience" rows={5} defaultValue={d?.sponsorExperience ?? ""} className="input" />
-          </div>
-          <div>
-            <label className="label" htmlFor="summary">
-              Business plan / deal summary (used in mail merge)
-            </label>
-            <textarea id="summary" name="summary" rows={5} defaultValue={d?.summary ?? ""} className="input" />
-          </div>
-        </div>
-      </Section>
+      <Group title="Narrative">
+        <Row label="Sponsor bio">
+          <textarea name="sponsorExperience" rows={4} defaultValue={d?.sponsorExperience ?? ""} className="input" />
+        </Row>
+        <Row label="Business plan / deal summary" hint="Used in the email template">
+          <textarea name="summary" rows={4} defaultValue={d?.summary ?? ""} className="input" />
+        </Row>
+      </Group>
 
-      <div className="flex justify-end">
+      <div className="sticky bottom-0 mt-6 flex justify-end border-t border-line bg-paper/95 py-3">
         <button className="btn-primary" type="submit">
           {submitLabel}
         </button>

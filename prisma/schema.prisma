@@ -324,3 +324,14 @@ model DealIntake {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// Manual to-do items on the dashboard (system-derived items are computed live, not stored).
+model Todo {
+  id        String    @id @default(cuid())
+  text      String
+  link      String?
+  dueDate   DateTime?
+  done      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  doneAt    DateTime?
+}
