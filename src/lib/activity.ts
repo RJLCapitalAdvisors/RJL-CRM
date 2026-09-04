@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client";
+import { after } from "next/server";
 import { prisma } from "@/lib/db";
+import { parseList } from "@/lib/taxonomy";
 
 /**
  * Log an activity and bump lastActivityAt on the contact and the company it belongs to.
@@ -18,5 +20,21 @@ export async function logActivity(data: Prisma.ActivityUncheckedCreateInput) {
     data.contactId ? prisma.contact.update({ where: { id: data.contactId }, data: { lastActivityAt: when } }) : null,
     companyId ? prisma.company.update({ where: { id: companyId }, data: { lastActivityAt: when } }) : null,
   ]);
+  if (data.type === "EMAIL" && data.direction === "OUTBOUND" && companyId) refreshSponsorLater(companyId);
   return activity;
+}
+
+/** Jonathan's rule: every time a sponsor is emailed, re-read their website and add asset classes still missing. */
+function refreshSponsorLater(companyId: string) {
+  const run = async () => {
+    const co = await prisma.company.findUnique({ where: { id: companyId }, select: { roles: true } });
+    if (!co || !parseList(co.roles).includes("Sponsor")) return;
+    const { enrichCompany } = await import("@/lib/enrich");
+    await enrichCompany(companyId, { force: true }).catch(() => {});
+  };
+  try {
+    after(run);
+  } catch {
+    void run();
+  }
 }

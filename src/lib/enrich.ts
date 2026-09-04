@@ -8,8 +8,10 @@ import { nameFromDomain } from "@/lib/domains";
 /**
  * Company enrichment from the email domain: read the company's website, pull out what a person
  * would glean from a quick look (what they do, where they are, phone, LinkedIn, year founded,
- * asset classes, geographies), and fill any blanks on the record. Roles (Investor / Sponsor / Lender /
- * Broker) are deliberately NOT set here: Jonathan assigns those by hand.
+ * asset classes), and fill any blanks on the record. Two hard rules from Jonathan:
+ *   - Roles (Investor / Sponsor / Lender / Broker) are never set here; he assigns them by hand.
+ *   - Investor criteria are never touched. Only SPONSORS get asset classes (and focus markets) filled
+ *     from their website, and only when those are still blank.
  * Never overwrites something Jonathan typed; description and enrichedAt are always refreshed.
  */
 
@@ -174,8 +176,9 @@ export async function enrichCompany(companyId: string, opts: { force?: boolean }
   }
   await prisma.company.update({ where: { id: co.id }, data });
 
-  const assets = pick(x.assetClasses, ASSET_CLASSES);
-  const geo = clean(x.geographies);
+  const isSponsor = parseList(co.roles).includes("Sponsor") && !parseList(co.roles).some((r) => r === "Investor" || r === "Retail Investor" || r === "Lender");
+  const assets = isSponsor ? pick(x.assetClasses, ASSET_CLASSES) : [];
+  const geo = isSponsor ? clean(x.geographies) : null;
   if ((assets.length && parseList(co.criteria?.assetClasses).length === 0) || (geo && !co.criteria?.geographyNotes)) {
     const cdata: Record<string, unknown> = {};
     if (assets.length && parseList(co.criteria?.assetClasses).length === 0) {
