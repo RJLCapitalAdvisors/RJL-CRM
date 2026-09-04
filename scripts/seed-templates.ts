@@ -17,7 +17,7 @@ Quick facts:
 • Total equity: {{deal.totalEquity}}
 • Debt LTV: {{deal.ltv}}
 • Occupancy: {{deal.occupancy}}
-• Projected equity multiple: {{deal.equityMultiple}}
+• Projected equity multiple: {{deal.equityMultiple}}x
 
 {{deal.summary}}
 

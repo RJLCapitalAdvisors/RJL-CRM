@@ -53,7 +53,7 @@ const TOKEN_MAP: Record<string, string> = {
   "deal.ltc": "deal.ltc",
   "deal.debt_interest_rate": "deal.interestRate",
   "deal.loan_term": "deal.loanTerm",
-  "deal.i_o_or_amortizing": "deal.loanTerm",
+  "deal.i_o_or_amortizing": "deal.details.ioAmortizing", // already folded into deal.loanTerm on import; renders blank
   "deal.lender_type": "deal.lenderType",
   "deal.irr": "deal.irr",
   "deal.equity_multiple": "deal.equityMultiple",

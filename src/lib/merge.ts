@@ -70,7 +70,6 @@ function fmt(key: string, v: unknown): string {
   if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization"].includes(key)) return fmtMoney(Number(v));
   if (["deal.ltv", "deal.ltc", "deal.occupancy", "deal.irr", "deal.yieldOnCost", "deal.capRateY1", "deal.capRateT12", "deal.cashOnCash"].includes(key)) return `${v}%`;
   if (key === "deal.units" || key === "deal.squareFeet") return Number(v).toLocaleString("en-US");
-  if (key === "deal.equityMultiple") return `${v}x`;
   if (v instanceof Date) return v.toLocaleDateString("en-US");
   return String(v);
 }
