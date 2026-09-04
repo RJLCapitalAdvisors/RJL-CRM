@@ -29,7 +29,7 @@ export default async function TemplatesPage() {
                   <th>Name</th>
                   <th>Used for</th>
                   <th>Subject</th>
-                  <th className="text-right">Campaigns</th>
+                  <th className="text-right">Sends</th>
                   <th>Updated</th>
                 </tr>
               </thead>

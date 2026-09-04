@@ -40,7 +40,7 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
         <TemplateForm template={t} action={updateTemplate.bind(null, t.id)} />
         {t.campaigns.length > 0 && (
           <div className="mt-8">
-            <h2 className="mb-2 font-semibold">Recent campaigns using this template</h2>
+            <h2 className="mb-2 font-semibold">Recent sends using this template</h2>
             <ul className="divide-y divide-line rounded-lg border border-line bg-paper">
               {t.campaigns.map((c) => (
                 <li key={c.id} className="flex items-center justify-between px-4 py-2 text-sm">

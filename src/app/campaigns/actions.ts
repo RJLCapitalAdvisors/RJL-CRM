@@ -70,7 +70,7 @@ export async function updateCampaignCopy(id: string, fd: FormData) {
 
 export async function deleteCampaign(id: string) {
   const sent = await prisma.campaignRecipient.count({ where: { campaignId: id, status: "SENT" } });
-  if (sent > 0) throw new Error("This campaign already has sent emails and cannot be deleted");
+  if (sent > 0) throw new Error("This send already went out and cannot be deleted");
   await prisma.campaign.delete({ where: { id } });
   revalidatePath("/campaigns");
   redirect("/campaigns");

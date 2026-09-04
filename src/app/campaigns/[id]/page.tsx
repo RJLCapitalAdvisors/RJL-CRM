@@ -266,7 +266,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
           )}
 
           <details className="card">
-            <summary className="cursor-pointer px-5 py-3 font-semibold">Edit template copy for this campaign</summary>
+            <summary className="cursor-pointer px-5 py-3 font-semibold">Edit the email copy for this send</summary>
             <form action={updateCampaignCopy.bind(null, campaign.id)} className="space-y-3 border-t border-line p-5">
               <div className="grid grid-cols-2 gap-3">
                 <div>

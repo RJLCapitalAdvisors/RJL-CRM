@@ -59,7 +59,7 @@ export default async function ReportsPage() {
                   <td className="text-center">{d.investors.length}</td>
                   <td className="text-center">
                     {awaiting ? (
-                      <span className={`chip ${staleDays >= 5 ? "bg-amber-100 text-amber-900" : "bg-cream text-ink"}`} title="Deal Sent or Followed Up with no response">
+                      <span className={`chip ${staleDays >= 5 ? "bg-ink text-white" : "bg-sky text-ink"}`} title="Deal Sent or Followed Up with no response">
                         {awaiting}
                         {staleDays >= 5 ? ` · ${staleDays}d` : ""}
                       </span>
