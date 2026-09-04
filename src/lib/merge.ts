@@ -14,6 +14,12 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.city", label: "City" },
   { key: "deal.state", label: "State (code)" },
   { key: "deal.stateName", label: "State (name)" },
+  { key: "deal.location", label: "City, ST" },
+  { key: "deal.pricePerUnit", label: "Purchase price per unit (computed)" },
+  { key: "deal.pricePerFoot", label: "Purchase price per SF (computed)" },
+  { key: "deal.capPerUnit", label: "Total capitalization per unit (computed)" },
+  { key: "deal.capPerFoot", label: "Total capitalization per SF (computed)" },
+  { key: "deal.avgUnitSize", label: "Average unit size in SF (computed)" },
   { key: "deal.assetClass", label: "Asset class" },
   { key: "deal.strategy", label: "Strategy" },
   { key: "deal.requestType", label: "Equity / Debt" },
@@ -71,6 +77,16 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "unsubscribeUrl") return ctx.unsubscribeUrl;
   if (path === "deal.facts") return ctx.deal ? factsBlock(ctx.deal as DealLikeForChecklist) : "";
   if (path.startsWith("deal.details.")) return parseDetails(ctx.deal?.details)[path.slice("deal.details.".length)] ?? "";
+  if (path.startsWith("deal.") && ["pricePerUnit", "pricePerFoot", "capPerUnit", "capPerFoot", "avgUnitSize"].includes(path.slice(5))) {
+    const d = ctx.deal ?? {};
+    const num = (k: string) => (typeof d[k] === "number" && (d[k] as number) > 0 ? (d[k] as number) : null);
+    const pp = num("purchasePrice"), tc = num("totalCapitalization"), u = num("units"), sf = num("squareFeet");
+    const ratio = (a: number | null, b: number | null) => (a && b ? Math.round(a / b) : null);
+    const val = { pricePerUnit: ratio(pp, u), pricePerFoot: ratio(pp, sf), capPerUnit: ratio(tc, u), capPerFoot: ratio(tc, sf), avgUnitSize: ratio(sf, u) }[path.slice(5)];
+    if (val == null) return "";
+    return path === "deal.avgUnitSize" ? `${val.toLocaleString("en-US")} SF` : val.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  }
+  if (path === "deal.location") return [ctx.deal?.city, ctx.deal?.state].filter(Boolean).join(", ");
   if (path === "deal.stateName") {
     const code = ctx.deal?.state as string | undefined;
     return code ? US_STATES[code] ?? code : "";
