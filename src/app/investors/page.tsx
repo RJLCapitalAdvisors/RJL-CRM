@@ -44,7 +44,13 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   });
 
   const preset: Partial<Spec> | null = deal
-    ? { assetClass: deal.assetClass ?? "", checkSize: bucketForAmount(deal.requestedAmount), requestType: deal.requestType ?? "", strategy: deal.strategy ?? "", vintage: vintageForYear(deal.yearBuilt) }
+    ? {
+        assetClass: deal.assetClass ? [deal.assetClass, "Asset Class Agnostic"] : [],
+        checkSize: bucketForAmount(deal.requestedAmount) ? [bucketForAmount(deal.requestedAmount)] : [],
+        requestType: deal.requestType ? [deal.requestType] : [],
+        strategy: deal.strategy ? [deal.strategy] : [],
+        vintage: vintageForYear(deal.yearBuilt) ? [vintageForYear(deal.yearBuilt)] : [],
+      }
     : null;
 
   return (

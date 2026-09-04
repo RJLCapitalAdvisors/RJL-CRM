@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, RETURN_PROFILES, VINTAGES } from "@/lib/taxonomy";
 import { CompanyLogo } from "@/components/company-logo";
+import { MultiSelect } from "@/components/multi-select";
 
 export type InvestorRow = {
   id: string;
@@ -26,73 +27,63 @@ export type InvestorRow = {
 };
 
 export type Spec = {
-  assetClass: string;
-  checkSize: string;
-  requestType: string;
-  strategy: string;
-  returnProfile: string;
-  holdPeriod: string;
-  vintage: string;
-  oz: string;
-  closing: string;
-  minority: string;
+  assetClass: string[];
+  checkSize: string[];
+  requestType: string[];
+  strategy: string[];
+  returnProfile: string[];
+  holdPeriod: string[];
+  vintage: string[];
+  oz: string[];
+  closing: string[];
+  minority: string[];
 };
 
-const EMPTY: Spec = { assetClass: "", checkSize: "", requestType: "", strategy: "", returnProfile: "", holdPeriod: "", vintage: "", oz: "", closing: "", minority: "" };
+const EMPTY: Spec = { assetClass: [], checkSize: [], requestType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [] };
+const any = (have: string[], want: string[]) => want.some((w) => have.includes(w));
 const EQUITY = ["JV Equity", "Co-GP Equity", "Preferred Equity", "LP Equity"];
 const DEBT = ["Senior Debt", "Mezz Debt"];
 
 
-/** A firm passes when every selected spec is satisfied by its criteria. Blank specs are ignored. */
+/** A firm passes when, for every spec with something checked, its criteria contain at least one of the checked values. Empty specs are ignored. */
 function passes(c: InvestorRow["crit"], s: Spec): boolean {
-  if (s.assetClass && !(c && (c.assetClasses.includes(s.assetClass) || c.assetClasses.includes("Asset Class Agnostic")))) return false;
-  if (s.checkSize && !(c && c.checkSizes.includes(s.checkSize))) return false;
-  if (s.requestType) {
-    const want = s.requestType === "Equity" ? EQUITY : s.requestType === "Debt" ? DEBT : [...EQUITY, ...DEBT];
-    if (!(c && c.investmentTypes.some((t) => want.includes(t)))) return false;
+  if (s.assetClass.length && !(c && any(c.assetClasses, s.assetClass))) return false;
+  if (s.checkSize.length && !(c && any(c.checkSizes, s.checkSize))) return false;
+  if (s.requestType.length) {
+    const want = [...(s.requestType.includes("Equity") || s.requestType.includes("Both") ? EQUITY : []), ...(s.requestType.includes("Debt") || s.requestType.includes("Both") ? DEBT : [])];
+    if (!(c && any(c.investmentTypes, want))) return false;
   }
-  if (s.strategy && !(c && (c.strategy === s.strategy || c.strategy === "Both"))) return false;
-  if (s.returnProfile && !(c && c.returnProfile.includes(s.returnProfile))) return false;
-  if (s.holdPeriod && !(c && c.holdPeriods.includes(s.holdPeriod))) return false;
-  if (s.vintage && !(c && c.vintages.includes(s.vintage))) return false;
-  if (s.oz && !(c && c.ozInterest === (s.oz === "yes"))) return false;
-  if (s.closing && !(c && c.closingTimeframe === s.closing)) return false;
-  if (s.minority && !(c && c.openToMinority === (s.minority === "yes"))) return false;
+  if (s.strategy.length && !(c && c.strategy && (s.strategy.includes(c.strategy) || c.strategy === "Both"))) return false;
+  if (s.returnProfile.length && !(c && any(c.returnProfile, s.returnProfile))) return false;
+  if (s.holdPeriod.length && !(c && any(c.holdPeriods, s.holdPeriod))) return false;
+  if (s.vintage.length && !(c && any(c.vintages, s.vintage))) return false;
+  if (s.oz.length && !(c && c.ozInterest != null && s.oz.includes(c.ozInterest ? "Yes" : "No"))) return false;
+  if (s.closing.length && !(c && c.closingTimeframe && s.closing.includes(c.closingTimeframe))) return false;
+  if (s.minority.length && !(c && c.openToMinority != null && s.minority.includes(c.openToMinority ? "Yes" : "No"))) return false;
   return true;
 }
-
-type Opt = string | { v: string; l: string };
 
 export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; deals: { id: string; name: string }[] }) {
   const PAGE = 100;
   const router = useRouter();
   const [spec, setSpec] = useState<Spec>({ ...EMPTY, ...(preset ?? {}) });
   const [page, setPage] = useState(1);
-  const set = (k: keyof Spec, v: string) => {
+  const set = (k: keyof Spec, v: string[]) => {
     setSpec((s) => ({ ...s, [k]: v }));
     setPage(1);
   };
-  const active = Object.values(spec).filter(Boolean).length;
+  const active = Object.values(spec).filter((v) => v.length > 0).length;
   const out = useMemo(() => rows.filter((r) => passes(r.crit, spec)), [rows, spec]);
   const pages = Math.max(1, Math.ceil(out.length / PAGE));
   const pageRows = out.slice((page - 1) * PAGE, page * PAGE);
 
-  const sel = (k: keyof Spec, label: string, options: readonly Opt[]) => (
-    <label key={k} className="mb-2.5 block text-xs text-muted">
+  const sel = (k: keyof Spec, label: string, options: readonly string[]) => (
+    <div key={k} className="mb-2.5 text-xs text-muted">
       {label}
-      <select value={spec[k]} onChange={(e) => set(k, e.target.value)} className="input mt-1">
-        <option value="">Any</option>
-        {options.map((o) => {
-          const v = typeof o === "string" ? o : o.v;
-          const l = typeof o === "string" ? o : o.l;
-          return (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          );
-        })}
-      </select>
-    </label>
+      <div className="mt-1">
+        <MultiSelect options={options} value={spec[k]} onChange={(v) => set(k, v)} placeholder="Any" />
+      </div>
+    </div>
   );
 
   return (
@@ -126,9 +117,9 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
         {sel("returnProfile", "Return profile", RETURN_PROFILES)}
         {sel("holdPeriod", "Hold period", HOLD_PERIODS)}
         {sel("vintage", "Year built", VINTAGES)}
-        {sel("oz", "Opportunity Zone", [{ v: "yes", l: "Yes" }, { v: "no", l: "No" }])}
+        {sel("oz", "Opportunity Zone", ["Yes", "No"])}
         {sel("closing", "Closing time frame", CLOSING_TIMEFRAMES)}
-        {sel("minority", "Open to minority position", [{ v: "yes", l: "Yes" }, { v: "no", l: "No" }])}
+        {sel("minority", "Open to minority position", ["Yes", "No"])}
       </aside>
 
       <section className="card flex h-[calc(100vh-140px)] min-h-[480px] flex-col overflow-hidden">

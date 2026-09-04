@@ -3,9 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 
 /** Dropdown with checkboxes. Submits one `name` entry per selected option (same as native checkboxes). */
-export function MultiSelect({ name, options, selected, placeholder = "Select…" }: { name: string; options: readonly string[]; selected: string[]; placeholder?: string }) {
+export function MultiSelect({ name, options, selected, placeholder = "Select…", value, onChange }: { name?: string; options: readonly string[]; selected?: string[]; placeholder?: string; value?: string[]; onChange?: (v: string[]) => void }) {
   const [open, setOpen] = useState(false);
-  const [sel, setSel] = useState<string[]>(selected);
+  const [inner, setInner] = useState<string[]>(selected ?? []);
+  const sel = value ?? inner;
+  const setSel = (next: string[] | ((s: string[]) => string[])) => {
+    const v = typeof next === "function" ? next(sel) : next;
+    if (onChange) onChange(v);
+    else setInner(v);
+  };
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,9 +27,7 @@ export function MultiSelect({ name, options, selected, placeholder = "Select…"
 
   return (
     <div ref={ref} className="relative">
-      {sel.map((v) => (
-        <input key={v} type="hidden" name={name} value={v} />
-      ))}
+      {name && sel.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
       <button type="button" onClick={() => setOpen((o) => !o)} className="input flex min-h-[38px] w-full flex-wrap items-center gap-1 text-left">
         {sel.length === 0 ? (
           <span className="text-muted">{placeholder}</span>
