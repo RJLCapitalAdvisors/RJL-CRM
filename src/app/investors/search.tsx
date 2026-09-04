@@ -63,10 +63,11 @@ function fmtInput(v: string) {
 
 export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; deals: { id: string; name: string }[] }) {
   const [spec, setSpec] = useState<Spec>({ ...EMPTY, ...(preset ?? {}), amount: preset?.amount ? fmtInput(preset.amount) : "" });
-  const [shown, setShown] = useState(200);
+  const PAGE = 100;
+  const [page, setPage] = useState(1);
   const set = (k: keyof Spec, v: string | boolean) => {
     setSpec((s) => ({ ...s, [k]: v }));
-    setShown(200);
+    setPage(1);
   };
 
   const results = useMemo(() => {
@@ -112,6 +113,8 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
 
   const full = results.out.filter((x) => x.possible > 0 && x.score === x.possible).length;
   const anySpec = results.dims > 0;
+  const pages = Math.max(1, Math.ceil(results.out.length / PAGE));
+  const pageRows = results.out.slice((page - 1) * PAGE, page * PAGE);
 
   return (
     <div className="grid grid-cols-[320px_1fr] gap-6 px-8 py-6">
@@ -232,21 +235,26 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
           <div>
             <span className="font-semibold">{results.out.length.toLocaleString()}</span> investor firms{anySpec && <span className="text-muted"> · {full.toLocaleString()} match every spec you set</span>}
           </div>
-          <div className="text-xs text-muted">Sorted best fit first. Click a firm to open it.</div>
+          <Pager page={page} pages={pages} onPage={setPage} />
         </div>
-        <div className="max-h-[78vh] overflow-auto">
-          <table className="table w-full min-w-[960px]">
+        <div className="overflow-x-auto">
+          <table className="table w-full min-w-[1400px]">
             <thead>
               <tr>
-                <th className="w-[240px]">Firm</th>
-                <th>Best contact</th>
-                {anySpec && <th className="text-center">Fit</th>}
-                <th>Why</th>
-                <th>Gaps</th>
+                <th className="w-[230px]">Firm</th>
+                <th className="w-[190px]">Best contact</th>
+                {anySpec && <th className="w-[60px] text-center">Fit</th>}
+                <th className="w-[200px]">Check sizes</th>
+                <th className="w-[220px]">Asset classes</th>
+                <th className="w-[160px]">Type of investment</th>
+                <th className="w-[110px]">Acq / Dev</th>
+                <th className="w-[160px]">Return profile</th>
+                <th className="w-[140px]">Hold period</th>
+                {anySpec && <th>Gaps</th>}
               </tr>
             </thead>
             <tbody>
-              {results.out.slice(0, shown).map(({ r, score, possible, reasons, misses, noCriteria }) => (
+              {pageRows.map(({ r, score, possible, misses, noCriteria }) => (
                 <tr key={r.id} className={anySpec && possible > 0 && score === 0 ? "opacity-60" : ""}>
                   <td>
                     <Link href={`/companies/${r.id}`} className="font-medium hover:underline">
@@ -264,7 +272,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
                         <Link href={`/contacts/${r.bestContact.id}`} className="hover:underline">
                           {r.bestContact.name}
                         </Link>
-                        <div className="text-xs text-muted">{r.bestContact.email}</div>
+                        <div className="truncate text-xs text-muted">{r.bestContact.email}</div>
                       </>
                     ) : (
                       <span className="text-muted">—</span>
@@ -277,29 +285,54 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
                       </span>
                     </td>
                   )}
-                  <td className="text-xs">
-                    <div className="flex flex-wrap gap-1">
-                      {reasons.map((x) => (
-                        <span key={x} className="chip bg-emerald-50 text-emerald-900">
-                          {x}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="text-xs text-muted">{misses.join(", ")}</td>
+                  <Cell items={r.crit?.checkSizes} />
+                  <Cell items={r.crit?.assetClasses} />
+                  <Cell items={r.crit?.investmentTypes} />
+                  <td className="text-xs">{r.crit?.strategy ?? <span className="text-muted">—</span>}</td>
+                  <Cell items={r.crit?.returnProfile} />
+                  <Cell items={r.crit?.holdPeriods} />
+                  {anySpec && <td className="text-xs text-muted">{misses.join(", ")}</td>}
                 </tr>
               ))}
+              {pageRows.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="py-10 text-center text-muted">
+                    No firms match. Loosen a spec or clear them.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
-          {results.out.length > shown && (
-            <div className="border-t border-line p-3 text-center">
-              <button type="button" className="btn-secondary" onClick={() => setShown((n) => n + 300)}>
-                Show more ({(results.out.length - shown).toLocaleString()} left)
-              </button>
-            </div>
-          )}
+        </div>
+        <div className="flex items-center justify-between border-t border-line px-4 py-3 text-xs text-muted">
+          <span>
+            Showing {results.out.length ? (page - 1) * PAGE + 1 : 0}–{Math.min(page * PAGE, results.out.length)} of {results.out.length.toLocaleString()}
+          </span>
+          <Pager page={page} pages={pages} onPage={setPage} />
         </div>
       </section>
+    </div>
+  );
+}
+
+function Cell({ items }: { items?: string[] }) {
+  if (!items || items.length === 0) return <td className="text-xs text-muted">—</td>;
+  return <td className="text-xs leading-relaxed">{items.join(", ")}</td>;
+}
+
+function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (p: number) => void }) {
+  if (pages <= 1) return <span className="text-xs text-muted">Page 1 of 1</span>;
+  return (
+    <div className="flex items-center gap-1 text-xs">
+      <button type="button" className="btn-secondary px-2 py-1" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+        ‹ Prev
+      </button>
+      <span className="px-2 text-muted">
+        Page {page} of {pages}
+      </span>
+      <button type="button" className="btn-secondary px-2 py-1" disabled={page >= pages} onClick={() => onPage(page + 1)}>
+        Next ›
+      </button>
     </div>
   );
 }
