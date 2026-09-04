@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 const nav = [
   { href: "/", label: "To do", icon: LayoutDashboard },
   { href: "/deals", label: "Deals", icon: KanbanSquare },
-  { href: "/intake", label: "Deal intake", icon: Inbox },
+  { href: "/intake", label: "Deal inbox", icon: Inbox },
   { href: "/companies", label: "Companies", icon: Building2 },
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/campaigns", label: "Campaigns", icon: Mail },

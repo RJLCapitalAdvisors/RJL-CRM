@@ -5,6 +5,9 @@ import Link from "next/link";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { DEAL_STAGES } from "@/lib/taxonomy";
+
+// Deal Lost sits first so dead deals are parked at the front and the live pipeline reads left to right after it.
+const BOARD_ORDER = ["Deal Lost", ...DEAL_STAGES.filter((s) => s !== "Deal Lost")];
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { moveDeal } from "./actions";
 
@@ -51,7 +54,7 @@ export function Board({ deals: initial, counts, preview }: { deals: BoardDeal[];
   return (
     <DndContext id={dndId} sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="flex h-[calc(100vh-88px)] gap-3 overflow-x-auto px-6 py-4">
-        {DEAL_STAGES.map((stage) => {
+        {BOARD_ORDER.map((stage) => {
           const items = deals.filter((d) => d.stage === stage);
           const total = counts[stage] ?? items.length;
           return <Column key={stage} stage={stage} deals={items} total={total} truncated={total > items.length} preview={preview} />;
