@@ -15,6 +15,7 @@
     "import:templates": "tsx scripts/import-templates.ts",
     "seed:templates": "tsx scripts/seed-templates.ts && tsx scripts/seed-blast-template.ts",
     "users": "tsx scripts/set-users.ts",
+    "enrich": "tsx scripts/enrich-companies.ts",
     "roles:backfill": "tsx scripts/backfill-roles.ts"
   },
   "dependencies": {

@@ -6,6 +6,9 @@ type CompanyLike = {
   roles: string;
   domain?: string | null;
   website: string | null;
+  description?: string | null;
+  phone?: string | null;
+  linkedin?: string | null;
   streetAddress: string | null;
   city: string | null;
   state: string | null;
@@ -14,7 +17,7 @@ type CompanyLike = {
   ownerId: string | null;
 } | null;
 
-/** Company fields, stacked in one straight column (label above value), HubSpot style. */
+/** Company fields, stacked in one straight column. Most of these fill themselves from the company's website. */
 export function CompanyForm({ company, users, action, submitLabel = "Save" }: { company: CompanyLike; users: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; submitLabel?: string }) {
   const c = company;
   const roles = parseList(c?.roles);
@@ -33,11 +36,20 @@ export function CompanyForm({ company, users, action, submitLabel = "Save" }: { 
           ))}
         </div>
       </Field>
+      <Field label="Website" htmlFor="website">
+        <input id="website" name="website" defaultValue={c?.website ?? ""} className="input" placeholder="https://" />
+      </Field>
       <Field label="Email domain" htmlFor="domain">
         <input id="domain" name="domain" defaultValue={c?.domain ?? ""} className="input" placeholder="citivestinc.com" />
       </Field>
-      <Field label="Website" htmlFor="website">
-        <input id="website" name="website" defaultValue={c?.website ?? ""} className="input" placeholder="https://" />
+      <Field label="What they do" htmlFor="description">
+        <textarea id="description" name="description" rows={3} defaultValue={c?.description ?? ""} className="input" />
+      </Field>
+      <Field label="Phone" htmlFor="phone">
+        <input id="phone" name="phone" defaultValue={c?.phone ?? ""} className="input" />
+      </Field>
+      <Field label="LinkedIn" htmlFor="linkedin">
+        <input id="linkedin" name="linkedin" defaultValue={c?.linkedin ?? ""} className="input" placeholder="https://www.linkedin.com/company/…" />
       </Field>
       <Field label="Street address" htmlFor="streetAddress">
         <input id="streetAddress" name="streetAddress" defaultValue={c?.streetAddress ?? ""} className="input" />

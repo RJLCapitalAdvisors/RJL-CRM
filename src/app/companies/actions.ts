@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { normalizeGeographies, parseList, toJson } from "@/lib/taxonomy";
 import { syncContactRolesForCompany } from "@/lib/roles";
+import { enrichCompany } from "@/lib/enrich";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -25,6 +26,9 @@ function companyData(fd: FormData) {
     roles: list(fd, "roles"),
     domain: s(fd, "domain")?.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") ?? null,
     website: s(fd, "website"),
+    description: s(fd, "description"),
+    phone: s(fd, "phone"),
+    linkedin: s(fd, "linkedin"),
     streetAddress: s(fd, "streetAddress"),
     city: s(fd, "city"),
     state: s(fd, "state"),
@@ -91,4 +95,11 @@ export async function addCompanyNote(id: string, fd: FormData) {
   if (!body) return;
   await logActivity({ type: "NOTE", body, companyId: id });
   revalidatePath(`/companies/${id}`);
+}
+
+/** "Refresh from website": re-read the company's site and fill any blanks (never overwrites typed values). */
+export async function refreshCompanyFromWebsite(id: string) {
+  await enrichCompany(id, { force: true });
+  revalidatePath(`/companies/${id}`);
+  revalidatePath("/companies");
 }

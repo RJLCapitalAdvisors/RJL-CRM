@@ -38,7 +38,10 @@ export async function companyForEmail(email: string | null | undefined, nameHint
     if (!existing.domain) await prisma.company.update({ where: { id: existing.id }, data: { domain } });
     return existing;
   }
-  return prisma.company.create({ data: { name: nameHint?.trim() || nameFromDomain(domain), domain, website: `https://${domain}` } });
+  const created = await prisma.company.create({ data: { name: nameHint?.trim() || nameFromDomain(domain), domain, website: `https://${domain}` } });
+  // Read their website in the background so the record fills itself in (name, description, city, roles…).
+  import("@/lib/enrich").then((m) => m.enrichCompany(created.id)).catch(() => {});
+  return created;
 }
 
 /**

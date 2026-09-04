@@ -30,6 +30,10 @@ model Company {
   roles         String   @default("[]") // JSON: Sponsor | Investor | Retail Investor | Lender | Broker
   domain        String?  // email domain (citivestinc.com); contacts with this domain belong here
   website       String?
+  description   String?  // one or two sentences pulled from their website
+  phone         String?
+  linkedin      String?
+  enrichedAt    DateTime? // last time we read their website
   streetAddress String?
   city          String?
   state         String?

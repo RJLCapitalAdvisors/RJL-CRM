@@ -6,10 +6,10 @@ import { RoleChips } from "@/components/ui";
 import { CompanyForm } from "@/components/company-form";
 import { CriteriaForm, SponsorFocusForm } from "@/components/criteria-form";
 import { parseList } from "@/lib/taxonomy";
-import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
+import { AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { fmtDate, fullName } from "@/lib/format";
 import { statusOf } from "@/lib/tracker";
-import { addCompanyNote, updateCompany, updateCompanyCriteria } from "../actions";
+import { addCompanyNote, refreshCompanyFromWebsite, updateCompany, updateCompanyCriteria } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -35,8 +35,10 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
   const update = updateCompany.bind(null, company.id);
   const updateCriteria = updateCompanyCriteria.bind(null, company.id);
   const addNote = addCompanyNote.bind(null, company.id);
+  const refresh = refreshCompanyFromWebsite.bind(null, company.id);
   const roles = parseList(company.roles);
   const isInvestor = roles.some((r) => r === "Investor" || r === "Retail Investor" || r === "Lender");
+  const site = company.website?.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
   return (
     <RecordLayout
@@ -48,66 +50,40 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
             initial={company.name[0]?.toUpperCase() ?? "?"}
             title={company.name}
             subtitle={[company.city, company.state].filter(Boolean).join(", ") || undefined}
-            lines={[company.website ? <a href={company.website} target="_blank">{company.website.replace(/^https?:\/\//, "")}</a> : null].filter(Boolean)}
+            lines={[
+              company.website ? (
+                <a key="web" href={company.website} target="_blank">
+                  {site}
+                </a>
+              ) : null,
+              company.description ? (
+                <span key="desc" className="block whitespace-normal text-ink-soft">
+                  {company.description}
+                </span>
+              ) : null,
+            ].filter(Boolean)}
             actions={
               <>
                 <Link href={`/contacts/new?companyId=${company.id}`} className="btn-secondary">
                   Add contact
                 </Link>
+                {(company.domain || company.website) && (
+                  <form action={refresh}>
+                    <button className="btn-secondary" type="submit" title={company.enrichedAt ? `Last read ${fmtDate(company.enrichedAt)}. Fills blanks from the website; never overwrites what you typed.` : "Read the website and fill in the blanks"}>
+                      Refresh from website
+                    </button>
+                  </form>
+                )}
                 <RoleChips roles={company.roles} />
               </>
             }
           />
-          <AboutCard title="About this company">
-            <CompanyForm company={company} users={users} action={update} />
-          </AboutCard>
-        </>
-      }
-      center={
-        <>
-          <div className="card">
-            <div className="border-b border-line px-4 py-3 text-sm font-semibold">Activity</div>
-            <form action={addNote} className="flex gap-2 border-b border-line p-3">
-              <input name="body" placeholder="Log a note…" className="input" />
-              <button className="btn-secondary" type="submit">
-                Add
-              </button>
-            </form>
-            <ul className="divide-y divide-line">
-              {company.activities.map((a) => (
-                <li key={a.id} className="px-4 py-3 text-sm">
-                  <div className="flex items-center justify-between text-xs text-muted">
-                    <span className="font-semibold uppercase tracking-wide">
-                      {a.type}
-                      {a.direction ? ` · ${a.direction.toLowerCase()}` : ""}
-                    </span>
-                    <span>{fmtDate(a.occurredAt)}</span>
-                  </div>
-                  {a.subject && <div className="mt-0.5 font-medium">{a.subject}</div>}
-                  {a.body && <div className="mt-0.5 whitespace-pre-wrap text-ink-soft">{a.body}</div>}
-                  {(a.contact || a.deal) && (
-                    <div className="mt-1 flex gap-2 text-xs">
-                      {a.contact && (
-                        <Link href={`/contacts/${a.contact.id}`} className="text-sky-600 hover:underline">
-                          {fullName(a.contact)}
-                        </Link>
-                      )}
-                      {a.deal && (
-                        <Link href={`/deals/${a.deal.id}`} className="text-sky-600 hover:underline">
-                          {a.deal.propertyName ?? a.deal.name}
-                        </Link>
-                      )}
-                    </div>
-                  )}
-                </li>
-              ))}
-              {company.activities.length === 0 && (
-                <li className="px-4 py-8 text-center text-sm text-muted">
-                  No activity logged yet. Created {fmtDate(company.createdAt)}. Emails with anyone at this company appear here once Outlook is connected.
-                </li>
-              )}
-            </ul>
-          </div>
+          <details className="card">
+            <summary className="cursor-pointer border-b border-line px-4 py-3 text-sm font-semibold">About this company</summary>
+            <div className="px-4 py-2">
+              <CompanyForm company={company} users={users} action={update} />
+            </div>
+          </details>
           {isInvestor ? (
             <div className="card">
               <div className="border-b border-line px-4 py-3 text-sm font-semibold">Investor criteria</div>
@@ -116,22 +92,59 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
           ) : (
-            <>
-              <div className="card">
-                <div className="border-b border-line px-4 py-3 text-sm font-semibold">{roles.includes("Sponsor") ? "Sponsor focus" : "Focus"}</div>
-                <div className="px-4 py-2">
-                  <SponsorFocusForm criteria={company.criteria} action={updateCriteria} />
-                </div>
+            <div className="card">
+              <div className="border-b border-line px-4 py-3 text-sm font-semibold">{roles.includes("Sponsor") ? "Sponsor focus" : "Focus"}</div>
+              <div className="px-4 py-2">
+                <SponsorFocusForm criteria={company.criteria} action={updateCriteria} />
               </div>
-              <details className="card">
-                <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-muted">Investor criteria</summary>
-                <div className="border-t border-line px-4 py-2">
-                  <CriteriaForm criteria={company.criteria} action={updateCriteria} />
-                </div>
-              </details>
-            </>
+            </div>
           )}
         </>
+      }
+      center={
+        <div className="card">
+          <div className="border-b border-line px-4 py-3 text-sm font-semibold">Activity</div>
+          <form action={addNote} className="flex gap-2 border-b border-line p-3">
+            <input name="body" placeholder="Log a note…" className="input" />
+            <button className="btn-secondary" type="submit">
+              Add
+            </button>
+          </form>
+          <ul className="divide-y divide-line">
+            {company.activities.map((a) => (
+              <li key={a.id} className="px-4 py-3 text-sm">
+                <div className="flex items-center justify-between text-xs text-muted">
+                  <span className="font-semibold uppercase tracking-wide">
+                    {a.type}
+                    {a.direction ? ` · ${a.direction.toLowerCase()}` : ""}
+                  </span>
+                  <span>{fmtDate(a.occurredAt)}</span>
+                </div>
+                {a.subject && <div className="mt-0.5 font-medium">{a.subject}</div>}
+                {a.body && <div className="mt-0.5 whitespace-pre-wrap text-ink-soft">{a.body}</div>}
+                {(a.contact || a.deal) && (
+                  <div className="mt-1 flex gap-2 text-xs">
+                    {a.contact && (
+                      <Link href={`/contacts/${a.contact.id}`} className="text-sky-600 hover:underline">
+                        {fullName(a.contact)}
+                      </Link>
+                    )}
+                    {a.deal && (
+                      <Link href={`/deals/${a.deal.id}`} className="text-sky-600 hover:underline">
+                        {a.deal.propertyName ?? a.deal.name}
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </li>
+            ))}
+            {company.activities.length === 0 && (
+              <li className="px-4 py-8 text-center text-sm text-muted">
+                No activity logged yet. Created {fmtDate(company.createdAt)}. Emails with anyone at this company appear here once Outlook is connected.
+              </li>
+            )}
+          </ul>
+        </div>
       }
       right={
         <>
