@@ -182,8 +182,10 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
   );
 }
 
+const STACK = ["Senior Debt", "Mezz Debt", "Preferred Equity", "JV Equity", "Co-GP Equity"];
+const ordered = (items: string[]) => [...items].sort((a, b) => (STACK.indexOf(a) === -1 ? 99 : STACK.indexOf(a)) - (STACK.indexOf(b) === -1 ? 99 : STACK.indexOf(b)));
 function Cell({ items, text }: { items?: string[]; text?: string | null }) {
-  const t = text ?? (items && items.length ? items.join(", ") : "");
+  const t = text ?? (items && items.length ? ordered(items).join(", ") : "");
   if (!t) return <td className="text-muted">—</td>;
   return (
     <td className="truncate" title={t}>
