@@ -12,7 +12,7 @@ export function StatusBadge({ rowId, status }: { rowId: string; status: number }
   return (
     <div className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} className="block w-full text-left" style={{ color: statusOf(cur).c }} title="Change status">
-        {statusOf(cur).label}
+        {statusOf(cur).label} <span style={{ opacity: 0.6 }}>▾</span>
       </button>
       {open && (
         <div className="absolute left-0 z-20 mt-1 w-64 overflow-hidden border border-black bg-white shadow-lg">

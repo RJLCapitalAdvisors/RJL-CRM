@@ -2,14 +2,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { ASSET_CLASSES, ROLES, US_STATES, parseList, toJson } from "@/lib/taxonomy";
+import { ASSET_CLASSES, US_STATES, parseList, toJson } from "@/lib/taxonomy";
 import { nameFromDomain } from "@/lib/domains";
-import { syncContactRolesForCompany } from "@/lib/roles";
 
 /**
  * Company enrichment from the email domain: read the company's website, pull out what a person
  * would glean from a quick look (what they do, where they are, phone, LinkedIn, year founded,
- * whether they invest / sponsor / lend / broker, asset classes), and fill any blanks on the record.
+ * asset classes, geographies), and fill any blanks on the record. Roles (Investor / Sponsor / Lender /
+ * Broker) are deliberately NOT set here: Jonathan assigns those by hand.
  * Never overwrites something Jonathan typed; description and enrichedAt are always refreshed.
  */
 
@@ -84,7 +84,6 @@ const Out = z.object({
   phone: z.string().describe("Main phone number, or empty."),
   yearFounded: z.string().describe("Four-digit year founded, or empty."),
   linkedin: z.string().describe("LinkedIn company page URL, or empty."),
-  roles: z.string().describe(`Comma-separated subset of: ${ROLES.join(", ")}. Investor = invests LP/JV/pref equity or has a fund; Sponsor = develops/acquires/operates real estate; Lender = originates debt; Broker = intermediary. Empty if unclear.`),
   assetClasses: z.string().describe(`Comma-separated subset of: ${ASSET_CLASSES.join(", ")}. Only those the site clearly says they focus on. Empty if unclear.`),
   geographies: z.string().describe("Markets or regions they say they focus on, as short free text (e.g. 'Sunbelt; Texas; Southeast'). Empty if unclear."),
 });
@@ -108,7 +107,7 @@ export async function extractCompany(snap: SiteSnapshot): Promise<Extracted> {
 /** No API key or the model failed: use what the HTML itself says. */
 function heuristic(snap: SiteSnapshot): Extracted {
   const name = (snap.siteName ?? snap.title ?? "").split(/\s[|–—-]\s/)[0].trim();
-  return { companyName: name, description: snap.metaDescription ?? "", streetAddress: "", city: "", state: "", phone: snap.phone ?? "", yearFounded: "", linkedin: snap.linkedin ?? "", roles: "", assetClasses: "", geographies: "" };
+  return { companyName: name, description: snap.metaDescription ?? "", streetAddress: "", city: "", state: "", phone: snap.phone ?? "", yearFounded: "", linkedin: snap.linkedin ?? "", assetClasses: "", geographies: "" };
 }
 
 const pick = (csv: string, allowed: readonly string[]) => {
@@ -173,13 +172,7 @@ export async function enrichCompany(companyId: string, opts: { force?: boolean }
     data.name = properName;
     filled.push("name");
   }
-  const roles = pick(x.roles, ROLES);
-  if (roles.length && parseList(co.roles).length === 0) {
-    data.roles = toJson(roles);
-    filled.push("roles");
-  }
   await prisma.company.update({ where: { id: co.id }, data });
-  if (data.roles) await syncContactRolesForCompany(co.id, [], roles); // contacts inherit the company's roles
 
   const assets = pick(x.assetClasses, ASSET_CLASSES);
   const geo = clean(x.geographies);

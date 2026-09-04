@@ -7,7 +7,7 @@ import { AWAITING_RESPONSE, fmtReportDate } from "@/lib/tracker";
 import { loadReport } from "@/lib/tracker-report";
 import { signContactToken } from "@/lib/tokens";
 import { missingFor, itemLabel } from "@/lib/checklist";
-import { createFollowUpCampaign, removeTrackerRow, saveTrackerMeta } from "./actions";
+import { createFollowUpCampaign, regenerateTrackerSummary, removeTrackerRow, saveTrackerMeta } from "./actions";
 import { NoteCell, StatusBadge } from "./tracker-row";
 import { TrackerContactPicker } from "./contact-picker";
 import { CopyLink } from "./copy-link";
@@ -60,8 +60,13 @@ export default async function TrackerPage({ params }: { params: Promise<{ id: st
 
       <div className="mx-8 mb-3 flex flex-wrap items-center gap-3">
         <TrackerContactPicker dealId={deal.id} />
+        <form action={regenerateTrackerSummary.bind(null, deal.id)}>
+          <button className="btn-secondary" type="submit" title="Rewrites Notable Feedback Themes and Items Needed from Sponsor from the notes below. Also happens on its own whenever you save a note.">
+            Rewrite themes &amp; items from notes
+          </button>
+        </form>
         <details className="text-sm">
-          <summary className="cursor-pointer text-sky-600 hover:underline">Edit header: prepared for, themes, items needed</summary>
+          <summary className="cursor-pointer text-sky-600 hover:underline">Edit by hand: prepared for, themes, items needed</summary>
           <form action={saveTrackerMeta.bind(null, deal.id)} className="card mt-2 grid w-[720px] max-w-full gap-3 p-4">
             <div>
               <label className="label" htmlFor="trackerPreparedFor">

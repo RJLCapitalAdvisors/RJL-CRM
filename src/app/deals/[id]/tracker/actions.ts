@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { AWAITING_RESPONSE, statusOf } from "@/lib/tracker";
+import { generateTrackerSummary } from "@/lib/tracker-summary";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -14,6 +16,24 @@ const s = (fd: FormData, k: string) => {
 function touch(dealId: string) {
   revalidatePath(`/deals/${dealId}/tracker`);
   revalidatePath(`/deals/${dealId}`);
+  revalidatePath("/reports");
+}
+
+/** Rewrite "Notable Feedback Themes" and "Items Needed from Sponsor" from the notes, after the response is sent. */
+function summarizeLater(dealId: string) {
+  after(async () => {
+    try {
+      await generateTrackerSummary(dealId);
+      touch(dealId);
+    } catch (e) {
+      console.error("tracker summary failed", e);
+    }
+  });
+}
+
+export async function regenerateTrackerSummary(dealId: string) {
+  await generateTrackerSummary(dealId);
+  touch(dealId);
 }
 
 export async function setTrackerStatus(rowId: string, status: number) {
@@ -21,12 +41,14 @@ export async function setTrackerStatus(rowId: string, status: number) {
   const row = await prisma.dealInvestor.update({ where: { id: rowId }, data: { status } });
   await logActivity({ type: "NOTE", body: `Tracker: ${statusOf(status).short}`, contactId: row.contactId, dealId: row.dealId });
   touch(row.dealId);
+  if (row.note) summarizeLater(row.dealId);
 }
 
 export async function saveTrackerNote(rowId: string, fd: FormData) {
   const note = s(fd, "note");
   const row = await prisma.dealInvestor.update({ where: { id: rowId }, data: { note, noteDate: note ? new Date() : null } });
   touch(row.dealId);
+  summarizeLater(row.dealId);
 }
 
 export async function removeTrackerRow(rowId: string) {

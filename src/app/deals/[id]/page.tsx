@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { stageTone } from "@/lib/taxonomy";
 import { DealForm } from "@/components/deal-form";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { CompanyLogo } from "@/components/company-logo";
 import { fmtDate, fullName } from "@/lib/format";
 import { TRACKER_STATUSES, investorLabel, statusOf } from "@/lib/tracker";
 import { addDealNote, updateDeal } from "../actions";
+import { StageSelect } from "./stage-select";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +44,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             initial={(deal.sponsorName?.[0] ?? name[0] ?? "?").toUpperCase()}
             title={name}
             subtitle={deal.sponsorName ?? undefined}
-            lines={[
-              <span key="stage" className={`chip border ${stageTone(deal.stage)}`}>
-                {deal.stage}
-              </span>,
-            ]}
+            lines={[<StageSelect key="stage" dealId={deal.id} stage={deal.stage} />]}
             actions={
               <>
                 <Link href={`/campaigns/new?dealId=${deal.id}`} className="btn-primary">
