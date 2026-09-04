@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import { stageTone } from "@/lib/taxonomy";
 import { RoleChips } from "@/components/ui";
 import { CompanyForm } from "@/components/company-form";
-import { CriteriaForm } from "@/components/criteria-form";
+import { CriteriaForm, SponsorFocusForm } from "@/components/criteria-form";
+import { parseList } from "@/lib/taxonomy";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { fmtDate, fullName } from "@/lib/format";
 import { addCompanyNote, updateCompany, updateCompanyCriteria } from "../actions";
@@ -30,6 +31,8 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
   const update = updateCompany.bind(null, company.id);
   const updateCriteria = updateCompanyCriteria.bind(null, company.id);
   const addNote = addCompanyNote.bind(null, company.id);
+  const roles = parseList(company.roles);
+  const isInvestor = roles.some((r) => r === "Investor" || r === "Retail Investor" || r === "Lender");
 
   return (
     <RecordLayout
@@ -58,12 +61,29 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
       }
       center={
         <>
-          <div className="card">
-            <div className="border-b border-line px-4 py-3 text-sm font-semibold">Investor criteria</div>
-            <div className="p-4">
-              <CriteriaForm criteria={company.criteria} action={updateCriteria} />
+          {isInvestor ? (
+            <div className="card">
+              <div className="border-b border-line px-4 py-3 text-sm font-semibold">Investor criteria</div>
+              <div className="px-4 py-2">
+                <CriteriaForm criteria={company.criteria} action={updateCriteria} />
+              </div>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="card">
+                <div className="border-b border-line px-4 py-3 text-sm font-semibold">{roles.includes("Sponsor") ? "Sponsor focus" : "Focus"}</div>
+                <div className="px-4 py-2">
+                  <SponsorFocusForm criteria={company.criteria} action={updateCriteria} />
+                </div>
+              </div>
+              <details className="card">
+                <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-muted">Investor criteria (collapsed: not marked as an investor)</summary>
+                <div className="border-t border-line px-4 py-2">
+                  <CriteriaForm criteria={company.criteria} action={updateCriteria} />
+                </div>
+              </details>
+            </>
+          )}
           <div className="card">
             <div className="border-b border-line px-4 py-3 text-sm font-semibold">Activity</div>
             <form action={addNote} className="flex gap-2 border-b border-line p-3">

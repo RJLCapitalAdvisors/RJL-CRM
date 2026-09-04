@@ -23,11 +23,25 @@ export const ASSET_CLASSES = [
   "Asset Class Agnostic",
 ] as const;
 
-export const CHECK_SIZES = ["$1-5MM", "$5-10MM", "$10-15MM", "$15-20MM", "$20-30MM", "$30-50MM", "$50MM+"] as const;
+export const CHECK_SIZES = ["$1-2MM", "$3-5MM", "$5-8MM", "$8-10MM", "$10-15MM", "$15-20MM", "$20-30MM", "$30-50MM", "$50-100MM", "$100MM+"] as const;
+// Old HubSpot buckets -> new buckets (a coarse old bucket becomes every new bucket it covers)
+export const CHECK_SIZE_MIGRATION: Record<string, string[]> = {
+  "$1-5MM": ["$1-2MM", "$3-5MM"],
+  "$5-10MM": ["$5-8MM", "$8-10MM"],
+  "$10-15MM": ["$10-15MM"],
+  "$15-20MM": ["$15-20MM"],
+  "$20-30MM": ["$20-30MM"],
+  "$30-50MM": ["$30-50MM"],
+  "$50MM+": ["$50-100MM", "$100MM+"],
+};
+export const RETURN_PROFILES = ["Core", "Core+", "Light value-add", "Heavy value-add", "Opportunistic"] as const;
+export const HOLD_PERIODS = ["1-3 years", "3-5 years", "5-7 years", "7-10 years", "10+ years"] as const;
+export const CLOSING_TIMEFRAMES = ["Fast", "Average", "Slow"] as const;
 export const DEAL_SIZES = ["$1-5MM", "$5-10MM", "$10-20MM", "$20-50MM", "$50MM+"] as const;
 export const INVESTMENT_TYPES = ["JV Equity", "Co-GP Equity", "Preferred Equity", "Senior Debt", "Mezz Debt"] as const;
 export const STRATEGIES = ["Development", "Acquisitions", "Both"] as const;
-export const VINTAGES = ["<1960's", "1960's", "1970's", "1980's", "1990's", "2000's", "2010's", "New Construction"] as const;
+export const VINTAGES = ["Older than 1960", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s", "New Construction"] as const;
+export const VINTAGE_MIGRATION: Record<string, string> = { "<1960's": "Older than 1960", "1960's": "1960s", "1970's": "1970s", "1980's": "1980s", "1990's": "1990s", "2000's": "2000s", "2010's": "2010s", "2020's": "2020s" };
 
 export const DEAL_STAGES = [
   "Deal Mentioned",
@@ -180,7 +194,7 @@ export function normalizeStrategy(raw: string | undefined | null): string | null
 }
 
 export function normalizeVintages(raw: string | undefined | null): string[] {
-  return mapWith(splitMulti(raw), VINTAGES, { "Pre 1960": "<1960's", "New Build": "New Construction" });
+  return mapWith(splitMulti(raw), VINTAGES, { ...VINTAGE_MIGRATION, "Pre 1960": "Older than 1960", "New Build": "New Construction" });
 }
 
 // Free-text geography ("nationwide", "Sunbelt, TX", "Midwest. No FL") -> tags.

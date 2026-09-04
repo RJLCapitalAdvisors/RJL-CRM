@@ -106,6 +106,12 @@ model InvestorCriteria {
   geographies     String  @default("[]") // normalized region / state tags
   geographyNotes  String? // original free text
   vintages        String  @default("[]")
+  returnProfile   String  @default("[]") // Core, Core+, Light value-add, Heavy value-add, Opportunistic
+  holdPeriods     String  @default("[]") // 1-3, 3-5, 5-7, 7-10, 10+ years
+  ozInterest      Boolean?
+  closingTimeframe String? // Fast | Average | Slow
+  openToMinority  Boolean?
+  otherInfo       String?
   openToFunds     Boolean?
   lenderPricing   String?
   aum             String?

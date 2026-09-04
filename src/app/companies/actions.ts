@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { parseList, toJson } from "@/lib/taxonomy";
+import { normalizeGeographies, parseList, toJson } from "@/lib/taxonomy";
 import { syncContactRolesForCompany } from "@/lib/roles";
 
 const s = (fd: FormData, k: string) => {
@@ -34,21 +34,31 @@ function companyData(fd: FormData) {
 }
 
 function criteriaData(fd: FormData) {
-  const openRaw = s(fd, "openToFunds");
-  return {
-    assetClasses: list(fd, "assetClasses"),
-    checkSizes: list(fd, "checkSizes"),
-    dealSizes: list(fd, "dealSizes"),
-    investmentTypes: list(fd, "investmentTypes"),
-    strategy: s(fd, "strategy"),
-    geographies: toJson((s(fd, "geographies") ?? "").split(",").map((x) => x.trim())),
-    geographyNotes: s(fd, "geographyNotes"),
-    vintages: list(fd, "vintages"),
-    openToFunds: openRaw == null ? null : openRaw === "yes",
-    lenderPricing: s(fd, "lenderPricing"),
-    aum: s(fd, "aum"),
-    unitsManaged: s(fd, "unitsManaged"),
+  const yn = (k: string) => {
+    const v = s(fd, k);
+    return v == null ? null : v === "yes";
   };
+  const geoText = s(fd, "geographyNotes");
+  const data: Record<string, unknown> = {
+    assetClasses: list(fd, "assetClasses"),
+  };
+  // Only touch fields the submitted form actually carries (the sponsor form only has asset classes).
+  if (fd.has("checkSizes") || fd.has("geographyNotes")) {
+    Object.assign(data, {
+      checkSizes: list(fd, "checkSizes"),
+      geographyNotes: geoText,
+      geographies: toJson(normalizeGeographies(geoText)),
+      returnProfile: list(fd, "returnProfile"),
+      strategy: s(fd, "strategy"),
+      holdPeriods: list(fd, "holdPeriods"),
+      vintages: list(fd, "vintages"),
+      ozInterest: yn("ozInterest"),
+      closingTimeframe: s(fd, "closingTimeframe"),
+      openToMinority: yn("openToMinority"),
+      otherInfo: s(fd, "otherInfo"),
+    });
+  }
+  return data;
 }
 
 export async function createCompany(fd: FormData) {
