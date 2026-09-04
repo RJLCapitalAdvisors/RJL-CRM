@@ -2,7 +2,8 @@ import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { parseList } from "@/lib/taxonomy";
 import { str } from "@/lib/format";
-import { InvestorSearch, bucketForAmount, vintageForYear, type InvestorRow, type Spec } from "./search";
+import { InvestorSearch, type InvestorRow, type Spec } from "./search";
+import { bucketForAmount, vintageForYear } from "@/lib/investor-specs";
 
 export const dynamic = "force-dynamic";
 
