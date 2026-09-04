@@ -33,17 +33,17 @@ export default async function ReportsPage() {
       <PageHeader title="Active progress reports" subtitle={`${rows.length} deals out to investors. Sorted by who has been waiting longest.`} />
       <div className="mx-8 my-6 flex h-[calc(100vh-150px)] min-h-[420px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <div className="min-h-0 flex-1 overflow-auto">
-          <table className="table dense w-full min-w-[1100px]">
+          <table className="table dense w-full min-w-[900px]">
             <thead>
               <tr>
-                <th className="w-[280px]">Deal</th>
-                <th className="w-[150px]">Stage</th>
+                <th className="w-[240px]">Deal</th>
+                <th className="w-[130px]">Stage</th>
                 <th className="w-[90px] text-center">Sent to</th>
                 <th className="w-[110px] text-center">Awaiting</th>
                 <th className="w-[110px] text-center">Responded</th>
                 <th>Status mix</th>
                 <th className="w-[120px]">Last update</th>
-                <th className="w-[220px]"></th>
+                <th className="w-[190px]"></th>
               </tr>
             </thead>
             <tbody>
