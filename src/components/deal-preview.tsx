@@ -7,8 +7,29 @@ type Tpl = { id: string; name: string; subject: string; bodyHtml: string };
 const NUMERIC = new Set(["requestedAmount", "totalEquity", "totalDebt", "totalCapitalization", "purchasePrice", "ltv", "ltc", "equityMultiple", "irr", "yieldOnCost", "capRateY1", "capRateT12", "cashOnCash", "occupancy", "units", "squareFeet"]);
 
 /** Live rendering of a deal email template from whatever is currently typed in #deal-form. */
+/** Best-guess template for a deal: multifamily vs not, development vs existing, JV vs pref vs debt. */
+function pickDefault(templates: Tpl[], deal: Record<string, unknown>): string {
+  const ac = String(deal.assetClass ?? "");
+  const mf = ["Multifamily", "Build-For-Rent (SFR)", "Student Housing", "Senior Housing"].includes(ac);
+  const dev = deal.strategy === "Development";
+  const exec = String(deal.executionType ?? "");
+  const debt = deal.requestType === "Debt" || /Debt/.test(exec);
+  const pref = /Pref/.test(exec);
+  const score = (t: Tpl) => {
+    const n = t.name.toLowerCase();
+    let s = 0;
+    if (debt) return n.includes("debt") ? 10 : 0;
+    if (n.includes("fund") || n.includes("engagement") || n.includes("shopping") || n.includes("follow-up") || n.includes("legacy") || n.includes("blast")) return -1;
+    if (n.includes("non-multifamily") === !mf) s += 4;
+    if (n.includes("development") === dev) s += 3;
+    if (pref ? n.includes("pref") : n.includes("jv")) s += 2;
+    return s;
+  };
+  return [...templates].sort((a, b) => score(b) - score(a))[0]?.id ?? "";
+}
+
 export function DealPreview({ templates, initial, senderName }: { templates: Tpl[]; initial: Record<string, unknown>; senderName: string }) {
-  const [tplId, setTplId] = useState(templates[0]?.id ?? "");
+  const [tplId, setTplId] = useState(() => pickDefault(templates, initial));
   const [deal, setDeal] = useState<Record<string, unknown>>(initial);
 
   useEffect(() => {
@@ -54,9 +75,9 @@ export function DealPreview({ templates, initial, senderName }: { templates: Tpl
   const html = toHtml(renderTemplate(tpl.bodyHtml, ctx));
   return (
     <div>
-      <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
+      <div className="space-y-2 border-b border-line px-4 py-3">
         <h2 className="font-semibold">Email preview</h2>
-        <select value={tplId} onChange={(e) => setTplId(e.target.value)} className="input w-64 text-xs">
+        <select value={tplId} onChange={(e) => setTplId(e.target.value)} className="input text-xs">
           {templates.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
