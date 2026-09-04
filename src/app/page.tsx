@@ -55,7 +55,8 @@ async function derivedItems(): Promise<Item[]> {
   for (const d of deals) {
     const name = d.propertyName ?? d.name;
     const missing = missingFor(d);
-    if (d.stage === "Deal Received" && missing.length) {
+    // Only recent deals: old HubSpot deals parked in Deal Received are history, not to-dos.
+    if (d.stage === "Deal Received" && missing.length && now - d.updatedAt.getTime() < 21 * DAY) {
       items.push({ key: `items-${d.id}`, kind: "deal", text: `Get ${missing.length} outstanding item${missing.length === 1 ? "" : "s"} from ${d.sponsorName ?? "the sponsor"} on ${name}`, detail: missing.slice(0, 3).map((m) => m.label).join(", ") + (missing.length > 3 ? "…" : ""), href: `/deals/${d.id}/tracker` });
     }
     const stale = d.investors.filter((r) => (r.status === 2 || r.status === 3) && now - r.updatedAt.getTime() > 5 * DAY);
