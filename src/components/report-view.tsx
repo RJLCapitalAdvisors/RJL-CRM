@@ -1,114 +1,137 @@
+import type { CSSProperties, ReactNode } from "react";
 import type { Report } from "@/lib/tracker-report";
-import { investorLabel, statusOf } from "@/lib/tracker";
+import { investorLabel, personLabel, statusOf } from "@/lib/tracker";
 
 /**
- * Read-only rendering of the progress report in the legacy Drive style.
- * Used for the sponsor share page; the in-app tracker adds editing on top of the same layout.
+ * The progress report, laid out exactly like the Word reports Jonathan sends sponsors:
+ * logo, centered Deal Name / Deal Address / Prepared For, blue contact line, Notable Feedback Themes,
+ * Items Needed from Sponsor, then a black-bordered Investor | Status | Notes table, gray footer.
+ *
+ * Styles are inline so the same component renders identically in the app, on the sponsor link,
+ * in the standalone HTML export, and when printed to PDF.
  */
-export function ReportView({ report, showEmails = false, showActions = false }: { report: Report; showEmails?: boolean; showActions?: boolean }) {
-  const { deal, name, rows, lastUpdated, itemsNeeded, chips } = report;
-  const openActions = deal.actions.filter((a) => !a.done);
-  const items = [...itemsNeeded, ...(deal.trackerItemsNote ? deal.trackerItemsNote.split(/\n+/).map((x) => x.trim()).filter(Boolean) : [])];
+export type ReportRow = Report["rows"][number];
+export type ReportSlots = {
+  statusCell?: (r: ReportRow) => ReactNode;
+  noteCell?: (r: ReportRow) => ReactNode;
+  rowEnd?: (r: ReportRow) => ReactNode;
+  afterRows?: ReactNode;
+  showPeople?: boolean;
+};
+
+const FONT = "Arial, Helvetica, sans-serif";
+const S: Record<string, CSSProperties> = {
+  page: { fontFamily: FONT, fontSize: "10.5pt", lineHeight: 1.35, color: "#000", background: "#fff", maxWidth: 816, margin: "0 auto", padding: "48px 72px 40px" },
+  logo: { height: 50, display: "block", marginBottom: 22 },
+  center: { textAlign: "center", fontWeight: 700, margin: "0 0 4px" },
+  email: { fontWeight: 700, color: "#1155cc", margin: "14px 0 0" },
+  h2: { fontSize: "16pt", fontWeight: 700, margin: "18px 0 6px" },
+  ul: { margin: "0 0 4px", paddingLeft: 26 },
+  li: { margin: "0 0 2px" },
+  rule: { textAlign: "center", color: "#b3b3b3", letterSpacing: 1, margin: "10px 0 2px", overflow: "hidden", whiteSpace: "nowrap" },
+  table: { width: "100%", borderCollapse: "collapse", marginTop: 16, tableLayout: "fixed" },
+  th: { border: "1px solid #000", background: "#f1f3f4", fontWeight: 700, textAlign: "left", padding: "5px 7px", verticalAlign: "top" },
+  td: { border: "1px solid #000", padding: "5px 7px", verticalAlign: "top", wordWrap: "break-word" },
+  footer: { marginTop: 28, textAlign: "center", color: "#666", fontSize: "9pt" },
+  a: { color: "#1155cc", textDecoration: "underline" },
+};
+
+const RULE = "_".repeat(50);
+
+export function ReportView({ report, slots = {} }: { report: Report; slots?: ReportSlots }) {
+  const { deal, name, rows } = report;
+  const address = [deal.propertyAddress, [deal.city, deal.state].filter(Boolean).join(", ")].filter(Boolean).join(", ");
+  const themes = (deal.trackerThemes ?? "").split(/\n+/).map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
+  const items = (deal.trackerItemsNote ?? "").split(/\n+/).map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
+  const showSections = themes.length > 0 || items.length > 0;
+  const cols = slots.rowEnd ? ["31%", "31%", "34%", "4%"] : ["32%", "32%", "36%"];
+
   return (
-    <div className="report mx-auto max-w-[900px] overflow-hidden rounded-xl border border-line bg-paper shadow-sm print:rounded-none print:border-0 print:shadow-none">
-      <div className="bg-[#111827] px-8 pb-6 pt-7 text-white">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="rounded-md bg-white px-3 py-1.5">
-            <img src="/logo.png" alt="RJL Capital Advisors" className="h-7" />
-          </div>
-          <div className="text-right">
-            <div className="text-[9px] uppercase tracking-[0.15em] text-[#60A5FA]">Last updated</div>
-            <div className="text-xs text-white/60">{lastUpdated.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</div>
-          </div>
-        </div>
-        <div className="text-xl font-semibold">{name} — Progress Report</div>
-        <div className="mt-1 mb-4 space-y-0.5 text-xs text-white/60">
-          {deal.propertyAddress && <div>Deal address: {[deal.propertyAddress, deal.city, deal.state].filter(Boolean).join(", ")}</div>}
-          {deal.trackerPreparedFor && <div>Prepared for: {deal.trackerPreparedFor}</div>}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {chips.map((c) => (
-            <div key={c.label} className="rounded-md border border-[#60A5FA]/30 bg-white/5 px-3.5 py-1.5">
-              <div className="text-[8.5px] uppercase tracking-[0.12em] text-[#60A5FA]">{c.label}</div>
-              <div className="text-xs text-white/70">{c.value}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="h-0.5 bg-[#60A5FA]" />
-      <div className="bg-[#1a2332] px-8 py-2 text-[11px] text-white/40">
-        Please email <a href="mailto:jonathan@rjlcapadvisors.com" className="text-[#60A5FA]">jonathan@rjlcapadvisors.com</a> or <a href="mailto:aviel@rjlcapadvisors.com" className="text-[#60A5FA]">aviel@rjlcapadvisors.com</a> with any questions
-      </div>
+    <div className="report" style={S.page}>
+      <img src="/logo.png" alt="RJL Capital Advisors" style={S.logo} />
+      <p style={S.center}>Deal Name: {name}</p>
+      <p style={S.center}>Deal Address: {address || "NA"}</p>
+      <p style={S.center}>Prepared For: {deal.trackerPreparedFor || deal.sponsorName || "—"}</p>
+      <p style={S.email}>
+        Please email{" "}
+        <a href="mailto:jonathan@rjlcapadvisors.com" style={S.a}>
+          jonathan@rjlcapadvisors.com
+        </a>{" "}
+        or{" "}
+        <a href="mailto:aviel@rjlcapadvisors.com" style={S.a}>
+          aviel@rjlcapadvisors.com
+        </a>{" "}
+        with any questions
+      </p>
 
-      <div className="grid gap-4 p-5 md:grid-cols-2">
-        <section className="rounded-lg border border-line">
-          <div className="bg-[#111827] px-4 py-2 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-[#60A5FA]">Notable feedback themes</div>
-          <div className="whitespace-pre-wrap px-4 py-3 text-sm leading-relaxed">{deal.trackerThemes || <span className="italic text-muted">No themes noted yet.</span>}</div>
-        </section>
-        <section className="rounded-lg border border-line">
-          <div className="bg-[#111827] px-4 py-2 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-[#60A5FA]">Items needed from sponsor</div>
-          {items.length ? (
-            <ol className="list-decimal space-y-0.5 px-4 py-3 pl-8 text-sm">
-              {items.map((it, i) => (
-                <li key={i}>{it}</li>
-              ))}
-            </ol>
-          ) : (
-            <div className="px-4 py-3 text-sm italic text-muted">Nothing outstanding.</div>
-          )}
-        </section>
-      </div>
-
-      {showActions && openActions.length > 0 && (
-        <section className="mx-5 mb-4 rounded-lg border border-line">
-          <div className="bg-[#111827] px-4 py-2 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-[#60A5FA]">Action items</div>
-          <ul className="px-4 py-2 text-sm">
-            {openActions.map((a) => (
-              <li key={a.id} className="border-b border-line py-1.5 last:border-0">
-                • {a.text}
+      {showSections && (
+        <>
+          <h2 style={S.h2}>Notable Feedback Themes</h2>
+          <ul style={S.ul}>
+            {themes.map((t, i) => (
+              <li key={i} style={S.li}>
+                {t}
               </li>
             ))}
           </ul>
-        </section>
+          <div style={S.rule}>{RULE}</div>
+          <h2 style={S.h2}>Items Needed from Sponsor</h2>
+          <ul style={S.ul}>
+            {items.map((t, i) => (
+              <li key={i} style={S.li}>
+                {t}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
-      <div className="grid grid-cols-[220px_200px_1fr] bg-[#111827] px-5 py-2.5 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-[#60A5FA]">
-        <div>Investor</div>
-        <div>Status</div>
-        <div>Notes</div>
-      </div>
-      {rows.length === 0 && <div className="px-5 py-8 text-center text-sm text-muted">No investors yet.</div>}
-      {rows.map((r, i) => {
-        const st = statusOf(r.status);
-        return (
-          <div key={r.id} className={`grid grid-cols-[220px_200px_1fr] items-start border-b border-line px-5 py-3 ${i % 2 ? "bg-[#FAFAFA]" : ""}`}>
-            <div className="text-[13.5px] font-medium">
-              {investorLabel(r.contact)}
-              {showEmails && r.contact.email && <div className="text-[11px] text-muted">{r.contact.email}</div>}
-            </div>
-            <div>
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium" style={{ background: st.bg, color: st.c }}>
-                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: st.d }} />
-                {st.label}
-              </span>
-            </div>
-            <div className="pr-2">
-              {r.note ? (
-                <>
-                  <span className="text-xs italic leading-relaxed text-[#4B5563]">{r.note}</span>
-                  {r.noteDate && <div className="text-[10px] text-muted">Updated {report.fmt(r.noteDate)}</div>}
-                </>
-              ) : (
-                <span className="text-[11px] text-muted">—</span>
-              )}
-            </div>
-          </div>
-        );
-      })}
-      <div className="h-0.5 bg-[#60A5FA]" />
-      <div className="flex items-center justify-between bg-[#111827] px-8 py-3 text-[10px] text-white/25">
-        <span>RJL Capital Advisors · 9 Park Place, 3rd Floor, Great Neck, NY 11021 · 516.220.0477</span>
-        <span className="italic">Confidential — For Authorized Recipients Only</span>
+      <table style={S.table}>
+        <colgroup>
+          {cols.map((w, i) => (
+            <col key={i} style={{ width: w }} />
+          ))}
+        </colgroup>
+        <thead>
+          <tr>
+            <th style={S.th}>Investor</th>
+            <th style={S.th}>Status</th>
+            <th style={S.th}>Notes</th>
+            {slots.rowEnd && <th style={{ ...S.th, border: 0, background: "transparent" }} />}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const st = statusOf(r.status);
+            const person = slots.showPeople ? personLabel(r.contact) : "";
+            return (
+              <tr key={r.id}>
+                <td style={S.td}>
+                  {investorLabel(r.contact)}
+                  {person && person !== investorLabel(r.contact) && <div style={{ fontSize: "8.5pt", color: "#666" }}>{person}</div>}
+                </td>
+                <td style={{ ...S.td, background: st.bg, color: st.c }}>{slots.statusCell ? slots.statusCell(r) : st.label}</td>
+                <td style={S.td}>{slots.noteCell ? slots.noteCell(r) : r.note}</td>
+                {slots.rowEnd && <td style={{ ...S.td, border: 0, padding: "5px 0 0 6px", color: "#999" }}>{slots.rowEnd(r)}</td>}
+              </tr>
+            );
+          })}
+          {rows.length === 0 && (
+            <tr>
+              <td style={{ ...S.td, color: "#666", textAlign: "center" }} colSpan={3}>
+                No investors yet.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {slots.afterRows}
+
+      <div style={S.rule}>{RULE}</div>
+      <div style={S.footer}>
+        RJL Capital Advisors · 9 Park Place, 3rd Floor, Great Neck, NY 11021 · 516.220.0477
+        <br />
+        Confidential — For Authorized Recipients Only
       </div>
     </div>
   );

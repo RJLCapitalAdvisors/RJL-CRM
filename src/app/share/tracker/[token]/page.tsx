@@ -14,7 +14,7 @@ export default async function SharedTracker({ params }: { params: Promise<{ toke
   const report = await loadReport(dealId);
   if (!report) notFound();
   return (
-    <div className="min-h-screen bg-[#F0F2F7] px-5 py-10 print:bg-white print:p-0">
+    <div className="min-h-screen bg-[#f3f4f6] px-5 py-8 print:bg-white print:p-0">
       <ReportView report={report} />
       <PrintButton />
     </div>

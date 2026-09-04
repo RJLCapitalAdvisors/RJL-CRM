@@ -4,37 +4,30 @@ import { useState, useTransition } from "react";
 import { TRACKER_STATUSES, statusOf } from "@/lib/tracker";
 import { saveTrackerNote, setTrackerStatus } from "./actions";
 
+/** Status text inside the (already colored) table cell; click to change. */
 export function StatusBadge({ rowId, status }: { rowId: string; status: number }) {
   const [open, setOpen] = useState(false);
   const [cur, setCur] = useState(status);
   const [, start] = useTransition();
-  const st = statusOf(cur);
   return (
     <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium"
-        style={{ background: st.bg, color: st.c }}
-      >
-        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: st.d }} />
-        {st.label} ⌄
+      <button type="button" onClick={() => setOpen((o) => !o)} className="block w-full text-left" style={{ color: statusOf(cur).c }} title="Change status">
+        {statusOf(cur).label}
       </button>
       {open && (
-        <div className="absolute z-20 mt-1 w-56 overflow-hidden rounded-md border border-line bg-paper shadow-lg">
+        <div className="absolute left-0 z-20 mt-1 w-64 overflow-hidden border border-black bg-white shadow-lg">
           {[...TRACKER_STATUSES].reverse().map((s) => (
             <button
               key={s.id}
               type="button"
-              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-cream ${s.id === cur ? "bg-cream-50" : ""}`}
-              style={{ color: s.id === 6 ? "#1e40af" : s.c }}
+              className="block w-full px-3 py-1.5 text-left text-[10.5pt] hover:brightness-95"
+              style={{ background: s.bg, color: s.c }}
               onClick={() => {
                 setCur(s.id);
                 setOpen(false);
                 start(() => setTrackerStatus(rowId, s.id));
               }}
             >
-              <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: s.d }} />
               {s.label}
               {s.id === cur ? " ✓" : ""}
             </button>
@@ -45,7 +38,8 @@ export function StatusBadge({ rowId, status }: { rowId: string; status: number }
   );
 }
 
-export function NoteCell({ rowId, note, noteDate }: { rowId: string; note: string | null; noteDate: string | null }) {
+/** Note text; click to edit. Put the date in the text the way the reports do, e.g. "Passed (Sep 1): …". */
+export function NoteCell({ rowId, note }: { rowId: string; note: string | null }) {
   const [editing, setEditing] = useState(false);
   const [, start] = useTransition();
   if (editing) {
@@ -57,12 +51,12 @@ export function NoteCell({ rowId, note, noteDate }: { rowId: string; note: strin
         }}
         className="space-y-1"
       >
-        <textarea name="note" defaultValue={note ?? ""} rows={2} autoFocus className="input text-xs" />
-        <div className="flex gap-2">
-          <button className="btn-primary px-2 py-1 text-xs" type="submit">
+        <textarea name="note" defaultValue={note ?? ""} rows={3} autoFocus className="w-full border border-black p-1 text-[10.5pt]" style={{ fontFamily: "inherit" }} />
+        <div className="flex gap-2 text-[9pt]">
+          <button className="border border-black bg-black px-2 py-0.5 text-white" type="submit">
             Save
           </button>
-          <button className="btn-ghost px-2 py-1 text-xs" type="button" onClick={() => setEditing(false)}>
+          <button className="border border-black px-2 py-0.5" type="button" onClick={() => setEditing(false)}>
             Cancel
           </button>
         </div>
@@ -70,15 +64,8 @@ export function NoteCell({ rowId, note, noteDate }: { rowId: string; note: strin
     );
   }
   return (
-    <div onClick={() => setEditing(true)} className="cursor-text">
-      {note ? (
-        <>
-          <span className="text-xs italic leading-relaxed text-ink-soft">{note}</span>
-          {noteDate && <div className="text-[10px] text-muted">Updated {noteDate}</div>}
-        </>
-      ) : (
-        <span className="text-[11px] text-muted">Add note ✎</span>
-      )}
+    <div onClick={() => setEditing(true)} className="min-h-[1.2em] cursor-text whitespace-pre-wrap" title="Click to edit">
+      {note || <span style={{ color: "#999" }}>Add note</span>}
     </div>
   );
 }
