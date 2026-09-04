@@ -4,15 +4,16 @@ import { prisma } from "@/lib/db";
 import { stageTone } from "@/lib/taxonomy";
 import { PageHeader } from "@/components/ui";
 import { DealForm } from "@/components/deal-form";
-import { fmtDate, fullName } from "@/lib/format";
-import { addDealNote, updateDeal } from "../actions";
+import { updateDeal } from "../actions";
+import { DealPreview } from "@/components/deal-preview";
+import { parseDetails } from "@/lib/checklist";
 import { completeness } from "@/lib/checklist";
 
 export const dynamic = "force-dynamic";
 
 export default async function DealPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [deal, users] = await Promise.all([
+  const [deal, users, templates] = await Promise.all([
     prisma.deal.findUnique({
       where: { id },
       include: {
@@ -24,10 +25,10 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
       },
     }),
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.emailTemplate.findMany({ where: { kind: "DEAL", NOT: { name: { contains: "Engagement" } } }, orderBy: { name: "asc" }, select: { id: true, name: true, subject: true, bodyHtml: true } }),
   ]);
   if (!deal) notFound();
   const update = updateDeal.bind(null, deal.id);
-  const addNote = addDealNote.bind(null, deal.id);
   const { answered, total } = completeness(deal);
 
   return (
@@ -108,30 +109,8 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             <DealForm deal={deal} users={users} action={update} />
           </section>
         </div>
-        <section className="card self-start">
-          <div className="border-b border-line px-5 py-3">
-            <h2 className="font-semibold">Activity</h2>
-          </div>
-          <form action={addNote} className="flex gap-2 border-b border-line p-4">
-            <input name="body" placeholder="Add a note…" className="input" />
-            <button className="btn-secondary" type="submit">
-              Add
-            </button>
-          </form>
-          <ul className="divide-y divide-line">
-            {deal.activities.map((a) => (
-              <li key={a.id} className="px-5 py-3 text-sm">
-                <div className="flex items-center justify-between text-xs text-muted">
-                  <span className="font-semibold uppercase tracking-wide">{a.type}</span>
-                  <span>{fmtDate(a.occurredAt)}</span>
-                </div>
-                {a.subject && <div className="mt-0.5 font-medium">{a.subject}</div>}
-                {a.body && <div className="mt-0.5 whitespace-pre-wrap">{a.body}</div>}
-                {a.contact && <div className="mt-1 text-xs text-muted">{fullName(a.contact)}</div>}
-              </li>
-            ))}
-            {deal.activities.length === 0 && <li className="px-5 py-6 text-sm text-muted">No activity yet. Created {fmtDate(deal.createdAt)}.</li>}
-          </ul>
+        <section className="card sticky top-4 self-start">
+          <DealPreview templates={templates} initial={{ ...deal, details: parseDetails(deal.details) }} senderName={deal.owner?.name ?? "RJL Capital Advisors"} />
         </section>
       </div>
     </>

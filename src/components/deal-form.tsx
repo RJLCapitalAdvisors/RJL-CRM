@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ASSET_CLASSES, DEAL_STAGES, US_STATES } from "@/lib/taxonomy";
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
+import { NumberInput } from "./number-input";
 
 export const EXECUTION_TYPES = ["JV Equity", "LP Equity", "Co-GP Equity", "Preferred Equity", "Senior Debt", "Mezz Debt", "Fund Investment"] as const;
 
@@ -121,7 +122,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
   const closed = stage === "Deal Closed" || stage === "Deal Lost";
 
   return (
-    <form action={action} className="max-w-3xl">
+    <form id="deal-form" action={action} className="max-w-3xl">
       <Group title="Deal">
         <Row label="Sponsor">
           <Text name="sponsorName" value={d?.sponsorName} placeholder="Citivest Commercial" />
@@ -178,22 +179,22 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
         </Row>
         {p.countLabel && (
           <Row label={p.countLabel}>
-            <input name="units" defaultValue={d?.units ?? ""} inputMode="numeric" onChange={(e) => setCount(num(e.target.value))} className="input max-w-md" />
+            <NumberInput name="units" defaultValue={d?.units} decimals={false} onValue={setCount} />
           </Row>
         )}
         {(p.perFoot || p.countLabel) && (
           <Row label="Square feet">
-            <input name="squareFeet" defaultValue={d?.squareFeet ?? ""} inputMode="numeric" onChange={(e) => setSf(num(e.target.value))} className="input max-w-md" />
+            <NumberInput name="squareFeet" defaultValue={d?.squareFeet} decimals={false} onValue={setSf} />
           </Row>
         )}
         {p.perAcre && (
           <Row label="Acres">
-            <input name="detail.acres" defaultValue={acres ?? ""} inputMode="decimal" onChange={(e) => setAcres(num(e.target.value))} className="input max-w-md" />
+            <NumberInput name="detail.acres" defaultValue={acres} onValue={setAcres} />
           </Row>
         )}
         {p.showOccupancy && (
           <Row label="Occupancy %">
-            <Text name="occupancy" value={d?.occupancy} inputMode="decimal" />
+            <NumberInput name="occupancy" defaultValue={d?.occupancy} />
           </Row>
         )}
         {p.showYearBuilt && (
@@ -217,34 +218,34 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
           <Select name="executionType" value={d?.executionType ?? ""} options={EXECUTION_TYPES} />
         </Row>
         <Row label="Requested amount ($)">
-          <Text name="requestedAmount" value={d?.requestedAmount} inputMode="numeric" />
+          <NumberInput name="requestedAmount" defaultValue={d?.requestedAmount} decimals={false} />
         </Row>
         <Row label="Purchase price ($)" hint={d?.strategy === "Development" ? "Land price for developments" : undefined}>
-          <input name="purchasePrice" defaultValue={d?.purchasePrice ?? ""} inputMode="numeric" onChange={(e) => setPrice(num(e.target.value))} className="input max-w-md" />
+          <NumberInput name="purchasePrice" defaultValue={d?.purchasePrice} decimals={false} onValue={setPrice} />
         </Row>
         {p.perCount && <Calc label={`Purchase price per ${per}`} value={money(ratio(price, count))} />}
         {p.perFoot && <Calc label="Purchase price per SF" value={money(ratio(price, sf))} />}
         {p.perAcre && <Calc label="Purchase price per acre" value={money(ratio(price, acres))} />}
         <Row label="Total capitalization ($)" hint="From sources and uses">
-          <input name="totalCapitalization" defaultValue={d?.totalCapitalization ?? ""} inputMode="numeric" onChange={(e) => setCap(num(e.target.value))} className="input max-w-md" />
+          <NumberInput name="totalCapitalization" defaultValue={d?.totalCapitalization} decimals={false} onValue={setCap} />
         </Row>
         {p.perCount && <Calc label={`Total capitalization per ${per}`} value={money(ratio(cap, count))} />}
         {p.perFoot && <Calc label="Total capitalization per SF" value={money(ratio(cap, sf))} />}
         {p.perAcre && <Calc label="Total capitalization per acre" value={money(ratio(cap, acres))} />}
         <Row label="Total equity ($)">
-          <Text name="totalEquity" value={d?.totalEquity} inputMode="numeric" />
+          <NumberInput name="totalEquity" defaultValue={d?.totalEquity} decimals={false} />
         </Row>
         <Row label="Total debt ($)">
-          <Text name="totalDebt" value={d?.totalDebt} inputMode="numeric" />
+          <NumberInput name="totalDebt" defaultValue={d?.totalDebt} decimals={false} />
         </Row>
       </Group>
 
       <Group title="Debt terms">
         <Row label="LTV %">
-          <Text name="ltv" value={d?.ltv} inputMode="decimal" />
+          <NumberInput name="ltv" defaultValue={d?.ltv} />
         </Row>
         <Row label="LTC %">
-          <Text name="ltc" value={d?.ltc} inputMode="decimal" />
+          <NumberInput name="ltc" defaultValue={d?.ltc} />
         </Row>
         <Row label="Interest rate">
           <Text name="interestRate" value={d?.interestRate} placeholder="SOFR + 300" />
@@ -259,22 +260,22 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
 
       <Group title="Returns">
         <Row label="T12 cap rate %">
-          <Text name="capRateT12" value={d?.capRateT12} inputMode="decimal" />
+          <NumberInput name="capRateT12" defaultValue={d?.capRateT12} />
         </Row>
         <Row label="Year 1 cap rate %">
-          <Text name="capRateY1" value={d?.capRateY1} inputMode="decimal" />
+          <NumberInput name="capRateY1" defaultValue={d?.capRateY1} />
         </Row>
         <Row label="IRR %">
-          <Text name="irr" value={d?.irr} inputMode="decimal" />
+          <NumberInput name="irr" defaultValue={d?.irr} />
         </Row>
         <Row label="Equity multiple (x)">
-          <Text name="equityMultiple" value={d?.equityMultiple} inputMode="decimal" />
+          <NumberInput name="equityMultiple" defaultValue={d?.equityMultiple} />
         </Row>
         <Row label="Yield on cost at stabilization %">
-          <Text name="yieldOnCost" value={d?.yieldOnCost} inputMode="decimal" />
+          <NumberInput name="yieldOnCost" defaultValue={d?.yieldOnCost} />
         </Row>
         <Row label="Stabilized cash-on-cash %">
-          <Text name="cashOnCash" value={d?.cashOnCash} inputMode="decimal" />
+          <NumberInput name="cashOnCash" defaultValue={d?.cashOnCash} />
         </Row>
         <Row label="Hold period">
           <Text name="holdPeriod" value={d?.holdPeriod} placeholder="5 year" />
