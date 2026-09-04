@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, RETURN_PROFILES, VINTAGES } from "@/lib/taxonomy";
+import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, VINTAGES } from "@/lib/taxonomy";
 import { CompanyLogo } from "@/components/company-logo";
 import { MultiSelect } from "@/components/multi-select";
 
@@ -29,7 +29,7 @@ export type InvestorRow = {
 export type Spec = {
   assetClass: string[];
   checkSize: string[];
-  requestType: string[];
+  investmentType: string[];
   strategy: string[];
   returnProfile: string[];
   holdPeriod: string[];
@@ -39,20 +39,15 @@ export type Spec = {
   minority: string[];
 };
 
-const EMPTY: Spec = { assetClass: [], checkSize: [], requestType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [] };
+const EMPTY: Spec = { assetClass: [], checkSize: [], investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [] };
 const any = (have: string[], want: string[]) => want.some((w) => have.includes(w));
-const EQUITY = ["JV Equity", "Co-GP Equity", "Preferred Equity", "LP Equity"];
-const DEBT = ["Senior Debt", "Mezz Debt"];
 
 
 /** A firm passes when, for every spec with something checked, its criteria contain at least one of the checked values. Empty specs are ignored. */
 function passes(c: InvestorRow["crit"], s: Spec): boolean {
   if (s.assetClass.length && !(c && any(c.assetClasses, s.assetClass))) return false;
   if (s.checkSize.length && !(c && any(c.checkSizes, s.checkSize))) return false;
-  if (s.requestType.length) {
-    const want = [...(s.requestType.includes("Equity") || s.requestType.includes("Both") ? EQUITY : []), ...(s.requestType.includes("Debt") || s.requestType.includes("Both") ? DEBT : [])];
-    if (!(c && any(c.investmentTypes, want))) return false;
-  }
+  if (s.investmentType.length && !(c && any(c.investmentTypes, s.investmentType))) return false;
   if (s.strategy.length && !(c && c.strategy && (s.strategy.includes(c.strategy) || c.strategy === "Both"))) return false;
   if (s.returnProfile.length && !(c && any(c.returnProfile, s.returnProfile))) return false;
   if (s.holdPeriod.length && !(c && any(c.holdPeriods, s.holdPeriod))) return false;
@@ -112,7 +107,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
         )}
         {sel("assetClass", "Asset class", ASSET_CLASSES)}
         {sel("checkSize", "Check size", CHECK_SIZES)}
-        {sel("requestType", "Equity or debt", ["Equity", "Debt", "Both"])}
+        {sel("investmentType", "Type of investments", INVESTMENT_TYPES)}
         {sel("strategy", "Acquisition or development", ["Acquisitions", "Development", "Both"])}
         {sel("returnProfile", "Return profile", RETURN_PROFILES)}
         {sel("holdPeriod", "Hold period", HOLD_PERIODS)}

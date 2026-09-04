@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
-import { parseList } from "@/lib/taxonomy";
+import { INVESTMENT_TYPES, parseList } from "@/lib/taxonomy";
 import { str } from "@/lib/format";
 import { InvestorSearch, type InvestorRow, type Spec } from "./search";
 import { bucketForAmount, vintageForYear } from "@/lib/investor-specs";
@@ -47,7 +47,7 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
     ? {
         assetClass: deal.assetClass ? [deal.assetClass, "Asset Class Agnostic"] : [],
         checkSize: bucketForAmount(deal.requestedAmount) ? [bucketForAmount(deal.requestedAmount)] : [],
-        requestType: deal.requestType ? [deal.requestType] : [],
+        investmentType: deal.executionType && (INVESTMENT_TYPES as readonly string[]).includes(deal.executionType) ? [deal.executionType] : deal.requestType === "Debt" ? ["Senior Debt", "Mezz Debt"] : deal.requestType === "Equity" ? ["JV Equity", "Co-GP Equity", "Preferred Equity"] : [],
         strategy: deal.strategy ? [deal.strategy] : [],
         vintage: vintageForYear(deal.yearBuilt) ? [vintageForYear(deal.yearBuilt)] : [],
       }
