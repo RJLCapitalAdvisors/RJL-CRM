@@ -52,6 +52,13 @@ type DealLike = {
   details?: string;
 } | null;
 
+function parseDetailsSafe(raw: string | undefined): Record<string, string | null> {
+  try {
+    return JSON.parse(raw || "{}");
+  } catch {
+    return {};
+  }
+}
 const money = (n: number | null) => (n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }));
 const num = (v: unknown) => {
   if (v == null) return null;
@@ -106,13 +113,7 @@ function Select({ name, value, options, blank = "—", onChange }: { name: strin
 
 export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: DealLike; users: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; submitLabel?: string }) {
   const d = deal;
-  const details = useMemo<Record<string, string | null>>(() => {
-    try {
-      return JSON.parse(d?.details || "{}");
-    } catch {
-      return {};
-    }
-  }, [d?.details]);
+  const details = parseDetailsSafe(d?.details);
   const [assetClass, setAssetClass] = useState(d?.assetClass ?? "");
   const [price, setPrice] = useState<number | null>(d?.purchasePrice ?? null);
   const [cap, setCap] = useState<number | null>(d?.totalCapitalization ?? null);
