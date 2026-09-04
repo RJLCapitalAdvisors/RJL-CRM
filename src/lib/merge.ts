@@ -24,6 +24,24 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.loanTerm", label: "Loan term" },
   { key: "deal.equityMultiple", label: "Equity multiple" },
   { key: "deal.occupancy", label: "Occupancy %" },
+  { key: "deal.executionType", label: "Execution type (JV, Pref, Senior Debt…)" },
+  { key: "deal.totalDebt", label: "Total debt ($)" },
+  { key: "deal.totalCapitalization", label: "Total capitalization ($)" },
+  { key: "deal.ltc", label: "LTC %" },
+  { key: "deal.interestRate", label: "Interest rate" },
+  { key: "deal.lenderType", label: "Lender type" },
+  { key: "deal.irr", label: "IRR %" },
+  { key: "deal.holdPeriod", label: "Hold period" },
+  { key: "deal.yieldOnCost", label: "Yield on cost %" },
+  { key: "deal.capRateY1", label: "Year 1 cap rate %" },
+  { key: "deal.capRateT12", label: "T12 cap rate %" },
+  { key: "deal.cashOnCash", label: "Stabilized cash-on-cash %" },
+  { key: "deal.projectedReturns", label: "Projected returns (text)" },
+  { key: "deal.units", label: "Units" },
+  { key: "deal.squareFeet", label: "Square feet" },
+  { key: "deal.yearBuilt", label: "Year built" },
+  { key: "deal.unitMix", label: "Unit mix" },
+  { key: "deal.expectedClose", label: "Expected close" },
   { key: "deal.summary", label: "Deal summary / business plan" },
   { key: "deal.facts", label: "Bulleted list of every answered checklist item" },
   ...CHECKLIST.filter((it) => !it.core).map((it) => ({ key: `deal.details.${it.key}`, label: it.label })),
@@ -41,8 +59,9 @@ export type MergeContext = {
 
 function fmt(key: string, v: unknown): string {
   if (v == null || v === "") return "";
-  if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice"].includes(key)) return fmtMoney(Number(v));
-  if (key === "deal.ltv" || key === "deal.occupancy") return `${v}%`;
+  if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization"].includes(key)) return fmtMoney(Number(v));
+  if (["deal.ltv", "deal.ltc", "deal.occupancy", "deal.irr", "deal.yieldOnCost", "deal.capRateY1", "deal.capRateT12", "deal.cashOnCash"].includes(key)) return `${v}%`;
+  if (key === "deal.units" || key === "deal.squareFeet") return Number(v).toLocaleString("en-US");
   if (key === "deal.equityMultiple") return `${v}x`;
   if (v instanceof Date) return v.toLocaleDateString("en-US");
   return String(v);

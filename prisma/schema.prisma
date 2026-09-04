@@ -142,6 +142,28 @@ model Deal {
   summary         String?
   details         String  @default("{}") // JSON: checklist answers keyed by src/lib/checklist.ts item key
 
+  // Underwriting snapshot (from HubSpot deal properties)
+  executionType       String? // JV Equity | LP Equity | Co-GP Equity | Preferred Equity | Senior Debt | Mezz Debt
+  totalDebt           Float?
+  totalCapitalization Float?
+  ltc                 Float?
+  interestRate        String?
+  lenderType          String?
+  irr                 Float?
+  holdPeriod          String?
+  yieldOnCost         Float?
+  capRateY1           Float?
+  capRateT12          Float?
+  cashOnCash          Float?
+  projectedReturns    String?
+  units               Int?
+  squareFeet          Float?
+  yearBuilt           String?
+  unitMix             String?
+  expectedClose       String?
+  closedLostReason    String?
+  closedWonReason     String?
+
   closeDate DateTime?
   ownerId   String?
   owner     User?     @relation(fields: [ownerId], references: [id])
