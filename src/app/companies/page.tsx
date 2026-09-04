@@ -32,7 +32,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
     prisma.company.count({ where }),
     prisma.company.findMany({
       where,
-      orderBy: [{ lastActivityAt: "desc" }, { name: "asc" }],
+      orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { name: "asc" }],
       skip: (page - 1) * PAGE,
       take: PAGE,
       include: { owner: true, criteria: true, _count: { select: { contacts: true, deals: true } } },

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { logActivity } from "@/lib/activity";
 import { toJson } from "@/lib/taxonomy";
 import { inheritRoles } from "@/lib/roles";
 
@@ -47,9 +48,7 @@ export async function updateContact(id: string, fd: FormData) {
 export async function addContactNote(id: string, fd: FormData) {
   const body = s(fd, "body");
   if (!body) return;
-  const contact = await prisma.contact.findUnique({ where: { id }, select: { companyId: true } });
-  await prisma.activity.create({ data: { type: "NOTE", body, contactId: id, companyId: contact?.companyId ?? null } });
-  await prisma.contact.update({ where: { id }, data: { lastActivityAt: new Date() } });
+  await logActivity({ type: "NOTE", body, contactId: id });
   revalidatePath(`/contacts/${id}`);
 }
 

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { logActivity } from "@/lib/activity";
 import { normalizeGeographies, parseList, toJson } from "@/lib/taxonomy";
 import { syncContactRolesForCompany } from "@/lib/roles";
 
@@ -88,7 +89,6 @@ export async function updateCompanyCriteria(id: string, fd: FormData) {
 export async function addCompanyNote(id: string, fd: FormData) {
   const body = s(fd, "body");
   if (!body) return;
-  await prisma.activity.create({ data: { type: "NOTE", body, companyId: id } });
-  await prisma.company.update({ where: { id }, data: { lastActivityAt: new Date() } });
+  await logActivity({ type: "NOTE", body, companyId: id });
   revalidatePath(`/companies/${id}`);
 }

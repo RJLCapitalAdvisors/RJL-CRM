@@ -41,7 +41,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     prisma.contact.count({ where }),
     prisma.contact.findMany({
       where,
-      orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }],
+      orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { lastName: "asc" }],
       skip: (page - 1) * PAGE,
       take: PAGE,
       include: { owner: true, company: { include: { criteria: { select: { assetClasses: true } } } } },

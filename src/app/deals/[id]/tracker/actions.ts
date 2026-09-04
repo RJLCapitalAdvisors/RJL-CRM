@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { logActivity } from "@/lib/activity";
 import { AWAITING_RESPONSE, statusOf } from "@/lib/tracker";
 
 const s = (fd: FormData, k: string) => {
@@ -18,7 +19,7 @@ function touch(dealId: string) {
 export async function setTrackerStatus(rowId: string, status: number) {
   if (!statusOf(status) || status < 1 || status > 8) return;
   const row = await prisma.dealInvestor.update({ where: { id: rowId }, data: { status } });
-  await prisma.activity.create({ data: { type: "NOTE", body: `Tracker: ${statusOf(status).short}`, contactId: row.contactId, dealId: row.dealId } });
+  await logActivity({ type: "NOTE", body: `Tracker: ${statusOf(status).short}`, contactId: row.contactId, dealId: row.dealId });
   touch(row.dealId);
 }
 

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { logActivity } from "@/lib/activity";
 import { DEAL_STAGES } from "@/lib/taxonomy";
 import { parseDetails } from "@/lib/checklist";
 import { detailsFromForm } from "@/components/checklist-fields";
@@ -113,7 +114,7 @@ export async function addDealNote(id: string, fd: FormData) {
   const body = s(fd, "body");
   if (!body) return;
   const deal = await prisma.deal.findUnique({ where: { id }, select: { sponsorCompanyId: true } });
-  await prisma.activity.create({ data: { type: "NOTE", body, dealId: id, companyId: deal?.sponsorCompanyId ?? null } });
+  await logActivity({ type: "NOTE", body, dealId: id, companyId: deal?.sponsorCompanyId ?? null });
   revalidatePath(`/deals/${id}`);
 }
 

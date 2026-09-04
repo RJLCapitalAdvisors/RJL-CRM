@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { logActivity } from "@/lib/activity";
 import { buildAudience } from "@/lib/audience";
 import { mailConfigured, sendEmail } from "@/lib/mailer";
 import { renderForRecipient } from "@/lib/campaign-render";
@@ -114,8 +115,7 @@ async function logSent(recipientId: string, via: string, providerId?: string) {
   const r = await loadRecipient(recipientId);
   const { subject } = renderForRecipient({ ...r.campaign, deal: r.campaign.deal as unknown as Record<string, unknown> | null }, r);
   await prisma.campaignRecipient.update({ where: { id: recipientId }, data: { status: "SENT", sentVia: via, sentAt: new Date(), providerId: providerId ?? null, error: null } });
-  await prisma.activity.create({
-    data: {
+  await logActivity({
       type: "EMAIL",
       direction: "OUTBOUND",
       subject,
@@ -124,9 +124,7 @@ async function logSent(recipientId: string, via: string, providerId?: string) {
       companyId: r.contact.companyId,
       dealId: r.campaign.dealId,
       externalId: providerId ? `resend:${providerId}` : null,
-    },
   });
-  await prisma.contact.update({ where: { id: r.contactId }, data: { lastActivityAt: new Date() } });
   // Keep the deal progress tracker in step: sending moves the investor to Deal Sent (or Followed Up).
   if (r.campaign.dealId && r.campaign.mode === "OUTREACH") {
     const target = r.campaign.followUp ? STATUS_FOLLOWED_UP : STATUS_SENT;

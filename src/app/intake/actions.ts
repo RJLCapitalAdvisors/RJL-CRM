@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { logActivity } from "@/lib/activity";
 import { extractDeal, missingItems, type ExtractedDeal, EMPTY } from "@/lib/intake";
 import { detailsFromForm } from "@/components/checklist-fields";
 import { contactForEmail, domainOf } from "@/lib/domains";
@@ -174,9 +175,7 @@ export async function createDealFromIntake(id: string): Promise<string> {
       }
     }
   }
-  await prisma.activity.create({
-    data: { type: "EMAIL", direction: "INBOUND", subject: it.subject ?? "Forwarded deal", body: it.rawText.slice(0, 4000), dealId: deal.id, companyId: sponsorCompanyId, contactId: senderContactId },
-  });
+  await logActivity({ type: "EMAIL", direction: "INBOUND", subject: it.subject ?? "Forwarded deal", body: it.rawText.slice(0, 4000), dealId: deal.id, companyId: sponsorCompanyId, contactId: senderContactId });
   await prisma.dealIntake.update({ where: { id }, data: { status: "CONVERTED", dealId: deal.id } });
   try {
     revalidatePath("/intake");

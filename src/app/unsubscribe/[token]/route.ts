@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { logActivity } from "@/lib/activity";
 import { verifyContactToken } from "@/lib/tokens";
 
 const page = (title: string, body: string) =>
@@ -20,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   if (!contact.unsubscribed) {
     await prisma.contact.update({ where: { id }, data: { unsubscribed: true } });
     await prisma.campaignRecipient.updateMany({ where: { contactId: id, status: "PENDING" }, data: { status: "UNSUBSCRIBED" } });
-    await prisma.activity.create({ data: { type: "NOTE", body: "Unsubscribed from email via link", contactId: id } });
+    await logActivity({ type: "NOTE", body: "Unsubscribed from email via link", contactId: id });
   }
   return page("You're unsubscribed", "You will no longer receive deal emails from us.");
 }
