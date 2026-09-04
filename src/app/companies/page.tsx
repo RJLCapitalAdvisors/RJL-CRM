@@ -1,26 +1,29 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { ROLES, US_STATES } from "@/lib/taxonomy";
-import { PageHeader, Pager, RoleChips, SearchForm } from "@/components/ui";
+import { PageHeader, Pager, RoleChips } from "@/components/ui";
+import { ListFilters } from "@/components/list-filters";
 import { parseList } from "@/lib/taxonomy";
 import { fmtDate, str } from "@/lib/format";
 import { CompanyLogo } from "@/components/company-logo";
 
 export const dynamic = "force-dynamic";
 const PAGE = 50;
+const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);
 
 export default async function CompaniesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const q = str(sp.q).trim();
-  const role = str(sp.role);
+  const roles = list(sp.role);
+  const assets = list(sp.asset);
   const state = str(sp.state);
   const page = Math.max(1, Number(str(sp.page)) || 1);
 
   const where: Prisma.CompanyWhereInput = {
     AND: [
       q ? { OR: [{ name: { contains: q } }, { city: { contains: q } }, { contacts: { some: { email: { contains: q } } } }] } : {},
-      role ? { roles: { contains: `"${role}"` } } : {},
+      roles.length ? { OR: roles.map((r) => ({ roles: { contains: `"${r}"` } })) } : {},
+      assets.length ? { OR: assets.map((a) => ({ criteria: { assetClasses: { contains: `"${a}"` } } })) } : {},
       state ? { state } : {},
     ],
   };
@@ -39,7 +42,8 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
   const makeHref = (p: number) => {
     const u = new URLSearchParams();
     if (q) u.set("q", q);
-    if (role) u.set("role", role);
+    for (const r of roles) u.append("role", r);
+    for (const a of assets) u.append("asset", a);
     if (state) u.set("state", state);
     u.set("page", String(p));
     return `/companies?${u}`;
@@ -57,24 +61,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
         }
       />
       <div className="px-8 py-4">
-        <SearchForm action="/companies" q={q} placeholder="Search name, city, or contact email">
-          <select name="role" defaultValue={role} className="input w-44">
-            <option value="">All roles</option>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-          <select name="state" defaultValue={state} className="input w-40">
-            <option value="">All states</option>
-            {Object.keys(US_STATES).map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </SearchForm>
+        <ListFilters basePath="/companies" initial={{ q, roles, assets, state }} placeholder="Search name, city, or contact email" withState />
       </div>
       <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <div className="min-h-0 flex-1 overflow-auto">

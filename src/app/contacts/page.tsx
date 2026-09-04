@@ -1,19 +1,21 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { ROLES } from "@/lib/taxonomy";
-import { PageHeader, Pager, RoleChips, SearchForm } from "@/components/ui";
+import { PageHeader, Pager, RoleChips } from "@/components/ui";
+import { ListFilters } from "@/components/list-filters";
 import { fmtDate, fullName, str } from "@/lib/format";
+import { parseList } from "@/lib/taxonomy";
 import { CompanyLogo } from "@/components/company-logo";
 
 export const dynamic = "force-dynamic";
 const PAGE = 50;
+const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);
 
 export default async function ContactsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const q = str(sp.q).trim();
-  const role = str(sp.role);
-  const status = str(sp.status);
+  const roles = list(sp.role);
+  const assets = list(sp.asset);
   const page = Math.max(1, Number(str(sp.page)) || 1);
 
   const where: Prisma.ContactWhereInput = {
@@ -29,11 +31,9 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             ],
           }
         : {},
-      role ? { roles: { contains: `"${role}"` } } : {},
-      status === "marketing" ? { marketingContact: true, unsubscribed: false, bounceReason: null } : {},
-      status === "unsubscribed" ? { unsubscribed: true } : {},
-      status === "bounced" ? { bounceReason: { not: null } } : {},
-      status === "noemail" ? { email: null } : {},
+      roles.length ? { OR: roles.map((r) => ({ roles: { contains: `"${r}"` } })) } : {},
+      // asset classes flow from the company's criteria to its contacts; a contact's own criteria also counts
+      assets.length ? { OR: assets.flatMap((a) => [{ criteria: { assetClasses: { contains: `"${a}"` } } }, { company: { criteria: { assetClasses: { contains: `"${a}"` } } } }]) } : {},
     ],
   };
 
@@ -44,15 +44,15 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }],
       skip: (page - 1) * PAGE,
       take: PAGE,
-      include: { owner: true, company: true },
+      include: { owner: true, company: { include: { criteria: { select: { assetClasses: true } } } } },
     }),
   ]);
 
   const makeHref = (p: number) => {
     const u = new URLSearchParams();
     if (q) u.set("q", q);
-    if (role) u.set("role", role);
-    if (status) u.set("status", status);
+    for (const r of roles) u.append("role", r);
+    for (const a of assets) u.append("asset", a);
     u.set("page", String(p));
     return `/contacts?${u}`;
   };
@@ -69,23 +69,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
         }
       />
       <div className="px-8 py-4">
-        <SearchForm action="/contacts" q={q} placeholder="Search name, email, phone, or company">
-          <select name="role" defaultValue={role} className="input w-44">
-            <option value="">All roles</option>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-          <select name="status" defaultValue={status} className="input w-44">
-            <option value="">Any email status</option>
-            <option value="marketing">Marketing contact</option>
-            <option value="unsubscribed">Unsubscribed</option>
-            <option value="bounced">Hard bounced</option>
-            <option value="noemail">No email</option>
-          </select>
-        </SearchForm>
+        <ListFilters basePath="/contacts" initial={{ q, roles, assets }} placeholder="Search name, email, phone, or company" />
       </div>
       <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <div className="min-h-0 flex-1 overflow-auto">
@@ -96,7 +80,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
               <th>Email</th>
               <th>Company</th>
               <th>Roles</th>
-              <th>Phone</th>
+              <th>Asset classes</th>
               <th>Owner</th>
               <th>Status</th>
               <th>Last activity</th>
@@ -124,7 +108,9 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                 <td>
                   <RoleChips roles={k.roles} />
                 </td>
-                <td className="whitespace-nowrap text-muted">{k.phone}</td>
+                <td className="max-w-[240px] truncate" title={parseList(k.company?.criteria?.assetClasses).join(", ")}>
+                  {parseList(k.company?.criteria?.assetClasses).join(", ") || <span className="text-muted">—</span>}
+                </td>
                 <td className="whitespace-nowrap">{k.owner?.name ?? <span className="text-muted">—</span>}</td>
                 <td className="whitespace-nowrap text-xs">
                   {k.unsubscribed ? <span className="chip bg-stone-200">Unsubscribed</span> : k.bounceReason ? <span className="chip bg-amber-100">Bounced</span> : k.marketingContact ? <span className="chip bg-sky/50">Marketing</span> : <span className="text-muted">—</span>}
