@@ -65,6 +65,9 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
                 Filter
               </button>
             </form>
+            <Link href="/intake" className="btn-secondary" title="Paste a forwarded deal email; it becomes a deal in Deal Received">
+              From email
+            </Link>
             <Link href="/deals/new" className="btn-primary">
               New deal
             </Link>

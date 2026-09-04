@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       await sendEmail({
         to: fromEmail,
         subject: `Deal intake: ${d.propertyName ?? subject ?? "forwarded deal"} – ${missing.length ? `${missing.length} items missing` : "complete"}`,
-        html: `<p>Parsed the deal you forwarded. <a href="${base}/intake/${intake.id}">Review and create the deal</a>.</p>
+        html: `<p>Logged the deal you forwarded in the CRM (Deal Received). <a href="${base}/deals/${intake.dealId}">Open the deal</a>.</p>
 <h3>Extracted</h3><table>${rows}</table>
 <h3>Still needed from the sponsor</h3>${missing.length ? `<ul>${missing.map((k) => `<li>${labelFor(k, d.strategy)}</li>`).join("")}</ul>` : "<p>Nothing – checklist complete.</p>"}
 ${d.confidenceNotes ? `<p style="color:#6b716e">${d.confidenceNotes}</p>` : ""}`,

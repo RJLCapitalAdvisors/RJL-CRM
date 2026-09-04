@@ -38,12 +38,14 @@ export async function processIntake(input: { rawText: string; subject?: string |
       extractor,
     },
   });
+  // No review step: a forwarded deal becomes a deal right away (Deal Received). The intake record keeps the original email.
+  const dealId = await createDealFromIntake(intake.id);
   try {
     revalidatePath("/intake");
   } catch {
     // Called outside a request (webhook/script): nothing to revalidate.
   }
-  return intake;
+  return { ...intake, dealId };
 }
 
 export async function submitPastedEmail(fd: FormData) {
@@ -51,7 +53,7 @@ export async function submitPastedEmail(fd: FormData) {
   if (!rawText) return;
   const attachments = (s(fd, "attachments") ?? "").split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
   const intake = await processIntake({ rawText, subject: s(fd, "subject"), fromName: s(fd, "fromName"), fromEmail: s(fd, "fromEmail"), source: "PASTE", attachments });
-  redirect(`/intake/${intake.id}`);
+  redirect(`/deals/${intake.dealId}`);
 }
 
 export async function reprocessIntake(id: string) {
@@ -101,9 +103,10 @@ export async function updateExtracted(id: string, fd: FormData) {
   revalidatePath(`/intake/${id}`);
 }
 
-export async function convertIntakeToDeal(id: string) {
+/** Create the deal from an intake record. Returns the deal id (existing one if already converted). */
+export async function createDealFromIntake(id: string): Promise<string> {
   const it = await prisma.dealIntake.findUniqueOrThrow({ where: { id } });
-  if (it.dealId) redirect(`/deals/${it.dealId}`);
+  if (it.dealId) return it.dealId;
   const d = { ...EMPTY, ...(JSON.parse(it.extracted) as Partial<ExtractedDeal>) } as ExtractedDeal;
   const sponsor = d.sponsorName ? await prisma.company.findFirst({ where: { name: { contains: d.sponsorName } }, select: { id: true } }) : null;
   const propertyName = d.propertyName ?? it.subject ?? "New deal";
@@ -131,15 +134,40 @@ export async function convertIntakeToDeal(id: string) {
       sponsorExperience: d.sponsorExperience,
       summary: d.summary,
       details: JSON.stringify(d.details ?? {}),
+      units: d.units != null ? Math.trunc(d.units) : null,
+      squareFeet: d.squareFeet,
+      yearBuilt: d.yearBuilt,
+      unitMix: d.unitMix,
+      totalCapitalization: d.totalCapitalization,
+      totalDebt: d.totalDebt,
+      executionType: d.executionType,
+      interestRate: d.interestRate,
+      lenderType: d.lenderType,
+      irr: d.irr,
+      capRateT12: d.capRateT12,
+      capRateY1: d.capRateY1,
+      yieldOnCost: d.yieldOnCost,
+      cashOnCash: d.cashOnCash,
+      holdPeriod: d.holdPeriod,
     },
   });
   await prisma.activity.create({
     data: { type: "EMAIL", direction: "INBOUND", subject: it.subject ?? "Forwarded deal", body: it.rawText.slice(0, 4000), dealId: deal.id, companyId: sponsor?.id ?? null },
   });
   await prisma.dealIntake.update({ where: { id }, data: { status: "CONVERTED", dealId: deal.id } });
-  revalidatePath("/intake");
-  revalidatePath("/deals");
-  redirect(`/deals/${deal.id}`);
+  try {
+    revalidatePath("/intake");
+    revalidatePath("/deals");
+    revalidatePath("/");
+  } catch {
+    // outside a request
+  }
+  return deal.id;
+}
+
+export async function convertIntakeToDeal(id: string) {
+  const dealId = await createDealFromIntake(id);
+  redirect(`/deals/${dealId}`);
 }
 
 export async function dismissIntake(id: string) {
