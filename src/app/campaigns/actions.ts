@@ -7,6 +7,7 @@ import { buildAudience } from "@/lib/audience";
 import { mailConfigured, sendEmail } from "@/lib/mailer";
 import { renderForRecipient } from "@/lib/campaign-render";
 import { unsubscribeUrl } from "@/lib/tokens";
+import { STATUS_FOLLOWED_UP, STATUS_SENT } from "@/lib/tracker";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -126,6 +127,14 @@ async function logSent(recipientId: string, via: string, providerId?: string) {
     },
   });
   await prisma.contact.update({ where: { id: r.contactId }, data: { lastActivityAt: new Date() } });
+  // Keep the deal progress tracker in step: sending moves the investor to Deal Sent (or Followed Up).
+  if (r.campaign.dealId && r.campaign.mode === "OUTREACH") {
+    const target = r.campaign.followUp ? STATUS_FOLLOWED_UP : STATUS_SENT;
+    const row = await prisma.dealInvestor.findUnique({ where: { dealId_contactId: { dealId: r.campaign.dealId, contactId: r.contactId } } });
+    if (!row) await prisma.dealInvestor.create({ data: { dealId: r.campaign.dealId, contactId: r.contactId, status: target } });
+    else if (row.status < target) await prisma.dealInvestor.update({ where: { id: row.id }, data: { status: target } });
+    revalidatePath(`/deals/${r.campaign.dealId}/tracker`);
+  }
   await refreshCampaignStatus(r.campaignId);
   revalidatePath(`/campaigns/${r.campaignId}`);
   revalidatePath(`/contacts/${r.contactId}`);

@@ -77,6 +77,7 @@ model Contact {
   criteria   InvestorCriteria?
   activities Activity[]
   recipients CampaignRecipient[]
+  dealRows   DealInvestor[]
 
   lastActivityAt DateTime?
   createdAt      DateTime  @default(now())
@@ -164,17 +165,51 @@ model Deal {
   closedLostReason    String?
   closedWonReason     String?
 
+  // Progress report (tracker) header fields
+  trackerPreparedFor  String? // e.g. sponsor contact the report is for
+  trackerThemes       String? // notable feedback themes across investor responses
+  trackerItemsNote    String? // extra "items needed from sponsor" beyond the checklist
+
   closeDate DateTime?
   ownerId   String?
   owner     User?     @relation(fields: [ownerId], references: [id])
 
   activities Activity[]
   campaigns  Campaign[]
+  investors  DealInvestor[]
+  actions    DealAction[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([stage])
+}
+
+// Investor progress tracker row for a deal (mirrors the legacy Google Drive progress report).
+model DealInvestor {
+  id        String    @id @default(cuid())
+  dealId    String
+  deal      Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact   @relation(fields: [contactId], references: [id])
+  status    Int       @default(1) // 1 Deal Not Sent .. 8 Pass (see src/lib/tracker.ts)
+  note      String?
+  noteDate  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([dealId, contactId])
+  @@index([dealId, status])
+}
+
+model DealAction {
+  id        String   @id @default(cuid())
+  dealId    String
+  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  text      String
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Activity {
@@ -216,6 +251,7 @@ model Campaign {
   id         String   @id @default(cuid())
   name       String
   mode       String   @default("OUTREACH") // OUTREACH (one at a time, personalized) | BLAST (send all at once)
+  followUp   Boolean  @default(false) // follow-up round: sending moves tracker rows to "Followed Up"
   status     String   @default("DRAFT") // DRAFT | SENDING | SENT | PARTIAL
   templateId String?
   template   EmailTemplate? @relation(fields: [templateId], references: [id])

@@ -4,6 +4,15 @@ import { prisma } from "../src/lib/db";
 
 const templates = [
   {
+    name: "Follow-up – confirm receipt",
+    subject: "Re: {{deal.propertyName}} – {{deal.requestedAmount}} of {{deal.executionType|capital}}",
+    bodyHtml: `Hi {{contact.firstName|there}} - {{openingLine|hope you are well.}} Please confirm receipt of {{deal.propertyName}} and let me know if it is something you would take a look at.
+
+Best,
+{{sender.name}}
+RJL Capital Advisors`,
+  },
+  {
     name: "Deal intro – investors",
     subject: "{{deal.assetClass|CRE}} opportunity: {{deal.propertyName}} – {{deal.requestedAmount}} {{deal.requestType}}",
     bodyHtml: `Hi {{contact.firstName|there}},
