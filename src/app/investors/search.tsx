@@ -235,10 +235,10 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
           <div className="text-xs text-muted">Sorted best fit first. Click a firm to open it.</div>
         </div>
         <div className="max-h-[78vh] overflow-auto">
-          <table className="table w-full">
+          <table className="table w-full min-w-[960px]">
             <thead>
               <tr>
-                <th>Firm</th>
+                <th className="w-[240px]">Firm</th>
                 <th>Best contact</th>
                 {anySpec && <th className="text-center">Fit</th>}
                 <th>Why</th>
@@ -277,7 +277,15 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
                       </span>
                     </td>
                   )}
-                  <td className="text-xs">{reasons.join(" · ")}</td>
+                  <td className="text-xs">
+                    <div className="flex flex-wrap gap-1">
+                      {reasons.map((x) => (
+                        <span key={x} className="chip bg-emerald-50 text-emerald-900">
+                          {x}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
                   <td className="text-xs text-muted">{misses.join(", ")}</td>
                 </tr>
               ))}
