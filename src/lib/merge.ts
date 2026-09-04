@@ -1,6 +1,6 @@
-import { fmtMoney } from "@/lib/format";
 import { US_STATES } from "@/lib/taxonomy";
 import { CHECKLIST, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
+import { intro, metricsHtml, subjectLine, usd } from "@/lib/deal-copy";
 
 // Merge fields available in templates. Syntax: {{deal.propertyName}} or with a fallback {{contact.firstName|there}}
 export const MERGE_FIELDS: { key: string; label: string }[] = [
@@ -49,6 +49,9 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.unitMix", label: "Unit mix" },
   { key: "deal.expectedClose", label: "Expected close" },
   { key: "deal.summary", label: "Deal summary / business plan" },
+  { key: "deal.subjectLine", label: "House-style subject: Asset Acquisition Opportunity in City, ST | $X of JV Equity" },
+  { key: "deal.intro", label: "House-style intro paragraph (adapts to asset class and development vs acquisition)" },
+  { key: "deal.metrics", label: "Deal Metrics bullet list (per foot / per unit as the asset class calls for)" },
   { key: "deal.facts", label: "Bulleted list of every answered checklist item" },
   ...CHECKLIST.filter((it) => !it.core).map((it) => ({ key: `deal.details.${it.key}`, label: it.label })),
   { key: "openingLine", label: "Personal opening line (set per recipient in deal outreach)" },
@@ -67,7 +70,7 @@ export type MergeContext = {
 
 function fmt(key: string, v: unknown): string {
   if (v == null || v === "") return "";
-  if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization"].includes(key)) return fmtMoney(Number(v));
+  if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization"].includes(key)) return usd(Number(v));
   if (["deal.ltv", "deal.ltc", "deal.occupancy", "deal.irr", "deal.yieldOnCost", "deal.capRateY1", "deal.capRateT12", "deal.cashOnCash"].includes(key)) return `${v}%`;
   if (key === "deal.units" || key === "deal.squareFeet") return Number(v).toLocaleString("en-US");
   if (v instanceof Date) return v.toLocaleDateString("en-US");
@@ -78,6 +81,9 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "unsubscribeUrl") return ctx.unsubscribeUrl;
   if (path === "openingLine") return ctx.openingLine ?? "";
   if (path === "deal.facts") return ctx.deal ? factsBlock(ctx.deal as DealLikeForChecklist) : "";
+  if (path === "deal.subjectLine") return ctx.deal ? subjectLine(ctx.deal) : "";
+  if (path === "deal.intro") return ctx.deal ? intro(ctx.deal) : "";
+  if (path === "deal.metrics") return ctx.deal ? metricsHtml(ctx.deal) : "";
   if (path.startsWith("deal.details.")) return parseDetails(ctx.deal?.details)[path.slice("deal.details.".length)] ?? "";
   if (path.startsWith("deal.") && ["pricePerUnit", "pricePerFoot", "capPerUnit", "capPerFoot", "avgUnitSize"].includes(path.slice(5))) {
     const d = ctx.deal ?? {};
@@ -86,7 +92,9 @@ function lookup(ctx: MergeContext, path: string): unknown {
     const ratio = (a: number | null, b: number | null) => (a && b ? Math.round(a / b) : null);
     const val = { pricePerUnit: ratio(pp, u), pricePerFoot: ratio(pp, sf), capPerUnit: ratio(tc, u), capPerFoot: ratio(tc, sf), avgUnitSize: ratio(sf, u) }[path.slice(5)];
     if (val == null) return "";
-    return path === "deal.avgUnitSize" ? `${val.toLocaleString("en-US")} SF` : val.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+    if (path === "deal.avgUnitSize") return `${val.toLocaleString("en-US")} SF`;
+    const exact = { pricePerFoot: pp && sf ? pp / sf : null, capPerFoot: tc && sf ? tc / sf : null }[path.slice(5) as "pricePerFoot" | "capPerFoot"];
+    return exact != null ? `${exact.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : val.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
   }
   if (path === "deal.location") return [ctx.deal?.city, ctx.deal?.state].filter(Boolean).join(", ");
   if (path === "deal.stateName") {

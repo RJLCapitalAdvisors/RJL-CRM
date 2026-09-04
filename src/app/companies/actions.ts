@@ -22,6 +22,7 @@ function companyData(fd: FormData) {
   return {
     name: s(fd, "name") ?? "(Unnamed company)",
     roles: list(fd, "roles"),
+    domain: s(fd, "domain")?.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") ?? null,
     website: s(fd, "website"),
     streetAddress: s(fd, "streetAddress"),
     city: s(fd, "city"),

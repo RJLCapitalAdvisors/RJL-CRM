@@ -17,6 +17,7 @@ function pickDefault(templates: Tpl[], deal: Record<string, unknown>): string {
   const pref = /Pref/.test(exec);
   const score = (t: Tpl) => {
     const n = t.name.toLowerCase();
+    if (n.includes("house style")) return 100;
     let s = 0;
     if (debt) return n.includes("debt") ? 10 : 0;
     if (n.includes("fund") || n.includes("engagement") || n.includes("shopping") || n.includes("follow-up") || n.includes("legacy") || n.includes("blast")) return -1;

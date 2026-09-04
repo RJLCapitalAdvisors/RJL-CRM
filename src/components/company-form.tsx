@@ -4,6 +4,7 @@ import { Field } from "./record-layout";
 type CompanyLike = {
   name: string;
   roles: string;
+  domain?: string | null;
   website: string | null;
   streetAddress: string | null;
   city: string | null;
@@ -32,6 +33,10 @@ export function CompanyForm({ company, users, action, submitLabel = "Save" }: { 
           ))}
         </div>
         <div className="mt-1 text-[11px] text-muted">Applies to every contact at this company.</div>
+      </Field>
+      <Field label="Email domain" htmlFor="domain">
+        <input id="domain" name="domain" defaultValue={c?.domain ?? ""} className="input" placeholder="citivestinc.com" />
+        <div className="mt-1 text-[11px] text-muted">New contacts with this email domain are filed under this company automatically.</div>
       </Field>
       <Field label="Website" htmlFor="website">
         <input id="website" name="website" defaultValue={c?.website ?? ""} className="input" placeholder="https://" />

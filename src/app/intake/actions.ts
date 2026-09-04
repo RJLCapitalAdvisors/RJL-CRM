@@ -5,6 +5,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { extractDeal, missingItems, type ExtractedDeal, EMPTY } from "@/lib/intake";
 import { detailsFromForm } from "@/components/checklist-fields";
+import { contactForEmail, domainOf } from "@/lib/domains";
+import { syncContactRolesForCompany } from "@/lib/roles";
+import { parseList, toJson } from "@/lib/taxonomy";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -151,8 +154,28 @@ export async function createDealFromIntake(id: string): Promise<string> {
       holdPeriod: d.holdPeriod,
     },
   });
+  // The person who sent the deal: find or create the contact, tie them to their email-domain company,
+  // mark that company (and its people) as a Sponsor, and use it as the deal's sponsor if we had no match.
+  let senderContactId: string | null = null;
+  let sponsorCompanyId = sponsor?.id ?? null;
+  const senderEmail = d.contactEmail ?? it.fromEmail;
+  if (senderEmail && domainOf(senderEmail)) {
+    const contact = await contactForEmail(senderEmail, { name: d.contactName ?? it.fromName, companyNameHint: d.sponsorName, extraRoles: ["Sponsor"] });
+    senderContactId = contact.id;
+    if (contact.company) {
+      const roles = parseList(contact.company.roles);
+      if (!roles.includes("Sponsor")) {
+        await prisma.company.update({ where: { id: contact.company.id }, data: { roles: toJson([...roles, "Sponsor"]) } });
+        await syncContactRolesForCompany(contact.company.id, roles, [...roles, "Sponsor"]);
+      }
+      if (!sponsorCompanyId) {
+        sponsorCompanyId = contact.company.id;
+        await prisma.deal.update({ where: { id: deal.id }, data: { sponsorCompanyId, sponsorName: d.sponsorName ?? contact.company.name } });
+      }
+    }
+  }
   await prisma.activity.create({
-    data: { type: "EMAIL", direction: "INBOUND", subject: it.subject ?? "Forwarded deal", body: it.rawText.slice(0, 4000), dealId: deal.id, companyId: sponsor?.id ?? null },
+    data: { type: "EMAIL", direction: "INBOUND", subject: it.subject ?? "Forwarded deal", body: it.rawText.slice(0, 4000), dealId: deal.id, companyId: sponsorCompanyId, contactId: senderContactId },
   });
   await prisma.dealIntake.update({ where: { id }, data: { status: "CONVERTED", dealId: deal.id } });
   try {

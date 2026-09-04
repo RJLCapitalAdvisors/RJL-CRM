@@ -28,6 +28,7 @@ model Company {
   hubspotId     String?  @unique
   name          String
   roles         String   @default("[]") // JSON: Sponsor | Investor | Retail Investor | Lender | Broker
+  domain        String?  // email domain (citivestinc.com); contacts with this domain belong here
   website       String?
   streetAddress String?
   city          String?
@@ -49,6 +50,7 @@ model Company {
 
   @@index([name])
   @@index([state])
+  @@index([domain])
 }
 
 model Contact {
