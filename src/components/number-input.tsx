@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 /** Formats digits with thousands separators as you type. Submits the formatted text; the server strips the commas. */
-export function NumberInput({ name, defaultValue, decimals = true, placeholder, className = "input max-w-md", onValue }: { name: string; defaultValue?: number | string | null; decimals?: boolean; placeholder?: string; className?: string; onValue?: (n: number | null) => void }) {
+export function NumberInput({ name, defaultValue, decimals = true, placeholder, className = "input", onValue }: { name: string; defaultValue?: number | string | null; decimals?: boolean; placeholder?: string; className?: string; onValue?: (n: number | null) => void }) {
   const fmt = (raw: string) => {
     let s = raw.replace(/[^0-9.]/g, "");
     if (!decimals) s = s.replace(/\./g, "");

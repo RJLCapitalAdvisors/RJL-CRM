@@ -102,10 +102,12 @@ export function metrics(d: D): string[] {
   const ltv = n(d.ltv);
   const rate = s(d.interestRate);
   const term = s(d.loanTerm);
+  const amort = s(d.amortization);
   const lender = s(d.lenderType);
   if (debt || ltc || ltv || rate) {
     const lev = ltc ? `${pct(ltc)} LTC${ltv ? ` (${pct(ltv)} LTV)` : ""}` : ltv ? `${pct(ltv)} LTV` : "";
-    out.push(`Total Debt and Terms: ${[debt ? usd(debt) : null, [lev, rate ? `@ ${rate}` : null].filter(Boolean).join(" ")].filter(Boolean).join(" | ")}${term ? ` - ${term}` : ""}${lender ? ` - (${lender})` : ""}`);
+    const structure = amort && term ? ` - ${amort} on a ${term}` : amort ? ` - ${amort}` : term ? ` - ${term}` : "";
+    out.push(`Total Debt and Terms: ${[debt ? usd(debt) : null, [lev, rate ? `@ ${rate}` : null].filter(Boolean).join(" ")].filter(Boolean).join(" | ")}${structure}${lender ? ` - (${lender})` : ""}`);
   }
   const eq = n(d.totalEquity);
   if (eq) out.push(`Total Equity: ${usd(eq)}`);

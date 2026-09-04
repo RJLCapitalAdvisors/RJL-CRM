@@ -35,7 +35,8 @@ export async function moveDeal(id: string, stage: string) {
 async function dealData(fd: FormData) {
   const sponsorName = s(fd, "sponsorName");
   const propertyName = s(fd, "propertyName");
-  const onMarket = s(fd, "onMarket");
+  const sourcing = s(fd, "detail.sourcing");
+  const onMarketRaw = s(fd, "onMarket") ?? (sourcing ? (/off-market|note purchase|reo|recapitalization|sale-leaseback/i.test(sourcing) ? "off" : "on") : null);
   let sponsorCompanyId = s(fd, "sponsorCompanyId");
   if (!sponsorCompanyId && sponsorName) {
     const match = await prisma.company.findFirst({ where: { name: sponsorName }, select: { id: true } });
@@ -54,18 +55,20 @@ async function dealData(fd: FormData) {
     state: s(fd, "state"),
     assetClass: s(fd, "assetClass"),
     strategy: s(fd, "strategy"),
-    onMarket: onMarket == null ? null : onMarket === "on",
+    onMarket: onMarketRaw == null ? null : onMarketRaw === "on",
     requestType: s(fd, "requestType"),
     requestedAmount: num(fd, "requestedAmount"),
-    totalEquity: num(fd, "totalEquity"),
+    // Total equity is derived: total capitalization minus total debt (falls back to a typed value if only that exists).
+    totalEquity: num(fd, "totalCapitalization") != null && num(fd, "totalDebt") != null ? num(fd, "totalCapitalization")! - num(fd, "totalDebt")! : num(fd, "totalEquity"),
     purchasePrice: num(fd, "purchasePrice"),
     ltv: num(fd, "ltv"),
     loanTerm: s(fd, "loanTerm"),
+    amortization: s(fd, "amortization"),
     equityMultiple: num(fd, "equityMultiple"),
     occupancy: num(fd, "occupancy"),
     sponsorExperience: s(fd, "sponsorExperience"),
     summary: s(fd, "summary"),
-    closeDate: date(fd, "closeDate"),
+    closeDate: fd.has("closeDate") ? date(fd, "closeDate") : undefined,
     ownerId: s(fd, "ownerId"),
     executionType: s(fd, "executionType"),
     totalDebt: num(fd, "totalDebt"),
@@ -79,7 +82,6 @@ async function dealData(fd: FormData) {
     capRateY1: num(fd, "capRateY1"),
     capRateT12: num(fd, "capRateT12"),
     cashOnCash: num(fd, "cashOnCash"),
-    projectedReturns: s(fd, "projectedReturns"),
     units: num(fd, "units") != null ? Math.trunc(num(fd, "units")!) : null,
     squareFeet: num(fd, "squareFeet"),
     yearBuilt: s(fd, "yearBuilt"),
@@ -92,7 +94,7 @@ async function dealData(fd: FormData) {
 
 export async function createDeal(fd: FormData) {
   const details: Record<string, string | null> = {};
-  if (s(fd, "detail.acres")) details.acres = s(fd, "detail.acres");
+  for (const key of Array.from(fd.keys())) if (key.startsWith("detail.") && s(fd, key)) details[key.slice(7)] = s(fd, key);
   const d = await prisma.deal.create({ data: { ...(await dealData(fd)), details: JSON.stringify(details) } });
   revalidatePath("/deals");
   redirect(`/deals/${d.id}`);
@@ -101,7 +103,7 @@ export async function createDeal(fd: FormData) {
 export async function updateDeal(id: string, fd: FormData) {
   const existing = await prisma.deal.findUniqueOrThrow({ where: { id }, select: { details: true } });
   const details = parseDetails(existing.details);
-  if (fd.has("detail.acres")) details.acres = s(fd, "detail.acres");
+  for (const key of Array.from(fd.keys())) if (key.startsWith("detail.")) details[key.slice(7)] = s(fd, key);
   await prisma.deal.update({ where: { id }, data: { ...(await dealData(fd)), details: JSON.stringify(details) } });
   revalidatePath(`/deals/${id}`);
   revalidatePath("/deals");

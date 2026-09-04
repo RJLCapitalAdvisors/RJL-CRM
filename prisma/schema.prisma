@@ -157,6 +157,7 @@ model Deal {
   totalCapitalization Float?
   ltc                 Float?
   interestRate        String?
+  amortization        String? // I/O and amortization structure, e.g. "2 years I/O followed by 30 year amortization"
   lenderType          String?
   irr                 Float?
   holdPeriod          String?

@@ -54,6 +54,7 @@ export function DealPreview({ templates, initial, senderName }: { templates: Tpl
         else next[key] = v || null;
       });
       next.details = details;
+      if (typeof next.totalCapitalization === "number" && typeof next.totalDebt === "number") next.totalEquity = next.totalCapitalization - next.totalDebt;
       setDeal(next);
     };
     read();

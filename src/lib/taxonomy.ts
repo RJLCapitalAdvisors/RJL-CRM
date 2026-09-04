@@ -257,3 +257,60 @@ export function stageTone(stage: string): string {
       return "bg-cream text-ink border-line";
   }
 }
+
+// ---------- deal ticket dropdowns (seeded from HubSpot values) ----------
+export const SOURCING_OPTIONS = [
+  "Completely off-market, direct with seller",
+  "Off-market through a broker relationship",
+  "Off-market through a relationship with the developer",
+  "On-market, quiet bidding process",
+  "On-market, lightly marketed",
+  "On-market, full marketing process",
+  "Bank / lender REO",
+  "Note purchase",
+  "Sale-leaseback",
+  "Recapitalization of existing ownership",
+] as const;
+export const SELLER_PROFILES = [
+  "Mom and pop owner",
+  "Long-term private owner",
+  "Institutional owner",
+  "Fund exiting / closing out",
+  "Family office",
+  "Original developer / merchant builder",
+  "REIT",
+  "Trust or estate liquidating",
+  "Distressed seller",
+  "Lender / REO",
+  "Government or municipality",
+  "Partnership dispute / recap",
+] as const;
+export const UNIT_MIXES = [
+  "studios and one-bedroom",
+  "studios, one-bed, and two-bedroom",
+  "studios, one-bed, two-bed, and three-bedroom",
+  "one-bedroom only",
+  "one-bed and two-bedroom",
+  "one-bed, two-bed, and three-bedroom",
+  "two-bed and three-bedroom",
+  "two-bed, three-bed, and four-bedroom",
+  "three-bed and four-bedroom (townhome / BFR)",
+] as const;
+export const LOAN_TERMS = ["1 year term", "18 month term", "2 year term", "3 year term", "4 year term", "5 year term", "7 year term", "10 year term", "12 year term", "15 year term", "Construction to permanent"] as const;
+export const AMORTIZATIONS = [
+  "full term I/O",
+  "1 year I/O followed by 30 year amortization",
+  "2 years of I/O followed by 30 year amortization",
+  "3 years of I/O followed by 30 year amortization",
+  "4 years of I/O followed by 30 year amortization",
+  "5 years of I/O followed by 30 year amortization",
+  "1 year I/O followed by 25 year amortization",
+  "2 years I/O followed by 25 year amortization",
+  "3 year I/O followed by 35 year amortization",
+  "20 year amortization",
+  "25 year amortization",
+  "30 year amortization",
+  "35 year amortization",
+  "40 year amortization (HUD)",
+] as const;
+export const LENDER_TYPES = ["Agency (Fannie Mae)", "Agency (Freddie Mac)", "Agency", "HUD", "Bank", "Credit Union", "Life Company", "CMBS", "Debt Fund", "Bridge Lender", "Private Lender", "Seller Financing", "Construction Lender", "Other"] as const;
