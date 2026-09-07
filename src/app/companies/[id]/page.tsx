@@ -89,17 +89,18 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
           {isInvestor ? (
             <div className="card">
               <div className="border-b border-line px-4 py-3 text-sm font-semibold">Investor criteria</div>
-              <fieldset disabled={!canEdit} className="px-4 py-2 disabled:opacity-70">
-                {!canEdit && <div className="mb-2 text-xs text-muted">Read only. Jonathan approves criteria changes.</div>}
+              <div className="px-4 py-2">
+                {!canEdit && <div className="mb-2 rounded-md bg-cream px-3 py-2 text-xs text-ink-soft">Changes you save here go to Jonathan for approval before they take effect.</div>}
                 <CriteriaForm criteria={company.criteria} action={updateCriteria} />
-              </fieldset>
+              </div>
             </div>
           ) : (
             <div className="card">
               <div className="border-b border-line px-4 py-3 text-sm font-semibold">{roles.includes("Sponsor") ? "Sponsor focus" : "Focus"}</div>
-              <fieldset disabled={!canEdit} className="px-4 py-2 disabled:opacity-70">
+              <div className="px-4 py-2">
+                {!canEdit && <div className="mb-2 rounded-md bg-cream px-3 py-2 text-xs text-ink-soft">Changes you save here go to Jonathan for approval before they take effect.</div>}
                 <SponsorFocusForm criteria={company.criteria} action={updateCriteria} />
-              </fieldset>
+              </div>
             </div>
           )}
         </>

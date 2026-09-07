@@ -15,7 +15,7 @@ export const PROPOSAL_FIELDS = {
   checkSizes: { label: "Check size", list: true, allowed: CHECK_SIZES },
   geographyNotes: { label: "Deal locations", list: false, allowed: null },
   assetClasses: { label: "Asset classes", list: true, allowed: ASSET_CLASSES },
-  investmentTypes: { label: "Type of investment", list: true, allowed: INVESTMENT_TYPES },
+  investmentTypes: { label: "Position in the capital stack", list: true, allowed: INVESTMENT_TYPES },
   strategy: { label: "Development / acquisitions", list: false, allowed: ["Development", "Acquisitions", "Both"] },
   returnProfile: { label: "Return profile", list: true, allowed: RETURN_PROFILES },
   holdPeriods: { label: "Hold period", list: true, allowed: HOLD_PERIODS },
@@ -117,4 +117,34 @@ export async function applyProposal(id: string, onlyFields?: ProposalField[]) {
 
 export async function rejectProposal(id: string) {
   await prisma.criteriaProposal.update({ where: { id }, data: { status: "REJECTED", reviewedAt: new Date() } });
+}
+
+/**
+ * A teammate edited criteria on a company page. Instead of writing it, turn the difference into a
+ * proposal for Jonathan to approve on Home. `data` is the criteriaData() shape from the form.
+ */
+export async function proposeManualChanges(companyId: string, data: Record<string, unknown>, byName: string) {
+  const co = await prisma.company.findUnique({ where: { id: companyId }, include: { criteria: true } });
+  if (!co) return null;
+  const crit = (co.criteria ?? null) as Record<string, unknown> | null;
+  const changes: Change[] = [];
+  for (const f of Object.keys(PROPOSAL_FIELDS) as ProposalField[]) {
+    if (!(f in data)) continue;
+    const v = data[f];
+    let to: string;
+    if (PROPOSAL_FIELDS[f].list) to = parseList(v as string).join(", ");
+    else if (typeof v === "boolean") to = v ? "Yes" : "No";
+    else to = ((v as string | null) ?? "").trim();
+    const from = current(crit, f);
+    if (to === from) continue;
+    changes.push({ field: f, from, to, evidence: `Edited by ${byName} on the company page` });
+  }
+  if (!changes.length) return null;
+  const pending = await prisma.criteriaProposal.findFirst({ where: { companyId, status: "PENDING" } });
+  if (pending) {
+    const existing = JSON.parse(pending.changes) as Change[];
+    const merged = [...existing.filter((e) => !changes.some((c) => c.field === e.field)), ...changes];
+    return prisma.criteriaProposal.update({ where: { id: pending.id }, data: { changes: JSON.stringify(merged), summary: `${byName} proposed criteria changes`, source: "MANUAL", sourceRef: byName } });
+  }
+  return prisma.criteriaProposal.create({ data: { source: "MANUAL", sourceRef: byName, companyId, summary: `${byName} proposed criteria changes`, changes: JSON.stringify(changes) } });
 }

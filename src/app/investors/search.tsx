@@ -107,7 +107,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
         )}
         {sel("assetClass", "Asset class", ASSET_CLASSES)}
         {sel("checkSize", "Check size", CHECK_SIZES)}
-        {sel("investmentType", "Type of investments", INVESTMENT_TYPES)}
+        {sel("investmentType", "Position in the capital stacks", INVESTMENT_TYPES)}
         {sel("strategy", "Acquisition or development", ["Acquisitions", "Development", "Both"])}
         {sel("returnProfile", "Return profile", RETURN_PROFILES)}
         {sel("holdPeriod", "Hold period", HOLD_PERIODS)}
@@ -140,7 +140,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
                 <th className="w-[260px]">Deal locations</th>
                 <th className="w-[220px]">Check sizes</th>
                 <th className="w-[230px]">Asset classes</th>
-                <th className="w-[180px]">Type of investment</th>
+                <th className="w-[180px]">Position in the capital stack</th>
                 <th className="w-[110px]">Acq / Dev</th>
                 <th className="w-[160px]">Return profile</th>
                 <th>Hold period</th>

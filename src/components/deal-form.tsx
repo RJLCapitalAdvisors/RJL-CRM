@@ -222,7 +222,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
       </Group>
 
       <Group title="Capital request">
-        <Row label="Type of investment" hint={pref ? "Pref / mezz: returns below switch to last-dollar metrics" : undefined}>
+        <Row label="Position in the capital stack" hint={pref ? "Pref / mezz: returns below switch to last-dollar metrics" : undefined}>
           <Select name="executionType" value={execType} options={EXECUTION_TYPES} onChange={setExecType} />
         </Row>
         <Row label={pref ? "Requested pref / mezz amount ($)" : "Requested amount ($)"}>

@@ -34,7 +34,7 @@ export function CriteriaForm({ criteria, action }: { criteria: CriteriaLike; act
       <Field label="Asset classes">
         <MultiSelect name="assetClasses" options={ASSET_CLASSES} selected={parseList(c?.assetClasses)} />
       </Field>
-      <Field label="Type of investment (position in the capital stack)">
+      <Field label="Position in the capital stack">
         <MultiSelect name="investmentTypes" options={INVESTMENT_TYPES} selected={parseList(c?.investmentTypes)} />
       </Field>
       <Field label="Check sizes">

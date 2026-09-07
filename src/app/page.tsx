@@ -111,7 +111,7 @@ export default async function Dashboard() {
                         <Link href={`/companies/${p.companyId}`} className="text-base font-semibold hover:underline">
                           {(p.companyId && companies.get(p.companyId)) ?? "Investor"}
                         </Link>
-                        <span className="shrink-0 text-xs text-muted">{p.source === "NOTE" ? "from a note" : p.source === "EMAIL" ? "from email" : p.source === "FIREFLIES" ? "from a call" : "manual"}</span>
+                        <span className="shrink-0 text-xs text-muted">{p.source === "NOTE" ? "from a note" : p.source === "EMAIL" ? "from email" : p.source === "FIREFLIES" ? "from a call" : `from ${p.sourceRef ?? "a teammate"}`}</span>
                       </div>
                       <ul className="mt-2 space-y-2">
                         {changes.map((c) => (
