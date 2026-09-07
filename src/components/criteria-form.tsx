@@ -1,4 +1,4 @@
-import { ASSET_CLASSES, CLOSING_TIMEFRAMES, INVESTMENT_TYPES, RETURN_PROFILES, STRATEGIES, parseList } from "@/lib/taxonomy";
+import { ASSET_CLASSES, CLOSING_TIMEFRAMES, INVESTMENT_TYPES, RETURN_PROFILES, ROLES, STRATEGIES, parseList } from "@/lib/taxonomy";
 import { MultiSelect } from "./multi-select";
 import { RangeSlider } from "./range-slider";
 import { CHECK_STOPS, HOLD_STOPS, VINTAGE_STOPS, checkRangeFrom, holdRangeFrom, vintageRangeFrom } from "@/lib/ranges";
@@ -28,7 +28,7 @@ export type CriteriaLike = {
 const yn = (v: boolean | null | undefined) => (v == null ? "" : v ? "yes" : "no");
 
 /** Investor criteria, one straight column. */
-export function CriteriaForm({ criteria, action }: { criteria: CriteriaLike; action: (fd: FormData) => void | Promise<void> }) {
+export function CriteriaForm({ criteria, roles, action }: { criteria: CriteriaLike; roles: string[]; action: (fd: FormData) => void | Promise<void> }) {
   const c = criteria;
   // ranges on file, else implied by the legacy buckets (HubSpot data)
   const check = c?.checkMinMM != null && c?.checkMaxMM != null ? [c.checkMinMM, c.checkMaxMM] : checkRangeFrom(parseList(c?.checkSizes));
@@ -36,6 +36,9 @@ export function CriteriaForm({ criteria, action }: { criteria: CriteriaLike; act
   const vint = c?.vintageMin != null && c?.vintageMax != null ? [c.vintageMin, c.vintageMax] : vintageRangeFrom(parseList(c?.vintages));
   return (
     <form action={action}>
+      <Field label="Investor, Sponsor, Lender or Broker">
+        <MultiSelect name="roles" options={ROLES} selected={roles} placeholder="Pick at least one" />
+      </Field>
       <Field label="Asset classes">
         <MultiSelect name="assetClasses" options={ASSET_CLASSES} selected={parseList(c?.assetClasses)} />
       </Field>
@@ -100,9 +103,12 @@ export function CriteriaForm({ criteria, action }: { criteria: CriteriaLike; act
 }
 
 /** Sponsors only need their asset classes. */
-export function SponsorFocusForm({ criteria, action }: { criteria: CriteriaLike; action: (fd: FormData) => void | Promise<void> }) {
+export function SponsorFocusForm({ criteria, roles, action }: { criteria: CriteriaLike; roles: string[]; action: (fd: FormData) => void | Promise<void> }) {
   return (
     <form action={action}>
+      <Field label="Investor, Sponsor, Lender or Broker">
+        <MultiSelect name="roles" options={ROLES} selected={roles} placeholder="Pick at least one" />
+      </Field>
       <Field label="Asset classes they work in">
         <MultiSelect name="assetClasses" options={ASSET_CLASSES} selected={parseList(criteria?.assetClasses)} />
       </Field>

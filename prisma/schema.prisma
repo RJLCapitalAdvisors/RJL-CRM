@@ -17,6 +17,7 @@ model User {
   email     String?  @unique
   active    Boolean  @default(true)
   signatureHtml String? // Outlook signature, pasted in Settings or picked up from a sent email
+  mailSyncedAt  DateTime? // last time this mailbox was read into the email log
   createdAt DateTime @default(now())
 
   companies Company[]
@@ -242,7 +243,8 @@ model Activity {
   body       String?
   direction  String? // OUTBOUND | INBOUND
   occurredAt DateTime @default(now())
-  externalId String?  @unique // Graph message id / Fireflies transcript id
+  externalId String?  @unique // internet message id / Fireflies transcript id
+  meta       String?  // JSON: { from: {name,email}, to: [{name,email}], cc: [...], mailbox, hasAttachments }
 
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id])

@@ -9,13 +9,16 @@ import { parseList } from "@/lib/taxonomy";
 import { AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { fmtDate, fullName } from "@/lib/format";
 import { statusOf } from "@/lib/tracker";
-import { addCompanyNote, refreshCompanyFromWebsite, updateCompany, updateCompanyCriteria } from "../actions";
+import { refreshCompanyFromWebsite, updateCompany, updateCompanyCriteria } from "../actions";
 import { currentUser } from "@/lib/current-user";
+import { EmailLog } from "@/components/email-log";
+import { kickMailSync } from "@/lib/mail-sync";
 
 export const dynamic = "force-dynamic";
 
 export default async function CompanyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  kickMailSync();
   const [company, users, investorRows] = await Promise.all([
     prisma.company.findUnique({
       where: { id },
@@ -24,7 +27,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
         criteria: true,
         contacts: { orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }], include: { owner: true } },
         deals: { orderBy: { updatedAt: "desc" } },
-        activities: { orderBy: { occurredAt: "desc" }, take: 50, include: { contact: true, deal: true } },
+        activities: { orderBy: { occurredAt: "desc" }, take: 100, include: { contact: { select: { id: true, firstName: true, lastName: true } }, deal: { select: { id: true, name: true, propertyName: true } } } },
       },
     }),
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
@@ -35,7 +38,6 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
   const sentDeals = [...new Map(investorRows.map((r) => [r.dealId, r])).values()];
   const update = updateCompany.bind(null, company.id);
   const updateCriteria = updateCompanyCriteria.bind(null, company.id);
-  const addNote = addCompanyNote.bind(null, company.id);
   const refresh = refreshCompanyFromWebsite.bind(null, company.id);
   const roles = parseList(company.roles);
   const isInvestor = roles.some((r) => r === "Investor" || r === "Retail Investor" || r === "Lender");
@@ -88,68 +90,24 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
           </details>
           {isInvestor ? (
             <div className="card">
-              <div className="border-b border-line px-4 py-3 text-sm font-semibold">Investor criteria</div>
+              <div className="border-b border-line px-4 py-3 text-sm font-semibold">Role and investor criteria</div>
               <div className="px-4 py-2">
                 {!canEdit && <div className="mb-2 rounded-md bg-cream px-3 py-2 text-xs text-ink-soft">Changes you save here go to Jonathan for approval before they take effect.</div>}
-                <CriteriaForm criteria={company.criteria} action={updateCriteria} />
+                <CriteriaForm criteria={company.criteria} roles={roles} action={updateCriteria} />
               </div>
             </div>
           ) : (
             <div className="card">
-              <div className="border-b border-line px-4 py-3 text-sm font-semibold">{roles.includes("Sponsor") ? "Sponsor focus" : "Focus"}</div>
+              <div className="border-b border-line px-4 py-3 text-sm font-semibold">{roles.includes("Sponsor") ? "Role and sponsor focus" : "Role and focus"}</div>
               <div className="px-4 py-2">
                 {!canEdit && <div className="mb-2 rounded-md bg-cream px-3 py-2 text-xs text-ink-soft">Changes you save here go to Jonathan for approval before they take effect.</div>}
-                <SponsorFocusForm criteria={company.criteria} action={updateCriteria} />
+                <SponsorFocusForm criteria={company.criteria} roles={roles} action={updateCriteria} />
               </div>
             </div>
           )}
         </>
       }
-      center={
-        <div className="card">
-          <div className="border-b border-line px-4 py-3 text-sm font-semibold">Activity</div>
-          <form action={addNote} className="flex gap-2 border-b border-line p-3">
-            <input name="body" placeholder="Log a note…" className="input" />
-            <button className="btn-secondary" type="submit">
-              Add
-            </button>
-          </form>
-          <ul className="divide-y divide-line">
-            {company.activities.map((a) => (
-              <li key={a.id} className="px-4 py-3 text-sm">
-                <div className="flex items-center justify-between text-xs text-muted">
-                  <span className="font-semibold uppercase tracking-wide">
-                    {a.type}
-                    {a.direction ? ` · ${a.direction.toLowerCase()}` : ""}
-                  </span>
-                  <span>{fmtDate(a.occurredAt)}</span>
-                </div>
-                {a.subject && <div className="mt-0.5 font-medium">{a.subject}</div>}
-                {a.body && <div className="mt-0.5 whitespace-pre-wrap text-ink-soft">{a.body}</div>}
-                {(a.contact || a.deal) && (
-                  <div className="mt-1 flex gap-2 text-xs">
-                    {a.contact && (
-                      <Link href={`/contacts/${a.contact.id}`} className="text-sky-600 hover:underline">
-                        {fullName(a.contact)}
-                      </Link>
-                    )}
-                    {a.deal && (
-                      <Link href={`/deals/${a.deal.id}`} className="text-sky-600 hover:underline">
-                        {a.deal.propertyName ?? a.deal.name}
-                      </Link>
-                    )}
-                  </div>
-                )}
-              </li>
-            ))}
-            {company.activities.length === 0 && (
-              <li className="px-4 py-8 text-center text-sm text-muted">
-                No activity logged yet. Created {fmtDate(company.createdAt)}. Emails with anyone at this company appear here once Outlook is connected.
-              </li>
-            )}
-          </ul>
-        </div>
-      }
+      center={<EmailLog rows={company.activities} title="Activity" empty="No emails or notes with this company yet. Emails any of the team sends or receives show up here." />}
       right={
         <>
           <AssocCard title="Contacts" count={company.contacts.length} addHref={`/contacts/new?companyId=${company.id}`} empty="No contacts linked yet.">

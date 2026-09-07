@@ -2,7 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, VINTAGES, normalizeGeographies, parseList, toJson } from "@/lib/taxonomy";
+import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, ROLES, VINTAGES, normalizeGeographies, parseList, toJson } from "@/lib/taxonomy";
+import { syncContactRolesForCompany } from "@/lib/roles";
 import { checkRangeFrom, holdRangeFrom, vintageRangeFrom } from "@/lib/ranges";
 
 /**
@@ -13,6 +14,7 @@ import { checkRangeFrom, holdRangeFrom, vintageRangeFrom } from "@/lib/ranges";
  */
 
 export const PROPOSAL_FIELDS = {
+  roles: { label: "Investor, Sponsor, Lender or Broker", list: true, allowed: ROLES },
   checkSizes: { label: "Check size", list: true, allowed: CHECK_SIZES },
   geographyNotes: { label: "Deal locations", list: false, allowed: null },
   assetClasses: { label: "Asset classes", list: true, allowed: ASSET_CLASSES },
@@ -65,7 +67,7 @@ export async function proposeCriteriaChanges(opts: { companyId: string; contactI
   if (!co) return null;
   const roles = parseList(co.roles);
   if (!roles.some((r) => r === "Investor" || r === "Retail Investor" || r === "Lender")) return null;
-  const crit = (co.criteria ?? null) as Record<string, unknown> | null;
+  const crit = { ...(co.criteria ?? {}), roles: co.roles } as Record<string, unknown>;
   const onFile = (Object.keys(PROPOSAL_FIELDS) as ProposalField[]).map((f) => `${PROPOSAL_FIELDS[f].label}: ${current(crit, f) || "(blank)"}`).join("\n");
   const allowed = (Object.keys(PROPOSAL_FIELDS) as ProposalField[]).filter((f) => PROPOSAL_FIELDS[f].allowed).map((f) => `${f}: ${(PROPOSAL_FIELDS[f].allowed as readonly string[]).join(" | ")}`).join("\n");
 
@@ -82,6 +84,7 @@ export async function proposeCriteriaChanges(opts: { companyId: string; contactI
 
   const changes: Change[] = [];
   for (const ch of out.changes) {
+    if (ch.field === "roles") continue; // roles are set by people, never inferred
     const to = canon(ch.field, ch.to);
     const from = current(crit, ch.field);
     if (!to || to === from) continue;
@@ -107,6 +110,13 @@ export async function applyProposal(id: string, onlyFields?: ProposalField[]) {
   const data: Record<string, unknown> = {};
   for (const c of changes) {
     const spec = PROPOSAL_FIELDS[c.field];
+    if (c.field === "roles") {
+      const before = await prisma.company.findUnique({ where: { id: p.companyId }, select: { roles: true } });
+      const next = c.to.split(",").map((x) => x.trim()).filter(Boolean);
+      await prisma.company.update({ where: { id: p.companyId }, data: { roles: toJson(next) } });
+      await syncContactRolesForCompany(p.companyId, parseList(before?.roles), next);
+      continue;
+    }
     if (c.field === "ozInterest" || c.field === "openToMinority") data[c.field] = c.to === "Yes";
     else if (spec.list) data[c.field] = toJson(c.to.split(",").map((x) => x.trim()).filter(Boolean));
     else data[c.field] = c.to;
@@ -116,7 +126,7 @@ export async function applyProposal(id: string, onlyFields?: ProposalField[]) {
     if (c.field === "holdPeriods") { const r = holdRangeFrom(list); data.holdMinYears = r?.[0] ?? null; data.holdMaxYears = r?.[1] ?? null; }
     if (c.field === "vintages") { const r = vintageRangeFrom(list); data.vintageMin = r?.[0] ?? null; data.vintageMax = r?.[1] ?? null; }
   }
-  await prisma.investorCriteria.upsert({ where: { companyId: p.companyId }, create: { companyId: p.companyId, ...data }, update: data });
+  if (Object.keys(data).length) await prisma.investorCriteria.upsert({ where: { companyId: p.companyId }, create: { companyId: p.companyId, ...data }, update: data });
   await prisma.criteriaProposal.update({ where: { id }, data: { status: "APPROVED", reviewedAt: new Date() } });
 }
 
@@ -131,7 +141,7 @@ export async function rejectProposal(id: string) {
 export async function proposeManualChanges(companyId: string, data: Record<string, unknown>, byName: string) {
   const co = await prisma.company.findUnique({ where: { id: companyId }, include: { criteria: true } });
   if (!co) return null;
-  const crit = (co.criteria ?? null) as Record<string, unknown> | null;
+  const crit = { ...(co.criteria ?? {}), roles: co.roles } as Record<string, unknown>;
   const changes: Change[] = [];
   for (const f of Object.keys(PROPOSAL_FIELDS) as ProposalField[]) {
     if (!(f in data)) continue;

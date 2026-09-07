@@ -26,7 +26,7 @@ const num = (fd: FormData, k: string) => {
 function companyData(fd: FormData) {
   return {
     name: s(fd, "name") ?? "(Unnamed company)",
-    roles: list(fd, "roles"),
+    ...(fd.has("roles") ? { roles: list(fd, "roles") } : {}),
     domain: s(fd, "domain")?.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") ?? null,
     website: s(fd, "website"),
     description: s(fd, "description"),
@@ -92,7 +92,7 @@ export async function updateCompany(id: string, fd: FormData) {
   const data = companyData(fd);
   await prisma.company.update({ where: { id }, data });
   // Company roles flow down to its contacts (blasts are segmented by contact role).
-  await syncContactRolesForCompany(id, parseList(before?.roles), parseList(data.roles));
+  if (data.roles) await syncContactRolesForCompany(id, parseList(before?.roles), parseList(data.roles));
   revalidatePath("/contacts");
   revalidatePath(`/companies/${id}`);
   revalidatePath("/companies");
@@ -100,13 +100,21 @@ export async function updateCompany(id: string, fd: FormData) {
 
 export async function updateCompanyCriteria(id: string, fd: FormData) {
   const data = criteriaData(fd);
+  const roles = fd.has("roles") ? list(fd, "roles") : null;
   const me = await currentUser();
   if (!me?.canEditCriteria) {
-    // Not Jonathan: the edit becomes a proposal on his Home page instead of a direct change.
-    await proposeManualChanges(id, data, me?.name ?? "A teammate");
+    // Not Jonathan: the edit (roles included) becomes a proposal on his Home page instead of a direct change.
+    await proposeManualChanges(id, roles ? { ...data, roles } : data, me?.name ?? "A teammate");
     revalidatePath(`/companies/${id}`);
     revalidatePath("/");
     return;
+  }
+  if (roles) {
+    const before = await prisma.company.findUnique({ where: { id }, select: { roles: true } });
+    await prisma.company.update({ where: { id }, data: { roles } });
+    await syncContactRolesForCompany(id, parseList(before?.roles), parseList(roles));
+    revalidatePath("/contacts");
+    revalidatePath("/companies");
   }
   await prisma.investorCriteria.upsert({ where: { companyId: id }, create: { companyId: id, ...data }, update: data });
   revalidatePath(`/companies/${id}`);

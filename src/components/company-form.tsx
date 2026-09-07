@@ -1,4 +1,4 @@
-import { ROLES, US_STATES, parseList } from "@/lib/taxonomy";
+import { US_STATES } from "@/lib/taxonomy";
 import { Field } from "./record-layout";
 
 type CompanyLike = {
@@ -20,21 +20,10 @@ type CompanyLike = {
 /** Company fields, stacked in one straight column. Most of these fill themselves from the company's website. */
 export function CompanyForm({ company, users, action, submitLabel = "Save" }: { company: CompanyLike; users: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; submitLabel?: string }) {
   const c = company;
-  const roles = parseList(c?.roles);
   return (
     <form action={action}>
       <Field label="Company name" htmlFor="name">
         <input id="name" name="name" required defaultValue={c?.name ?? ""} className="input" />
-      </Field>
-      <Field label="Investor, Sponsor, Lender or Broker?">
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1">
-          {ROLES.map((r) => (
-            <label key={r} className="flex items-center gap-1.5 text-sm">
-              <input type="checkbox" name="roles" value={r} defaultChecked={roles.includes(r)} className="accent-ink" />
-              {r}
-            </label>
-          ))}
-        </div>
       </Field>
       <Field label="Website" htmlFor="website">
         <input id="website" name="website" defaultValue={c?.website ?? ""} className="input" placeholder="https://" />
