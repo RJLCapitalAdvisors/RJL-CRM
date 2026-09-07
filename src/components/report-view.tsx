@@ -17,13 +17,15 @@ export type ReportSlots = {
   rowEnd?: (r: ReportRow) => ReactNode;
   afterRows?: ReactNode;
   showPeople?: boolean;
+  /** In-app: replaces the static Themes / Items sections with editable boxes. */
+  headerEditor?: ReactNode;
 };
 
 const FONT = "Arial, Helvetica, sans-serif";
 const S: Record<string, CSSProperties> = {
   page: { fontFamily: FONT, fontSize: "10.5pt", lineHeight: 1.35, color: "#000", background: "#fff", maxWidth: 816, margin: "0 auto", padding: "48px 72px 40px" },
   logo: { height: 50, display: "block", marginBottom: 22 },
-  center: { textAlign: "center", fontWeight: 700, margin: "0 0 4px" },
+  center: { textAlign: "center", margin: "0 0 4px" },
   email: { fontWeight: 700, color: "#1155cc", margin: "14px 0 0" },
   h2: { fontSize: "16pt", fontWeight: 700, margin: "18px 0 6px" },
   ul: { margin: "0 0 4px", paddingLeft: 26 },
@@ -49,9 +51,15 @@ export function ReportView({ report, slots = {} }: { report: Report; slots?: Rep
   return (
     <div className="report" style={S.page}>
       <img src="/logo.png" alt="RJL Capital Advisors" style={S.logo} />
-      <p style={S.center}>Deal Name: {name}</p>
-      <p style={S.center}>Deal Address: {address || "NA"}</p>
-      <p style={S.center}>Prepared For: {deal.trackerPreparedFor || deal.sponsorName || "—"}</p>
+      <p style={S.center}>
+        <b>Deal Name:</b> {name}
+      </p>
+      <p style={S.center}>
+        <b>Deal Address:</b> {address || "NA"}
+      </p>
+      <p style={S.center}>
+        <b>Prepared For:</b> {deal.trackerPreparedFor || deal.sponsorName || "—"}
+      </p>
       <p style={S.email}>
         Please email{" "}
         <a href="mailto:jonathan@rjlcapadvisors.com" style={S.a}>
@@ -64,7 +72,8 @@ export function ReportView({ report, slots = {} }: { report: Report; slots?: Rep
         with any questions
       </p>
 
-      {showSections && (
+      {slots.headerEditor}
+      {!slots.headerEditor && showSections && (
         <>
           <h2 style={S.h2}>Notable Feedback Themes</h2>
           <ul style={S.ul}>

@@ -65,7 +65,7 @@ export const EMPTY: ExtractedDeal = {
 };
 
 export function toChecklistDeal(d: ExtractedDeal): DealLikeForChecklist {
-  return { strategy: d.strategy, assetClass: d.assetClass, occupancy: d.occupancy, summary: d.summary, sponsorExperience: d.sponsorExperience, onMarket: d.onMarket, ltv: d.ltv, loanTerm: d.loanTerm, amortization: d.amortization, expectedClose: d.expectedClose, details: d.details as Record<string, string | null> };
+  return { strategy: d.strategy, assetClass: d.assetClass, occupancy: d.occupancy, summary: d.summary, sponsorExperience: d.sponsorExperience, onMarket: d.onMarket, ltv: d.ltv, loanTerm: d.loanTerm, amortization: d.amortization, expectedClose: d.expectedClose, purchasePrice: d.purchasePrice, details: d.details as Record<string, string | null> };
 }
 
 /** Keys of checklist items still unanswered, given the deal's strategy and asset class. */
@@ -91,7 +91,7 @@ const ClaudeOutput = z.object({
   strategy: z.enum(["Acquisitions", "Development", ""]).describe("Development for ground-up/construction; Acquisitions for buying an existing asset."),
   requestType: z.enum(["Equity", "Debt", "Both", ""]).describe("Equity for JV/LP/pref/co-GP raises; Debt for loans/bridge/construction/refi."),
   requestedAmount: str("Requested amount in US dollars, digits only (12500000)."),
-  purchasePrice: str("Purchase price or total project cost in US dollars, digits only."),
+  purchasePrice: str("Acquisitions: purchase price. Developments: the LAND price only (never the total project cost). US dollars, digits only."),
   totalEquity: str("Total equity in US dollars, digits only."),
   ltv: str("LTV or LTC percent as a number (65)."),
   loanTerm: z.enum([...LOAN_TERMS, ""]).describe("Loan term, snapped to the closest option. Empty if not stated."),
@@ -153,8 +153,9 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
   // any equity raise that is the majority of the total equity is JV Equity
   if (out.executionType === "LP Equity" && out.requestedAmount && out.totalEquity && out.requestedAmount / out.totalEquity >= 0.5) out.executionType = "JV Equity";
   if (out.requestType === "Equity" && !out.executionType) out.executionType = "JV Equity";
-  // developments: occupancy, year built and cap rates do not apply
+  // developments: occupancy, year built and cap rates do not apply; a "price" equal to total cost is not a land price
   if (out.strategy === "Development") {
+    if (out.purchasePrice != null && out.totalCapitalization != null && Math.abs(out.purchasePrice - out.totalCapitalization) < 1000) out.purchasePrice = null;
     out.occupancy = null;
     out.yearBuilt = null;
     out.capRateT12 = null;

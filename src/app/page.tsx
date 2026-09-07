@@ -45,6 +45,7 @@ export default async function Dashboard() {
   kickMailSync(); // background: team mailboxes into the email log, deals@ inbox into deal tickets
   const me = await currentUser();
   const showCriteria = Boolean(me?.canEditCriteria);
+  const readyDeals = await prisma.deal.findMany({ where: { stage: "Engagement Letter Signed" }, include: { owner: { select: { name: true } }, _count: { select: { investors: true } } }, orderBy: { updatedAt: "desc" } });
   const [proposals, quiet, momentum] = await Promise.all([showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING", createdAt: { gte: HOME_SINCE } }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]), quietInvestors(), listMomentum(HOME_SINCE)]);
   const companies = new Map((await prisma.company.findMany({ where: { id: { in: proposals.map((p) => p.companyId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   const today = new Date();
@@ -53,9 +54,9 @@ export default async function Dashboard() {
   return (
     <>
       <PageHeader title="Dashboard" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP${quietCount === 1 ? "" : "s"} to follow up with · ${proposals.length} criteria update${proposals.length === 1 ? "" : "s"} to approve`} />
-      <div className="mx-auto grid max-w-[1600px] gap-5 px-8 py-6 text-[15px] leading-relaxed lg:grid-cols-2 2xl:grid-cols-3">
+      <div className="mx-auto grid max-w-[1500px] gap-5 px-8 py-6 text-[15px] leading-relaxed lg:grid-cols-2">
         {/* LPs who have gone quiet */}
-        <div className="card flex max-h-[calc(100vh-150px)] flex-col">
+        <div className="card flex h-[calc(50vh-70px)] min-h-[340px] flex-col">
           <div className="flex items-center justify-between rounded-t-lg border-b border-line bg-cream px-5 py-3.5">
             <h2 className="text-base font-semibold">LP follow-ups</h2>
             <span className="text-sm text-muted">{quietCount}</span>
@@ -99,7 +100,7 @@ export default async function Dashboard() {
         </div>
 
         {/* Deal momentum: where a deal is waiting on somebody who is not an LP on a progress report */}
-        <div className="card flex max-h-[calc(100vh-150px)] flex-col">
+        <div className="card flex h-[calc(50vh-70px)] min-h-[340px] flex-col">
           <div className="flex items-center justify-between rounded-t-lg border-b border-line bg-cream px-5 py-3.5">
             <h2 className="text-base font-semibold">Deal momentum</h2>
             <span className="text-sm text-muted">{momentum.length}</span>
@@ -140,9 +141,40 @@ export default async function Dashboard() {
           </div>
         </div>
 
+        {/* Deals ready for launch: engagement letter signed, anywhere in the firm */}
+        <div className="card flex h-[calc(50vh-70px)] min-h-[340px] flex-col">
+          <div className="flex items-center justify-between rounded-t-lg border-b border-line bg-cream px-5 py-3.5">
+            <h2 className="text-base font-semibold">Deals ready for launch</h2>
+            <span className="text-sm text-muted">{readyDeals.length}</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {readyDeals.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-muted">Nothing waiting. A deal shows up here the moment its engagement letter is marked signed, whoever owns it.</div>
+            ) : (
+              <ul className="divide-y divide-line">
+                {readyDeals.map((d) => (
+                  <li key={d.id} className="flex items-center justify-between gap-3 px-5 py-4">
+                    <div className="min-w-0">
+                      <Link href={`/deals/${d.id}`} className="font-semibold hover:underline">
+                        {d.propertyName ?? d.name}
+                      </Link>
+                      <div className="text-sm text-muted">
+                        {d.sponsorName ?? "Sponsor"} · {d._count.investors} group{d._count.investors === 1 ? "" : "s"} agreed{d.owner ? ` · ${d.owner.name}` : ""}
+                      </div>
+                    </div>
+                    <Link href={`/deals/${d.id}/send`} className="btn-primary shrink-0">
+                      Send deal
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
         {/* Investor criteria updates to approve (Jonathan only) */}
         {showCriteria && (
-        <div className="card flex max-h-[calc(100vh-150px)] flex-col">
+        <div className="card flex h-[calc(50vh-70px)] min-h-[340px] flex-col">
           <div className="flex items-center justify-between rounded-t-lg border-b border-line bg-cream px-5 py-3.5">
             <h2 className="text-base font-semibold">Criteria updates to approve</h2>
             <span className="text-sm text-muted">{proposals.length}</span>

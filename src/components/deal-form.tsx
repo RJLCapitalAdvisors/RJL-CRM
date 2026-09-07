@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AMORTIZATIONS, ASSET_CLASSES, DEAL_HOLD_PERIODS, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES, US_STATES } from "@/lib/taxonomy";
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
 import { NumberInput } from "./number-input";
+import { AutoSaveForm } from "./autosave-form";
 import { isPref, prefMetrics } from "@/lib/pref";
 
 export const EXECUTION_TYPES = ["Senior Debt", "Mezz Debt", "Preferred Equity", "JV Equity", "Co-GP Equity", "LP Equity", "Fund Investment"] as const;
@@ -112,7 +113,7 @@ function Select({ name, value, options, blank = "—", onChange }: { name: strin
   );
 }
 
-export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: DealLike; users: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; submitLabel?: string }) {
+export function DealForm({ deal, users, action, submitLabel = "Save", autosave = false }: { deal: DealLike; users: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; submitLabel?: string; autosave?: boolean }) {
   const d = deal;
   const details = parseDetailsSafe(d?.details);
   const [assetClass, setAssetClass] = useState(d?.assetClass ?? "");
@@ -136,8 +137,9 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
   const pm = prefMetrics({ totalDebt: debt, requestedAmount: ask, totalCapitalization: cap, purchasePrice: price, capRateT12: t12, yieldOnCost: yoc, units: count, squareFeet: sf, assetClass });
   const pct = (v: number | null) => (v == null ? "—" : `${v.toFixed(2)}%`);
 
+  const Wrapper = autosave ? AutoSaveForm : (props: { action: (fd: FormData) => void | Promise<void>; children: React.ReactNode }) => <form id="deal-form" action={props.action}>{props.children}</form>;
   return (
-    <form id="deal-form" action={action}>
+    <Wrapper action={action}>
       {/* Stage is set by dragging on the board; carried along unchanged here. */}
       <input type="hidden" name="stage" value={d?.stage ?? "Deal Received"} />
 
@@ -321,11 +323,13 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
         </Row>
       </Group>
 
-      <div className="sticky bottom-0 mt-4 flex justify-end border-t border-line bg-paper/95 py-3">
-        <button className="btn-primary" type="submit">
-          {submitLabel}
-        </button>
-      </div>
-    </form>
+      {!autosave && (
+        <div className="sticky bottom-0 mt-4 flex justify-end border-t border-line bg-paper/95 py-3">
+          <button className="btn-primary" type="submit">
+            {submitLabel}
+          </button>
+        </div>
+      )}
+    </Wrapper>
   );
 }

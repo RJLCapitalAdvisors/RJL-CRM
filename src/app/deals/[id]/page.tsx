@@ -67,7 +67,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             }
           />
           <AboutCard title="About this deal">
-            <DealForm deal={deal} users={users} action={update} />
+            <DealForm deal={deal} users={users} action={update} autosave />
           </AboutCard>
         </>
       }

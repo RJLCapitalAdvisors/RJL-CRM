@@ -15,7 +15,7 @@ export type ChecklistItem = {
   strategy: ("Acquisitions" | "Development")[];
   onlyAssetClasses?: string[]; // include only for these classes
   excludeAssetClasses?: string[]; // skip for these classes
-  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose"; // maps to a Deal column
+  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose" | "purchasePrice"; // maps to a Deal column
 };
 
 const RESIDENTIAL = ["Multifamily", "Build-For-Rent (SFR)", "Student Housing", "Senior Housing", "Mixed Use"];
@@ -29,6 +29,7 @@ export const CHECKLIST: ChecklistItem[] = [
   { key: "businessPlan", label: "Business plan", question: "Explanation of the business plan (value-add, hold period, exit)", kind: "text", strategy: ["Acquisitions"], core: "summary" },
   { key: "capexBudget", label: "Capex budget", question: "Capital expenditure budget and scope", kind: "doc", strategy: ["Acquisitions"], excludeAssetClasses: ["Land"] },
   { key: "sponsorBio", label: "Sponsor bio (overall and local market experience)", question: "Sponsor track record: overall experience and experience in this market", kind: "text", strategy: ["Acquisitions", "Development"], core: "sponsorExperience" },
+  { key: "landPrice", label: "Land price", question: "Land purchase price (or land basis if already owned)", kind: "number", strategy: ["Development"], core: "purchasePrice" },
   { key: "gcBio", label: "GC bio", question: "General contractor background and relevant projects", kind: "text", strategy: ["Development"] },
   { key: "gcContract", label: "Signed GC contract? GMP?", question: "Is there a signed contract with the GC and is it a guaranteed maximum price (GMP)?", kind: "short", strategy: ["Development"] },
   { key: "locationInfo", label: "Info on location", question: "Location overview: submarket, drivers, demographics", kind: "text", strategy: ["Acquisitions", "Development"] },
@@ -76,6 +77,7 @@ export type DealLikeForChecklist = {
   loanTerm?: string | null;
   amortization?: string | null;
   expectedClose?: string | null;
+  purchasePrice?: number | null;
   details?: Record<string, string | null> | string | null;
 };
 
@@ -97,7 +99,7 @@ export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): stri
   const details = parseDetails(deal.details);
   const own = details[item.key];
   // date and loan-term items are satisfied only by the real ticket fields, never by a free-text note
-  if (own && item.core !== "expectedClose" && item.core !== "loanTerm") return own;
+  if (own && item.core !== "expectedClose" && item.core !== "loanTerm" && item.core !== "purchasePrice") return own;
   switch (item.core) {
     case "occupancy":
       return deal.occupancy != null ? `${deal.occupancy}%` : null;
@@ -113,6 +115,8 @@ export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): stri
       return deal.loanTerm ? [deal.loanTerm, deal.amortization].filter(Boolean).join(", ") : null;
     case "expectedClose":
       return deal.expectedClose ?? null;
+    case "purchasePrice":
+      return deal.purchasePrice != null ? `${deal.purchasePrice.toLocaleString("en-US")}` : null;
     default:
       return null;
   }
