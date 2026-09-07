@@ -57,28 +57,28 @@ export default async function Dashboard() {
 
   return (
     <>
-      <PageHeader title="To do" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP${quietCount === 1 ? "" : "s"} to follow up with · ${proposals.length} criteria update${proposals.length === 1 ? "" : "s"} to approve`} />
-      <div className="grid gap-6 px-8 py-6 lg:grid-cols-2">
+      <PageHeader title="Home" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP${quietCount === 1 ? "" : "s"} to follow up with · ${proposals.length} criteria update${proposals.length === 1 ? "" : "s"} to approve`} />
+      <div className="grid gap-6 px-8 py-6 text-[15px] leading-relaxed lg:grid-cols-2">
         {/* LPs who have gone quiet */}
         <div className="card flex max-h-[calc(100vh-150px)] flex-col">
-          <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <h2 className="text-sm font-semibold">No response in {QUIET_AFTER_DAYS}+ days</h2>
-            <span className="text-xs text-muted">{quietCount}</span>
+          <div className="flex items-center justify-between rounded-t-lg border-b border-line bg-cream px-5 py-3.5">
+            <h2 className="text-base font-semibold">No response in {QUIET_AFTER_DAYS}+ days</h2>
+            <span className="text-sm text-muted">{quietCount}</span>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             {quiet.length === 0 ? (
-              <div className="px-4 py-8 text-center text-xs text-muted">Everyone you have sent a deal to has responded, or got it less than {QUIET_AFTER_DAYS} days ago.</div>
+              <div className="px-5 py-10 text-center text-sm text-muted">Everyone you have sent a deal to has responded, or got it less than {QUIET_AFTER_DAYS} days ago.</div>
             ) : (
               <ul className="divide-y divide-line">
                 {quiet.map((g) => (
-                  <li key={g.deal.id} className="px-4 py-3 text-sm">
+                  <li key={g.deal.id} className="px-5 py-4">
                     <div className="flex items-center justify-between gap-2">
-                      <Link href={`/deals/${g.deal.id}/tracker`} className="font-semibold hover:underline">
+                      <Link href={`/deals/${g.deal.id}/tracker`} className="text-base font-semibold hover:underline">
                         {g.deal.propertyName ?? g.deal.name}
                       </Link>
-                      <span className="text-xs text-muted">{g.rows.length} waiting</span>
+                      <span className="text-sm text-muted">{g.rows.length} waiting</span>
                     </div>
-                    <ul className="mt-2 space-y-1.5">
+                    <ul className="mt-3 space-y-3">
                       {g.rows.map(({ row: r, href }) => (
                         <li key={r.id} className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
@@ -86,7 +86,7 @@ export default async function Dashboard() {
                               {r.contact.company?.name ?? investorLabel(r.contact)}
                               {r.status === 3 && <span className="text-muted"> · already followed up</span>}
                             </div>
-                            <div className="truncate text-xs text-muted">
+                            <div className="truncate text-sm text-muted">
                               {[r.contact.firstName, r.contact.lastName].filter(Boolean).join(" ")}
                               {r.contact.email ? ` · ${r.contact.email}` : " · no email on file"} · {days(r.updatedAt)} days
                             </div>
@@ -104,41 +104,41 @@ export default async function Dashboard() {
 
         {/* Investor criteria updates to approve */}
         <div className="card flex max-h-[calc(100vh-150px)] flex-col">
-          <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <h2 className="text-sm font-semibold">Criteria updates to approve</h2>
-            <span className="text-xs text-muted">{proposals.length}</span>
+          <div className="flex items-center justify-between rounded-t-lg border-b border-line bg-cream px-5 py-3.5">
+            <h2 className="text-base font-semibold">Criteria updates to approve</h2>
+            <span className="text-sm text-muted">{proposals.length}</span>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             {proposals.length === 0 ? (
-              <div className="px-4 py-8 text-center text-xs text-muted">Nothing to approve. When an investor tells us their check size, markets, or focus have changed (email reply, tracker note, Fireflies call), the correction shows up here.</div>
+              <div className="px-5 py-10 text-center text-sm text-muted">Nothing to approve. When an investor tells us their check size, markets, or focus have changed (email reply, tracker note, Fireflies call), the correction shows up here.</div>
             ) : (
               <ul className="divide-y divide-line">
                 {proposals.map((p) => {
                   const changes = JSON.parse(p.changes) as Change[];
                   return (
-                    <li key={p.id} className="px-4 py-3 text-sm">
+                    <li key={p.id} className="px-5 py-4">
                       <div className="flex items-start justify-between gap-2">
-                        <Link href={`/companies/${p.companyId}`} className="font-semibold hover:underline">
+                        <Link href={`/companies/${p.companyId}`} className="text-base font-semibold hover:underline">
                           {(p.companyId && companies.get(p.companyId)) ?? "Investor"}
                         </Link>
-                        <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted">{p.source === "NOTE" ? "from a note" : p.source === "EMAIL" ? "from email" : p.source === "FIREFLIES" ? "from a call" : "manual"}</span>
+                        <span className="shrink-0 text-xs text-muted">{p.source === "NOTE" ? "from a note" : p.source === "EMAIL" ? "from email" : p.source === "FIREFLIES" ? "from a call" : "manual"}</span>
                       </div>
-                      <ul className="mt-1.5 space-y-1.5">
+                      <ul className="mt-2 space-y-2">
                         {changes.map((c) => (
-                          <li key={c.field} className="text-xs">
+                          <li key={c.field}>
                             <span className="text-muted">{PROPOSAL_FIELDS[c.field]?.label ?? c.field}:</span> <span className="line-through text-muted">{c.from || "blank"}</span> <span className="font-medium">{c.to}</span>
-                            {c.evidence && <div className="mt-0.5 italic text-ink-soft">“{c.evidence}”</div>}
+                            {c.evidence && <div className="mt-0.5 text-sm italic text-muted">“{c.evidence}”</div>}
                           </li>
                         ))}
                       </ul>
-                      <div className="mt-2 flex gap-2">
+                      <div className="mt-3 flex gap-2">
                         <form action={approveProposal.bind(null, p.id)}>
-                          <button className="btn-primary px-2.5 py-1 text-xs" type="submit">
+                          <button className="btn-soft" type="submit">
                             Approve
                           </button>
                         </form>
                         <form action={dismissProposal.bind(null, p.id)}>
-                          <button className="btn-secondary px-2.5 py-1 text-xs" type="submit">
+                          <button className="btn-ghost py-1.5 text-muted" type="submit">
                             Dismiss
                           </button>
                         </form>

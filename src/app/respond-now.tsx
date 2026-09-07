@@ -16,7 +16,7 @@ export function RespondNow({ rowId, href, disabled }: { rowId: string; href: str
   return (
     <button
       type="button"
-      className="btn-primary shrink-0 px-2.5 py-1 text-xs disabled:opacity-40"
+      className="btn-soft shrink-0"
       disabled={disabled || !href || pending}
       title={href ? "Opens the follow-up in Outlook and marks this LP as Followed Up" : "No email address on file"}
       onClick={() => {

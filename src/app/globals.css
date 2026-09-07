@@ -38,6 +38,9 @@ body {
   .btn-secondary {
     @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 border border-line bg-paper text-ink hover:bg-cream;
   }
+  .btn-soft {
+    @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 bg-sky text-ink hover:bg-sky-600 hover:text-white;
+  }
   .btn-ghost {
     @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 text-ink hover:bg-cream;
   }
