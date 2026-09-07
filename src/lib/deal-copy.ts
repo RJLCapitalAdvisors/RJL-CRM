@@ -11,7 +11,9 @@ import { isPref, prefMetrics } from "@/lib/pref";
 type D = Record<string, unknown>;
 const n = (v: unknown) => (typeof v === "number" && !isNaN(v) ? v : typeof v === "string" && v.trim() && !isNaN(Number(v.replace(/[^0-9.-]/g, ""))) ? Number(v.replace(/[^0-9.-]/g, "")) : null);
 const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
-export const usd = (v: number) => `$${Math.round(v).toLocaleString("en-US")}`;
+export const usd = (v: number) => `${Math.round(v).toLocaleString("en-US")}`;
+/** Rounded money for headlines: $5.6MM, $12MM, $850k. */
+export const usdShort = (v: number) => (v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1).replace(/.0$/, "")}MM` : v >= 1_000 ? `${Math.round(v / 1_000)}k` : usd(v));
 const usdCents = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (v: number) => `${Number.isInteger(v) ? v.toFixed(2) : String(v).includes(".") && String(v).split(".")[1].length === 1 ? v.toFixed(2) : v}%`;
 
@@ -29,7 +31,7 @@ export function subjectLine(d: D): string {
   const loc = location(d);
   const ask = n(d.requestedAmount);
   const exec = s(d.executionType) ?? (s(d.requestType) === "Debt" ? "Debt" : s(d.requestType) ? "Equity" : null);
-  return `${parts}${loc ? ` in ${loc}` : ""}${ask ? ` | ${usd(ask)}${exec ? ` of ${exec}` : ""}` : ""}`;
+  return `${parts}${loc ? ` in ${loc}` : ""}${ask ? ` | ${usdShort(ask)}${exec ? ` of ${exec}` : ""}` : ""}`;
 }
 
 /** The opening paragraph after the greeting. */
@@ -71,7 +73,7 @@ export function intro(d: D): string {
     third = `${!second && year ? `Built in ${year}, the` : "The"} property ${bits.join(" ")}.`;
   }
   const fourth = sourcing && !dev ? `The sponsor is buying the asset ${/^(on|off)/i.test(sourcing) ? sourcing.charAt(0).toLowerCase() + sourcing.slice(1) : sourcing}${/[.!?]$/.test(sourcing) ? "" : "."}` : "";
-  const fifth = ask ? `They are seeking ${usd(ask)} of ${exec} on this opportunity.` : "";
+  const fifth = ask ? `<b>They are seeking ${usdShort(ask)} of ${exec} on this opportunity.</b>` : "";
   return [first, second, third, fourth, fifth].filter(Boolean).join(" ");
 }
 
@@ -140,7 +142,9 @@ export function metrics(d: D): string[] {
 
 export function metricsHtml(d: D): string {
   const m = metrics(d);
-  return m.length ? `<p><b>Deal Metrics</b></p><ul>${m.map((x) => `<li>${x}</li>`).join("")}</ul>` : "";
+  // heading underlined, every bullet's lead-in bold, a gap after the list before Business Plan
+  const li = (x: string) => { const i = x.indexOf(": "); return i > 0 ? `<li><b>${x.slice(0, i)}:</b>${x.slice(i + 1)}</li>` : `<li>${x}</li>`; };
+  return m.length ? `<p><b><u>Deal Metrics</u></b></p><ul style="margin:0 0 12pt 18pt;">${m.map(li).join("")}</ul>` : "";
 }
 export function metricsText(d: D): string {
   const m = metrics(d);
