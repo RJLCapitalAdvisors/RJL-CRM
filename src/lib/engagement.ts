@@ -85,7 +85,40 @@ export async function createEngagementDraft(dealId: string, companyIds: string[]
       return {};
     }
   })();
-  await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify({ ...details, engagementGroups: groups.map((g) => g.name), engagementDraftedAt: new Date().toISOString() }) } });
+  await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify({ ...details, engagementGroups: groups.map((g) => g.name), engagementDraftedAt: new Date().toISOString(), engagementDraftId: draft.id, engagementMailbox: mailbox }) } });
 
   return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: "new", attachments: 0, added };
+}
+
+const STAGE_ORDER = ["Deal Mentioned", "Deal Received", "Deal Underwritten", "Engagement Letter Sent", "Deal Taken To Market", "Intro To Capital Made", "Term Sheet Issued", "Term Sheet Signed", "Deal Closed"];
+
+/** Deals with an engagement letter drafted: once Outlook shows it sent, move the deal to "Engagement Letter Sent" (never backwards). */
+export async function syncEngagementDrafts(): Promise<number> {
+  if (!graphConfigured()) return 0;
+  const deals = await prisma.deal.findMany({ where: { details: { contains: "engagementDraftId" }, stage: { notIn: ["Deal Closed", "Deal Lost"] } }, select: { id: true, stage: true, details: true, propertyName: true, name: true, sponsorCompanyId: true } });
+  let moved = 0;
+  for (const d of deals) {
+    let det: Record<string, unknown>;
+    try {
+      det = JSON.parse(d.details || "{}");
+    } catch {
+      continue;
+    }
+    const draftId = det.engagementDraftId as string | undefined;
+    const mailbox = det.engagementMailbox as string | undefined;
+    if (!draftId || !mailbox || det.engagementSentAt) continue;
+    try {
+      const m = await getMessage(mailbox, draftId, "id,isDraft,sentDateTime");
+      if (m.isDraft) continue;
+      const sentAt = m.sentDateTime ? new Date(m.sentDateTime) : new Date();
+      const advance = STAGE_ORDER.indexOf(d.stage) < STAGE_ORDER.indexOf("Engagement Letter Sent");
+      await prisma.deal.update({ where: { id: d.id }, data: { details: JSON.stringify({ ...det, engagementSentAt: sentAt.toISOString() }), ...(advance ? { stage: "Engagement Letter Sent" } : {}) } });
+      const { logActivity } = await import("@/lib/activity");
+      await logActivity({ type: "NOTE", body: `Engagement letter sent${advance ? "; moved to Engagement Letter Sent" : ""}`, dealId: d.id, companyId: d.sponsorCompanyId, occurredAt: sentAt });
+      moved++;
+    } catch (err) {
+      if (String(err).includes("404")) await prisma.deal.update({ where: { id: d.id }, data: { details: JSON.stringify({ ...det, engagementDraftId: undefined, engagementMailbox: undefined }) } }); // draft deleted; forget it
+    }
+  }
+  return moved;
 }

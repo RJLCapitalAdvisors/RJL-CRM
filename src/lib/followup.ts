@@ -123,6 +123,7 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
  */
 export async function syncFollowUpDrafts(): Promise<number> {
   if (!graphConfigured()) return 0;
+  import("@/lib/engagement").then((m) => m.syncEngagementDrafts().catch(() => 0)).catch(() => 0);
   const rows = await prisma.dealInvestor.findMany({ where: { followUpDraftId: { not: null } }, select: { id: true, followUpDraftId: true, followUpMailbox: true, contactId: true, dealId: true } });
   let sent = 0;
   await Promise.all(
