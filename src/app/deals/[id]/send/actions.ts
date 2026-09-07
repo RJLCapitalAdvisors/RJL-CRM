@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/current-user";
-import { createSendDrafts, finalizeEngagement, renderDealEmail, type SendItem } from "@/lib/send-deal";
+import { createSendDrafts, finalizeEngagement, launchDealEmails, renderDealEmail, sendPreviewToSelf, type LaunchItem, type SendItem } from "@/lib/send-deal";
 
 export async function finalizeEngagementAction(dealId: string, keepCompanyIds: string[], addCompanyIds: string[]) {
   const r = await finalizeEngagement(dealId, keepCompanyIds, addCompanyIds);
@@ -36,4 +36,21 @@ export async function createSendDraftsAction(dealId: string, templateId: string,
   revalidatePath(`/deals/${dealId}/tracker`);
   revalidatePath(`/deals/${dealId}/send`);
   return { ok: true as const, results };
+}
+
+export async function launchAction(dealId: string, items: LaunchItem[]) {
+  const me = await currentUser();
+  if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the emails go from your own mailbox." };
+  const results = await launchDealEmails(dealId, items, me.email);
+  revalidatePath(`/deals/${dealId}`);
+  revalidatePath(`/deals/${dealId}/tracker`);
+  revalidatePath(`/deals/${dealId}/send`);
+  revalidatePath("/");
+  return { ok: true as const, results };
+}
+
+export async function previewToMeAction(dealId: string, item: LaunchItem) {
+  const me = await currentUser();
+  if (!me) return { ok: false, error: "Sign in with Microsoft first." };
+  return sendPreviewToSelf(dealId, item, me.email);
 }

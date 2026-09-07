@@ -232,7 +232,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
         <Row label={pref ? "Requested pref / mezz amount ($)" : "Requested amount ($)"}>
           <NumberInput name="requestedAmount" defaultValue={d?.requestedAmount} decimals={false} onValue={setAsk} />
         </Row>
-        <Row label="Purchase price ($)" hint={isDev ? "Land price for developments" : undefined}>
+        <Row label={isDev ? "Land purchase price ($)" : "Purchase price ($)"}>
           <NumberInput name="purchasePrice" defaultValue={d?.purchasePrice} decimals={false} onValue={setPrice} />
         </Row>
         {p.perCount && <Calc label={`Purchase price per ${per}`} value={money(ratio(price, count))} />}

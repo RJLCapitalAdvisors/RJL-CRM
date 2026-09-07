@@ -23,6 +23,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
     rowId: r.id,
     status: r.status,
     company: r.contact.company?.name ?? [r.contact.firstName, r.contact.lastName].filter(Boolean).join(" "),
+    domain: r.contact.company?.domain ?? null,
     people: (r.contact.company?.contacts ?? [{ id: r.contact.id, firstName: r.contact.firstName, lastName: r.contact.lastName, email: r.contact.email, title: null }]).map((c) => ({ id: c.id, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "", email: c.email ?? "", title: c.title ?? null })),
     primaryContactId: r.contactId,
     extraContactIds: r.extraContactIds ? (JSON.parse(r.extraContactIds) as string[]) : [],

@@ -2,40 +2,67 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createSendDraftsAction, previewDealEmail } from "./actions";
+import { CompanyLogo } from "@/components/company-logo";
+import { launchAction, previewDealEmail, previewToMeAction } from "./actions";
 
 export type Person = { id: string; name: string; email: string; title: string | null };
-export type Firm = { rowId: string; status: number; company: string; people: Person[]; primaryContactId: string; extraContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean };
-type Links = { webLink: string; outlookLink: string | null; messageId: string | null };
-const desktopHref = (l: Links) => (l.messageId ? `rjlcrm:open?mid=${encodeURIComponent(l.messageId)}` : l.outlookLink ?? l.webLink);
+export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean };
+type Draft = { subject: string; html: string; touched: boolean };
 
 /**
- * Left: every agreed firm with the people at it (tick who gets the email), a personal first line, and an
- * optional custom body. Right: live preview of the selected firm's email. Bottom: create the drafts in
- * Outlook, then open them one after another.
+ * Send deal. Top: one token per firm (logo, name, the people it goes to); click a token to work on that
+ * firm's email, click its caret to pick people, x to leave the firm out. Middle: the email for the selected
+ * firm, editable in place. Bottom: "Send preview email" (to you) and LAUNCH (each firm gets its own email, all at once).
  */
 export function SendClient({ dealId, firms, templates, defaultTemplateId }: { dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string }) {
   const [templateId, setTemplateId] = useState(defaultTemplateId);
   const [include, setInclude] = useState<Set<string>>(new Set(firms.filter((f) => f.status <= 1).map((f) => f.rowId)));
-  const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set([f.primaryContactId, ...f.extraContactIds])])));
-  const [opening, setOpening] = useState<Record<string, string>>(() => Object.fromEntries(firms.map((f) => [f.rowId, f.openingLine ?? "hope you are well."])));
-  const [bodies, setBodies] = useState<Record<string, string | null>>(() => Object.fromEntries(firms.map((f) => [f.rowId, f.bodyOverride])));
+  const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set([f.primaryContactId, ...f.extraContactIds].filter((id) => f.people.some((p) => p.id === id)))])));
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [current, setCurrent] = useState<string | null>(firms.find((f) => f.status <= 1)?.rowId ?? firms[0]?.rowId ?? null);
-  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
-  const [links, setLinks] = useState<Record<string, Links | { error: string }>>({});
+  const [picker, setPicker] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, { ok: boolean; error?: string }>>({});
+  const [note, setNote] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [rendering, setRendering] = useState(false);
+  const editor = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cur = firms.find((f) => f.rowId === current) ?? null;
-  const curTo = cur ? [...(to[cur.rowId] ?? [])] : [];
-  const curPrimary = cur ? (curTo.includes(cur.primaryContactId) ? cur.primaryContactId : curTo[0] ?? cur.primaryContactId) : null;
+  const primaryFor = (f: Firm) => {
+    const set = to[f.rowId] ?? new Set<string>();
+    return set.has(f.primaryContactId) ? f.primaryContactId : [...set][0] ?? f.primaryContactId;
+  };
 
+  // render the selected firm's email once (or when the template changes); edits are kept in `drafts`
   useEffect(() => {
-    if (!cur || !curPrimary || !templateId) return;
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => previewDealEmail(dealId, templateId, curPrimary, opening[cur.rowId] ?? null, bodies[cur.rowId] ?? null).then(setPreview).catch(() => setPreview(null)), 300);
-  }, [cur, curPrimary, templateId, opening, bodies, dealId]);
+    if (!cur) return;
+    const d = drafts[cur.rowId];
+    if (d && d.touched) return;
+    let cancelled = false;
+    setRendering(true);
+    previewDealEmail(dealId, templateId, primaryFor(cur), cur.openingLine ?? "hope you are well.", null)
+      .then((r) => {
+        if (!cancelled) setDrafts((s) => ({ ...s, [cur.rowId]: { subject: r.subject, html: r.html, touched: false } }));
+      })
+      .catch(() => null)
+      .finally(() => !cancelled && setRendering(false));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, templateId]);
+
+  // put the html into the editor whenever the selected draft changes
+  useEffect(() => {
+    if (editor.current && cur && drafts[cur.rowId]) editor.current.innerHTML = drafts[cur.rowId].html;
+  }, [current, drafts[cur?.rowId ?? ""]?.html === undefined, templateId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const commitEdit = () => {
+    if (!cur || !editor.current) return;
+    const html = editor.current.innerHTML;
+    setDrafts((s) => (s[cur.rowId] && s[cur.rowId].html === html ? s : { ...s, [cur.rowId]: { subject: s[cur.rowId]?.subject ?? "", html, touched: true } }));
+  };
 
   const togglePerson = (rowId: string, pid: string) =>
     setTo((s) => {
@@ -45,99 +72,149 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId }: { de
       return { ...s, [rowId]: n };
     });
 
-  const create = () =>
+  const itemsToSend = () => firms.filter((f) => include.has(f.rowId) && f.status <= 1).map((f) => ({ rowId: f.rowId, toContactIds: [...(to[f.rowId] ?? [])], subject: drafts[f.rowId]?.subject ?? "", html: drafts[f.rowId]?.html ?? "" }));
+  const unrendered = () => itemsToSend().filter((i) => !i.html).length;
+
+  const launch = () => {
+    commitEdit();
+    const items = itemsToSend();
+    if (!items.length) return;
+    if (unrendered()) return setNote("Click each firm once so its email is rendered before launching.");
+    if (!window.confirm(`Send ${items.length} individual email${items.length === 1 ? "" : "s"} now, each to the people picked?`)) return;
     start(async () => {
-      const items = firms.filter((f) => include.has(f.rowId)).map((f) => ({ rowId: f.rowId, toContactIds: [...(to[f.rowId] ?? [])], openingLine: opening[f.rowId] ?? null, bodyOverride: bodies[f.rowId] ?? null }));
-      const r = await createSendDraftsAction(dealId, templateId, items);
-      if (!r.ok) return setLinks({ __all: { error: r.reason } });
-      const next: Record<string, Links | { error: string }> = {};
-      for (const x of r.results) next[x.rowId] = x.result.ok ? { webLink: x.result.webLink, outlookLink: x.result.outlookLink, messageId: x.result.messageId } : { error: x.result.reason };
-      setLinks(next);
+      const r = await launchAction(dealId, items);
+      if (!r.ok) return setNote(r.reason);
+      setResults(Object.fromEntries(r.results.map((x) => [x.rowId, { ok: x.ok, error: x.error }])));
+      const sent = r.results.filter((x) => x.ok).length;
+      setNote(`${sent} of ${r.results.length} sent. Rows are now Deal Sent on the progress report.`);
       router.refresh();
     });
+  };
 
-  const ready = Object.values(links).filter((l) => !("error" in l)).length;
+  const previewToMe = () => {
+    commitEdit();
+    if (!cur) return;
+    const d = drafts[cur.rowId];
+    if (!d?.html) return;
+    start(async () => {
+      const r = await previewToMeAction(dealId, { rowId: cur.rowId, toContactIds: [...(to[cur.rowId] ?? [])], subject: d.subject, html: d.html });
+      setNote(r.ok ? `Preview of the ${cur.company} email sent to your inbox.` : r.error ?? "Could not send the preview.");
+    });
+  };
 
   return (
-    <div className="grid gap-5 px-8 py-6 xl:grid-cols-[minmax(0,1fr)_520px]">
-      <div className="space-y-4">
-        <div className="card flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
-          <label className="text-muted">Template</label>
-          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} className="input w-80">
+    <div className="mx-auto max-w-[1000px] space-y-4 px-6 py-5">
+      {/* recipients */}
+      <div className="card p-3">
+        <div className="mb-2 flex items-center justify-between text-xs text-muted">
+          <span>
+            Sending individually to {include.size} firm{include.size === 1 ? "" : "s"}. Click a firm to see and edit its email; click the arrow to pick people; x leaves it out.
+          </span>
+          <select value={templateId} onChange={(e) => { setTemplateId(e.target.value); setDrafts({}); }} className="input w-64 py-1 text-xs" title="Template">
             {templates.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
               </option>
             ))}
           </select>
-          <span className="ml-auto text-muted">
-            {include.size} firm{include.size === 1 ? "" : "s"} selected
-          </span>
-          <button type="button" className="btn-primary" disabled={pending || include.size === 0} onClick={create}>
-            {pending ? "Creating drafts…" : ready ? "Recreate drafts" : "Create drafts in Outlook"}
-          </button>
         </div>
-        {"__all" in links && "error" in links.__all && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{(links.__all as { error: string }).error}</div>}
-
-        <div className="card divide-y divide-line">
+        <div className="flex flex-wrap gap-2">
           {firms.map((f) => {
-            const link = links[f.rowId];
-            const selected = f.rowId === current;
+            const on = include.has(f.rowId) && f.status <= 1;
+            const chosen = f.people.filter((p) => (to[f.rowId] ?? new Set()).has(p.id));
+            const res = results[f.rowId];
+            const selected = current === f.rowId;
             return (
-              <div key={f.rowId} className={`px-4 py-3 ${selected ? "bg-cream-50" : ""}`}>
-                <div className="flex items-start gap-3">
-                  <input type="checkbox" className="mt-1 accent-ink" checked={include.has(f.rowId)} disabled={f.status >= 2} onChange={() => setInclude((s) => { const n = new Set(s); if (n.has(f.rowId)) n.delete(f.rowId); else n.add(f.rowId); return n; })} />
-                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setCurrent(f.rowId)}>
-                    <div className="flex flex-wrap items-baseline gap-2">
-                      <span className="font-semibold">{f.company}</span>
-                      {f.status >= 2 && <span className="text-xs text-muted">sent</span>}
-                      {f.draftOpen && f.status < 2 && <span className="text-xs text-muted">draft in Outlook</span>}
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                      {f.people.map((p) => (
-                        <label key={p.id} className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" className="accent-ink" checked={(to[f.rowId] ?? new Set()).has(p.id)} onChange={() => togglePerson(f.rowId, p.id)} />
-                          <span>{p.name}</span>
-                          {p.title && <span className="text-xs text-muted">{p.title}</span>}
-                        </label>
-                      ))}
-                      {f.people.length === 0 && <span className="text-xs text-red-700">nobody with an email at this firm</span>}
-                    </div>
-                    <div className="mt-2 flex items-center gap-2 text-sm">
-                      <span className="text-xs text-muted">Hi {f.people.find((p) => p.id === f.primaryContactId)?.name.split(" ")[0] ?? "…"} -</span>
-                      <input value={opening[f.rowId] ?? ""} onChange={(e) => setOpening((s) => ({ ...s, [f.rowId]: e.target.value }))} className="input max-w-md py-1 text-sm" placeholder="hope you are well." onClick={(e) => e.stopPropagation()} />
-                    </div>
+              <div key={f.rowId} className="relative">
+                <div className={`flex items-center gap-1.5 rounded-full border py-1 pl-1.5 pr-1 text-sm ${selected ? "border-sky-600 bg-sky" : on ? "border-line bg-paper" : "border-line bg-cream-50 opacity-60"} ${res?.ok ? "border-emerald-500" : ""}`}>
+                  <button type="button" className="flex items-center gap-1.5" onClick={() => setCurrent(f.rowId)} title={f.status >= 2 ? "Already sent" : "Show this firm's email"}>
+                    <CompanyLogo domain={f.domain} name={f.company} size={18} />
+                    <span className="font-medium">{f.company}</span>
+                    <span className="text-xs text-muted">{chosen.length ? chosen.map((p) => p.name.split(" ")[0]).join(", ") : "nobody picked"}</span>
+                    {res?.ok && <span className="text-xs text-emerald-700">sent</span>}
+                    {res && !res.ok && <span className="text-xs text-red-700" title={res.error}>failed</span>}
+                    {f.status >= 2 && !res && <span className="text-xs text-muted">sent earlier</span>}
                   </button>
-                  <div className="shrink-0 text-right">
-                    {link && !("error" in link) && (
-                      <a href={desktopHref(link)} className="btn-soft" title="Open this draft in Outlook to review and send">
-                        Open
-                      </a>
-                    )}
-                    {link && "error" in link && <div className="max-w-[200px] text-xs text-red-700">{link.error}</div>}
-                  </div>
+                  {f.status <= 1 && (
+                    <>
+                      <button type="button" className="rounded-full px-1 text-xs text-muted hover:bg-cream" onClick={() => setPicker(picker === f.rowId ? null : f.rowId)} title="Pick who at this firm gets it">
+                        ▾
+                      </button>
+                      <button type="button" className="rounded-full px-1 text-xs text-muted hover:bg-cream" onClick={() => setInclude((s) => { const n = new Set(s); if (n.has(f.rowId)) n.delete(f.rowId); else n.add(f.rowId); return n; })} title={on ? "Leave this firm out" : "Include this firm"}>
+                        {on ? "×" : "+"}
+                      </button>
+                    </>
+                  )}
                 </div>
+                {picker === f.rowId && (
+                  <div className="absolute left-0 z-20 mt-1 w-72 rounded-md border border-line bg-paper p-2 shadow-lg">
+                    <div className="mb-1 text-xs text-muted">Who at {f.company} gets it</div>
+                    {f.people.map((p) => (
+                      <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-cream">
+                        <input type="checkbox" className="accent-ink" checked={(to[f.rowId] ?? new Set()).has(p.id)} onChange={() => togglePerson(f.rowId, p.id)} />
+                        <span className="min-w-0 flex-1 truncate">
+                          {p.name} <span className="text-xs text-muted">{p.title ?? p.email}</span>
+                        </span>
+                      </label>
+                    ))}
+                    {f.people.length === 0 && <div className="text-xs text-red-700">Nobody with an email at this firm.</div>}
+                    <button type="button" className="mt-1 text-xs text-sky-600 hover:underline" onClick={() => setPicker(null)}>
+                      done
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
-          {firms.length === 0 && <div className="px-4 py-10 text-center text-sm text-muted">No groups on this deal yet. Finalize the engagement letter first.</div>}
+          {firms.length === 0 && <span className="text-sm text-muted">No groups on this deal yet. Finalize the engagement letter first.</span>}
         </div>
       </div>
 
-      <div className="card self-start">
-        <div className="border-b border-line bg-cream px-4 py-3 text-sm font-semibold">Preview{cur ? `: ${cur.company}` : ""}</div>
+      {/* the email for the selected firm */}
+      <div className="card">
+        <div className="flex items-center justify-between border-b border-line bg-cream px-4 py-2.5 text-sm">
+          <div className="flex items-center gap-2">
+            {cur && <CompanyLogo domain={cur.domain} name={cur.company} size={18} />}
+            <span className="font-semibold">{cur ? `Email to ${cur.company}` : "Pick a firm above"}</span>
+            {cur && <span className="text-xs text-muted">to {cur.people.filter((p) => (to[cur.rowId] ?? new Set()).has(p.id)).map((p) => p.email).join(", ") || "nobody picked"}</span>}
+          </div>
+          {cur && drafts[cur.rowId]?.touched && (
+            <button type="button" className="text-xs text-muted hover:underline" onClick={() => setDrafts((s) => { const n = { ...s }; delete n[cur.rowId]; return n; })}>
+              reset to template
+            </button>
+          )}
+        </div>
         {cur && (
-          <div className="px-4 py-3 text-sm">
-            <div className="mb-2 text-xs text-muted">To: {cur.people.filter((p) => (to[cur.rowId] ?? new Set()).has(p.id)).map((p) => p.email).join(", ") || "nobody picked"}</div>
-            <div className="mb-3 font-medium">{preview?.subject ?? "…"}</div>
-            <div className="max-h-[60vh] overflow-auto rounded-md border border-line bg-white p-3" dangerouslySetInnerHTML={{ __html: preview?.html ?? "<p style='color:#888'>Rendering…</p>" }} />
-            <details className="mt-3 text-xs text-muted">
-              <summary className="cursor-pointer hover:underline">Customize the body for {cur.company} only</summary>
-              <textarea className="input mt-2 min-h-[160px] font-mono text-xs" value={bodies[cur.rowId] ?? ""} onChange={(e) => setBodies((s) => ({ ...s, [cur.rowId]: e.target.value || null }))} placeholder="Leave empty to use the template. Tokens like {{deal.intro}} and {{contact.firstName}} still work here." />
-            </details>
+          <div className="px-4 py-3">
+            <div className="mb-2 flex items-center gap-2 text-sm">
+              <span className="w-14 text-xs text-muted">Subject</span>
+              <input value={drafts[cur.rowId]?.subject ?? ""} onChange={(e) => setDrafts((s) => ({ ...s, [cur.rowId]: { subject: e.target.value, html: s[cur.rowId]?.html ?? "", touched: true } }))} className="input py-1" />
+            </div>
+            <div
+              ref={editor}
+              contentEditable
+              suppressContentEditableWarning
+              onBlur={commitEdit}
+              onInput={commitEdit}
+              className="min-h-[420px] rounded-md border border-line bg-white p-4 text-[11pt] outline-none focus:border-sky-600"
+              style={{ fontFamily: "Calibri, Arial, sans-serif" }}
+            />
+            {rendering && <div className="mt-1 text-xs text-muted">Rendering…</div>}
           </div>
         )}
-        {ready > 0 && <div className="border-t border-line px-4 py-3 text-xs text-muted">{ready} draft{ready === 1 ? "" : "s"} waiting in your Outlook. Click Open on each, glance, send. Rows flip to Deal Sent on the progress report as they go out.</div>}
+      </div>
+
+      {/* actions */}
+      <div className="card flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div className="text-sm text-muted">{note ?? `${itemsToSend().length} email${itemsToSend().length === 1 ? "" : "s"} ready. Each firm gets its own, with the deal's attachments and your signature.`}</div>
+        <div className="flex items-center gap-2">
+          <button type="button" className="btn-secondary" disabled={pending || !cur || !drafts[cur.rowId]?.html} onClick={previewToMe} title="Emails you the exact message the selected firm would get">
+            Send preview email to me
+          </button>
+          <button type="button" className="btn-primary px-5" disabled={pending || itemsToSend().length === 0} onClick={launch}>
+            {pending ? "Working…" : "LAUNCH"}
+          </button>
+        </div>
       </div>
     </div>
   );

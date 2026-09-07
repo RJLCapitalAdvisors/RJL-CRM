@@ -171,3 +171,56 @@ export async function syncSendDrafts(): Promise<number> {
   }
   return sent;
 }
+
+export type LaunchItem = { rowId: string; toContactIds: string[]; subject: string; html: string };
+export type LaunchResult = { rowId: string; firm: string; to: string[]; ok: boolean; error?: string };
+
+/** Build a message in the sender's mailbox with the deal's attachments and send it. */
+async function sendMessage(mailbox: string, to: string[], subject: string, html: string, src: Awaited<ReturnType<typeof dealAttachments>>) {
+  const draft = await createDraft(mailbox, { subject, toRecipients: to, bodyHtml: `<html><body>${html}</body></html>` });
+  if (src) for (const a of src.atts) await copyAcross(src, a, mailbox, draft.id);
+  const fresh = await getMessage(mailbox, draft.id, "id,internetMessageId");
+  await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(draft.id)}/send`, { method: "POST" });
+  return fresh.internetMessageId ?? null;
+}
+
+/** LAUNCH: every firm gets its own edited email, all sent now. Rows flip to Deal Sent; the deal goes to market. */
+export async function launchDealEmails(dealId: string, items: LaunchItem[], mailbox: string): Promise<LaunchResult[]> {
+  if (!graphConfigured()) return items.map((i) => ({ rowId: i.rowId, firm: "", to: [], ok: false, error: "Microsoft 365 is not connected" }));
+  const src = await dealAttachments(dealId).catch(() => null);
+  const out: LaunchResult[] = [];
+  for (const item of items) {
+    const row = await prisma.dealInvestor.findUnique({ where: { id: item.rowId }, include: { contact: { include: { company: true } } } });
+    if (!row) continue;
+    const firm = row.contact.company?.name ?? "";
+    const people = await prisma.contact.findMany({ where: { id: { in: item.toContactIds.length ? item.toContactIds : [row.contactId] }, email: { not: null } } });
+    const to = people.map((p) => p.email!);
+    if (!to.length) {
+      out.push({ rowId: row.id, firm, to, ok: false, error: "nobody with an email picked" });
+      continue;
+    }
+    try {
+      const messageId = await sendMessage(mailbox, to, item.subject, item.html, src);
+      const now = new Date();
+      await prisma.dealInvestor.update({ where: { id: row.id }, data: { status: Math.max(row.status, 2), bodyOverride: item.html, extraContactIds: toJson(people.map((p) => p.id).filter((id) => id !== row.contactId)), sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: now } });
+      for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: item.subject, body: "Deal email sent (Send deal)", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId, occurredAt: now }).catch(() => {});
+      out.push({ rowId: row.id, firm, to, ok: true });
+    } catch (e) {
+      out.push({ rowId: row.id, firm, to, ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 200) });
+    }
+  }
+  if (out.some((r) => r.ok)) await advance(dealId, "Deal Taken To Market");
+  return out;
+}
+
+/** "Send preview email": the exact email for one firm, delivered to the sender instead. */
+export async function sendPreviewToSelf(dealId: string, item: LaunchItem, mailbox: string): Promise<{ ok: boolean; error?: string }> {
+  if (!graphConfigured()) return { ok: false, error: "Microsoft 365 is not connected" };
+  try {
+    const src = await dealAttachments(dealId).catch(() => null);
+    await sendMessage(mailbox, [mailbox], `[PREVIEW] ${item.subject}`, item.html, src);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+}
