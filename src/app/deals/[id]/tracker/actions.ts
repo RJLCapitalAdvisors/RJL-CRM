@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { AWAITING_RESPONSE, statusOf } from "@/lib/tracker";
 import { generateTrackerSummary } from "@/lib/tracker-summary";
+import { proposeCriteriaChanges } from "@/lib/criteria-proposals";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -46,9 +47,21 @@ export async function setTrackerStatus(rowId: string, status: number) {
 
 export async function saveTrackerNote(rowId: string, fd: FormData) {
   const note = s(fd, "note");
-  const row = await prisma.dealInvestor.update({ where: { id: rowId }, data: { note, noteDate: note ? new Date() : null } });
+  const row = await prisma.dealInvestor.update({ where: { id: rowId }, data: { note, noteDate: note ? new Date() : null }, include: { contact: { select: { companyId: true } } } });
   touch(row.dealId);
   summarizeLater(row.dealId);
+  // What the investor said may correct their criteria: queue a proposal for Jonathan to approve on the To-do page.
+  if (note && row.contact.companyId) {
+    const companyId = row.contact.companyId;
+    after(async () => {
+      try {
+        await proposeCriteriaChanges({ companyId, contactId: row.contactId, text: note, source: "NOTE", sourceRef: row.id });
+        revalidatePath("/");
+      } catch (e) {
+        console.error("criteria proposal failed", e);
+      }
+    });
+  }
 }
 
 export async function removeTrackerRow(rowId: string) {

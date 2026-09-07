@@ -1,158 +1,155 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
-import { missingFor } from "@/lib/checklist";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
 import { investorLabel } from "@/lib/tracker";
-import { fmtDate } from "@/lib/format";
-import { addTodo, deleteTodo, toggleTodo } from "./todo-actions";
+import { subjectLine } from "@/lib/deal-copy";
+import { mailtoLink, renderForRecipient } from "@/lib/campaign-render";
+import { PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
+import { approveProposal, dismissProposal } from "./todo-actions";
+import { RespondNow } from "./respond-now";
 
 export const dynamic = "force-dynamic";
 
-type Item = { key: string; text: string; detail?: string; href: string; kind: "deal" | "email" | "followup" | "intro" | "review" | "action" };
-
 const DAY = 86_400_000;
+/** An LP gets this long to respond to a deal (or a follow-up) before they show up as quiet. */
+const QUIET_AFTER_DAYS = 2;
+const days = (d: Date) => Math.floor((Date.now() - d.getTime()) / DAY);
 
-/** Everything outstanding, derived from what is in the CRM right now. Email-derived items arrive once Outlook is connected. */
-async function derivedItems(): Promise<Item[]> {
-  const now = Date.now();
-  const [intakes, deals, openQueues, actions] = await Promise.all([
-    prisma.dealIntake.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "desc" }, select: { id: true, subject: true, extracted: true, missing: true, fromName: true } }),
-    prisma.deal.findMany({
-      where: { stage: { in: [...ACTIVE_STAGES] } },
-      include: { investors: { include: { contact: { include: { company: true } } } } },
-      orderBy: { updatedAt: "desc" },
-    }),
-    prisma.campaign.findMany({ where: { mode: "OUTREACH", recipients: { some: { status: "PENDING" } } }, include: { deal: true, recipients: { select: { status: true } } } }),
-    prisma.dealAction.findMany({ where: { done: false }, include: { deal: { select: { id: true, propertyName: true, name: true } } }, orderBy: { createdAt: "asc" } }),
-  ]);
-
-  const items: Item[] = [];
-
-  for (const it of intakes) {
-    const ex = JSON.parse(it.extracted) as { propertyName?: string | null; sponsorName?: string | null };
-    const missing = JSON.parse(it.missing) as string[];
-    items.push({
-      key: `intake-${it.id}`,
-      kind: "deal",
-      text: `Review the ${ex.propertyName ?? it.subject ?? "forwarded"} deal${ex.sponsorName ? ` from ${ex.sponsorName}` : ""}`,
-      detail: missing.length ? `${missing.length} checklist items still missing` : "Checklist complete",
-      href: `/intake/${it.id}`,
-    });
+/** LPs who were sent a deal (or followed up with) and have said nothing for QUIET_AFTER_DAYS, grouped by deal. */
+async function quietInvestors() {
+  const cutoff = new Date(Date.now() - QUIET_AFTER_DAYS * DAY);
+  const rows = await prisma.dealInvestor.findMany({
+    where: { status: { in: [2, 3] }, updatedAt: { lt: cutoff }, deal: { stage: { in: [...ACTIVE_STAGES] } } },
+    include: { contact: { include: { company: { select: { name: true } } } }, deal: true },
+    orderBy: { updatedAt: "asc" },
+  });
+  // The original deal email each LP got, so the follow-up can carry the same subject line.
+  const sends = await prisma.campaignRecipient.findMany({
+    where: { status: "SENT", contactId: { in: rows.map((r) => r.contactId) }, campaign: { followUp: false, dealId: { in: [...new Set(rows.map((r) => r.dealId))] } } },
+    include: { campaign: { include: { deal: true } }, contact: { include: { company: { select: { name: true } } } } },
+    orderBy: { sentAt: "desc" },
+  });
+  const sentTo = new Map<string, (typeof sends)[number]>();
+  for (const s of sends) {
+    const k = `${s.campaign.dealId}:${s.contactId}`;
+    if (!sentTo.has(k)) sentTo.set(k, s);
   }
 
-  for (const c of openQueues) {
-    const pending = c.recipients.filter((r) => r.status === "PENDING").length;
-    items.push({
-      key: `queue-${c.id}`,
-      kind: "email",
-      text: `${c.followUp ? "Finish follow-ups" : "Finish sending"} ${c.deal?.propertyName ?? c.deal?.name ?? c.name}`,
-      detail: `${pending} investor${pending === 1 ? "" : "s"} left in the queue`,
-      href: `/campaigns/${c.id}`,
-    });
+  const byDeal = new Map<string, { deal: (typeof rows)[number]["deal"]; rows: { row: (typeof rows)[number]; href: string | null }[] }>();
+  for (const r of rows) {
+    const s = sentTo.get(`${r.dealId}:${r.contactId}`);
+    const subject = s ? renderForRecipient({ ...s.campaign, deal: s.campaign.deal as unknown as Record<string, unknown> }, s).subject : subjectLine(r.deal as unknown as Record<string, unknown>);
+    const first = r.contact.firstName?.trim();
+    const href = r.contact.email && !r.contact.unsubscribed ? mailtoLink(r.contact.email, `RE: ${subject}`, `Hi${first ? ` ${first}` : ""} - please confirm receipt.`) : null;
+    const g = byDeal.get(r.dealId) ?? { deal: r.deal, rows: [] };
+    g.rows.push({ row: r, href });
+    byDeal.set(r.dealId, g);
   }
-
-  for (const d of deals) {
-    const name = d.propertyName ?? d.name;
-    const missing = missingFor(d);
-    // Only recent deals: old HubSpot deals parked in Deal Received are history, not to-dos.
-    if (d.stage === "Deal Received" && missing.length && now - d.updatedAt.getTime() < 21 * DAY) {
-      items.push({ key: `items-${d.id}`, kind: "deal", text: `Get ${missing.length} outstanding item${missing.length === 1 ? "" : "s"} from ${d.sponsorName ?? "the sponsor"} on ${name}`, detail: missing.slice(0, 3).map((m) => m.label).join(", ") + (missing.length > 3 ? "…" : ""), href: `/deals/${d.id}/tracker` });
-    }
-    const stale = d.investors.filter((r) => (r.status === 2 || r.status === 3) && now - r.updatedAt.getTime() > 5 * DAY);
-    if (stale.length) {
-      items.push({ key: `fu-${d.id}`, kind: "followup", text: `Follow up with ${stale.length} investor${stale.length === 1 ? "" : "s"} on ${name}`, detail: `No response in 5+ days: ${stale.slice(0, 3).map((r) => r.contact.company?.name ?? investorLabel(r.contact)).join(", ")}${stale.length > 3 ? "…" : ""}`, href: `/deals/${d.id}/tracker` });
-    }
-    for (const r of d.investors.filter((r) => r.status === 5)) {
-      items.push({ key: `intro-${r.id}`, kind: "intro", text: `Make the intro: ${r.contact.company?.name ?? investorLabel(r.contact)} is interested in ${name}`, detail: r.note ?? undefined, href: `/deals/${d.id}/tracker` });
-    }
-    if (now - d.updatedAt.getTime() > 30 * DAY && d.stage !== "Deal Received") {
-      items.push({ key: `stale-${d.id}`, kind: "review", text: `Still alive? ${name} has had no activity in ${Math.floor((now - d.updatedAt.getTime()) / DAY)} days`, detail: `${d.stage} · ${d.sponsorName ?? ""}`, href: `/deals/${d.id}` });
-    }
-  }
-
-  for (const a of actions) {
-    items.push({ key: `action-${a.id}`, kind: "action", text: a.text, detail: a.deal.propertyName ?? a.deal.name, href: `/deals/${a.deal.id}/tracker` });
-  }
-
-  const order: Record<Item["kind"], number> = { deal: 0, email: 1, intro: 2, followup: 3, action: 4, review: 5 };
-  return items.sort((a, b) => order[a.kind] - order[b.kind]);
+  return [...byDeal.values()].sort((a, b) => a.rows[0].row.updatedAt.getTime() - b.rows[0].row.updatedAt.getTime());
 }
 
-const kindLabel: Record<Item["kind"], string> = { deal: "Deal", email: "Send", intro: "Intro", followup: "Follow up", review: "Review", action: "Action item" };
-const kindTone: Record<Item["kind"], string> = { deal: "bg-sky text-ink", email: "bg-ink text-white", intro: "bg-emerald-100 text-emerald-900", followup: "bg-amber-100 text-amber-900", review: "bg-stone-200 text-ink", action: "bg-sky-50 text-ink" };
-
 export default async function Dashboard() {
-  const [items, todos] = await Promise.all([derivedItems(), prisma.todo.findMany({ orderBy: [{ done: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }] })]);
-  const open = todos.filter((t) => !t.done);
-  const doneRecently = todos.filter((t) => t.done).slice(0, 5);
+  const [proposals, quiet] = await Promise.all([prisma.criteriaProposal.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "desc" } }), quietInvestors()]);
+  const companies = new Map((await prisma.company.findMany({ where: { id: { in: proposals.map((p) => p.companyId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   const today = new Date();
+  const quietCount = quiet.reduce((n, g) => n + g.rows.length, 0);
 
   return (
     <>
-      <PageHeader title="To do" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${items.length + open.length} open`} />
-      <div className="mx-auto max-w-3xl px-8 py-6">
-        <form action={addTodo} className="mb-6 flex gap-2">
-          <input name="text" placeholder="Add something to do…" className="input" autoComplete="off" />
-          <input name="dueDate" type="date" className="input w-44" title="Due date (optional)" />
-          <button className="btn-primary" type="submit">
-            Add
-          </button>
-        </form>
+      <PageHeader title="To do" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP${quietCount === 1 ? "" : "s"} to follow up with · ${proposals.length} criteria update${proposals.length === 1 ? "" : "s"} to approve`} />
+      <div className="grid gap-6 px-8 py-6 lg:grid-cols-2">
+        {/* LPs who have gone quiet */}
+        <div className="card flex max-h-[calc(100vh-150px)] flex-col">
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <h2 className="text-sm font-semibold">No response in {QUIET_AFTER_DAYS}+ days</h2>
+            <span className="text-xs text-muted">{quietCount}</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {quiet.length === 0 ? (
+              <div className="px-4 py-8 text-center text-xs text-muted">Everyone you have sent a deal to has responded, or got it less than {QUIET_AFTER_DAYS} days ago.</div>
+            ) : (
+              <ul className="divide-y divide-line">
+                {quiet.map((g) => (
+                  <li key={g.deal.id} className="px-4 py-3 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <Link href={`/deals/${g.deal.id}/tracker`} className="font-semibold hover:underline">
+                        {g.deal.propertyName ?? g.deal.name}
+                      </Link>
+                      <span className="text-xs text-muted">{g.rows.length} waiting</span>
+                    </div>
+                    <ul className="mt-2 space-y-1.5">
+                      {g.rows.map(({ row: r, href }) => (
+                        <li key={r.id} className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate">
+                              {r.contact.company?.name ?? investorLabel(r.contact)}
+                              {r.status === 3 && <span className="text-muted"> · already followed up</span>}
+                            </div>
+                            <div className="truncate text-xs text-muted">
+                              {[r.contact.firstName, r.contact.lastName].filter(Boolean).join(" ")}
+                              {r.contact.email ? ` · ${r.contact.email}` : " · no email on file"} · {days(r.updatedAt)} days
+                            </div>
+                          </div>
+                          <RespondNow rowId={r.id} href={href} />
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
 
-        <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-paper">
-          {open.map((t) => (
-            <li key={t.id} className="flex items-start gap-3 px-4 py-3">
-              <form action={toggleTodo.bind(null, t.id)}>
-                <button type="submit" className="mt-0.5 h-4 w-4 rounded border border-line hover:border-ink" aria-label="Done" />
-              </form>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm">{t.text}</div>
-                {t.dueDate && <div className={`text-xs ${t.dueDate.getTime() < today.getTime() - DAY ? "text-red-700" : "text-muted"}`}>Due {fmtDate(t.dueDate)}</div>}
-              </div>
-              <form action={deleteTodo.bind(null, t.id)}>
-                <button type="submit" className="text-muted hover:text-red-700" title="Remove">
-                  ×
-                </button>
-              </form>
-            </li>
-          ))}
-          {items.map((it) => (
-            <li key={it.key} className="flex items-start gap-3 px-4 py-3">
-              <span className={`chip mt-0.5 shrink-0 ${kindTone[it.kind]}`}>{kindLabel[it.kind]}</span>
-              <div className="min-w-0 flex-1">
-                <Link href={it.href} className="text-sm hover:underline">
-                  {it.text}
-                </Link>
-                {it.detail && <div className="truncate text-xs text-muted">{it.detail}</div>}
-              </div>
-              <Link href={it.href} className="text-xs text-sky-600 hover:underline">
-                Open
-              </Link>
-            </li>
-          ))}
-          {items.length + open.length === 0 && <li className="px-4 py-10 text-center text-sm text-muted">Nothing outstanding.</li>}
-        </ul>
-
-        {doneRecently.length > 0 && (
-          <details className="mt-4 text-sm text-muted">
-            <summary className="cursor-pointer">Recently done ({todos.filter((t) => t.done).length})</summary>
-            <ul className="mt-2 space-y-1">
-              {doneRecently.map((t) => (
-                <li key={t.id} className="flex items-center gap-2">
-                  <form action={toggleTodo.bind(null, t.id)}>
-                    <button type="submit" className="text-xs underline">
-                      undo
-                    </button>
-                  </form>
-                  <span className="line-through">{t.text}</span>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-
-        <p className="mt-6 text-xs text-muted">Items marked Deal, Send, Intro, Follow up, and Review come from what is in the CRM. Once Outlook is connected, unanswered emails and requests sitting in your inbox appear here too.</p>
+        {/* Investor criteria updates to approve */}
+        <div className="card flex max-h-[calc(100vh-150px)] flex-col">
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <h2 className="text-sm font-semibold">Criteria updates to approve</h2>
+            <span className="text-xs text-muted">{proposals.length}</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {proposals.length === 0 ? (
+              <div className="px-4 py-8 text-center text-xs text-muted">Nothing to approve. When an investor tells us their check size, markets, or focus have changed (email reply, tracker note, Fireflies call), the correction shows up here.</div>
+            ) : (
+              <ul className="divide-y divide-line">
+                {proposals.map((p) => {
+                  const changes = JSON.parse(p.changes) as Change[];
+                  return (
+                    <li key={p.id} className="px-4 py-3 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <Link href={`/companies/${p.companyId}`} className="font-semibold hover:underline">
+                          {(p.companyId && companies.get(p.companyId)) ?? "Investor"}
+                        </Link>
+                        <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted">{p.source === "NOTE" ? "from a note" : p.source === "EMAIL" ? "from email" : p.source === "FIREFLIES" ? "from a call" : "manual"}</span>
+                      </div>
+                      <ul className="mt-1.5 space-y-1.5">
+                        {changes.map((c) => (
+                          <li key={c.field} className="text-xs">
+                            <span className="text-muted">{PROPOSAL_FIELDS[c.field]?.label ?? c.field}:</span> <span className="line-through text-muted">{c.from || "blank"}</span> <span className="font-medium">{c.to}</span>
+                            {c.evidence && <div className="mt-0.5 italic text-ink-soft">“{c.evidence}”</div>}
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-2 flex gap-2">
+                        <form action={approveProposal.bind(null, p.id)}>
+                          <button className="btn-primary px-2.5 py-1 text-xs" type="submit">
+                            Approve
+                          </button>
+                        </form>
+                        <form action={dismissProposal.bind(null, p.id)}>
+                          <button className="btn-secondary px-2.5 py-1 text-xs" type="submit">
+                            Dismiss
+                          </button>
+                        </form>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
     </>
   );
