@@ -128,8 +128,8 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
   return { checked, open };
 }
 
-export async function listMomentum() {
-  const rows = await prisma.momentum.findMany({ where: { status: "OPEN" }, orderBy: { waitingSince: "asc" } });
+export async function listMomentum(since?: Date) {
+  const rows = await prisma.momentum.findMany({ where: { status: "OPEN", ...(since ? { waitingSince: { gte: since } } : {}) }, orderBy: { waitingSince: "asc" } });
   const deals = new Map((await prisma.deal.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.dealId))] } }, select: { id: true, name: true, propertyName: true } })).map((d) => [d.id, d]));
   return rows.map((r) => ({ ...r, deal: deals.get(r.dealId)! })).filter((r) => r.deal);
 }

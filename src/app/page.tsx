@@ -17,6 +17,8 @@ export const dynamic = "force-dynamic";
 const DAY = 86_400_000;
 /** An LP gets this long to respond to a deal (or a follow-up) before they show up as quiet. */
 const QUIET_AFTER_DAYS = 2;
+/** Home starts the clock here: anything that began before this date stays off the dashboard (the old backlog lives in the reports and deal pages). */
+const HOME_SINCE = new Date("2026-08-31T00:00:00Z");
 const days = (d: Date) => Math.floor((Date.now() - d.getTime()) / DAY);
 const KIND: Record<string, string> = { SPONSOR_ITEMS: "waiting on sponsor", INTRO: "intro not scheduled", ACTION: "open action item", MENTIONED: "mentioned, never sent" };
 
@@ -26,7 +28,7 @@ async function quietInvestors() {
   await syncFollowUpDrafts().catch(() => 0);
   const cutoff = new Date(Date.now() - QUIET_AFTER_DAYS * DAY);
   const rows = await prisma.dealInvestor.findMany({
-    where: { status: { in: [2, 3] }, updatedAt: { lt: cutoff }, deal: { stage: { in: [...ACTIVE_STAGES] } } },
+    where: { status: { in: [2, 3] }, updatedAt: { lt: cutoff, gte: HOME_SINCE }, deal: { stage: { in: [...ACTIVE_STAGES] } } },
     include: { contact: { include: { company: { select: { name: true } } } }, deal: true },
     orderBy: { updatedAt: "asc" },
   });
@@ -43,7 +45,7 @@ export default async function Dashboard() {
   kickMailSync(); // background: team mailboxes into the email log, deals@ inbox into deal tickets
   const me = await currentUser();
   const showCriteria = Boolean(me?.canEditCriteria);
-  const [proposals, quiet, momentum] = await Promise.all([showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]), quietInvestors(), listMomentum()]);
+  const [proposals, quiet, momentum] = await Promise.all([showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING", createdAt: { gte: HOME_SINCE } }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]), quietInvestors(), listMomentum(HOME_SINCE)]);
   const companies = new Map((await prisma.company.findMany({ where: { id: { in: proposals.map((p) => p.companyId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   const today = new Date();
   const quietCount = quiet.reduce((n, g) => n + g.rows.length, 0);
