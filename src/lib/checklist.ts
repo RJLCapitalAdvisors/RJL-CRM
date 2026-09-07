@@ -96,7 +96,8 @@ export function parseDetails(v: unknown): Record<string, string | null> {
 export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): string | null {
   const details = parseDetails(deal.details);
   const own = details[item.key];
-  if (own) return own;
+  // date and loan-term items are satisfied only by the real ticket fields, never by a free-text note
+  if (own && item.core !== "expectedClose" && item.core !== "loanTerm") return own;
   switch (item.core) {
     case "occupancy":
       return deal.occupancy != null ? `${deal.occupancy}%` : null;
