@@ -99,10 +99,10 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
   return (
     <div className="grid grid-cols-[300px_1fr] gap-6 px-8 py-6">
       {engagement && dealId && (
-        <div className="col-span-2 -mb-2 flex items-center justify-between rounded-lg border border-line bg-cream px-5 py-3">
-          <div>
-            <div className="font-semibold">Engagement letter{presetDealName ? ` for ${presetDealName}` : ""}</div>
-            <div className="text-sm text-muted">Tick the equity groups to carve out. Done drafts the letter to the sponsor in your Outlook and puts these groups on the progress report as Deal Not Sent.</div>
+        <div className="col-span-2 -mb-3 flex items-center justify-between rounded-lg border border-line bg-cream px-4 py-1.5">
+          <div className="flex items-baseline gap-3">
+            <span className="font-semibold">Engagement letter{presetDealName ? ` for ${presetDealName}` : ""}</span>
+            <span className="text-xs text-muted">Tick the groups to carve out; Done drafts the letter in your Outlook and seeds the progress report.</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted">{picked.size} group{picked.size === 1 ? "" : "s"}</span>
@@ -110,8 +110,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
           </div>
         </div>
       )}
-      <div className="space-y-4 self-start">
-      <aside className="card p-4">
+      <aside className="card self-start p-4">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold">Deal specs</span>
           {active > 0 && (
@@ -159,37 +158,35 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
         {sel("closing", "Closing time frame", CLOSING_TIMEFRAMES)}
         {sel("minority", "Open to minority position", ["Yes", "No"])}
       </aside>
-      {engagement && (
-        <aside className="card p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-semibold">Suggested by the CRM</span>
-            <Link href={`/investors?dealId=${dealId}&mode=engagement&refresh=1`} className="text-xs text-sky-600 hover:underline" title="Re-read criteria, tracker history and emails for this deal">
-              refresh
-            </Link>
-          </div>
-          {suggestions.length === 0 ? (
-            <div className="text-xs text-muted">No suggestions yet for this deal. The CRM reads criteria, how each group responded to past deals, and your email history to pick these.</div>
-          ) : (
-            <ul className="space-y-2">
-              {suggestions.map((sg) => (
-                <li key={sg.companyId} className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" className="mt-1 accent-ink" checked={picked.has(sg.companyId)} onChange={() => togglePick(sg.companyId)} aria-label={`Pick ${sg.name}`} />
-                  <div className="min-w-0">
-                    <Link href={`/companies/${sg.companyId}`} className="font-medium hover:underline">
-                      {sg.name}
-                    </Link>
-                    <div className="text-xs text-muted">{sg.reason}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="mt-3 text-[11px] text-muted">Ticking here or in the list is the same tick.</div>
-        </aside>
-      )}
-      </div>
 
       <section className="card flex h-[calc(100vh-140px)] min-h-[480px] flex-col overflow-hidden">
+        {engagement && (
+          <div className="border-b border-line bg-cream-50 px-4 py-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <span className="text-xs font-semibold text-sky-600">Suggested by the CRM</span>
+              {suggestions.length === 0 && <span className="text-xs text-muted">Nothing yet for this deal.</span>}
+              {suggestions.map((sg) => (
+                <label key={sg.companyId} className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs ${picked.has(sg.companyId) ? "border-sky-600 bg-sky text-ink" : "border-line bg-paper hover:bg-cream"}`} title={sg.reason}>
+                  <input type="checkbox" className="accent-ink" checked={picked.has(sg.companyId)} onChange={() => togglePick(sg.companyId)} />
+                  {sg.name}
+                </label>
+              ))}
+              <details className="text-xs text-muted">
+                <summary className="cursor-pointer hover:underline">why</summary>
+                <ul className="mt-1 max-h-40 space-y-0.5 overflow-auto">
+                  {suggestions.map((sg) => (
+                    <li key={sg.companyId}>
+                      <span className="font-medium text-ink">{sg.name}:</span> {sg.reason}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+              <Link href={`/investors?dealId=${dealId}&mode=engagement&refresh=1`} className="ml-auto text-xs text-muted hover:underline" title="Re-read criteria, tracker history and emails for this deal">
+                refresh
+              </Link>
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between border-b border-line px-4 py-2 text-sm">
           <div>
             <span className="font-semibold">{out.length.toLocaleString()}</span> investor firms
