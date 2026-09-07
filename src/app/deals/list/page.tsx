@@ -14,7 +14,7 @@ export default async function DealListPage({ searchParams }: { searchParams: Pro
   const stage = str(sp.stage);
   const page = Math.max(1, Number(str(sp.page)) || 1);
   const where: Prisma.DealWhereInput = {
-    AND: [q ? { OR: [{ name: { contains: q } }, { sponsorName: { contains: q } }, { propertyAddress: { contains: q } }] } : {}, stage ? { stage } : {}],
+    AND: [q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { sponsorName: { contains: q, mode: "insensitive" } }, { propertyAddress: { contains: q, mode: "insensitive" } }] } : {}, stage ? { stage } : {}],
   };
   const [total, rows] = await Promise.all([
     prisma.deal.count({ where }),

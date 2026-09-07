@@ -21,7 +21,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
 
   const where: Prisma.CompanyWhereInput = {
     AND: [
-      q ? { OR: [{ name: { contains: q } }, { city: { contains: q } }, { contacts: { some: { email: { contains: q } } } }] } : {},
+      q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { contacts: { some: { email: { contains: q, mode: "insensitive" } } } }] } : {},
       roles.length ? { OR: roles.map((r) => ({ roles: { contains: `"${r}"` } })) } : {},
       assets.length ? { OR: assets.map((a) => ({ criteria: { assetClasses: { contains: `"${a}"` } } })) } : {},
       state ? { state } : {},

@@ -86,7 +86,7 @@ export async function addTrackerContactAction(dealId: string, fd: FormData) {
 export async function searchContactsForTracker(q: string) {
   if (!q.trim()) return [];
   const rows = await prisma.contact.findMany({
-    where: { OR: [{ firstName: { contains: q } }, { lastName: { contains: q } }, { email: { contains: q } }, { company: { name: { contains: q } } }] },
+    where: { OR: [{ firstName: { contains: q, mode: "insensitive" } }, { lastName: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }, { company: { name: { contains: q, mode: "insensitive" } } }] },
     select: { id: true, firstName: true, lastName: true, email: true, company: { select: { name: true } } },
     take: 10,
     orderBy: { lastName: "asc" },

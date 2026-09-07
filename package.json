@@ -15,6 +15,7 @@
     "import:templates": "tsx scripts/import-templates.ts",
     "seed:templates": "tsx scripts/seed-templates.ts && tsx scripts/seed-blast-template.ts",
     "users": "tsx scripts/set-users.ts",
+    "migrate:postgres": "tsx scripts/migrate-to-postgres.ts",
     "enrich": "tsx scripts/enrich-companies.ts",
     "roles:backfill": "tsx scripts/backfill-roles.ts"
   },
@@ -41,6 +42,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vercel": "^59.11.7"
   }
 }
