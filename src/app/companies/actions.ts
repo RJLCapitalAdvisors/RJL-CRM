@@ -9,6 +9,7 @@ import { syncContactRolesForCompany } from "@/lib/roles";
 import { enrichCompany } from "@/lib/enrich";
 import { currentUser } from "@/lib/current-user";
 import { proposeManualChanges } from "@/lib/criteria-proposals";
+import { checkBucketsFor, holdBucketsFor, vintageBucketsFor } from "@/lib/ranges";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -50,16 +51,27 @@ function criteriaData(fd: FormData) {
     assetClasses: list(fd, "assetClasses"),
   };
   // Only touch fields the submitted form actually carries (the sponsor form only has asset classes).
-  if (fd.has("checkSizes") || fd.has("geographyNotes")) {
+  if (fd.has("checkMin") || fd.has("geographyNotes")) {
+    const range = (k: string): [number, number] | null => {
+      const lo = num(fd, `${k}Min`), hi = num(fd, `${k}Max`);
+      return lo != null && hi != null ? [lo, hi] : null;
+    };
+    const check = range("check"), hold = range("hold"), vint = range("vintage");
     Object.assign(data, {
       investmentTypes: list(fd, "investmentTypes"),
-      checkSizes: list(fd, "checkSizes"),
+      checkMinMM: check?.[0] ?? null,
+      checkMaxMM: check?.[1] ?? null,
+      checkSizes: toJson(check ? checkBucketsFor(check[0], check[1]) : []),
+      holdMinYears: hold?.[0] ?? null,
+      holdMaxYears: hold?.[1] ?? null,
+      holdPeriods: toJson(hold ? holdBucketsFor(hold[0], hold[1]) : []),
+      vintageMin: vint?.[0] ?? null,
+      vintageMax: vint?.[1] ?? null,
+      vintages: toJson(vint ? vintageBucketsFor(vint[0], vint[1]) : []),
       geographyNotes: geoText,
       geographies: toJson(normalizeGeographies(geoText)),
       returnProfile: list(fd, "returnProfile"),
       strategy: s(fd, "strategy"),
-      holdPeriods: list(fd, "holdPeriods"),
-      vintages: list(fd, "vintages"),
       ozInterest: yn("ozInterest"),
       closingTimeframe: s(fd, "closingTimeframe"),
       openToMinority: yn("openToMinority"),

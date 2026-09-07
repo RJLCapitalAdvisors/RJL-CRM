@@ -112,7 +112,13 @@ model InvestorCriteria {
   geographyNotes  String? // original free text
   vintages        String  @default("[]")
   returnProfile   String  @default("[]") // Core, Core+, Light value-add, Heavy value-add, Opportunistic
-  holdPeriods     String  @default("[]") // 1-3, 3-5, 5-7, 7-10, 10+ years
+  holdPeriods     String  @default("[]") // 1-3, 3-5, 5-7, 7-10, 10+ years (derived from holdMin/holdMax)
+  checkMinMM      Int?    // $MM, 1..100 (100 = $100MM+)
+  checkMaxMM      Int?
+  holdMinYears    Int?    // 1..10 (10 = 10+ years)
+  holdMaxYears    Int?
+  vintageMin      Int?    // 1950 = older than 1960, 1960..2025 in 5s, 9999 = new construction
+  vintageMax      Int?
   ozInterest      Boolean?
   closingTimeframe String? // Fast | Average | Slow
   openToMinority  Boolean?

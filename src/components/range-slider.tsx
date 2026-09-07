@@ -1,27 +1,27 @@
 "use client";
 
 import { useState } from "react";
+import type { Stop } from "@/lib/ranges";
 
 /**
- * Two-handle slider over an ordered list of buckets (check sizes, hold periods, vintages).
- * Picks a contiguous span; submits one hidden `name` entry per bucket in the span, exactly like the
- * multi-select did, so the stored data is unchanged and the old control can be swapped back in.
- * "Any" (nothing selected) is the empty state; drag a handle to start choosing.
+ * Two-handle slider over ordered stops (e.g. $1MM … $100MM+ in $1MM steps). Submits `${name}Min` and
+ * `${name}Max` as the stop values; empty when cleared ("Any"). Drag a handle to start choosing.
  */
-export function RangeSlider({ name, options, selected, anyLabel = "Any" }: { name: string; options: readonly string[]; selected: string[]; anyLabel?: string }) {
-  const idx = selected.map((s) => options.indexOf(s)).filter((i) => i >= 0);
-  const [lo, setLo] = useState(idx.length ? Math.min(...idx) : -1);
-  const [hi, setHi] = useState(idx.length ? Math.max(...idx) : -1);
-  const max = options.length - 1;
+export function RangeSlider({ name, stops, min, max, anyLabel = "Any" }: { name: string; stops: Stop[]; min: number | null | undefined; max: number | null | undefined; anyLabel?: string }) {
+  const idxOf = (v: number | null | undefined) => (v == null ? -1 : stops.findIndex((s) => s.value === v));
+  const [lo, setLo] = useState(idxOf(min));
+  const [hi, setHi] = useState(idxOf(max));
+  const last = stops.length - 1;
   const active = lo >= 0 && hi >= 0;
   const a = active ? lo : 0;
-  const b = active ? hi : max;
-  const pct = (i: number) => (max === 0 ? 0 : (i / max) * 100);
-  const label = !active ? anyLabel : a === b ? options[a] : `${options[a]} to ${options[b]}`;
+  const b = active ? hi : last;
+  const pct = (i: number) => (last === 0 ? 0 : (i / last) * 100);
+  const label = !active ? anyLabel : a === b ? stops[a].label : `${stops[a].label} to ${stops[b].label}`;
 
   return (
     <div className="pt-1">
-      {active && options.slice(a, b + 1).map((o) => <input key={o} type="hidden" name={name} value={o} />)}
+      <input type="hidden" name={`${name}Min`} value={active ? stops[a].value : ""} />
+      <input type="hidden" name={`${name}Max`} value={active ? stops[b].value : ""} />
       <div className="mb-1 flex items-center justify-between text-sm">
         <span className={active ? "font-medium" : "text-muted"}>{label}</span>
         {active && (
@@ -43,7 +43,7 @@ export function RangeSlider({ name, options, selected, anyLabel = "Any" }: { nam
         <input
           type="range"
           min={0}
-          max={max}
+          max={last}
           step={1}
           value={a}
           aria-label={`${name} from`}
@@ -57,7 +57,7 @@ export function RangeSlider({ name, options, selected, anyLabel = "Any" }: { nam
         <input
           type="range"
           min={0}
-          max={max}
+          max={last}
           step={1}
           value={b}
           aria-label={`${name} to`}
@@ -70,8 +70,8 @@ export function RangeSlider({ name, options, selected, anyLabel = "Any" }: { nam
         />
       </div>
       <div className="flex justify-between text-[11px] text-muted">
-        <span>{options[0]}</span>
-        <span>{options[max]}</span>
+        <span>{stops[0].label}</span>
+        <span>{stops[last].label}</span>
       </div>
     </div>
   );

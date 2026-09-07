@@ -3,6 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, VINTAGES, normalizeGeographies, parseList, toJson } from "@/lib/taxonomy";
+import { checkRangeFrom, holdRangeFrom, vintageRangeFrom } from "@/lib/ranges";
 
 /**
  * Investor criteria proposals. When an investor tells us something about what they do (an email
@@ -110,6 +111,10 @@ export async function applyProposal(id: string, onlyFields?: ProposalField[]) {
     else if (spec.list) data[c.field] = toJson(c.to.split(",").map((x) => x.trim()).filter(Boolean));
     else data[c.field] = c.to;
     if (c.field === "geographyNotes") data.geographies = toJson(normalizeGeographies(c.to));
+    const list = c.to.split(",").map((x) => x.trim()).filter(Boolean);
+    if (c.field === "checkSizes") { const r = checkRangeFrom(list); data.checkMinMM = r?.[0] ?? null; data.checkMaxMM = r?.[1] ?? null; }
+    if (c.field === "holdPeriods") { const r = holdRangeFrom(list); data.holdMinYears = r?.[0] ?? null; data.holdMaxYears = r?.[1] ?? null; }
+    if (c.field === "vintages") { const r = vintageRangeFrom(list); data.vintageMin = r?.[0] ?? null; data.vintageMax = r?.[1] ?? null; }
   }
   await prisma.investorCriteria.upsert({ where: { companyId: p.companyId }, create: { companyId: p.companyId, ...data }, update: data });
   await prisma.criteriaProposal.update({ where: { id }, data: { status: "APPROVED", reviewedAt: new Date() } });

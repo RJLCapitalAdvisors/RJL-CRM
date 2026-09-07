@@ -1,12 +1,7 @@
-import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, STRATEGIES, VINTAGES, parseList } from "@/lib/taxonomy";
+import { ASSET_CLASSES, CLOSING_TIMEFRAMES, INVESTMENT_TYPES, RETURN_PROFILES, STRATEGIES, parseList } from "@/lib/taxonomy";
 import { MultiSelect } from "./multi-select";
 import { RangeSlider } from "./range-slider";
-
-/** Trial (Sept 2026): check sizes, hold periods and vintages as two-handle sliders. Set to false to go back to the checkbox dropdowns. */
-const USE_SLIDERS = true;
-function Span({ name, options, selected }: { name: string; options: readonly string[]; selected: string[] }) {
-  return USE_SLIDERS ? <RangeSlider name={name} options={options} selected={selected} /> : <MultiSelect name={name} options={options} selected={selected} />;
-}
+import { CHECK_STOPS, HOLD_STOPS, VINTAGE_STOPS, checkRangeFrom, holdRangeFrom, vintageRangeFrom } from "@/lib/ranges";
 import { Field } from "./record-layout";
 
 export type CriteriaLike = {
@@ -18,6 +13,12 @@ export type CriteriaLike = {
   strategy: string | null;
   holdPeriods: string;
   vintages: string;
+  checkMinMM?: number | null;
+  checkMaxMM?: number | null;
+  holdMinYears?: number | null;
+  holdMaxYears?: number | null;
+  vintageMin?: number | null;
+  vintageMax?: number | null;
   ozInterest: boolean | null;
   closingTimeframe: string | null;
   openToMinority: boolean | null;
@@ -29,6 +30,10 @@ const yn = (v: boolean | null | undefined) => (v == null ? "" : v ? "yes" : "no"
 /** Investor criteria, one straight column. */
 export function CriteriaForm({ criteria, action }: { criteria: CriteriaLike; action: (fd: FormData) => void | Promise<void> }) {
   const c = criteria;
+  // ranges on file, else implied by the legacy buckets (HubSpot data)
+  const check = c?.checkMinMM != null && c?.checkMaxMM != null ? [c.checkMinMM, c.checkMaxMM] : checkRangeFrom(parseList(c?.checkSizes));
+  const hold = c?.holdMinYears != null && c?.holdMaxYears != null ? [c.holdMinYears, c.holdMaxYears] : holdRangeFrom(parseList(c?.holdPeriods));
+  const vint = c?.vintageMin != null && c?.vintageMax != null ? [c.vintageMin, c.vintageMax] : vintageRangeFrom(parseList(c?.vintages));
   return (
     <form action={action}>
       <Field label="Asset classes">
@@ -37,8 +42,8 @@ export function CriteriaForm({ criteria, action }: { criteria: CriteriaLike; act
       <Field label="Position in the capital stack">
         <MultiSelect name="investmentTypes" options={INVESTMENT_TYPES} selected={parseList(c?.investmentTypes)} />
       </Field>
-      <Field label="Check sizes">
-        <Span name="checkSizes" options={CHECK_SIZES} selected={parseList(c?.checkSizes)} />
+      <Field label="Check size">
+        <RangeSlider name="check" stops={CHECK_STOPS} min={check?.[0]} max={check?.[1]} />
       </Field>
       <Field label="Deal locations" htmlFor="geographyNotes">
         <input id="geographyNotes" name="geographyNotes" defaultValue={c?.geographyNotes ?? ""} className="input" placeholder="Sunbelt, Texas, Florida. No NY or CA." />
@@ -55,10 +60,10 @@ export function CriteriaForm({ criteria, action }: { criteria: CriteriaLike; act
         </select>
       </Field>
       <Field label="Hold period">
-        <Span name="holdPeriods" options={HOLD_PERIODS} selected={parseList(c?.holdPeriods)} />
+        <RangeSlider name="hold" stops={HOLD_STOPS} min={hold?.[0]} max={hold?.[1]} />
       </Field>
       <Field label="Vintages considered">
-        <Span name="vintages" options={VINTAGES} selected={parseList(c?.vintages)} />
+        <RangeSlider name="vintage" stops={VINTAGE_STOPS} min={vint?.[0]} max={vint?.[1]} />
       </Field>
       <Field label="Opportunity Zone interest" htmlFor="ozInterest">
         <select id="ozInterest" name="ozInterest" defaultValue={yn(c?.ozInterest)} className="input">
