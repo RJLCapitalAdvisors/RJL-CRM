@@ -85,6 +85,61 @@ export async function renderDealEmail(opts: { templateId: string; deal: Record<s
   return { subject, html, text: body };
 }
 
+export type DealFile = { key: string; mailbox: string; messageId: string; attachmentId: string; name: string; size: number; contentType: string | null; from: string; receivedAt: string };
+const IMAGE = /\.(png|jpe?g|gif|bmp|svg|webp)$/i;
+const isModel = (n: string) => /\.(xlsx|xlsm|xls)$/i.test(n);
+const isOM = (n: string) => /\.pdf$/i.test(n);
+
+/**
+ * Every file the sponsor sent us on this deal: attachments on the forwarded email in deals@ and on any later
+ * message in that same thread (sponsor replies with more docs). Images and signature logos are left out.
+ */
+export async function dealFiles(dealId: string): Promise<DealFile[]> {
+  const it = await prisma.dealIntake.findFirst({ where: { dealId, messageId: { not: null } } });
+  if (!it?.messageId || !graphConfigured()) return [];
+  const q = encodeURIComponent;
+  const mb = DEALS_MAILBOX();
+  const found = await graph<{ value: { id: string; conversationId?: string }[] }>(`/users/${q(mb)}/messages?$filter=internetMessageId eq '${it.messageId.replace(/'/g, "''")}'&$select=id,conversationId`);
+  const first = found.value[0];
+  if (!first) return [];
+  let msgs: { id: string; from?: { emailAddress: { address: string } }; receivedDateTime?: string; hasAttachments?: boolean }[] = [];
+  if (first.conversationId) {
+    const r = await graph<{ value: typeof msgs }>(`/users/${q(mb)}/messages?$filter=conversationId eq '${first.conversationId.replace(/'/g, "''")}'&$select=id,from,receivedDateTime,hasAttachments&$top=50`).catch(() => ({ value: [] as typeof msgs }));
+    msgs = r.value;
+  }
+  if (!msgs.some((m) => m.id === first.id)) msgs.unshift({ id: first.id, hasAttachments: true });
+  const out: DealFile[] = [];
+  for (const m of msgs) {
+    if (m.hasAttachments === false) continue;
+    if (m.from?.emailAddress.address?.toLowerCase() === mb.toLowerCase()) continue; // our own summary replies
+    const atts = await listAttachments(mb, m.id).catch(() => [] as GraphAttachment[]);
+    for (const a of atts) {
+      if (a.isInline || a["@odata.type"] !== "#microsoft.graph.fileAttachment" || IMAGE.test(a.name)) continue;
+      out.push({ key: `${m.id}::${a.id}`, mailbox: mb, messageId: m.id, attachmentId: a.id, name: a.name, size: a.size, contentType: a.contentType, from: m.from?.emailAddress.address ?? "", receivedAt: m.receivedDateTime ?? "" });
+    }
+  }
+  // newest copy of a same-named file wins; models and OMs first
+  const seen = new Set<string>();
+  return out
+    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
+    .filter((f) => (seen.has(f.name.toLowerCase()) ? false : (seen.add(f.name.toLowerCase()), true)))
+    .sort((a, b) => Number(isModel(b.name) || isOM(b.name)) - Number(isModel(a.name) || isOM(a.name)));
+}
+
+/** Who we usually write to at a firm: anyone on 40%+ of our outbound emails there in the last year (at least the most frequent). */
+export async function usualRecipients(companyId: string, candidates: { id: string; email: string | null }[]): Promise<string[]> {
+  const acts = await prisma.activity.findMany({ where: { companyId, type: "EMAIL", direction: "OUTBOUND", occurredAt: { gte: new Date(Date.now() - 365 * 86_400_000) } }, select: { meta: true }, take: 500 });
+  const tally = new Map<string, number>();
+  for (const a of acts) {
+    const meta = a.meta ? (JSON.parse(a.meta) as { to?: { address: string }[]; cc?: { address: string }[] }) : {};
+    for (const p of [...(meta.to ?? []), ...(meta.cc ?? [])]) tally.set(p.address.toLowerCase(), (tally.get(p.address.toLowerCase()) ?? 0) + 1);
+  }
+  const scored = candidates.filter((c) => c.email).map((c) => ({ id: c.id, n: tally.get(c.email!.toLowerCase()) ?? 0 })).filter((c) => c.n > 0).sort((a, b) => b.n - a.n);
+  if (!scored.length) return [];
+  const top = scored[0].n;
+  return scored.filter((c) => c.n >= Math.max(1, top * 0.4)).map((c) => c.id);
+}
+
 /** The deal's own files: whatever came attached to the forwarded email in deals@. */
 async function dealAttachments(dealId: string): Promise<{ mailbox: string; messageId: string; atts: GraphAttachment[] } | null> {
   const it = await prisma.dealIntake.findFirst({ where: { dealId, messageId: { not: null } } });
@@ -173,21 +228,29 @@ export async function syncSendDrafts(): Promise<number> {
 }
 
 export type LaunchItem = { rowId: string; toContactIds: string[]; subject: string; html: string };
+type Src = Awaited<ReturnType<typeof dealAttachments>>;
+async function chosenFiles(dealId: string, keys: string[] | undefined): Promise<Src> {
+  if (!keys) return dealAttachments(dealId).catch(() => null); // no choice made: everything the sponsor sent
+  const files = (await dealFiles(dealId)).filter((f) => keys.includes(f.key));
+  if (!files.length) return null;
+  // group by source message so copyAcross can read each attachment from where it lives
+  return { mailbox: files[0].mailbox, messageId: files[0].messageId, atts: files.map((f) => ({ "@odata.type": "#microsoft.graph.fileAttachment", id: f.attachmentId, name: f.name, contentType: f.contentType, size: f.size, isInline: false, _msg: f.messageId }) as GraphAttachment & { _msg: string }) };
+}
 export type LaunchResult = { rowId: string; firm: string; to: string[]; ok: boolean; error?: string };
 
 /** Build a message in the sender's mailbox with the deal's attachments and send it. */
-async function sendMessage(mailbox: string, to: string[], subject: string, html: string, src: Awaited<ReturnType<typeof dealAttachments>>) {
+async function sendMessage(mailbox: string, to: string[], subject: string, html: string, src: Src) {
   const draft = await createDraft(mailbox, { subject, toRecipients: to, bodyHtml: `<html><body>${html}</body></html>` });
-  if (src) for (const a of src.atts) await copyAcross(src, a, mailbox, draft.id);
+  if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
   const fresh = await getMessage(mailbox, draft.id, "id,internetMessageId");
   await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(draft.id)}/send`, { method: "POST" });
   return fresh.internetMessageId ?? null;
 }
 
 /** LAUNCH: every firm gets its own edited email, all sent now. Rows flip to Deal Sent; the deal goes to market. */
-export async function launchDealEmails(dealId: string, items: LaunchItem[], mailbox: string): Promise<LaunchResult[]> {
+export async function launchDealEmails(dealId: string, items: LaunchItem[], mailbox: string, fileKeys?: string[]): Promise<LaunchResult[]> {
   if (!graphConfigured()) return items.map((i) => ({ rowId: i.rowId, firm: "", to: [], ok: false, error: "Microsoft 365 is not connected" }));
-  const src = await dealAttachments(dealId).catch(() => null);
+  const src = await chosenFiles(dealId, fileKeys);
   const out: LaunchResult[] = [];
   for (const item of items) {
     const row = await prisma.dealInvestor.findUnique({ where: { id: item.rowId }, include: { contact: { include: { company: true } } } });
@@ -214,10 +277,10 @@ export async function launchDealEmails(dealId: string, items: LaunchItem[], mail
 }
 
 /** "Send preview email": the exact email for one firm, delivered to the sender instead. */
-export async function sendPreviewToSelf(dealId: string, item: LaunchItem, mailbox: string): Promise<{ ok: boolean; error?: string }> {
+export async function sendPreviewToSelf(dealId: string, item: LaunchItem, mailbox: string, fileKeys?: string[]): Promise<{ ok: boolean; error?: string }> {
   if (!graphConfigured()) return { ok: false, error: "Microsoft 365 is not connected" };
   try {
-    const src = await dealAttachments(dealId).catch(() => null);
+    const src = await chosenFiles(dealId, fileKeys);
     await sendMessage(mailbox, [mailbox], `[PREVIEW] ${item.subject}`, item.html, src);
     return { ok: true };
   } catch (e) {

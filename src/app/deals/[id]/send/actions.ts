@@ -38,10 +38,10 @@ export async function createSendDraftsAction(dealId: string, templateId: string,
   return { ok: true as const, results };
 }
 
-export async function launchAction(dealId: string, items: LaunchItem[]) {
+export async function launchAction(dealId: string, items: LaunchItem[], fileKeys?: string[]) {
   const me = await currentUser();
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the emails go from your own mailbox." };
-  const results = await launchDealEmails(dealId, items, me.email);
+  const results = await launchDealEmails(dealId, items, me.email, fileKeys);
   revalidatePath(`/deals/${dealId}`);
   revalidatePath(`/deals/${dealId}/tracker`);
   revalidatePath(`/deals/${dealId}/send`);
@@ -49,8 +49,8 @@ export async function launchAction(dealId: string, items: LaunchItem[]) {
   return { ok: true as const, results };
 }
 
-export async function previewToMeAction(dealId: string, item: LaunchItem) {
+export async function previewToMeAction(dealId: string, item: LaunchItem, fileKeys?: string[]) {
   const me = await currentUser();
   if (!me) return { ok: false, error: "Sign in with Microsoft first." };
-  return sendPreviewToSelf(dealId, item, me.email);
+  return sendPreviewToSelf(dealId, item, me.email, fileKeys);
 }

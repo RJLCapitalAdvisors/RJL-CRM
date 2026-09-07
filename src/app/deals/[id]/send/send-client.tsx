@@ -6,7 +6,8 @@ import { CompanyLogo } from "@/components/company-logo";
 import { launchAction, previewDealEmail, previewToMeAction } from "./actions";
 
 export type Person = { id: string; name: string; email: string; title: string | null };
-export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean };
+export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean };
+export type DealFileLite = { key: string; name: string; size: number };
 type Draft = { subject: string; html: string; touched: boolean };
 
 /**
@@ -14,10 +15,11 @@ type Draft = { subject: string; html: string; touched: boolean };
  * firm's email, click its caret to pick people, x to leave the firm out. Middle: the email for the selected
  * firm, editable in place. Bottom: "Send preview email" (to you) and LAUNCH (each firm gets its own email, all at once).
  */
-export function SendClient({ dealId, firms, templates, defaultTemplateId }: { dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string }) {
+export function SendClient({ dealId, firms, templates, defaultTemplateId, files }: { dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[] }) {
+  const [chosenFiles, setChosenFiles] = useState<Set<string>>(new Set(files.map((f) => f.key))); // everything the sponsor sent, by default
   const [templateId, setTemplateId] = useState(defaultTemplateId);
   const [include, setInclude] = useState<Set<string>>(new Set(firms.filter((f) => f.status <= 1).map((f) => f.rowId)));
-  const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set([f.primaryContactId, ...f.extraContactIds].filter((id) => f.people.some((p) => p.id === id)))])));
+  const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((f.extraContactIds.length ? [f.primaryContactId, ...f.extraContactIds] : f.defaultContactIds).filter((id) => f.people.some((p) => p.id === id)))])));
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [current, setCurrent] = useState<string | null>(firms.find((f) => f.status <= 1)?.rowId ?? firms[0]?.rowId ?? null);
   const [picker, setPicker] = useState<string | null>(null);
@@ -83,7 +85,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId }: { de
     if (unrendered()) return setNote("Click each firm once so its email is rendered before launching.");
     if (!window.confirm(`Send ${items.length} individual email${items.length === 1 ? "" : "s"} now, each to the people picked?`)) return;
     start(async () => {
-      const r = await launchAction(dealId, items);
+      const r = await launchAction(dealId, items, [...chosenFiles]);
       if (!r.ok) return setNote(r.reason);
       setResults(Object.fromEntries(r.results.map((x) => [x.rowId, { ok: x.ok, error: x.error }])));
       const sent = r.results.filter((x) => x.ok).length;
@@ -98,7 +100,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId }: { de
     const d = drafts[cur.rowId];
     if (!d?.html) return;
     start(async () => {
-      const r = await previewToMeAction(dealId, { rowId: cur.rowId, toContactIds: [...(to[cur.rowId] ?? [])], subject: d.subject, html: d.html });
+      const r = await previewToMeAction(dealId, { rowId: cur.rowId, toContactIds: [...(to[cur.rowId] ?? [])], subject: d.subject, html: d.html }, [...chosenFiles]);
       setNote(r.ok ? `Preview of the ${cur.company} email sent to your inbox.` : r.error ?? "Could not send the preview.");
     });
   };
@@ -171,6 +173,19 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId }: { de
         </div>
       </div>
 
+      {/* attachments: only what the sponsor sent us on this deal */}
+      <div className="card flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2.5 text-sm">
+        <span className="text-xs text-muted">Attachments</span>
+        {files.length === 0 && <span className="text-xs text-muted">No files from the sponsor on this deal yet (they arrive through deals@).</span>}
+        {files.map((f) => (
+          <label key={f.key} className="flex cursor-pointer items-center gap-1.5">
+            <input type="checkbox" className="accent-ink" checked={chosenFiles.has(f.key)} onChange={() => setChosenFiles((s) => { const n = new Set(s); if (n.has(f.key)) n.delete(f.key); else n.add(f.key); return n; })} />
+            <span>{f.name}</span>
+            <span className="text-xs text-muted">{f.size >= 1_000_000 ? `${(f.size / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1000))} KB`}</span>
+          </label>
+        ))}
+      </div>
+
       {/* the email for the selected firm */}
       <div className="card">
         <div className="flex items-center justify-between border-b border-line bg-cream px-4 py-2.5 text-sm">
@@ -207,7 +222,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId }: { de
 
       {/* actions */}
       <div className="card flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div className="text-sm text-muted">{note ?? `${itemsToSend().length} email${itemsToSend().length === 1 ? "" : "s"} ready. Each firm gets its own, with the deal's attachments and your signature.`}</div>
+        <div className="text-sm text-muted">{note ?? `${itemsToSend().length} email${itemsToSend().length === 1 ? "" : "s"} ready. Each firm gets its own, with the ${chosenFiles.size} attachment${chosenFiles.size === 1 ? "" : "s"} ticked above and your signature.`}</div>
         <div className="flex items-center gap-2">
           <button type="button" className="btn-secondary" disabled={pending || !cur || !drafts[cur.rowId]?.html} onClick={previewToMe} title="Emails you the exact message the selected firm would get">
             Send preview email to me
