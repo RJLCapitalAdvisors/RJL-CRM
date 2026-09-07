@@ -48,6 +48,7 @@ export const DEAL_STAGES = [
   "Deal Received",
   "Deal Underwritten",
   "Engagement Letter Sent",
+  "Engagement Letter Signed",
   "Deal Taken To Market",
   "Intro To Capital Made",
   "Term Sheet Issued",
@@ -255,6 +256,7 @@ export function stageTone(stage: string): string {
     case "Term Sheet Issued":
       return "bg-sky text-ink border-sky";
     case "Engagement Letter Sent":
+    case "Engagement Letter Signed":
       return "bg-sky-50 text-ink border-sky";
     default:
       return "bg-cream text-ink border-line";

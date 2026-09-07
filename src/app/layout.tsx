@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 };
 
 const nav = [
-  { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/deals", label: "Deals", icon: KanbanSquare },
   { href: "/companies", label: "Companies", icon: Building2 },
   { href: "/contacts", label: "Contacts", icon: Users },

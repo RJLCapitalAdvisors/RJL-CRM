@@ -135,6 +135,8 @@ export function kickMailSync(minMinutes = 10) {
     await refreshMomentum().catch(() => ({}));
     const { syncEngagementDrafts } = await import("@/lib/engagement");
     await syncEngagementDrafts().catch(() => 0);
+    const { syncSendDrafts } = await import("@/lib/send-deal");
+    await syncSendDrafts().catch(() => 0);
   };
   import("next/server")
     .then(({ after }) => after(run))

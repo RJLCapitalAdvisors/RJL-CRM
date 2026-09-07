@@ -219,6 +219,12 @@ model DealInvestor {
   followUpDraftId String?   // Outlook draft created by "Respond now"; the row flips to Followed Up once it is sent
   followUpDraftAt DateTime?
   followUpMailbox String?   // whose mailbox holds that draft
+  openingLine     String?   // personal first line for the deal email to this person
+  bodyOverride    String?   // full custom body for this person (optional)
+  extraContactIds String?   // JSON: other people at the firm also on the To line
+  sendDraftId     String?   // Outlook draft of the deal email; row flips to Deal Sent once it is sent
+  sendMailbox     String?
+  sendDraftAt     DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 

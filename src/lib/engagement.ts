@@ -90,7 +90,7 @@ export async function createEngagementDraft(dealId: string, companyIds: string[]
   return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: "new", attachments: 0, added };
 }
 
-const STAGE_ORDER = ["Deal Mentioned", "Deal Received", "Deal Underwritten", "Engagement Letter Sent", "Deal Taken To Market", "Intro To Capital Made", "Term Sheet Issued", "Term Sheet Signed", "Deal Closed"];
+const STAGE_ORDER = ["Deal Mentioned", "Deal Received", "Deal Underwritten", "Engagement Letter Sent", "Engagement Letter Signed", "Deal Taken To Market", "Intro To Capital Made", "Term Sheet Issued", "Term Sheet Signed", "Deal Closed"];
 
 /** Deals with an engagement letter drafted: once Outlook shows it sent, move the deal to "Engagement Letter Sent" (never backwards). */
 export async function syncEngagementDrafts(): Promise<number> {

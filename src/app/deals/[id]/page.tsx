@@ -8,6 +8,8 @@ import { fmtDate, fullName } from "@/lib/format";
 import { TRACKER_STATUSES, investorLabel, statusOf } from "@/lib/tracker";
 import { addDealNote, updateDeal } from "../actions";
 import { StageSelect } from "./stage-select";
+import { EngagementCard } from "./engagement-card";
+import { engagementGroups } from "@/lib/send-deal";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,8 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
   ]);
   if (!deal) notFound();
+  const showEngagement = deal.stage === "Engagement Letter Sent" || deal.stage === "Engagement Letter Signed";
+  const groups = showEngagement ? (await engagementGroups(deal.id)).filter((g) => g.companyId).map((g) => ({ companyId: g.companyId, name: g.name, status: g.status })) : [];
   const update = updateDeal.bind(null, deal.id);
   const addNote = addDealNote.bind(null, deal.id);
   const name = deal.propertyName ?? deal.name;
@@ -47,7 +51,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             lines={[<StageSelect key="stage" dealId={deal.id} stage={deal.stage} />]}
             actions={
               <>
-                <Link href={`/campaigns/new?dealId=${deal.id}`} className="btn-primary">
+                <Link href={`/deals/${deal.id}/send`} className="btn-primary" title="Draft the deal email to each agreed group from your template, pick the people, review, send one by one">
                   Send deal
                 </Link>
                 <Link href={`/deals/${deal.id}/tracker`} className="btn-secondary">
@@ -69,6 +73,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
       }
       center={
         <>
+          {showEngagement && <EngagementCard dealId={deal.id} groups={groups} signed={deal.stage === "Engagement Letter Signed"} />}
           <div className="card">
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
               <h2 className="text-sm font-semibold">Emails and notes on this deal</h2>
