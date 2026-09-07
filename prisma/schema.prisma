@@ -385,3 +385,24 @@ model Momentum {
 
   @@unique([dealId, kind, party])
 }
+
+/// Intros we made by email ("Intro - Company A | Company B") and whether the thread went anywhere.
+model Intro {
+  id             String   @id @default(cuid())
+  mailbox        String // whose Sent Items it came from
+  subject        String
+  partyA         String?
+  partyB         String?
+  recipients     String   @default("[]") // JSON: email addresses on the intro
+  conversationId String?
+  messageId      String   @unique // Internet Message-ID of the intro email
+  introducedAt   DateTime
+  lastActivityAt DateTime
+  lastMessageId  String? // Internet Message-ID of the latest message in the thread (Handle replies to it)
+  replies        Int      @default(0) // messages in the thread after the intro
+  status         String   @default("OPEN") // OPEN | DISMISSED | DONE
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([lastActivityAt])
+}

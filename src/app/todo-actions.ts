@@ -88,3 +88,31 @@ export async function dismissMomentum(id: string) {
   await prisma.momentum.update({ where: { id }, data: { status: "DISMISSED" } });
   revalidatePath("/");
 }
+
+// ---------- intros to reconsider ----------
+/** Handle on an intro: reply-all on the latest message of that thread (from your mailbox), blank, with your signature. */
+export async function openIntroDraft(introId: string) {
+  const me = await currentUser();
+  if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
+  const intro = await prisma.intro.findUnique({ where: { id: introId } });
+  if (!intro) return { ok: false as const, reason: "Gone." };
+  const { createThreadReplyDraft } = await import("@/lib/followup");
+  try {
+    const r = await createThreadReplyDraft(me.email, intro.lastMessageId ?? intro.messageId);
+    if (r.ok || me.email.toLowerCase() === intro.mailbox.toLowerCase()) return r;
+    // the thread lives in a teammate's mailbox: start a fresh note to the same people instead
+    const { createDraft, getMessage, outlookDesktopLink } = await import("@/lib/graph");
+    const { signatureFor } = await import("@/lib/followup");
+    const to = JSON.parse(intro.recipients || "[]") as string[];
+    const draft = await createDraft(me.email, { subject: `RE: ${intro.subject}`, toRecipients: to, bodyHtml: `<html><body><div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p><br></p>${await signatureFor(me.email)}</div></body></html>` });
+    const fresh = await getMessage(me.email, draft.id, "id,webLink,internetMessageId");
+    return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "new" as const, attachments: 0 };
+  } catch (e) {
+    return { ok: false as const, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+}
+
+export async function dismissIntro(id: string) {
+  await prisma.intro.update({ where: { id }, data: { status: "DISMISSED" } });
+  revalidatePath("/");
+}

@@ -137,6 +137,8 @@ export function kickMailSync(minMinutes = 10) {
     await syncEngagementDrafts().catch(() => 0);
     const { syncSendDrafts } = await import("@/lib/send-deal");
     await syncSendDrafts().catch(() => 0);
+    const { scanAllIntros } = await import("@/lib/intros");
+    await scanAllIntros().catch(() => ({}));
   };
   import("next/server")
     .then(({ after }) => after(run))
