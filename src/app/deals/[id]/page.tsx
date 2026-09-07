@@ -56,6 +56,9 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                 <Link href={`/investors?dealId=${deal.id}`} className="btn-secondary">
                   Find investors
                 </Link>
+                <Link href={`/investors?dealId=${deal.id}&mode=engagement`} className="btn-secondary" title="Pick the equity groups to carve out, then the letter drafts itself to the sponsor">
+                  Generate engagement letter
+                </Link>
               </>
             }
           />

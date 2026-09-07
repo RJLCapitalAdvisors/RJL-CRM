@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { DraftButton } from "@/app/draft-button";
+import { createEngagementLetter } from "./actions";
 import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, VINTAGES } from "@/lib/taxonomy";
 import { CompanyLogo } from "@/components/company-logo";
 import { MultiSelect } from "@/components/multi-select";
@@ -58,9 +60,12 @@ function passes(c: InvestorRow["crit"], s: Spec): boolean {
   return true;
 }
 
-export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; deals: { id: string; name: string }[] }) {
+export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "search", dealId = null }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null }) {
   const PAGE = 100;
   const router = useRouter();
+  const engagement = mode === "engagement" && Boolean(dealId);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const togglePick = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const [spec, setSpec] = useState<Spec>({ ...EMPTY, ...(preset ?? {}) });
   const [page, setPage] = useState(1);
   const set = (k: keyof Spec, v: string[]) => {
@@ -83,6 +88,18 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
 
   return (
     <div className="grid grid-cols-[300px_1fr] gap-6 px-8 py-6">
+      {engagement && dealId && (
+        <div className="col-span-2 -mb-2 flex items-center justify-between rounded-lg border border-line bg-cream px-5 py-3">
+          <div>
+            <div className="font-semibold">Engagement letter{presetDealName ? ` for ${presetDealName}` : ""}</div>
+            <div className="text-sm text-muted">Tick the equity groups to carve out. Done drafts the letter to the sponsor in your Outlook and puts these groups on the progress report as Deal Not Sent.</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted">{picked.size} group{picked.size === 1 ? "" : "s"}</span>
+            <DraftButton label="Done" readyLabel="Open letter in Outlook" disabled={picked.size === 0} action={() => createEngagementLetter(dealId, [...picked])} title="Drafts the engagement letter with the ticked groups" />
+          </div>
+        </div>
+      )}
       <aside className="card self-start p-4">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold">Deal specs</span>
@@ -136,6 +153,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
           <table className="table dense w-full table-fixed min-w-[1400px]">
             <thead>
               <tr>
+                {engagement && <th className="w-8"></th>}
                 <th className="w-[240px]">Company name</th>
                 <th className="w-[260px]">Deal locations</th>
                 <th className="w-[220px]">Check sizes</th>
@@ -148,7 +166,12 @@ export function InvestorSearch({ rows, preset, presetDealName, deals }: { rows: 
             </thead>
             <tbody>
               {pageRows.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id} className={engagement && picked.has(r.id) ? "bg-cream" : ""}>
+                  {engagement && (
+                    <td>
+                      <input type="checkbox" className="accent-ink" checked={picked.has(r.id)} onChange={() => togglePick(r.id)} aria-label={`Pick ${r.name}`} />
+                    </td>
+                  )}
                   <td>
                     <Link href={`/companies/${r.id}`} className="flex items-center gap-2 font-medium hover:underline">
                       <CompanyLogo domain={r.domain} name={r.name} />

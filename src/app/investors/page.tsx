@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function InvestorsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const dealId = str(sp.dealId);
+  const mode = str(sp.mode) === "engagement" && dealId ? "engagement" : "search";
   // Flat queries joined in code: SQLite caps query parameters, so nested includes over ~1,300 companies fail.
   const [companies, allCriteria, deal, deals] = await Promise.all([
     prisma.company.findMany({ where: { roles: { contains: "Investor" } }, select: { id: true, name: true, roles: true, domain: true, city: true, state: true, lastActivityAt: true }, orderBy: { name: "asc" } }),
@@ -56,7 +57,7 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <PageHeader title="Investor search" subtitle={`${rows.length.toLocaleString()} companies marked Investor. Type your deal specs on the left; the list updates as you go.`} />
-      <InvestorSearch rows={rows} preset={preset} presetDealName={deal ? deal.propertyName ?? deal.name : null} deals={deals.map((d) => ({ id: d.id, name: d.propertyName ?? d.name }))} />
+      <InvestorSearch rows={rows} preset={preset} presetDealName={deal ? deal.propertyName ?? deal.name : null} deals={deals.map((d) => ({ id: d.id, name: d.propertyName ?? d.name }))}  mode={mode} dealId={dealId || null} />
     </>
   );
 }

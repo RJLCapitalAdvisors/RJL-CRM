@@ -37,7 +37,7 @@ export function deriveSignature(html: string, displayName: string): string | nul
   return sig.length > 20 && sig.length < 20000 ? sig : null;
 }
 
-async function signatureFor(mailbox: string): Promise<string> {
+export async function signatureFor(mailbox: string): Promise<string> {
   const user = await prisma.user.findFirst({ where: { email: mailbox } });
   if (user?.signatureHtml) return user.signatureHtml;
   const name = user?.name ?? mailbox;
