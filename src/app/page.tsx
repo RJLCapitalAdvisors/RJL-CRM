@@ -7,6 +7,7 @@ import { syncFollowUpDrafts } from "@/lib/followup";
 import { PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
 import { approveProposal, dismissProposal } from "./todo-actions";
 import { RespondNow } from "./respond-now";
+import { currentUser } from "@/lib/current-user";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,9 @@ async function quietInvestors() {
 }
 
 export default async function Dashboard() {
-  const [proposals, quiet] = await Promise.all([prisma.criteriaProposal.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "desc" } }), quietInvestors()]);
+  const me = await currentUser();
+  const showCriteria = Boolean(me?.canEditCriteria);
+  const [proposals, quiet] = await Promise.all([showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]), quietInvestors()]);
   const companies = new Map((await prisma.company.findMany({ where: { id: { in: proposals.map((p) => p.companyId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   const today = new Date();
   const quietCount = quiet.reduce((n, g) => n + g.rows.length, 0);
@@ -88,7 +91,8 @@ export default async function Dashboard() {
           </div>
         </div>
 
-        {/* Investor criteria updates to approve */}
+        {/* Investor criteria updates to approve (Jonathan only) */}
+        {showCriteria && (
         <div className="card flex max-h-[calc(100vh-150px)] flex-col">
           <div className="flex items-center justify-between rounded-t-lg border-b border-line bg-cream px-5 py-3.5">
             <h2 className="text-base font-semibold">Criteria updates to approve</h2>
@@ -136,6 +140,7 @@ export default async function Dashboard() {
             )}
           </div>
         </div>
+        )}
       </div>
     </>
   );

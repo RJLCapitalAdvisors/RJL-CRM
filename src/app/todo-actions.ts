@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { currentUser, requireCriteriaAdmin } from "@/lib/current-user";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -29,12 +30,14 @@ export async function deleteTodo(id: string) {
 
 // ---------- investor criteria proposals (approve / dismiss from the To-do page) ----------
 export async function approveProposal(id: string) {
+  await requireCriteriaAdmin();
   const { applyProposal } = await import("@/lib/criteria-proposals");
   await applyProposal(id);
   revalidatePath("/");
 }
 
 export async function dismissProposal(id: string) {
+  await requireCriteriaAdmin();
   const { rejectProposal } = await import("@/lib/criteria-proposals");
   await rejectProposal(id);
   revalidatePath("/");
@@ -43,7 +46,9 @@ export async function dismissProposal(id: string) {
 /** "Respond now": build the follow-up draft in the sender's Outlook and hand back the link to open it. */
 export async function openFollowUp(rowId: string) {
   const { createFollowUpDraft } = await import("@/lib/followup");
-  const mailbox = (process.env.MAIL_FROM ?? "").match(/<([^>]+)>/)?.[1] ?? process.env.MAIL_FROM ?? "jonathan@rjlcapadvisors.com";
+  const me = await currentUser();
+  if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
+  const mailbox = me.email;
   try {
     const r = await createFollowUpDraft(rowId, mailbox);
     revalidatePath("/");

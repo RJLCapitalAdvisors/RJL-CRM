@@ -1,12 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE, verifySession } from "@/lib/session";
 
 /**
- * Sign-in gate for the hosted CRM. Until Microsoft sign-in arrives with the M365 connection, one
- * shared password (APP_PASSWORD) unlocks the app; a signed cookie remembers the browser for 30 days.
- * Public: the login page, sponsor progress-report links, unsubscribe links, inbound-mail webhooks.
- * With no APP_PASSWORD set (local development) everything is open.
+ * Sign-in gate for the hosted CRM. Preferred: Microsoft sign-in (signed rjl_user cookie, one person).
+ * Fallback: the shared team password (APP_PASSWORD) which unlocks the app without an identity.
+ * Public: login and auth routes, sponsor progress-report links, unsubscribe links, inbound-mail webhooks.
+ * With no APP_PASSWORD and no Azure app configured (local development) everything is open.
  */
-const PUBLIC = [/^\/login/, /^\/share\//, /^\/unsubscribe\//, /^\/api\/inbound/, /^\/logo\.png$/, /^\/favicon/, /^\/_next\//];
+const PUBLIC = [/^\/login/, /^\/api\/auth\//, /^\/share\//, /^\/unsubscribe\//, /^\/api\/inbound/, /^\/logo\.png$/, /^\/favicon/, /^\/_next\//];
 export const COOKIE = "rjl_session";
 
 export async function sessionToken(password: string, secret: string) {
@@ -17,11 +18,15 @@ export async function sessionToken(password: string, secret: string) {
 
 export async function proxy(req: NextRequest) {
   const password = process.env.APP_PASSWORD;
-  if (!password) return NextResponse.next();
+  const gated = Boolean(password || process.env.AZURE_CLIENT_ID);
+  if (!gated) return NextResponse.next();
   const { pathname } = req.nextUrl;
   if (PUBLIC.some((re) => re.test(pathname))) return NextResponse.next();
-  const expected = await sessionToken(password, process.env.APP_SECRET ?? "dev-secret");
-  if (req.cookies.get(COOKIE)?.value === expected) return NextResponse.next();
+  if (await verifySession(req.cookies.get(SESSION_COOKIE)?.value)) return NextResponse.next();
+  if (password) {
+    const expected = await sessionToken(password, process.env.APP_SECRET ?? "dev-secret");
+    if (req.cookies.get(COOKIE)?.value === expected) return NextResponse.next();
+  }
   const url = req.nextUrl.clone();
   url.pathname = "/login";
   url.search = pathname !== "/" ? `?next=${encodeURIComponent(pathname + req.nextUrl.search)}` : "";

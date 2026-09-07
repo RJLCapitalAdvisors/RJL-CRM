@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Sparkles, Search, ClipboardList, Settings } from "lucide-react";
+import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings } from "lucide-react";
+import { currentUser } from "@/lib/current-user";
 import "./globals.css";
 import { NavLink } from "@/components/nav-link";
 
@@ -22,9 +23,8 @@ const nav = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-const soon = [{ label: "Criteria Proposals", icon: Sparkles }];
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const user = await currentUser().catch(() => null);
   return (
     <html lang="en">
       <body className="flex min-h-screen">
@@ -39,15 +39,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 {n.label}
               </NavLink>
             ))}
-            <div className="mt-6 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted">Coming next</div>
-            {soon.map((n) => (
-              <div key={n.label} className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted">
-                <n.icon className="h-4 w-4" />
-                {n.label}
-              </div>
-            ))}
           </nav>
-          <div className="px-5 py-4 text-xs text-muted">RJL Capital Advisors</div>
+          <div className="px-5 py-4 text-xs text-muted">
+            {user ? (
+              <>
+                <div className="font-medium text-ink">{user.name}</div>
+                <a href="/api/auth/logout" className="hover:underline">
+                  Sign out
+                </a>
+              </>
+            ) : (
+              <a href="/login" className="hover:underline">
+                Sign in with Microsoft
+              </a>
+            )}
+          </div>
         </aside>
         <main className="min-w-0 flex-1">{children}</main>
       </body>

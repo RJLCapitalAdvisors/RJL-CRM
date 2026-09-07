@@ -10,6 +10,7 @@ import { AssocCard, RecordHeader, RecordLayout } from "@/components/record-layou
 import { fmtDate, fullName } from "@/lib/format";
 import { statusOf } from "@/lib/tracker";
 import { addCompanyNote, refreshCompanyFromWebsite, updateCompany, updateCompanyCriteria } from "../actions";
+import { currentUser } from "@/lib/current-user";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
   const refresh = refreshCompanyFromWebsite.bind(null, company.id);
   const roles = parseList(company.roles);
   const isInvestor = roles.some((r) => r === "Investor" || r === "Retail Investor" || r === "Lender");
+  const canEdit = Boolean((await currentUser())?.canEditCriteria);
   const site = company.website?.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
   return (
@@ -87,16 +89,17 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
           {isInvestor ? (
             <div className="card">
               <div className="border-b border-line px-4 py-3 text-sm font-semibold">Investor criteria</div>
-              <div className="px-4 py-2">
+              <fieldset disabled={!canEdit} className="px-4 py-2 disabled:opacity-70">
+                {!canEdit && <div className="mb-2 text-xs text-muted">Read only. Jonathan approves criteria changes.</div>}
                 <CriteriaForm criteria={company.criteria} action={updateCriteria} />
-              </div>
+              </fieldset>
             </div>
           ) : (
             <div className="card">
               <div className="border-b border-line px-4 py-3 text-sm font-semibold">{roles.includes("Sponsor") ? "Sponsor focus" : "Focus"}</div>
-              <div className="px-4 py-2">
+              <fieldset disabled={!canEdit} className="px-4 py-2 disabled:opacity-70">
                 <SponsorFocusForm criteria={company.criteria} action={updateCriteria} />
-              </div>
+              </fieldset>
             </div>
           )}
         </>

@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/activity";
 import { normalizeGeographies, parseList, toJson } from "@/lib/taxonomy";
 import { syncContactRolesForCompany } from "@/lib/roles";
 import { enrichCompany } from "@/lib/enrich";
+import { requireCriteriaAdmin } from "@/lib/current-user";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -84,6 +85,7 @@ export async function updateCompany(id: string, fd: FormData) {
 }
 
 export async function updateCompanyCriteria(id: string, fd: FormData) {
+  await requireCriteriaAdmin();
   const data = criteriaData(fd);
   await prisma.investorCriteria.upsert({ where: { companyId: id }, create: { companyId: id, ...data }, update: data });
   revalidatePath(`/companies/${id}`);
