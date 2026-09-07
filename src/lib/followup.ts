@@ -92,12 +92,10 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
   const words = dealName.split(/[^a-z0-9]+/).filter((w) => w.length > 3);
   const aboutDeal = (m: GraphMessage) => words.some((w) => (m.subject ?? "").toLowerCase().includes(w));
   const toPerson = await sentMessagesTo(mailbox, email, 15);
-  let original = toPerson.find(aboutDeal);
-  if (!original) {
-    const dom = row.contact.company?.domain ?? domainOf(email);
-    if (dom) original = (await sentMessagesToDomain(mailbox, dom, 25)).find(aboutDeal);
-  }
-  original ??= toPerson[0];
+  const dom = row.contact.company?.domain ?? domainOf(email);
+  const toFirm = dom ? await sentMessagesToDomain(mailbox, dom, 25) : [];
+  // 1) the deal email itself (to this person, else to anyone at the firm); 2) else the latest thread with the firm
+  const original = toPerson.find(aboutDeal) ?? toFirm.find(aboutDeal) ?? [...toPerson, ...toFirm].sort((a, b) => (b.sentDateTime ?? "").localeCompare(a.sentDateTime ?? ""))[0];
 
   let draft;
   let attachments = 0;

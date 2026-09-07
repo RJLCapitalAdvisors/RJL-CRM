@@ -122,7 +122,8 @@ export async function outlookDesktopLink(mailbox: string, messageId: string): Pr
       body: JSON.stringify({ inputIds: [messageId], sourceIdType: "restImmutableEntryId", targetIdType: "entryId" }),
     });
     const entryId = r.value?.[0]?.targetId;
-    return entryId ? `outlook:${entryId}` : null;
+    // the outlook: protocol wants the MAPI entry id as upper-case hex; Graph hands it back base64-encoded
+    return entryId ? `outlook:${Buffer.from(entryId, "base64").toString("hex").toUpperCase()}` : null;
   } catch {
     return null;
   }

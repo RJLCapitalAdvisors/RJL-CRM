@@ -18,8 +18,14 @@ type M = { id: string; subject: string | null; sentDateTime?: string; toRecipien
     for (const mb of MAILBOXES) {
       try {
         const res = await graph<{ value: M[] }>(`/users/${encodeURIComponent(mb)}/mailFolders/sentitems/messages?$search=${encodeURIComponent(`"participants:${kw}"`)}&$top=25&$select=id,subject,sentDateTime,toRecipients,ccRecipients`);
-        const cands = res.value.filter((m) => words.some((w) => (m.subject ?? "").toLowerCase().includes(w))).sort((a, b) => (a.sentDateTime ?? "").localeCompare(b.sentDateTime ?? ""));
+        const atDom = res.value.filter((m) => [...(m.toRecipients ?? []), ...(m.ccRecipients ?? [])].some((p) => p.emailAddress.address.toLowerCase().endsWith("@" + dom)));
+        const cands = atDom.filter((m) => words.some((w) => (m.subject ?? "").toLowerCase().includes(w))).sort((a, b) => (a.sentDateTime ?? "").localeCompare(b.sentDateTime ?? ""));
         if (cands[0]) { hit = cands[0]; break; } // earliest = the original send
+        // no subject match: the most recent thread with the firm on or before the report's date
+        const before = atDom.filter((m) => (m.sentDateTime ?? "") <= new Date(r.updatedAt.getTime() + 86_400_000).toISOString()).sort((a, b) => (b.sentDateTime ?? "").localeCompare(a.sentDateTime ?? ""));
+        // keep the listed person if we have written to them at all; only replace someone we never emailed
+        const wroteToListed = atDom.some((m) => [...(m.toRecipients ?? []), ...(m.ccRecipients ?? [])].some((p) => p.emailAddress.address.toLowerCase() === (r.contact.email ?? "").toLowerCase()));
+        if (before[0] && !hit && !wroteToListed) hit = before[0];
       } catch {}
     }
     if (!hit) { unknown++; continue; }
