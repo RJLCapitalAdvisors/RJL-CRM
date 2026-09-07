@@ -10,8 +10,8 @@ import { signatureFor, type FollowUpResult } from "@/lib/followup";
  */
 
 const FONT = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
-const P = (s: string) => `<p style="margin:0 0 10pt 0;${FONT}">${s}</p>`;
-const LI = (s: string) => `<li style="margin:0 0 6pt 0;${FONT}">${s}</li>`;
+const P = (s: string) => `<p style="margin:0;${FONT}">${s}</p>`;
+const LI = (s: string) => `<li style="margin:0;${FONT}">${s}</li>`;
 
 export function engagementSubject(sponsor: string, address: string) {
   return `Engagement Letter - RJL Capital Advisors & ${sponsor} - ${address}`;
@@ -19,10 +19,10 @@ export function engagementSubject(sponsor: string, address: string) {
 
 export function engagementHtml(opts: { firstName: string | null; sponsor: string; address: string; groups: string[]; signature: string }) {
   const { firstName, sponsor, address, groups, signature } = opts;
-  const groupList = groups.length ? `<ul style="margin:6pt 0 0 18pt;">${groups.map((g) => LI(g)).join("")}</ul>` : `<ul style="margin:6pt 0 0 18pt;">${LI("")}</ul>`;
+  const groupList = groups.length ? `<ul style="margin:0 0 0 18pt;">${groups.map((g) => LI(g)).join("")}</ul>` : `<ul style="margin:0 0 0 18pt;">${LI("")}</ul>`;
   return `<div style="${FONT}">
 ${P(`Hi${firstName ? ` ${firstName}` : ""} - hope you are well. Please find the below terms of our engagement. If you agree with the terms, please confirm our engagement via email by replying "confirmed."`)}
-<ul style="margin:0 0 10pt 18pt;">
+<ul style="margin:0 0 0 18pt;">
 ${LI(`<b>Address:</b> ${address}`)}
 ${LI(`<b>Sponsor:</b> ${sponsor}`)}
 ${LI(`<b>Fees:</b> 2% for first deal. Tail to be negotiated.`)}
