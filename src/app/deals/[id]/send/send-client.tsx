@@ -40,7 +40,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId }: { de
     const d = drafts[cur.rowId];
     if (d && d.touched) return;
     let cancelled = false;
-    setRendering(true);
+    const t = setTimeout(() => !cancelled && setRendering(true), 0); // async so the effect itself does not set state
     previewDealEmail(dealId, templateId, primaryFor(cur), cur.openingLine ?? "hope you are well.", null)
       .then((r) => {
         if (!cancelled) setDrafts((s) => ({ ...s, [cur.rowId]: { subject: r.subject, html: r.html, touched: false } }));
@@ -49,6 +49,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId }: { de
       .finally(() => !cancelled && setRendering(false));
     return () => {
       cancelled = true;
+      clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, templateId]);
