@@ -22,6 +22,7 @@ export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", 
         <a href={desktopHref(ready)} className="btn-primary" title="Opens the draft in desktop Outlook">
           {readyLabel}
         </a>
+        <span className="text-[11px] text-muted">If it did not pop up, click the button</span>
         <a href={ready.webLink} target="_blank" className="text-xs text-muted hover:underline">
           or open in Outlook web
         </a>
@@ -41,6 +42,13 @@ export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", 
             const r = await action();
             if (!r.ok) return setError(r.reason);
             setReady(r);
+            // try to pop it open right away (works once the browser has been told to always allow RJL CRM links);
+            // the Open in Outlook button below is the sure thing if the browser insists on a direct click
+            try {
+              window.location.href = desktopHref(r);
+            } catch {
+              /* ignore */
+            }
             router.refresh();
           });
         }}
