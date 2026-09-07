@@ -127,3 +127,10 @@ export async function outlookDesktopLink(mailbox: string, messageId: string): Pr
     return null;
   }
 }
+
+/** Sent Items messages that involve anyone at a domain (newest first); pair with a subject filter to find a deal email. */
+export async function sentMessagesToDomain(mailbox: string, domain: string, top = 25): Promise<GraphMessage[]> {
+  const kw = domain.split(".")[0]; // KQL participants: matches on a keyword, not a dotted domain
+  const r = await graph<{ value: GraphMessage[] }>(`/users/${q(mailbox)}/mailFolders/sentitems/messages?$search=${q(`"participants:${kw}"`)}&$top=${top}&$select=id,subject,conversationId,sentDateTime,hasAttachments,toRecipients,ccRecipients,webLink`);
+  return [...r.value].sort((a, b) => (b.sentDateTime ?? "").localeCompare(a.sentDateTime ?? ""));
+}
