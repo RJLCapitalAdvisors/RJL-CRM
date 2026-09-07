@@ -64,7 +64,7 @@ function insertAtTop(bodyHtml: string, block: string) {
   return block + bodyHtml;
 }
 
-export type FollowUpResult = { ok: true; webLink: string; outlookLink: string | null; mode: "replyAll" | "new"; attachments: number } | { ok: false; reason: string };
+export type FollowUpResult = { ok: true; webLink: string; outlookLink: string | null; messageId: string | null; mode: "replyAll" | "new"; attachments: number } | { ok: false; reason: string };
 
 export async function createFollowUpDraft(rowId: string, mailbox: string): Promise<FollowUpResult> {
   if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
@@ -76,8 +76,8 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
   // an unsent draft from an earlier click: reopen it instead of making another
   if (row.followUpDraftId && row.followUpMailbox) {
     try {
-      const d = await getMessage(row.followUpMailbox, row.followUpDraftId, "id,isDraft,webLink");
-      if (d.isDraft && d.webLink) return { ok: true, webLink: d.webLink, outlookLink: await outlookDesktopLink(row.followUpMailbox, d.id), mode: "replyAll", attachments: 0 };
+      const d = await getMessage(row.followUpMailbox, row.followUpDraftId, "id,isDraft,webLink,internetMessageId");
+      if (d.isDraft && d.webLink) return { ok: true, webLink: d.webLink, outlookLink: await outlookDesktopLink(row.followUpMailbox, d.id), messageId: d.internetMessageId ?? null, mode: "replyAll", attachments: 0 };
     } catch {
       /* draft gone; make a new one */
     }
@@ -111,10 +111,10 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
   } else {
     draft = await createDraft(mailbox, { subject: `RE: ${subjectLine(row.deal as unknown as Record<string, unknown>)}`, toRecipients: [email], bodyHtml: `<html><body>${greeting}</body></html>` });
   }
-  const fresh = await getMessage(mailbox, draft.id, "id,webLink");
+  const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
   // keep updatedAt as it was: the LP has not been followed up with until the draft is actually sent
   await prisma.dealInvestor.update({ where: { id: rowId }, data: { followUpDraftId: draft.id, followUpDraftAt: new Date(), followUpMailbox: mailbox, updatedAt: row.updatedAt } });
-  return { ok: true, webLink: fresh.webLink ?? draft.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), mode: original ? "replyAll" : "new", attachments };
+  return { ok: true, webLink: fresh.webLink ?? draft.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: original ? "replyAll" : "new", attachments };
 }
 
 /**

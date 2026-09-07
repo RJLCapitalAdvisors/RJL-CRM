@@ -42,6 +42,7 @@ export type GraphMessage = {
   isDraft?: boolean;
   hasAttachments?: boolean;
   webLink?: string;
+  internetMessageId?: string;
   body?: { contentType: "html" | "text"; content: string };
   from?: { emailAddress: { address: string; name?: string } };
   toRecipients?: { emailAddress: { address: string; name?: string } }[];

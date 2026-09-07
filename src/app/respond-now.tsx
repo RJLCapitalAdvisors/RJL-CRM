@@ -10,7 +10,9 @@ import { openFollowUp } from "./todo-actions";
  * to be a direct click because browsers only launch another app on a real user gesture.
  * The LP stays on the list until that draft is actually sent.
  */
-type Ready = { outlookLink: string | null; webLink: string };
+type Ready = { outlookLink: string | null; webLink: string; messageId: string | null };
+/** rjlcrm: is a small per-user link type (scripts/setup-outlook-link.ps1) that opens the draft in desktop Outlook by Message-ID. */
+const desktopHref = (r: Ready) => (r.messageId ? `rjlcrm:open?mid=${encodeURIComponent(r.messageId)}` : r.outlookLink ?? r.webLink);
 
 export function RespondNow({ rowId, draftOpen, disabled }: { rowId: string; draftOpen: boolean; disabled?: boolean }) {
   const [pending, start] = useTransition();
@@ -21,7 +23,7 @@ export function RespondNow({ rowId, draftOpen, disabled }: { rowId: string; draf
   if (ready) {
     return (
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <a href={ready.outlookLink ?? ready.webLink} className="btn-primary" title="Opens the draft in desktop Outlook">
+        <a href={desktopHref(ready)} className="btn-primary" title="Opens the draft in desktop Outlook">
           Open in Outlook
         </a>
         <a href={ready.webLink} target="_blank" className="text-xs text-muted hover:underline">
@@ -42,7 +44,7 @@ export function RespondNow({ rowId, draftOpen, disabled }: { rowId: string; draf
           start(async () => {
             const r = await openFollowUp(rowId);
             if (!r.ok) return setError(r.reason);
-            setReady({ outlookLink: r.outlookLink, webLink: r.webLink });
+            setReady({ outlookLink: r.outlookLink, webLink: r.webLink, messageId: r.messageId });
             router.refresh();
           });
         }}
