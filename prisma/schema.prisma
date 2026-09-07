@@ -16,6 +16,7 @@ model User {
   name      String
   email     String?  @unique
   active    Boolean  @default(true)
+  signatureHtml String? // Outlook signature, pasted in Settings or picked up from a sent email
   createdAt DateTime @default(now())
 
   companies Company[]
@@ -208,6 +209,9 @@ model DealInvestor {
   status    Int       @default(1) // 1 Deal Not Sent .. 8 Pass (see src/lib/tracker.ts)
   note      String?
   noteDate  DateTime?
+  followUpDraftId String?   // Outlook draft created by "Respond now"; the row flips to Followed Up once it is sent
+  followUpDraftAt DateTime?
+  followUpMailbox String?   // whose mailbox holds that draft
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 

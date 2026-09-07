@@ -1,0 +1,136 @@
+import { prisma } from "@/lib/db";
+import { copyAttachment, createDraft, createReplyAllDraft, getMessage, graphConfigured, listAttachments, recentSent, sentMessagesTo, updateDraftBody } from "@/lib/graph";
+import { investorLabel } from "@/lib/tracker";
+import { subjectLine } from "@/lib/deal-copy";
+
+/**
+ * "Respond now": build the follow-up in the sender's own Outlook mailbox as a reply-all to the deal
+ * email that went to this LP, with the original attachments re-attached, "Hi Name - please confirm
+ * receipt." in Calibri 11 and the sender's signature. The draft opens in Outlook; the LP only moves
+ * to Followed Up once Outlook shows the draft was actually sent (see syncFollowUpDrafts).
+ */
+
+const FONT = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
+const QUOTE_MARKERS = [/<div[^>]+id=["']appendonsend["']/i, /<div[^>]+id=["']divRplyFwdMsg["']/i, /<hr[^>]*>/i, /<b>From:<\/b>/i, /-----Original Message-----/i, /<blockquote/i];
+
+function stripQuoted(html: string) {
+  let cut = html.length;
+  for (const re of QUOTE_MARKERS) {
+    const m = html.match(re);
+    if (m && m.index !== undefined && m.index < cut) cut = m.index;
+  }
+  return html.slice(0, cut);
+}
+
+/** Best-effort: the signature block at the bottom of one of the user's recent sent emails. */
+export function deriveSignature(html: string, displayName: string): string | null {
+  const own = stripQuoted(html);
+  const text = own.replace(/<[^>]+>/g, " ");
+  if (!text.includes(displayName)) return null;
+  const idx = own.lastIndexOf(displayName);
+  if (idx < 0) return null;
+  const openers = [own.lastIndexOf("<div", idx), own.lastIndexOf("<p", idx), own.lastIndexOf("<table", idx)];
+  const start = Math.max(...openers);
+  if (start < 0) return null;
+  const sig = own.slice(start).trim();
+  return sig.length > 20 && sig.length < 20000 ? sig : null;
+}
+
+async function signatureFor(mailbox: string): Promise<string> {
+  const user = await prisma.user.findFirst({ where: { email: mailbox } });
+  if (user?.signatureHtml) return user.signatureHtml;
+  const name = user?.name ?? mailbox;
+  try {
+    for (const m of await recentSent(mailbox, 8)) {
+      const sig = m.body?.content ? deriveSignature(m.body.content, name) : null;
+      if (sig) {
+        if (user) await prisma.user.update({ where: { id: user.id }, data: { signatureHtml: sig } });
+        return sig;
+      }
+    }
+  } catch {
+    /* fall through to plain signature */
+  }
+  return `<div style="${FONT}">${name}<br>RJL Capital Advisors</div>`;
+}
+
+function insertAtTop(bodyHtml: string, block: string) {
+  const m = bodyHtml.match(/<body[^>]*>/i);
+  if (m && m.index !== undefined) {
+    const at = m.index + m[0].length;
+    return bodyHtml.slice(0, at) + block + bodyHtml.slice(at);
+  }
+  return block + bodyHtml;
+}
+
+export type FollowUpResult = { ok: true; webLink: string; mode: "replyAll" | "new"; attachments: number } | { ok: false; reason: string };
+
+export async function createFollowUpDraft(rowId: string, mailbox: string): Promise<FollowUpResult> {
+  if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
+  const row = await prisma.dealInvestor.findUnique({ where: { id: rowId }, include: { contact: { include: { company: true } }, deal: true } });
+  if (!row) return { ok: false, reason: "row not found" };
+  const email = row.contact.email;
+  if (!email) return { ok: false, reason: `${investorLabel(row.contact)} has no email address on file` };
+
+  // an unsent draft from an earlier click: reopen it instead of making another
+  if (row.followUpDraftId && row.followUpMailbox) {
+    try {
+      const d = await getMessage(row.followUpMailbox, row.followUpDraftId, "id,isDraft,webLink");
+      if (d.isDraft && d.webLink) return { ok: true, webLink: d.webLink, mode: "replyAll", attachments: 0 };
+    } catch {
+      /* draft gone; make a new one */
+    }
+  }
+
+  const first = row.contact.firstName?.trim();
+  const greeting = `<div style="${FONT}"><p style="margin:0 0 12pt 0;${FONT}">Hi${first ? ` ${first}` : ""} - please confirm receipt.</p>${await signatureFor(mailbox)}<br></div>`;
+
+  // the deal email that went to this LP: newest Sent Items message to them mentioning the deal, else newest to them
+  const dealName = (row.deal.propertyName ?? row.deal.name).toLowerCase();
+  const words = dealName.split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+  const sent = await sentMessagesTo(mailbox, email, 15);
+  const original = sent.find((m) => words.some((w) => (m.subject ?? "").toLowerCase().includes(w))) ?? sent[0];
+
+  let draft;
+  let attachments = 0;
+  if (original) {
+    draft = await createReplyAllDraft(mailbox, original.id);
+    await updateDraftBody(mailbox, draft.id, insertAtTop(draft.body?.content ?? "", greeting));
+    if (original.hasAttachments) {
+      for (const att of await listAttachments(mailbox, original.id)) {
+        if (att.isInline) continue;
+        if (await copyAttachment(mailbox, original.id, att, draft.id)) attachments++;
+      }
+    }
+  } else {
+    draft = await createDraft(mailbox, { subject: `RE: ${subjectLine(row.deal as unknown as Record<string, unknown>)}`, toRecipients: [email], bodyHtml: `<html><body>${greeting}</body></html>` });
+  }
+  const fresh = await getMessage(mailbox, draft.id, "id,webLink");
+  await prisma.dealInvestor.update({ where: { id: rowId }, data: { followUpDraftId: draft.id, followUpDraftAt: new Date(), followUpMailbox: mailbox } });
+  return { ok: true, webLink: fresh.webLink ?? draft.webLink ?? "", mode: original ? "replyAll" : "new", attachments };
+}
+
+/**
+ * Rows with an open follow-up draft: ask Outlook whether it has been sent. Sent -> status 3 (Followed Up),
+ * timer restarts. Deleted draft -> forget it so Respond now makes a new one.
+ */
+export async function syncFollowUpDrafts(): Promise<number> {
+  if (!graphConfigured()) return 0;
+  const rows = await prisma.dealInvestor.findMany({ where: { followUpDraftId: { not: null } }, select: { id: true, followUpDraftId: true, followUpMailbox: true, contactId: true, dealId: true } });
+  let sent = 0;
+  await Promise.all(
+    rows.map(async (r) => {
+      try {
+        const m = await getMessage(r.followUpMailbox!, r.followUpDraftId!, "id,isDraft,sentDateTime,subject");
+        if (m.isDraft) return;
+        await prisma.dealInvestor.update({ where: { id: r.id }, data: { status: 3, followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null, updatedAt: m.sentDateTime ? new Date(m.sentDateTime) : new Date() } });
+        const { logActivity } = await import("@/lib/activity");
+        await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: m.subject ?? "Follow-up", body: "Follow-up sent from Outlook (Respond now)", contactId: r.contactId, dealId: r.dealId, occurredAt: m.sentDateTime ? new Date(m.sentDateTime) : new Date() });
+        sent++;
+      } catch (e) {
+        if (String(e).includes("404")) await prisma.dealInvestor.update({ where: { id: r.id }, data: { followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null } });
+      }
+    }),
+  );
+  return sent;
+}

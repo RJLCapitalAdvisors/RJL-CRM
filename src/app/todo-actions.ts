@@ -40,9 +40,21 @@ export async function dismissProposal(id: string) {
   revalidatePath("/");
 }
 
-/** "Respond now" was clicked: the follow-up is open in Outlook, so record the LP as Followed Up. */
-export async function markFollowedUp(rowId: string) {
-  const { setTrackerStatus } = await import("@/app/deals/[id]/tracker/actions");
-  await setTrackerStatus(rowId, 3);
-  revalidatePath("/");
+/** "Respond now": build the follow-up draft in the sender's Outlook and hand back the link to open it. */
+export async function openFollowUp(rowId: string) {
+  const { createFollowUpDraft } = await import("@/lib/followup");
+  const mailbox = (process.env.MAIL_FROM ?? "").match(/<([^>]+)>/)?.[1] ?? process.env.MAIL_FROM ?? "jonathan@rjlcapadvisors.com";
+  try {
+    const r = await createFollowUpDraft(rowId, mailbox);
+    revalidatePath("/");
+    return r;
+  } catch (e) {
+    return { ok: false as const, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+}
+
+export async function saveSignature(userId: string, fd: FormData) {
+  const html = String(fd.get("signatureHtml") ?? "").trim();
+  await prisma.user.update({ where: { id: userId }, data: { signatureHtml: html || null } });
+  revalidatePath("/settings");
 }

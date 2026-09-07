@@ -3,8 +3,7 @@ import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
 import { investorLabel } from "@/lib/tracker";
-import { subjectLine } from "@/lib/deal-copy";
-import { mailtoLink, renderForRecipient } from "@/lib/campaign-render";
+import { syncFollowUpDrafts } from "@/lib/followup";
 import { PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
 import { approveProposal, dismissProposal } from "./todo-actions";
 import { RespondNow } from "./respond-now";
@@ -18,32 +17,18 @@ const days = (d: Date) => Math.floor((Date.now() - d.getTime()) / DAY);
 
 /** LPs who were sent a deal (or followed up with) and have said nothing for QUIET_AFTER_DAYS, grouped by deal. */
 async function quietInvestors() {
+  // Outlook is the source of truth for "did the follow-up go out": check open drafts before listing.
+  await syncFollowUpDrafts().catch(() => 0);
   const cutoff = new Date(Date.now() - QUIET_AFTER_DAYS * DAY);
   const rows = await prisma.dealInvestor.findMany({
     where: { status: { in: [2, 3] }, updatedAt: { lt: cutoff }, deal: { stage: { in: [...ACTIVE_STAGES] } } },
     include: { contact: { include: { company: { select: { name: true } } } }, deal: true },
     orderBy: { updatedAt: "asc" },
   });
-  // The original deal email each LP got, so the follow-up can carry the same subject line.
-  const sends = await prisma.campaignRecipient.findMany({
-    where: { status: "SENT", contactId: { in: rows.map((r) => r.contactId) }, campaign: { followUp: false, dealId: { in: [...new Set(rows.map((r) => r.dealId))] } } },
-    include: { campaign: { include: { deal: true } }, contact: { include: { company: { select: { name: true } } } } },
-    orderBy: { sentAt: "desc" },
-  });
-  const sentTo = new Map<string, (typeof sends)[number]>();
-  for (const s of sends) {
-    const k = `${s.campaign.dealId}:${s.contactId}`;
-    if (!sentTo.has(k)) sentTo.set(k, s);
-  }
-
-  const byDeal = new Map<string, { deal: (typeof rows)[number]["deal"]; rows: { row: (typeof rows)[number]; href: string | null }[] }>();
+  const byDeal = new Map<string, { deal: (typeof rows)[number]["deal"]; rows: { row: (typeof rows)[number] }[] }>();
   for (const r of rows) {
-    const s = sentTo.get(`${r.dealId}:${r.contactId}`);
-    const subject = s ? renderForRecipient({ ...s.campaign, deal: s.campaign.deal as unknown as Record<string, unknown> }, s).subject : subjectLine(r.deal as unknown as Record<string, unknown>);
-    const first = r.contact.firstName?.trim();
-    const href = r.contact.email && !r.contact.unsubscribed ? mailtoLink(r.contact.email, `RE: ${subject}`, `Hi${first ? ` ${first}` : ""} - please confirm receipt.`) : null;
     const g = byDeal.get(r.dealId) ?? { deal: r.deal, rows: [] };
-    g.rows.push({ row: r, href });
+    g.rows.push({ row: r });
     byDeal.set(r.dealId, g);
   }
   return [...byDeal.values()].sort((a, b) => a.rows[0].row.updatedAt.getTime() - b.rows[0].row.updatedAt.getTime());
@@ -79,19 +64,20 @@ export default async function Dashboard() {
                       <span className="text-sm text-muted">{g.rows.length} waiting</span>
                     </div>
                     <ul className="mt-3 space-y-3">
-                      {g.rows.map(({ row: r, href }) => (
+                      {g.rows.map(({ row: r }) => (
                         <li key={r.id} className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
                             <div className="truncate">
                               {r.contact.company?.name ?? investorLabel(r.contact)}
                               {r.status === 3 && <span className="text-muted"> · already followed up</span>}
+                              {r.followUpDraftId && <span className="text-muted"> · draft waiting in Outlook</span>}
                             </div>
                             <div className="truncate text-sm text-muted">
                               {[r.contact.firstName, r.contact.lastName].filter(Boolean).join(" ")}
                               {r.contact.email ? ` · ${r.contact.email}` : " · no email on file"} · {days(r.updatedAt)} days
                             </div>
                           </div>
-                          <RespondNow rowId={r.id} href={href} />
+                          <RespondNow rowId={r.id} draftOpen={Boolean(r.followUpDraftId)} disabled={!r.contact.email || r.contact.unsubscribed} />
                         </li>
                       ))}
                     </ul>
