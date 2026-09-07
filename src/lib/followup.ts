@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/db";
-import { copyAttachment, createDraft, createReplyAllDraft, getMessage, graphConfigured, listAttachments, recentSent, sentMessagesTo, updateDraftBody } from "@/lib/graph";
+import { copyAttachment, createDraft, createReplyAllDraft, getMessage, graphConfigured, listAttachments, outlookDesktopLink, recentSent, sentMessagesTo, updateDraftBody } from "@/lib/graph";
 import { investorLabel } from "@/lib/tracker";
 import { subjectLine } from "@/lib/deal-copy";
 
 /**
- * "Respond now": build the follow-up in the sender's own Outlook mailbox as a reply-all to the deal
+ * "Handle": build the follow-up in the sender's own Outlook mailbox as a reply-all to the deal
  * email that went to this LP, with the original attachments re-attached, "Hi Name - please confirm
  * receipt." in Calibri 11 and the sender's signature. The draft opens in Outlook; the LP only moves
  * to Followed Up once Outlook shows the draft was actually sent (see syncFollowUpDrafts).
@@ -63,7 +63,7 @@ function insertAtTop(bodyHtml: string, block: string) {
   return block + bodyHtml;
 }
 
-export type FollowUpResult = { ok: true; webLink: string; mode: "replyAll" | "new"; attachments: number } | { ok: false; reason: string };
+export type FollowUpResult = { ok: true; webLink: string; outlookLink: string | null; mode: "replyAll" | "new"; attachments: number } | { ok: false; reason: string };
 
 export async function createFollowUpDraft(rowId: string, mailbox: string): Promise<FollowUpResult> {
   if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
@@ -76,7 +76,7 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
   if (row.followUpDraftId && row.followUpMailbox) {
     try {
       const d = await getMessage(row.followUpMailbox, row.followUpDraftId, "id,isDraft,webLink");
-      if (d.isDraft && d.webLink) return { ok: true, webLink: d.webLink, mode: "replyAll", attachments: 0 };
+      if (d.isDraft && d.webLink) return { ok: true, webLink: d.webLink, outlookLink: await outlookDesktopLink(row.followUpMailbox, d.id), mode: "replyAll", attachments: 0 };
     } catch {
       /* draft gone; make a new one */
     }
@@ -106,13 +106,14 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
     draft = await createDraft(mailbox, { subject: `RE: ${subjectLine(row.deal as unknown as Record<string, unknown>)}`, toRecipients: [email], bodyHtml: `<html><body>${greeting}</body></html>` });
   }
   const fresh = await getMessage(mailbox, draft.id, "id,webLink");
-  await prisma.dealInvestor.update({ where: { id: rowId }, data: { followUpDraftId: draft.id, followUpDraftAt: new Date(), followUpMailbox: mailbox } });
-  return { ok: true, webLink: fresh.webLink ?? draft.webLink ?? "", mode: original ? "replyAll" : "new", attachments };
+  // keep updatedAt as it was: the LP has not been followed up with until the draft is actually sent
+  await prisma.dealInvestor.update({ where: { id: rowId }, data: { followUpDraftId: draft.id, followUpDraftAt: new Date(), followUpMailbox: mailbox, updatedAt: row.updatedAt } });
+  return { ok: true, webLink: fresh.webLink ?? draft.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), mode: original ? "replyAll" : "new", attachments };
 }
 
 /**
  * Rows with an open follow-up draft: ask Outlook whether it has been sent. Sent -> status 3 (Followed Up),
- * timer restarts. Deleted draft -> forget it so Respond now makes a new one.
+ * timer restarts. Deleted draft -> forget it so Handle makes a new one.
  */
 export async function syncFollowUpDrafts(): Promise<number> {
   if (!graphConfigured()) return 0;
@@ -125,7 +126,7 @@ export async function syncFollowUpDrafts(): Promise<number> {
         if (m.isDraft) return;
         await prisma.dealInvestor.update({ where: { id: r.id }, data: { status: 3, followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null, updatedAt: m.sentDateTime ? new Date(m.sentDateTime) : new Date() } });
         const { logActivity } = await import("@/lib/activity");
-        await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: m.subject ?? "Follow-up", body: "Follow-up sent from Outlook (Respond now)", contactId: r.contactId, dealId: r.dealId, occurredAt: m.sentDateTime ? new Date(m.sentDateTime) : new Date() });
+        await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: m.subject ?? "Follow-up", body: "Follow-up sent from Outlook (Handle)", contactId: r.contactId, dealId: r.dealId, occurredAt: m.sentDateTime ? new Date(m.sentDateTime) : new Date() });
         sent++;
       } catch (e) {
         if (String(e).includes("404")) await prisma.dealInvestor.update({ where: { id: r.id }, data: { followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null } });

@@ -43,7 +43,7 @@ export async function dismissProposal(id: string) {
   revalidatePath("/");
 }
 
-/** "Respond now": build the follow-up draft in the sender's Outlook and hand back the link to open it. */
+/** "Handle": build the follow-up draft in the sender's Outlook and hand back the link to open it. */
 export async function openFollowUp(rowId: string) {
   const { createFollowUpDraft } = await import("@/lib/followup");
   const me = await currentUser();

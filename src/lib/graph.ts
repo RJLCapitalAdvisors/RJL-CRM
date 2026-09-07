@@ -113,3 +113,17 @@ export async function recentSent(mailbox: string, top = 5): Promise<GraphMessage
   const r = await graph<{ value: GraphMessage[] }>(`/users/${q(mailbox)}/mailFolders/sentitems/messages?$top=${top}&$orderby=sentDateTime desc&$select=id,subject,sentDateTime,body,toRecipients`);
   return r.value;
 }
+
+/** Classic desktop Outlook opens items by MAPI entry id via the outlook: protocol; convert our immutable id to one. */
+export async function outlookDesktopLink(mailbox: string, messageId: string): Promise<string | null> {
+  try {
+    const r = await graph<{ value: { sourceId: string; targetId: string }[] }>(`/users/${q(mailbox)}/translateExchangeIds`, {
+      method: "POST",
+      body: JSON.stringify({ inputIds: [messageId], sourceIdType: "restImmutableEntryId", targetIdType: "entryId" }),
+    });
+    const entryId = r.value?.[0]?.targetId;
+    return entryId ? `outlook:${entryId}` : null;
+  } catch {
+    return null;
+  }
+}

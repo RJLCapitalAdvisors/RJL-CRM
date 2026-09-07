@@ -33,7 +33,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               <button className="btn-secondary mt-3 w-full justify-center" type="submit">
                 Sign in
               </button>
-              <p className="mt-2 text-xs text-muted">The team password opens the CRM without knowing who you are, so Respond now and other mailbox features need Microsoft sign-in.</p>
+              <p className="mt-2 text-xs text-muted">The team password opens the CRM without knowing who you are, so Handle and other mailbox features need Microsoft sign-in.</p>
             </form>
           </details>
         )}
