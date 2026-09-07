@@ -58,7 +58,7 @@ export default async function Dashboard() {
   return (
     <>
       <PageHeader title="Home" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP${quietCount === 1 ? "" : "s"} to follow up with · ${proposals.length} criteria update${proposals.length === 1 ? "" : "s"} to approve`} />
-      <div className="grid gap-6 px-8 py-6 text-[15px] leading-relaxed lg:grid-cols-2">
+      <div className="mx-auto grid max-w-[1120px] gap-5 px-8 py-6 text-[15px] leading-relaxed lg:grid-cols-[minmax(0,560px)_minmax(0,480px)]">
         {/* LPs who have gone quiet */}
         <div className="card flex max-h-[calc(100vh-150px)] flex-col">
           <div className="flex items-center justify-between rounded-t-lg border-b border-line bg-cream px-5 py-3.5">
