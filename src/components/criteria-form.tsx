@@ -1,5 +1,12 @@
 import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, RETURN_PROFILES, STRATEGIES, VINTAGES, parseList } from "@/lib/taxonomy";
 import { MultiSelect } from "./multi-select";
+import { RangeSlider } from "./range-slider";
+
+/** Trial (Sept 2026): check sizes, hold periods and vintages as two-handle sliders. Set to false to go back to the checkbox dropdowns. */
+const USE_SLIDERS = true;
+function Span({ name, options, selected }: { name: string; options: readonly string[]; selected: string[] }) {
+  return USE_SLIDERS ? <RangeSlider name={name} options={options} selected={selected} /> : <MultiSelect name={name} options={options} selected={selected} />;
+}
 import { Field } from "./record-layout";
 
 export type CriteriaLike = {
@@ -27,7 +34,7 @@ export function CriteriaForm({ criteria, action }: { criteria: CriteriaLike; act
         <MultiSelect name="assetClasses" options={ASSET_CLASSES} selected={parseList(c?.assetClasses)} />
       </Field>
       <Field label="Check sizes">
-        <MultiSelect name="checkSizes" options={CHECK_SIZES} selected={parseList(c?.checkSizes)} />
+        <Span name="checkSizes" options={CHECK_SIZES} selected={parseList(c?.checkSizes)} />
       </Field>
       <Field label="Deal locations" htmlFor="geographyNotes">
         <input id="geographyNotes" name="geographyNotes" defaultValue={c?.geographyNotes ?? ""} className="input" placeholder="Sunbelt, Texas, Florida. No NY or CA." />
@@ -44,10 +51,10 @@ export function CriteriaForm({ criteria, action }: { criteria: CriteriaLike; act
         </select>
       </Field>
       <Field label="Hold period">
-        <MultiSelect name="holdPeriods" options={HOLD_PERIODS} selected={parseList(c?.holdPeriods)} />
+        <Span name="holdPeriods" options={HOLD_PERIODS} selected={parseList(c?.holdPeriods)} />
       </Field>
       <Field label="Vintages considered">
-        <MultiSelect name="vintages" options={VINTAGES} selected={parseList(c?.vintages)} />
+        <Span name="vintages" options={VINTAGES} selected={parseList(c?.vintages)} />
       </Field>
       <Field label="Opportunity Zone interest" htmlFor="ozInterest">
         <select id="ozInterest" name="ozInterest" defaultValue={yn(c?.ozInterest)} className="input">
