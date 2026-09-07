@@ -64,7 +64,9 @@ function passes(c: InvestorRow["crit"], s: Spec): boolean {
   return true;
 }
 
-export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "search", dealId = null }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null }) {
+export type Suggestion = { companyId: string; name: string; reason: string };
+
+export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "search", dealId = null, suggestions = [] }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] }) {
   const PAGE = 100;
   const router = useRouter();
   const engagement = mode === "engagement" && Boolean(dealId);
@@ -108,7 +110,8 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
           </div>
         </div>
       )}
-      <aside className="card self-start p-4">
+      <div className="space-y-4 self-start">
+      <aside className="card p-4">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold">Deal specs</span>
           {active > 0 && (
@@ -156,6 +159,35 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
         {sel("closing", "Closing time frame", CLOSING_TIMEFRAMES)}
         {sel("minority", "Open to minority position", ["Yes", "No"])}
       </aside>
+      {engagement && (
+        <aside className="card p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-semibold">Suggested by the CRM</span>
+            <Link href={`/investors?dealId=${dealId}&mode=engagement&refresh=1`} className="text-xs text-sky-600 hover:underline" title="Re-read criteria, tracker history and emails for this deal">
+              refresh
+            </Link>
+          </div>
+          {suggestions.length === 0 ? (
+            <div className="text-xs text-muted">No suggestions yet for this deal. The CRM reads criteria, how each group responded to past deals, and your email history to pick these.</div>
+          ) : (
+            <ul className="space-y-2">
+              {suggestions.map((sg) => (
+                <li key={sg.companyId} className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" className="mt-1 accent-ink" checked={picked.has(sg.companyId)} onChange={() => togglePick(sg.companyId)} aria-label={`Pick ${sg.name}`} />
+                  <div className="min-w-0">
+                    <Link href={`/companies/${sg.companyId}`} className="font-medium hover:underline">
+                      {sg.name}
+                    </Link>
+                    <div className="text-xs text-muted">{sg.reason}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-3 text-[11px] text-muted">Ticking here or in the list is the same tick.</div>
+        </aside>
+      )}
+      </div>
 
       <section className="card flex h-[calc(100vh-140px)] min-h-[480px] flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-line px-4 py-2 text-sm">
