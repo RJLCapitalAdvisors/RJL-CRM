@@ -1,4 +1,5 @@
 import { syncAllMailboxes } from "@/lib/mail-sync";
+import { ensureDealsSubscription, processDealsInbox } from "@/lib/deals-inbox";
 
 export const maxDuration = 300;
 
@@ -8,6 +9,6 @@ export async function GET(req: Request) {
   const key = new URL(req.url).searchParams.get("key");
   const secret = process.env.CRON_SECRET;
   if (!secret || (auth !== `Bearer ${secret}` && key !== secret)) return new Response("Unauthorized", { status: 401 });
-  const result = await syncAllMailboxes();
-  return Response.json({ ok: true, result });
+  const [result, deals, subscription] = await Promise.all([syncAllMailboxes(), processDealsInbox().catch((e) => String(e)), ensureDealsSubscription().catch((e) => String(e))]);
+  return Response.json({ ok: true, result, deals, subscription });
 }

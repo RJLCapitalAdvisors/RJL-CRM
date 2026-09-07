@@ -345,6 +345,7 @@ model DealIntake {
   notes       String?  // extractor commentary / confidence notes
   extractor   String?  // claude | heuristic
   status      String   @default("PENDING") // PENDING | CONVERTED | DISMISSED
+  messageId   String?  @unique // Internet Message-ID of the forwarded email (deals@ mailbox), so it is processed once
   dealId      String?  @unique
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -127,7 +127,12 @@ let lastKick = 0;
 export function kickMailSync(minMinutes = 10) {
   if (!graphConfigured() || Date.now() - lastKick < minMinutes * 60_000) return;
   lastKick = Date.now();
+  const run = async () => {
+    await syncAllMailboxes().catch(() => ({}));
+    const { processDealsInbox } = await import("@/lib/deals-inbox");
+    await processDealsInbox().catch(() => ({}));
+  };
   import("next/server")
-    .then(({ after }) => after(() => syncAllMailboxes().catch(() => ({}))))
-    .catch(() => void syncAllMailboxes().catch(() => ({})));
+    .then(({ after }) => after(run))
+    .catch(() => void run());
 }

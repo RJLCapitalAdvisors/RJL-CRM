@@ -25,12 +25,13 @@ export async function graph<T = unknown>(path: string, init: RequestInit & { raw
     ...init,
     headers: { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"', ...(init.body && !(init.body instanceof Uint8Array) ? { "Content-Type": "application/json" } : {}), ...(init.headers ?? {}) },
   });
-  if (res.status === 204) return undefined as T;
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Graph ${init.method ?? "GET"} ${path} -> ${res.status}: ${text.slice(0, 300)}`);
   }
-  return (init.raw ? res.arrayBuffer() : res.json()) as Promise<T>;
+  if (init.raw) return (await res.arrayBuffer()) as T;
+  const text = await res.text(); // 202 Accepted / 204 No Content carry no body
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export type GraphMessage = {

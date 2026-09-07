@@ -8,6 +8,7 @@ import { PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
 import { approveProposal, dismissProposal } from "./todo-actions";
 import { RespondNow } from "./respond-now";
 import { currentUser } from "@/lib/current-user";
+import { kickMailSync } from "@/lib/mail-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,7 @@ async function quietInvestors() {
 }
 
 export default async function Dashboard() {
+  kickMailSync(); // background: team mailboxes into the email log, deals@ inbox into deal tickets
   const me = await currentUser();
   const showCriteria = Boolean(me?.canEditCriteria);
   const [proposals, quiet] = await Promise.all([showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]), quietInvestors()]);
