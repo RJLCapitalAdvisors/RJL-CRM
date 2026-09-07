@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/db";
+import { checkRangeFrom } from "@/lib/ranges";
 import { PageHeader } from "@/components/ui";
 import { INVESTMENT_TYPES, parseList } from "@/lib/taxonomy";
 import { str } from "@/lib/format";
 import { InvestorSearch, type InvestorRow, type Spec } from "./search";
-import { bucketForAmount, vintageForYear } from "@/lib/investor-specs";
+import { vintageForYear } from "@/lib/investor-specs";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,8 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
         ? {
             assetClasses: parseList(cr.assetClasses),
             checkSizes: parseList(cr.checkSizes),
+            checkMin: cr.checkMinMM ?? checkRangeFrom(parseList(cr.checkSizes))?.[0] ?? null,
+            checkMax: cr.checkMaxMM ?? checkRangeFrom(parseList(cr.checkSizes))?.[1] ?? null,
             geographyNotes: cr.geographyNotes,
             investmentTypes: parseList(cr.investmentTypes),
             strategy: cr.strategy,
@@ -47,7 +50,7 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   const preset: Partial<Spec> | null = deal
     ? {
         assetClass: deal.assetClass ? [deal.assetClass, "Asset Class Agnostic"] : [],
-        checkSize: bucketForAmount(deal.requestedAmount) ? [bucketForAmount(deal.requestedAmount)] : [],
+        checkMM: deal.requestedAmount ? Math.min(100, Math.max(1, Math.round(deal.requestedAmount / 1_000_000))) : null,
         investmentType: deal.executionType && (INVESTMENT_TYPES as readonly string[]).includes(deal.executionType) ? [deal.executionType] : deal.requestType === "Debt" ? ["Senior Debt", "Mezz Debt"] : deal.requestType === "Equity" ? ["JV Equity", "Co-GP Equity", "Preferred Equity"] : [],
         strategy: deal.strategy ? [deal.strategy] : [],
         vintage: vintageForYear(deal.yearBuilt) ? [vintageForYear(deal.yearBuilt)] : [],

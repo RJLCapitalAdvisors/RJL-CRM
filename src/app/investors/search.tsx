@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DraftButton } from "@/app/draft-button";
 import { createEngagementLetter } from "./actions";
-import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, VINTAGES } from "@/lib/taxonomy";
+import { ASSET_CLASSES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, VINTAGES } from "@/lib/taxonomy";
+import { CHECK_MAX, CHECK_STOPS, labelFor, rangeLabel } from "@/lib/ranges";
 import { CompanyLogo } from "@/components/company-logo";
 import { MultiSelect } from "@/components/multi-select";
 
@@ -16,6 +17,8 @@ export type InvestorRow = {
   crit: {
     assetClasses: string[];
     checkSizes: string[];
+    checkMin: number | null; // $MM
+    checkMax: number | null; // $MM, 100 = $100MM+
     geographyNotes: string | null;
     investmentTypes: string[];
     strategy: string | null;
@@ -30,7 +33,7 @@ export type InvestorRow = {
 
 export type Spec = {
   assetClass: string[];
-  checkSize: string[];
+  checkMM: number | null; // the exact check being requested, in $MM
   investmentType: string[];
   strategy: string[];
   returnProfile: string[];
@@ -41,14 +44,15 @@ export type Spec = {
   minority: string[];
 };
 
-const EMPTY: Spec = { assetClass: [], checkSize: [], investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [] };
+const EMPTY: Spec = { assetClass: [], checkMM: null, investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [] };
 const any = (have: string[], want: string[]) => want.some((w) => have.includes(w));
 
 
 /** A firm passes when, for every spec with something checked, its criteria contain at least one of the checked values. Empty specs are ignored. */
 function passes(c: InvestorRow["crit"], s: Spec): boolean {
   if (s.assetClass.length && !(c && any(c.assetClasses, s.assetClass))) return false;
-  if (s.checkSize.length && !(c && any(c.checkSizes, s.checkSize))) return false;
+  // exact check: the firm's range must cover it (an open top end, $100MM+, covers anything above)
+  if (s.checkMM != null && !(c && c.checkMin != null && c.checkMax != null && s.checkMM >= c.checkMin && (c.checkMax >= CHECK_MAX || s.checkMM <= c.checkMax))) return false;
   if (s.investmentType.length && !(c && any(c.investmentTypes, s.investmentType))) return false;
   if (s.strategy.length && !(c && c.strategy && (s.strategy.includes(c.strategy) || c.strategy === "Both"))) return false;
   if (s.returnProfile.length && !(c && any(c.returnProfile, s.returnProfile))) return false;
@@ -68,16 +72,20 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
   const togglePick = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const [spec, setSpec] = useState<Spec>({ ...EMPTY, ...(preset ?? {}) });
   const [page, setPage] = useState(1);
-  const set = (k: keyof Spec, v: string[]) => {
+  const set = (k: Exclude<keyof Spec, "checkMM">, v: string[]) => {
     setSpec((s) => ({ ...s, [k]: v }));
     setPage(1);
   };
-  const active = Object.values(spec).filter((v) => v.length > 0).length;
+  const setCheck = (v: number | null) => {
+    setSpec((s) => ({ ...s, checkMM: v }));
+    setPage(1);
+  };
+  const active = Object.values(spec).filter((v) => (Array.isArray(v) ? v.length > 0 : v != null)).length;
   const out = useMemo(() => rows.filter((r) => passes(r.crit, spec)), [rows, spec]);
   const pages = Math.max(1, Math.ceil(out.length / PAGE));
   const pageRows = out.slice((page - 1) * PAGE, page * PAGE);
 
-  const sel = (k: keyof Spec, label: string, options: readonly string[]) => (
+  const sel = (k: Exclude<keyof Spec, "checkMM">, label: string, options: readonly string[]) => (
     <div key={k} className="mb-2.5 text-xs text-muted">
       {label}
       <div className="mt-1">
@@ -123,7 +131,22 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
           </label>
         )}
         {sel("assetClass", "Asset class", ASSET_CLASSES)}
-        {sel("checkSize", "Check size", CHECK_SIZES)}
+        <div className="mb-2.5 text-xs text-muted">
+          <div className="flex items-center justify-between">
+            <span>Check size</span>
+            {spec.checkMM != null && (
+              <button type="button" className="text-sky-600 hover:underline" onClick={() => setCheck(null)}>
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="mt-1 text-sm font-medium text-ink">{spec.checkMM != null ? labelFor(CHECK_STOPS, spec.checkMM) : <span className="font-normal text-muted">Any</span>}</div>
+          <input type="range" min={1} max={CHECK_MAX} step={1} value={spec.checkMM ?? 1} onChange={(e) => setCheck(Number(e.target.value))} className="range-thumb range-single mt-1 w-full" aria-label="Check size in $MM" />
+          <div className="flex justify-between text-[10px]">
+            <span>$1MM</span>
+            <span>$100MM+</span>
+          </div>
+        </div>
         {sel("investmentType", "Position in the capital stacks", INVESTMENT_TYPES)}
         {sel("strategy", "Acquisition or development", ["Acquisitions", "Development", "Both"])}
         {sel("returnProfile", "Return profile", RETURN_PROFILES)}
@@ -156,7 +179,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
                 {engagement && <th className="w-8"></th>}
                 <th className="w-[240px]">Company name</th>
                 <th className="w-[260px]">Deal locations</th>
-                <th className="w-[220px]">Check sizes</th>
+                <th className="w-[170px]">Check size</th>
                 <th className="w-[230px]">Asset classes</th>
                 <th className="w-[180px]">Position in the capital stack</th>
                 <th className="w-[110px]">Acq / Dev</th>
@@ -179,7 +202,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
                     </Link>
                   </td>
                   <Cell text={r.crit?.geographyNotes} />
-                  <Cell items={r.crit?.checkSizes} />
+                  <td className="whitespace-nowrap">{r.crit && r.crit.checkMin != null ? rangeLabel(CHECK_STOPS, r.crit.checkMin, r.crit.checkMax) : <span className="text-muted">—</span>}</td>
                   <Cell items={r.crit?.assetClasses} />
                   <Cell items={r.crit?.investmentTypes} />
                   <Cell text={r.crit?.strategy} />

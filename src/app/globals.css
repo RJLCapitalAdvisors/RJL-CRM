@@ -106,3 +106,6 @@ body {
   cursor: pointer;
 }
 .range-thumb:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--color-ink); }
+
+/* single-handle slider: the whole control takes the pointer */
+.range-single { pointer-events: auto; }
