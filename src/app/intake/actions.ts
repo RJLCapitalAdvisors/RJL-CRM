@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
-import { extractDeal, missingItems, type ExtractedDeal, EMPTY } from "@/lib/intake";
+import { extractDeal, missingItems, type ExtractedDeal, EMPTY, applyDealRules } from "@/lib/intake";
 import { detailsFromForm } from "@/components/checklist-fields";
 import { contactForEmail, domainOf } from "@/lib/domains";
 import { syncContactRolesForCompany } from "@/lib/roles";
@@ -111,7 +111,7 @@ export async function updateExtracted(id: string, fd: FormData) {
 export async function createDealFromIntake(id: string): Promise<string> {
   const it = await prisma.dealIntake.findUniqueOrThrow({ where: { id } });
   if (it.dealId) return it.dealId;
-  const d = { ...EMPTY, ...(JSON.parse(it.extracted) as Partial<ExtractedDeal>) } as ExtractedDeal;
+  const d = applyDealRules({ ...EMPTY, ...(JSON.parse(it.extracted) as Partial<ExtractedDeal>) } as ExtractedDeal);
   const sponsor = d.sponsorName ? await prisma.company.findFirst({ where: { name: { contains: d.sponsorName } }, select: { id: true } }) : null;
   const propertyName = d.propertyName ?? it.subject ?? "New deal";
   const deal = await prisma.deal.create({
@@ -131,7 +131,6 @@ export async function createDealFromIntake(id: string): Promise<string> {
       requestedAmount: d.requestedAmount,
       purchasePrice: d.purchasePrice,
       totalEquity: d.totalEquity,
-      ltv: d.ltv,
       loanTerm: d.loanTerm,
       equityMultiple: d.equityMultiple,
       occupancy: d.occupancy,
@@ -153,6 +152,11 @@ export async function createDealFromIntake(id: string): Promise<string> {
       yieldOnCost: d.yieldOnCost,
       cashOnCash: d.cashOnCash,
       holdPeriod: d.holdPeriod,
+      expectedClose: d.expectedClose,
+      amortization: d.amortization,
+      // developments are quoted on cost, not value
+      ltc: d.strategy === "Development" ? d.ltv : null,
+      ltv: d.strategy === "Development" ? null : d.ltv,
     },
   });
   // The person who sent the deal: find or create the contact, tie them to their email-domain company,

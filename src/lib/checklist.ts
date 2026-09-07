@@ -15,7 +15,7 @@ export type ChecklistItem = {
   strategy: ("Acquisitions" | "Development")[];
   onlyAssetClasses?: string[]; // include only for these classes
   excludeAssetClasses?: string[]; // skip for these classes
-  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm"; // maps to a Deal column
+  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose"; // maps to a Deal column
 };
 
 const RESIDENTIAL = ["Multifamily", "Build-For-Rent (SFR)", "Student Housing", "Senior Housing", "Mixed Use"];
@@ -37,10 +37,11 @@ export const CHECKLIST: ChecklistItem[] = [
   { key: "sourcing", label: "How the deal was sourced", devLabel: "How the land was sourced", question: "Off market, through a broker, fully on market, lightly marketed? Reason the seller is selling, the story.", kind: "text", strategy: ["Acquisitions", "Development"] },
   { key: "sellerProfile", label: "Seller profile", question: "Seller type: mom and pop, institutional, family office, distressed, etc.", kind: "short", strategy: ["Acquisitions", "Development"] },
   { key: "shovelReady", label: "When will it be shovel ready?", question: "Entitlement/permitting status and expected shovel-ready date", kind: "short", strategy: ["Development"] },
-  { key: "timeline", label: "Timeline to close", question: "Where the deal stands now (LOI, PSA, DD, hard money) and the closing date", kind: "short", strategy: ["Acquisitions", "Development"] },
+  { key: "timeline", label: "Expected close", question: "Expected closing date or month (and where the deal stands now: LOI, PSA, DD, hard money)", kind: "short", strategy: ["Acquisitions", "Development"], core: "expectedClose" },
   { key: "comps", label: "Comps (rent and sales)", question: "Rent and sales comparables", kind: "doc", strategy: ["Acquisitions", "Development"] },
   { key: "constructionLoanTiming", label: "Construction loan closes with land closing, or after?", question: "Does the construction loan close simultaneously with the land closing or afterwards?", kind: "short", strategy: ["Development"] },
   { key: "debtTerms", label: "Terms of the debt", devLabel: "What debt is being used", question: "LTC/LTV, rate, interest-only period, term, amortization; term sheet if available", kind: "text", strategy: ["Acquisitions", "Development"] },
+  { key: "loanTerms", label: "Loan term and I/O or amortization", question: "Loan term (years) and interest-only period / amortization", kind: "short", strategy: ["Acquisitions", "Development"], core: "loanTerm" },
   { key: "lender", label: "Who is the lender?", question: "Lender type or name: Fannie/Freddie, life co, bank, debt fund, credit union", kind: "short", strategy: ["Acquisitions", "Development"] },
   { key: "affordable", label: "Any affordable housing component?", question: "Does the property qualify as affordable housing to any extent (LIHTC, income restrictions)?", kind: "short", strategy: ["Acquisitions"], onlyAssetClasses: RESIDENTIAL },
 ];
@@ -73,6 +74,8 @@ export type DealLikeForChecklist = {
   onMarket?: boolean | null;
   ltv?: number | null;
   loanTerm?: string | null;
+  amortization?: string | null;
+  expectedClose?: string | null;
   details?: Record<string, string | null> | string | null;
 };
 
@@ -105,6 +108,10 @@ export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): stri
       return deal.onMarket == null ? null : deal.onMarket ? "On market" : "Off market";
     case "ltv":
       return deal.ltv != null ? `${deal.ltv}% LTV${deal.loanTerm ? `, ${deal.loanTerm}` : ""}` : deal.loanTerm ?? null;
+    case "loanTerm":
+      return deal.loanTerm ? [deal.loanTerm, deal.amortization].filter(Boolean).join(", ") : null;
+    case "expectedClose":
+      return deal.expectedClose ?? null;
     default:
       return null;
   }

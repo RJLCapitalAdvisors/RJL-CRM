@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
+import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LOAN_TERMS, UNIT_MIXES } from "@/lib/taxonomy";
 import { CHECKLIST, missingFor, type DealLikeForChecklist } from "@/lib/checklist";
 
 // Checklist answers Claude should look for in the email (items without a core column).
@@ -45,6 +46,8 @@ export const ExtractedDealSchema = z.object({
   yieldOnCost: z.number().nullable(),
   cashOnCash: z.number().nullable(),
   holdPeriod: z.string().nullable(),
+  expectedClose: z.string().nullable(),
+  amortization: z.string().nullable(),
   contactName: z.string().nullable().describe("Name of the person who sent the deal"),
   contactEmail: z.string().nullable(),
   confidenceNotes: z.string().nullable().describe("Anything ambiguous or inferred"),
@@ -57,12 +60,12 @@ export const EMPTY: ExtractedDeal = {
   occupancy: null, onMarket: null, sponsorExperience: null, summary: null,
   details: Object.fromEntries(CHECKLIST.filter((it) => !it.core).map((it) => [it.key, null])) as ExtractedDeal["details"],
   units: null, squareFeet: null, yearBuilt: null, unitMix: null, totalCapitalization: null, totalDebt: null, executionType: null, interestRate: null,
-  lenderType: null, irr: null, capRateT12: null, capRateY1: null, yieldOnCost: null, cashOnCash: null, holdPeriod: null,
+  lenderType: null, irr: null, capRateT12: null, capRateY1: null, yieldOnCost: null, cashOnCash: null, holdPeriod: null, expectedClose: null, amortization: null,
   contactName: null, contactEmail: null, confidenceNotes: null,
 };
 
 export function toChecklistDeal(d: ExtractedDeal): DealLikeForChecklist {
-  return { strategy: d.strategy, assetClass: d.assetClass, occupancy: d.occupancy, summary: d.summary, sponsorExperience: d.sponsorExperience, onMarket: d.onMarket, ltv: d.ltv, loanTerm: d.loanTerm, details: d.details as Record<string, string | null> };
+  return { strategy: d.strategy, assetClass: d.assetClass, occupancy: d.occupancy, summary: d.summary, sponsorExperience: d.sponsorExperience, onMarket: d.onMarket, ltv: d.ltv, loanTerm: d.loanTerm, amortization: d.amortization, expectedClose: d.expectedClose, details: d.details as Record<string, string | null> };
 }
 
 /** Keys of checklist items still unanswered, given the deal's strategy and asset class. */
@@ -91,7 +94,9 @@ const ClaudeOutput = z.object({
   purchasePrice: str("Purchase price or total project cost in US dollars, digits only."),
   totalEquity: str("Total equity in US dollars, digits only."),
   ltv: str("LTV or LTC percent as a number (65)."),
-  loanTerm: str("Loan term and structure."),
+  loanTerm: z.enum([...LOAN_TERMS, ""]).describe("Loan term, snapped to the closest option. Empty if not stated."),
+  amortization: z.enum([...AMORTIZATIONS, ""]).describe("Interest-only period / amortization, snapped to the closest option. Empty if not stated."),
+  expectedClose: str("Expected closing date or month as written (e.g. 'November 2026', 'Q1 2027', '45 days after PSA')."),
   equityMultiple: str("Projected equity multiple as a number (1.9)."),
   occupancy: str("Occupancy percent as a number (91)."),
   onMarket: z.enum(["on", "off", ""]).describe("on if marketed/listed, off if off-market."),
@@ -101,10 +106,10 @@ const ClaudeOutput = z.object({
   units: str("Number of units, keys (hotel) or beds (student housing), digits only."),
   squareFeet: str("Building or GLA square feet, digits only."),
   yearBuilt: str("Year built or vintage range."),
-  unitMix: str("Unit mix description (e.g. studios, one-bed, two-bed)."),
+  unitMix: z.enum([...UNIT_MIXES, ""]).describe("Which bedroom types the property has, snapped to the closest option (counts and sizes do NOT go here). Empty if not stated."),
   totalCapitalization: str("Total capitalization / total project cost in US dollars, digits only."),
   totalDebt: str("Total debt in US dollars, digits only."),
-  executionType: z.enum(["JV Equity", "LP Equity", "Co-GP Equity", "Preferred Equity", "Senior Debt", "Mezz Debt", "Fund Investment", ""]).describe("Type of capital being raised."),
+  executionType: z.enum(["JV Equity", "LP Equity", "Co-GP Equity", "Preferred Equity", "Senior Debt", "Mezz Debt", "Fund Investment", ""]).describe("Position in the capital stack being raised. Any equity raise that is the majority of total equity is JV Equity; LP Equity only for a minority slice."),
   interestRate: str("Debt interest rate as written (6.1% fixed, SOFR + 300)."),
   lenderType: str("Lender or lender type: agency/Freddie/Fannie, bank, debt fund, life co, CMBS."),
   irr: str("Projected IRR percent as a number (18.4)."),
@@ -112,7 +117,7 @@ const ClaudeOutput = z.object({
   capRateY1: str("Year 1 cap rate percent as a number."),
   yieldOnCost: str("Yield on cost at stabilization percent as a number."),
   cashOnCash: str("Stabilized cash-on-cash percent as a number."),
-  holdPeriod: str("Hold period (5 year)."),
+  holdPeriod: z.enum([...DEAL_HOLD_PERIODS, ""]).describe("Hold period snapped to the closest option (a 3.2-year hold is '3 year'). Empty if not stated."),
   contactName: str("Name of the person who sent the deal."),
   contactEmail: str("Email of the person who sent the deal."),
   confidenceNotes: str("Anything ambiguous or inferred."),
@@ -138,7 +143,24 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     units: n(o.units), squareFeet: n(o.squareFeet), yearBuilt: t(o.yearBuilt), unitMix: t(o.unitMix), totalCapitalization: n(o.totalCapitalization),
     totalDebt: n(o.totalDebt), executionType: t(o.executionType), interestRate: t(o.interestRate), lenderType: t(o.lenderType), irr: n(o.irr),
     capRateT12: n(o.capRateT12), capRateY1: n(o.capRateY1), yieldOnCost: n(o.yieldOnCost), cashOnCash: n(o.cashOnCash), holdPeriod: t(o.holdPeriod),
+    expectedClose: t(o.expectedClose), amortization: t(o.amortization),
   };
+}
+
+/** House rules applied after extraction, whichever extractor ran. */
+export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
+  const out = { ...d };
+  // any equity raise that is the majority of the total equity is JV Equity
+  if (out.executionType === "LP Equity" && out.requestedAmount && out.totalEquity && out.requestedAmount / out.totalEquity >= 0.5) out.executionType = "JV Equity";
+  if (out.requestType === "Equity" && !out.executionType) out.executionType = "JV Equity";
+  // developments: occupancy, year built and cap rates do not apply
+  if (out.strategy === "Development") {
+    out.occupancy = null;
+    out.yearBuilt = null;
+    out.capRateT12 = null;
+    out.capRateY1 = null;
+  }
+  return out;
 }
 
 const SYSTEM = `You extract commercial real estate deal details from emails forwarded to a capital advisory firm (RJL Capital Advisors) so the team can see what the sponsor provided and what is still missing.
@@ -148,6 +170,9 @@ Read the email (including quoted/forwarded content) and fill the schema. Rules:
 - Percentages are plain numbers (65% -> 65). LTV may appear as LTC or leverage.
 - requestType: "Equity" for JV/LP/pref/co-GP equity raises, "Debt" for loans/bridge/construction/refi, "Both" if both.
 - strategy: "Development" for ground-up / construction; "Acquisitions" for buying an existing asset.
+- unitMix, holdPeriod, loanTerm, amortization: pick the closest listed option; never write free text there. Put unit counts and sizes in the summary instead.
+- executionType: an equity raise that is the majority of total equity is "JV Equity" (LP Equity is only a minority slice).
+- expectedClose: the closing date or month if the email or model states one; otherwise empty so we ask for it.
 - assetClass must be one of the listed values; map synonyms (apartments -> Multifamily, BTR -> Build-For-Rent (SFR), hotel -> Hospitality, warehouse -> Industrial, shopping center -> Retail).
 - state is the two-letter code. If only a metro is given, infer the state and note it in confidenceNotes.
 - For each checklist item in details: quote or closely paraphrase what the sponsor said. For documents (proforma, rent roll/T12, trade-out report, capex budget, comps) answer "Received" only if the document is attached or explicitly provided; otherwise empty.

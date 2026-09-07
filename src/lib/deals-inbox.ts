@@ -95,6 +95,9 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     attachments: names,
   });
   await prisma.dealIntake.update({ where: { id: intake.id }, data: { messageId: ext } });
+  // whoever forwarded it to deals@ owns the deal
+  const owner = fromAddr ? await prisma.user.findFirst({ where: { email: { equals: fromAddr, mode: "insensitive" } } }) : null;
+  if (owner) await prisma.deal.update({ where: { id: intake.dealId }, data: { ownerId: owner.id } });
 
   const deal = await prisma.deal.findUniqueOrThrow({ where: { id: intake.dealId } });
   const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AMORTIZATIONS, ASSET_CLASSES, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES, US_STATES } from "@/lib/taxonomy";
+import { AMORTIZATIONS, ASSET_CLASSES, DEAL_HOLD_PERIODS, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES, US_STATES } from "@/lib/taxonomy";
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
 import { NumberInput } from "./number-input";
 import { isPref, prefMetrics } from "@/lib/pref";
@@ -117,6 +117,8 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
   const details = parseDetailsSafe(d?.details);
   const [assetClass, setAssetClass] = useState(d?.assetClass ?? "");
   const [execType, setExecType] = useState(d?.executionType ?? "");
+  const [strategy, setStrategy] = useState(d?.strategy ?? "");
+  const isDev = strategy === "Development";
   const [ask, setAsk] = useState<number | null>(d?.requestedAmount ?? null);
   const [t12, setT12] = useState<number | null>(d?.capRateT12 ?? null);
   const [yoc, setYoc] = useState<number | null>(d?.yieldOnCost ?? null);
@@ -150,7 +152,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
           <Select name="assetClass" value={assetClass} options={ASSET_CLASSES} onChange={setAssetClass} />
         </Row>
         <Row label="Acquisition or development">
-          <Select name="strategy" value={d?.strategy ?? ""} options={["Acquisitions", "Development"]} />
+          <Select name="strategy" value={strategy} options={["Acquisitions", "Development"]} onChange={setStrategy} />
         </Row>
         {lost && (
           <Row label="Why it died">
@@ -203,12 +205,12 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
             <NumberInput name="detail.acres" defaultValue={acres} onValue={setAcres} />
           </Row>
         )}
-        {p.showOccupancy && (
+        {p.showOccupancy && !isDev && (
           <Row label="Occupancy %">
             <NumberInput name="occupancy" defaultValue={d?.occupancy} />
           </Row>
         )}
-        {p.showYearBuilt && (
+        {p.showYearBuilt && !isDev && (
           <Row label="Year built">
             <Text name="yearBuilt" value={d?.yearBuilt} />
           </Row>
@@ -228,7 +230,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
         <Row label={pref ? "Requested pref / mezz amount ($)" : "Requested amount ($)"}>
           <NumberInput name="requestedAmount" defaultValue={d?.requestedAmount} decimals={false} onValue={setAsk} />
         </Row>
-        <Row label="Purchase price ($)" hint={d?.strategy === "Development" ? "Land price for developments" : undefined}>
+        <Row label="Purchase price ($)" hint={isDev ? "Land price for developments" : undefined}>
           <NumberInput name="purchasePrice" defaultValue={d?.purchasePrice} decimals={false} onValue={setPrice} />
         </Row>
         {p.perCount && <Calc label={`Purchase price per ${per}`} value={money(ratio(price, count))} />}
@@ -247,9 +249,11 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
       </Group>
 
       <Group title="Debt terms">
-        <Row label="LTV %">
-          <NumberInput name="ltv" defaultValue={d?.ltv} />
-        </Row>
+        {!isDev && (
+          <Row label="LTV %">
+            <NumberInput name="ltv" defaultValue={d?.ltv} />
+          </Row>
+        )}
         <Row label="LTC %">
           <NumberInput name="ltc" defaultValue={d?.ltc} />
         </Row>
@@ -268,12 +272,16 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
       </Group>
 
       <Group title={pref ? "Pref / mezz position" : "Returns"}>
-        <Row label="T12 cap rate %">
-          <NumberInput name="capRateT12" defaultValue={d?.capRateT12} onValue={setT12} />
-        </Row>
-        <Row label="Year 1 cap rate %">
-          <NumberInput name="capRateY1" defaultValue={d?.capRateY1} />
-        </Row>
+        {!isDev && (
+          <>
+            <Row label="T12 cap rate %">
+              <NumberInput name="capRateT12" defaultValue={d?.capRateT12} onValue={setT12} />
+            </Row>
+            <Row label="Year 1 cap rate %">
+              <NumberInput name="capRateY1" defaultValue={d?.capRateY1} />
+            </Row>
+          </>
+        )}
         <Row label="Yield on cost at stabilization %">
           <NumberInput name="yieldOnCost" defaultValue={d?.yieldOnCost} onValue={setYoc} />
         </Row>
@@ -300,7 +308,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save" }: { deal: 
           </>
         )}
         <Row label={pref ? "Pref / mezz term" : "Hold period"}>
-          <Select name="holdPeriod" value={d?.holdPeriod ?? ""} options={["1 year", "2 year", "3 year", "4 year", "5 year", "6 year", "7 year", "8 year", "10 year"]} />
+          <Select name="holdPeriod" value={d?.holdPeriod ?? ""} options={DEAL_HOLD_PERIODS} />
         </Row>
       </Group>
 

@@ -296,6 +296,8 @@ export const UNIT_MIXES = [
   "two-bed, three-bed, and four-bedroom",
   "three-bed and four-bedroom (townhome / BFR)",
 ] as const;
+/** Hold period options on the deal ticket (the extractor snaps to these). */
+export const DEAL_HOLD_PERIODS = ["1 year", "2 year", "3 year", "4 year", "5 year", "6 year", "7 year", "8 year", "10 year"] as const;
 export const LOAN_TERMS = ["1 year term", "18 month term", "2 year term", "3 year term", "4 year term", "5 year term", "7 year term", "10 year term", "12 year term", "15 year term", "Construction to permanent"] as const;
 export const AMORTIZATIONS = [
   "full term I/O",
