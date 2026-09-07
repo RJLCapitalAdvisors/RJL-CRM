@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
-import { normalizeGeographies, parseList, toJson } from "@/lib/taxonomy";
+import { ROLES, normalizeGeographies, parseList, toJson } from "@/lib/taxonomy";
 import { syncContactRolesForCompany } from "@/lib/roles";
 import { enrichCompany } from "@/lib/enrich";
 import { currentUser } from "@/lib/current-user";
@@ -133,4 +133,21 @@ export async function refreshCompanyFromWebsite(id: string) {
   await enrichCompany(id, { force: true });
   revalidatePath(`/companies/${id}`);
   revalidatePath("/companies");
+}
+
+/** Inline from the Companies list: Jonathan's ticks save; anyone else's become a proposal on his Home page. */
+export async function setCompanyRoles(id: string, roles: string[]) {
+  const clean = roles.filter((r) => (ROLES as readonly string[]).includes(r));
+  const me = await currentUser();
+  if (!me?.canEditCriteria) {
+    await proposeManualChanges(id, { roles: toJson(clean) }, me?.name ?? "A teammate");
+    revalidatePath("/");
+    return { proposed: true };
+  }
+  const before = await prisma.company.findUnique({ where: { id }, select: { roles: true } });
+  await prisma.company.update({ where: { id }, data: { roles: toJson(clean) } });
+  await syncContactRolesForCompany(id, parseList(before?.roles), clean);
+  revalidatePath("/companies");
+  revalidatePath(`/companies/${id}`);
+  return { proposed: false };
 }

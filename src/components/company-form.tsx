@@ -1,5 +1,6 @@
 import { US_STATES } from "@/lib/taxonomy";
 import { Field } from "./record-layout";
+import { AutoSaveForm } from "./autosave-form";
 
 type CompanyLike = {
   name: string;
@@ -18,10 +19,10 @@ type CompanyLike = {
 } | null;
 
 /** Company fields, stacked in one straight column. Most of these fill themselves from the company's website. */
-export function CompanyForm({ company, users, action, submitLabel = "Save" }: { company: CompanyLike; users: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; submitLabel?: string }) {
+export function CompanyForm({ company, users, action, submitLabel = "Save", autosave = false }: { company: CompanyLike; users: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; submitLabel?: string; autosave?: boolean }) {
   const c = company;
-  return (
-    <form action={action}>
+  const fields = (
+    <>
       <Field label="Company name" htmlFor="name">
         <input id="name" name="name" required defaultValue={c?.name ?? ""} className="input" />
       </Field>
@@ -72,6 +73,12 @@ export function CompanyForm({ company, users, action, submitLabel = "Save" }: { 
       <Field label="Notes" htmlFor="notes">
         <textarea id="notes" name="notes" rows={3} defaultValue={c?.notes ?? ""} className="input" />
       </Field>
+    </>
+  );
+  if (autosave) return <AutoSaveForm action={action}>{fields}</AutoSaveForm>;
+  return (
+    <form action={action}>
+      {fields}
       <div className="flex justify-end py-3">
         <button className="btn-primary" type="submit">
           {submitLabel}

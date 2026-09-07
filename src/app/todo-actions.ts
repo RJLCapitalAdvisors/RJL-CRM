@@ -63,3 +63,28 @@ export async function saveSignature(userId: string, fd: FormData) {
   await prisma.user.update({ where: { id: userId }, data: { signatureHtml: html || null } });
   revalidatePath("/settings");
 }
+
+/** Deal momentum "Handle": open a reply-all draft on the thread in question, empty body, your signature. */
+export async function openMomentumDraft(momentumId: string) {
+  const me = await currentUser();
+  if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
+  const m = await prisma.momentum.findUnique({ where: { id: momentumId } });
+  if (!m) return { ok: false as const, reason: "Gone." };
+  const { createThreadReplyDraft, createFollowUpDraft } = await import("@/lib/followup");
+  try {
+    if (m.lastMessageId) return await createThreadReplyDraft(me.email, m.lastMessageId);
+    // no thread on record (e.g. an action item): fall back to the deal's tracker row for that contact, else fail politely
+    if (m.contactId) {
+      const row = await prisma.dealInvestor.findFirst({ where: { dealId: m.dealId, contactId: m.contactId } });
+      if (row) return await createFollowUpDraft(row.id, me.email);
+    }
+    return { ok: false as const, reason: "No email thread on record for this yet. Write to them from Outlook." };
+  } catch (e) {
+    return { ok: false as const, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+}
+
+export async function dismissMomentum(id: string) {
+  await prisma.momentum.update({ where: { id }, data: { status: "DISMISSED" } });
+  revalidatePath("/");
+}

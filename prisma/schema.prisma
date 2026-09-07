@@ -361,3 +361,21 @@ model Todo {
   createdAt DateTime  @default(now())
   doneAt    DateTime?
 }
+
+/// Deal momentum: situations where a deal is waiting on someone (sponsor items, intro scheduling, call action items).
+model Momentum {
+  id            String   @id @default(cuid())
+  dealId        String
+  kind          String // SPONSOR_ITEMS | INTRO | ACTION
+  party         String // who we are waiting on, e.g. "MORVAY (David Rottenberg)"
+  companyId     String?
+  contactId     String?
+  summary       String // one line: what is outstanding
+  waitingSince  DateTime
+  lastMessageId String? // Internet Message-ID of the latest email in that thread (Handle replies to it)
+  status        String   @default("OPEN") // OPEN | DONE | DISMISSED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([dealId, kind, party])
+}

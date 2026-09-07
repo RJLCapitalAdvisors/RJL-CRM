@@ -85,7 +85,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
           <details className="card">
             <summary className="cursor-pointer border-b border-line px-4 py-3 text-sm font-semibold">About this company</summary>
             <div className="px-4 py-2">
-              <CompanyForm company={company} users={users} action={update} />
+              <CompanyForm company={company} users={users} action={update} autosave />
             </div>
           </details>
           {isInvestor ? (

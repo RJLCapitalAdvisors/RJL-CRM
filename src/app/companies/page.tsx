@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { PageHeader, Pager, RoleChips } from "@/components/ui";
+import { PageHeader, Pager } from "@/components/ui";
 import { ListFilters } from "@/components/list-filters";
+import { RoleCell } from "@/components/role-cell";
 import { parseList } from "@/lib/taxonomy";
 import { fmtDate, str } from "@/lib/format";
 import { CompanyLogo } from "@/components/company-logo";
@@ -89,7 +90,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                   </Link>
                 </td>
                 <td>
-                  <RoleChips roles={c.roles} />
+                  <RoleCell companyId={c.id} roles={c.roles} />
                 </td>
                 <td className="whitespace-nowrap">{[c.city, c.state].filter(Boolean).join(", ") || <span className="text-muted">—</span>}</td>
                 <td className="max-w-[240px] truncate" title={parseList(c.criteria?.assetClasses).join(", ")}>

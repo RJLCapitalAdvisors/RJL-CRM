@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { copyAttachment, createDraft, createReplyAllDraft, getMessage, graphConfigured, listAttachments, outlookDesktopLink, recentSent, sentMessagesTo, sentMessagesToDomain, updateDraftBody, type GraphMessage } from "@/lib/graph";
+import { graph, copyAttachment, createDraft, createReplyAllDraft, getMessage, graphConfigured, listAttachments, outlookDesktopLink, recentSent, sentMessagesTo, sentMessagesToDomain, updateDraftBody, type GraphMessage } from "@/lib/graph";
 import { domainOf } from "@/lib/domains";
 import { investorLabel } from "@/lib/tracker";
 import { subjectLine } from "@/lib/deal-copy";
@@ -140,4 +140,17 @@ export async function syncFollowUpDrafts(): Promise<number> {
     }),
   );
   return sent;
+}
+
+/** Reply-all draft on the latest message of a thread (found by Internet Message-ID), body = just the signature. */
+export async function createThreadReplyDraft(mailbox: string, internetMessageId: string): Promise<FollowUpResult> {
+  if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
+  const found = await graph<{ value: GraphMessage[] }>(`/users/${encodeURIComponent(mailbox)}/messages?$filter=internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'&$select=id,subject`);
+  const msg = found.value[0];
+  if (!msg) return { ok: false, reason: "That email is not in your mailbox (it may be in a teammate's)." };
+  const draft = await createReplyAllDraft(mailbox, msg.id);
+  const sig = await signatureFor(mailbox);
+  await updateDraftBody(mailbox, draft.id, insertAtTop(draft.body?.content ?? "", `<div style="${FONT}"><p style="margin:0 0 12pt 0;${FONT}"><br></p>${sig}<br></div>`));
+  const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
+  return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: "replyAll", attachments: 0 };
 }

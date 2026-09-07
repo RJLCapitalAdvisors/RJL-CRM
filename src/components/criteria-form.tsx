@@ -3,6 +3,7 @@ import { MultiSelect } from "./multi-select";
 import { RangeSlider } from "./range-slider";
 import { CHECK_STOPS, HOLD_STOPS, VINTAGE_STOPS, checkRangeFrom, holdRangeFrom, vintageRangeFrom } from "@/lib/ranges";
 import { Field } from "./record-layout";
+import { AutoSaveForm } from "./autosave-form";
 
 export type CriteriaLike = {
   assetClasses: string;
@@ -35,7 +36,7 @@ export function CriteriaForm({ criteria, roles, action }: { criteria: CriteriaLi
   const hold = c?.holdMinYears != null && c?.holdMaxYears != null ? [c.holdMinYears, c.holdMaxYears] : holdRangeFrom(parseList(c?.holdPeriods));
   const vint = c?.vintageMin != null && c?.vintageMax != null ? [c.vintageMin, c.vintageMax] : vintageRangeFrom(parseList(c?.vintages));
   return (
-    <form action={action}>
+    <AutoSaveForm action={action}>
       <Field label="Investor, Sponsor, Lender or Broker">
         <MultiSelect name="roles" options={ROLES} selected={roles} placeholder="Pick at least one" />
       </Field>
@@ -93,30 +94,20 @@ export function CriteriaForm({ criteria, roles, action }: { criteria: CriteriaLi
       <Field label="Other information" htmlFor="otherInfo">
         <textarea id="otherInfo" name="otherInfo" rows={3} defaultValue={c?.otherInfo ?? ""} className="input" />
       </Field>
-      <div className="flex justify-end py-3">
-        <button className="btn-primary" type="submit">
-          Save criteria
-        </button>
-      </div>
-    </form>
+    </AutoSaveForm>
   );
 }
 
 /** Sponsors only need their asset classes. */
 export function SponsorFocusForm({ criteria, roles, action }: { criteria: CriteriaLike; roles: string[]; action: (fd: FormData) => void | Promise<void> }) {
   return (
-    <form action={action}>
+    <AutoSaveForm action={action}>
       <Field label="Investor, Sponsor, Lender or Broker">
         <MultiSelect name="roles" options={ROLES} selected={roles} placeholder="Pick at least one" />
       </Field>
       <Field label="Asset classes they work in">
         <MultiSelect name="assetClasses" options={ASSET_CLASSES} selected={parseList(criteria?.assetClasses)} />
       </Field>
-      <div className="flex justify-end py-3">
-        <button className="btn-primary" type="submit">
-          Save
-        </button>
-      </div>
-    </form>
+    </AutoSaveForm>
   );
 }

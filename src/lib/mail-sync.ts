@@ -131,6 +131,8 @@ export function kickMailSync(minMinutes = 10) {
     await syncAllMailboxes().catch(() => ({}));
     const { processDealsInbox } = await import("@/lib/deals-inbox");
     await processDealsInbox().catch(() => ({}));
+    const { refreshMomentum } = await import("@/lib/momentum");
+    await refreshMomentum().catch(() => ({}));
   };
   import("next/server")
     .then(({ after }) => after(run))

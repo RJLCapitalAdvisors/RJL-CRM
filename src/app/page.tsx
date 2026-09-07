@@ -6,7 +6,9 @@ import { investorLabel } from "@/lib/tracker";
 import { syncFollowUpDrafts } from "@/lib/followup";
 import { PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
 import { approveProposal, dismissProposal } from "./todo-actions";
-import { RespondNow } from "./respond-now";
+import { DraftButton } from "./draft-button";
+import { listMomentum } from "@/lib/momentum";
+import { dismissMomentum, openFollowUp, openMomentumDraft } from "./todo-actions";
 import { currentUser } from "@/lib/current-user";
 import { kickMailSync } from "@/lib/mail-sync";
 
@@ -16,6 +18,7 @@ const DAY = 86_400_000;
 /** An LP gets this long to respond to a deal (or a follow-up) before they show up as quiet. */
 const QUIET_AFTER_DAYS = 2;
 const days = (d: Date) => Math.floor((Date.now() - d.getTime()) / DAY);
+const KIND: Record<string, string> = { SPONSOR_ITEMS: "waiting on sponsor", INTRO: "intro not scheduled", ACTION: "open action item", MENTIONED: "mentioned, never sent" };
 
 /** LPs who were sent a deal (or followed up with) and have said nothing for QUIET_AFTER_DAYS, grouped by deal. */
 async function quietInvestors() {
@@ -40,7 +43,7 @@ export default async function Dashboard() {
   kickMailSync(); // background: team mailboxes into the email log, deals@ inbox into deal tickets
   const me = await currentUser();
   const showCriteria = Boolean(me?.canEditCriteria);
-  const [proposals, quiet] = await Promise.all([showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]), quietInvestors()]);
+  const [proposals, quiet, momentum] = await Promise.all([showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]), quietInvestors(), listMomentum()]);
   const companies = new Map((await prisma.company.findMany({ where: { id: { in: proposals.map((p) => p.companyId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   const today = new Date();
   const quietCount = quiet.reduce((n, g) => n + g.rows.length, 0);
@@ -48,11 +51,11 @@ export default async function Dashboard() {
   return (
     <>
       <PageHeader title="Home" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP${quietCount === 1 ? "" : "s"} to follow up with · ${proposals.length} criteria update${proposals.length === 1 ? "" : "s"} to approve`} />
-      <div className="mx-auto grid max-w-[1120px] gap-5 px-8 py-6 text-[15px] leading-relaxed lg:grid-cols-[minmax(0,560px)_minmax(0,480px)]">
+      <div className="mx-auto grid max-w-[1600px] gap-5 px-8 py-6 text-[15px] leading-relaxed lg:grid-cols-2 2xl:grid-cols-3">
         {/* LPs who have gone quiet */}
         <div className="card flex max-h-[calc(100vh-150px)] flex-col">
           <div className="flex items-center justify-between rounded-t-lg border-b border-line bg-cream px-5 py-3.5">
-            <h2 className="text-base font-semibold">No response in {QUIET_AFTER_DAYS}+ days</h2>
+            <h2 className="text-base font-semibold">LP follow-ups</h2>
             <span className="text-sm text-muted">{quietCount}</span>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
@@ -82,10 +85,52 @@ export default async function Dashboard() {
                               {r.contact.email ? ` · ${r.contact.email}` : " · no email on file"} · {days(r.updatedAt)} days
                             </div>
                           </div>
-                          <RespondNow rowId={r.id} draftOpen={Boolean(r.followUpDraftId)} disabled={!r.contact.email || r.contact.unsubscribed} />
+                          <DraftButton label={r.followUpDraftId ? "Open draft" : "Handle"} action={openFollowUp.bind(null, r.id)} disabled={!r.contact.email || r.contact.unsubscribed} title={r.followUpDraftId ? "A draft is already waiting in Outlook" : "Reply-all to the deal email with the attachments, Calibri 11, your signature"} />
                         </li>
                       ))}
                     </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* Deal momentum: where a deal is waiting on somebody who is not an LP on a progress report */}
+        <div className="card flex max-h-[calc(100vh-150px)] flex-col">
+          <div className="flex items-center justify-between rounded-t-lg border-b border-line bg-cream px-5 py-3.5">
+            <h2 className="text-base font-semibold">Deal momentum</h2>
+            <span className="text-sm text-muted">{momentum.length}</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {momentum.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-muted">Nothing stalled. This watches for sponsors who owe you items, intros where a call is not getting scheduled, open action items from calls, and deals mentioned but never sent.</div>
+            ) : (
+              <ul className="divide-y divide-line">
+                {momentum.map((m) => (
+                  <li key={m.id} className="px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-baseline gap-x-2">
+                          <Link href={`/deals/${m.dealId}`} className="font-semibold hover:underline">
+                            {m.deal.propertyName ?? m.deal.name}
+                          </Link>
+                          <span className="text-sm text-muted">{KIND[m.kind] ?? m.kind}</span>
+                        </div>
+                        <div className="text-sm">
+                          {m.party} · <span className="text-muted">{days(m.waitingSince)} days</span>
+                        </div>
+                        <div className="text-sm text-ink-soft">{m.summary}</div>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <DraftButton action={openMomentumDraft.bind(null, m.id)} title="Opens a reply on that thread in Outlook, blank, with your signature" />
+                        <form action={dismissMomentum.bind(null, m.id)}>
+                          <button type="submit" className="text-xs text-muted hover:underline">
+                            dismiss
+                          </button>
+                        </form>
+                      </div>
+                    </div>
                   </li>
                 ))}
               </ul>
