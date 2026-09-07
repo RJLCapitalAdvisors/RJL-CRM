@@ -1,4 +1,4 @@
-import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, RETURN_PROFILES, STRATEGIES, VINTAGES, parseList } from "@/lib/taxonomy";
+import { ASSET_CLASSES, CHECK_SIZES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, STRATEGIES, VINTAGES, parseList } from "@/lib/taxonomy";
 import { MultiSelect } from "./multi-select";
 import { RangeSlider } from "./range-slider";
 
@@ -11,6 +11,7 @@ import { Field } from "./record-layout";
 
 export type CriteriaLike = {
   assetClasses: string;
+  investmentTypes?: string;
   checkSizes: string;
   geographyNotes: string | null;
   returnProfile: string;
@@ -32,6 +33,9 @@ export function CriteriaForm({ criteria, action }: { criteria: CriteriaLike; act
     <form action={action}>
       <Field label="Asset classes">
         <MultiSelect name="assetClasses" options={ASSET_CLASSES} selected={parseList(c?.assetClasses)} />
+      </Field>
+      <Field label="Type of investment (position in the capital stack)">
+        <MultiSelect name="investmentTypes" options={INVESTMENT_TYPES} selected={parseList(c?.investmentTypes)} />
       </Field>
       <Field label="Check sizes">
         <Span name="checkSizes" options={CHECK_SIZES} selected={parseList(c?.checkSizes)} />

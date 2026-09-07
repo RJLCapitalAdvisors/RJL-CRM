@@ -51,6 +51,7 @@ function criteriaData(fd: FormData) {
   // Only touch fields the submitted form actually carries (the sponsor form only has asset classes).
   if (fd.has("checkSizes") || fd.has("geographyNotes")) {
     Object.assign(data, {
+      investmentTypes: list(fd, "investmentTypes"),
       checkSizes: list(fd, "checkSizes"),
       geographyNotes: geoText,
       geographies: toJson(normalizeGeographies(geoText)),
