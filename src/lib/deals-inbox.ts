@@ -101,10 +101,14 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   const received = new Date(msg.receivedDateTime ?? Date.now());
   // keep the pulled documents on a message in deals@ ("CRM Files"), so they serve and send like any attachment
   const { stashFiles } = await import("@/lib/file-store");
-  const stash = cloud.files.length ? await stashFiles(cloud.files, cleanSubject || "deal files").catch((e) => { console.error("stash failed", e); return null; }) : null;
+  const stashes = cloud.files.length ? await stashFiles(cloud.files, cleanSubject || "deal files").catch((e) => { console.error("stash failed", e); return []; }) : [];
   const recordPulled = async (dealId: string, messageKey: string, only?: string[]) => {
     const keep = (n: string) => !only || only.some((x) => x.toLowerCase() === n.toLowerCase());
-    if (stash) return recordDealFiles(dealId, stash.mailbox, stash.graphId, external ? fromAddr : fwd.email, received, stash.atts.filter((a) => keep(a.name))).catch(() => 0);
+    if (stashes.length) {
+      let n = 0;
+      for (const st of stashes) n += await recordDealFiles(dealId, st.mailbox, st.graphId, external ? fromAddr : fwd.email, received, st.atts.filter((a) => keep(a.name))).catch(() => 0);
+      return n;
+    }
     return recordLinkFiles(dealId, messageKey, linkFiles.filter((f) => keep(f.name)), external ? fromAddr : fwd.email, received).catch(() => 0);
   };
 
