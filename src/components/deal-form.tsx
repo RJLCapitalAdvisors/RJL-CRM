@@ -235,8 +235,8 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
         <Row label={isDev ? "Land purchase price ($)" : "Purchase price ($)"}>
           <NumberInput name="purchasePrice" defaultValue={d?.purchasePrice} decimals={false} onValue={setPrice} />
         </Row>
-        {p.perCount && <Calc label={`Purchase price per ${per}`} value={money(ratio(price, count))} />}
-        {p.perFoot && <Calc label="Purchase price per SF" value={money(ratio(price, sf))} />}
+        {p.perCount && !isDev && <Calc label={`Purchase price per ${per}`} value={money(ratio(price, count))} />}
+        {p.perFoot && !isDev && <Calc label="Purchase price per SF" value={money(ratio(price, sf))} />}
         {p.perAcre && <Calc label="Purchase price per acre" value={money(ratio(price, acres))} />}
         <Row label="Total capitalization ($)" hint="From sources and uses">
           <NumberInput name="totalCapitalization" defaultValue={d?.totalCapitalization} decimals={false} onValue={setCap} />
