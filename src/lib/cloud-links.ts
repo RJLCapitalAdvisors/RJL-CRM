@@ -16,7 +16,7 @@ import { graph, graphConfigured } from "@/lib/graph";
  * Folder downloads (a whole data room can be a few hundred MB) stream to disk and are read entry by entry.
  */
 
-export type CloudFile = { name: string; contentType: string | null; size: number; bytes: Uint8Array; url: string; source: "Dropbox" | "Google Drive" | "OneDrive" | "Box" };
+export type CloudFile = { name: string; contentType: string | null; size: number; bytes: Uint8Array; url: string; source: "Dropbox" | "Google Drive" | "OneDrive" | "Box" | "Egnyte" };
 export type CloudResult = { files: CloudFile[]; notes: string[] };
 
 const MAX_FILE = 40 * 1024 * 1024; // one document
@@ -26,7 +26,7 @@ const MAX_FILES = 40;
 const TIMEOUT = 25_000;
 const ARCHIVE_TIMEOUT = 120_000;
 const DOC = /\.(pdf|xlsx|xlsm|xls|csv|docx|doc|pptx|ppt|txt)$/i;
-const HOST = /^https?:\/\/(?:[a-z0-9-]+\.)*(dropbox\.com|drive\.google\.com|docs\.google\.com|1drv\.ms|onedrive\.live\.com|sharepoint\.com|box\.com)\//i;
+const HOST = /^https?:\/\/(?:[a-z0-9-]+\.)*(dropbox\.com|drive\.google\.com|docs\.google\.com|1drv\.ms|onedrive\.live\.com|sharepoint\.com|box\.com|egnyte\.com)\//i;
 const URL_RE = /https?:\/\/[^\s"'<>()\[\]]+/gi;
 
 const unescapeHtml = (s: string) => s.replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
@@ -384,6 +384,52 @@ async function onedrive(url: string): Promise<CloudResult> {
   return r;
 }
 
+// ---------- Egnyte (shared folder / file links, the public link API the link page itself uses) ----------
+type EgnyteEntry = { name: string; type: "file" | "folder"; size?: number; path: string; isDownloadable?: boolean; _self?: { linkedResources?: { itemDownload?: { url: string } } } };
+async function egnyte(url: string): Promise<CloudResult> {
+  const u = new URL(url);
+  const id = u.pathname.match(/\/(?:fl|dd|dl|h)\/([A-Za-z0-9]+)/)?.[1];
+  if (!id) return { files: [], notes: [] };
+  const base = `${u.protocol}//${u.host}`;
+  const headers = { ...UA, Accept: "application/json" };
+  const infoRes = await fetch(`${base}/rest/public/1.0/links/info/${id}`, { headers, signal: AbortSignal.timeout(TIMEOUT) });
+  if (!infoRes.ok) return { files: [], notes: [`Egnyte link could not be opened (${infoRes.status}): ${url}`] };
+  const info = (await infoRes.json()) as { type?: string; name?: string; protection?: string; downloadAvailable?: boolean; _self?: { linkedResources?: { itemDownload?: { url: string } } } };
+  if (info.protection && info.protection !== "NONE") return { files: [], notes: [`Egnyte link needs a password: ${url}`] };
+  const out: CloudResult = { files: [], notes: [] };
+  const pull = async (name: string, dlPath: string, size: number) => {
+    if (out.files.length >= MAX_FILES || !DOC.test(name) || size > MAX_FILE) return;
+    const r = await download(`${base}${dlPath}`).catch(() => null);
+    if (!r || "html" in r) return;
+    out.files.push({ name, contentType: typeFor(name, r.res.headers.get("content-type")), size: r.bytes.byteLength, bytes: r.bytes, url: `${url}#${encodeURIComponent(name)}`, source: "Egnyte" });
+  };
+  if (info.type === "file") {
+    await pull(info.name ?? "egnyte-file.pdf", info._self?.linkedResources?.itemDownload?.url ?? `/dd/${id}`, 0);
+    return out;
+  }
+  // a folder: list (recursing into subfolders), best documents first
+  const entries: EgnyteEntry[] = [];
+  const list = async (path: string, depth: number) => {
+    const r = await fetch(`${base}/rest/public/1.0/links/info/${id}/contents`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ path }), signal: AbortSignal.timeout(TIMEOUT) });
+    if (!r.ok) return;
+    const j = (await r.json()) as { contents?: { results?: EgnyteEntry[] } };
+    for (const e of j.contents?.results ?? []) {
+      if (e.type === "folder") {
+        if (depth < 3) await list(e.path, depth + 1);
+      } else entries.push(e);
+    }
+  };
+  await list(`/${info.name ?? ""}`, 0);
+  const ranked = entries.filter((e) => DOC.test(e.name) && e.isDownloadable !== false).sort((x, y) => Number(PRIORITY.test(y.name)) - Number(PRIORITY.test(x.name)) || x.name.localeCompare(y.name));
+  for (const e of ranked) {
+    const dl = e._self?.linkedResources?.itemDownload?.url;
+    if (dl) await pull(e.name, dl, e.size ?? 0);
+  }
+  if (!out.files.length) out.notes.push(`Egnyte folder had no PDF / Excel / Word documents I could take: ${url}`);
+  else if (ranked.length > out.files.length) out.notes.push(`Egnyte folder: kept ${out.files.length} of ${ranked.length} documents: ${url}`);
+  return out;
+}
+
 // ---------- Box ----------
 async function box(url: string): Promise<CloudResult> {
   const hash = url.match(/\/s\/([\w]+)/)?.[1];
@@ -406,7 +452,7 @@ export async function fetchCloudFiles(urls: string[]): Promise<CloudResult> {
     let r: CloudResult;
     try {
       const host = new URL(url).hostname.toLowerCase();
-      r = host.includes("dropbox.com") ? await dropbox(url) : host.includes("google.com") ? await google(url) : host.includes("box.com") ? await box(url) : await onedrive(url);
+      r = host.includes("dropbox.com") ? await dropbox(url) : host.includes("google.com") ? await google(url) : host.includes("egnyte.com") ? await egnyte(url) : host.includes("box.com") ? await box(url) : await onedrive(url);
     } catch (e) {
       r = { files: [], notes: [`Could not open ${url}: ${String(e instanceof Error ? e.message : e).slice(0, 100)}`] };
     }
