@@ -454,6 +454,7 @@ model DealFile {
   mailbox      String // where the bytes live (deals@)
   graphId      String // message id in that mailbox
   attachmentId String
+  url          String?  // a Drive / Dropbox / OneDrive link the file was pulled from (bytes re-fetched from there)
   fromEmail    String?
   receivedAt   DateTime @default(now())
   createdAt    DateTime @default(now())

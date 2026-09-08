@@ -26,6 +26,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@prisma/client": "^6.19.3",
     "dotenv": "^17.4.2",
+    "fflate": "^0.8.3",
     "html-to-text": "^10.0.1",
     "lucide-react": "^1.40.0",
     "next": "16.3.4",

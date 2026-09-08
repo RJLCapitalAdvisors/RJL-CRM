@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { subjectLooselyMatchesDeal, subjectMatchesDeal } from "@/lib/deal-match";
 import { graph, graphConfigured, type GraphMessage } from "@/lib/graph";
 import { domainOf } from "@/lib/domains";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
@@ -31,6 +32,15 @@ async function pageThrough(mailbox: string, folder: "sentitems" | "inbox", since
   return out;
 }
 
+/** The deal an email is about: its name in the subject; else, for someone on a deal's report or at its sponsor, the city or a property word. */
+async function dealResolver() {
+  const activeDeals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, sponsorCompanyId: true, investors: { select: { contactId: true } } } });
+  const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null) =>
+    activeDeals.find((d) => subjectMatchesDeal(subject, d))?.id ??
+    activeDeals.find((d) => ((contactId && d.investors.some((r) => r.contactId === contactId)) || (companyId && d.sponsorCompanyId === companyId)) && subjectLooselyMatchesDeal(subject, d))?.id;
+  return dealFor;
+}
+
 export async function syncMailbox(mailbox: string): Promise<{ scanned: number; logged: number }> {
   const user = await prisma.user.findFirst({ where: { email: { equals: mailbox, mode: "insensitive" } } });
   const since = user?.mailSyncedAt ?? new Date(Date.now() - FIRST_SYNC_DAYS * 86_400_000);
@@ -38,18 +48,7 @@ export async function syncMailbox(mailbox: string): Promise<{ scanned: number; l
   const [sent, inbox] = await Promise.all([pageThrough(mailbox, "sentitems", since), pageThrough(mailbox, "inbox", since)]);
   const messages = [...sent, ...inbox];
 
-  const activeDeals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true } });
-  const dealFor = (subject: string) => {
-    const s = subject.toLowerCase();
-    const words = (x: string) => x.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3 && !["opportunity", "acquisition", "development", "retail", "portfolio", "recap", "deal"].includes(w));
-    return activeDeals.find((d) => {
-      const n = (d.propertyName ?? d.name).toLowerCase();
-      if (n.length > 5 && s.includes(n)) return true;
-      const ws = words(d.propertyName ?? d.name);
-      const hits = ws.filter((w) => s.includes(w)).length;
-      return ws.length > 0 && hits >= Math.min(2, ws.length);
-    })?.id;
-  };
+  const dealFor = await dealResolver();
 
   let logged = 0;
   for (const m of messages) {
@@ -99,7 +98,7 @@ export async function syncMailbox(mailbox: string): Promise<{ scanned: number; l
         externalId: ext,
         contactId,
         companyId,
-        dealId: dealFor(m.subject ?? "") ?? null,
+        dealId: dealFor(m.subject ?? "", contactId, companyId) ?? null,
         meta: JSON.stringify({ from, to, cc, mailbox, hasAttachments: m.hasAttachments ?? false }),
       },
     });
@@ -119,6 +118,7 @@ export async function syncRecentSent(mailbox: string, hours = 6): Promise<number
   if (!graphConfigured()) return 0;
   const since = new Date(Date.now() - hours * 3600_000);
   const msgs = await pageThrough(mailbox, "sentitems", since).catch(() => [] as Msg[]);
+  const dealFor = await dealResolver();
   let logged = 0;
   for (const msg of msgs) {
     const ext = msg.internetMessageId ?? msg.id;
@@ -134,7 +134,7 @@ export async function syncRecentSent(mailbox: string, hours = 6): Promise<number
     }
     if (!contactId) continue;
     const when = new Date(msg.sentDateTime ?? msg.receivedDateTime ?? Date.now());
-    await prisma.activity.create({ data: { type: "EMAIL", direction: "OUTBOUND", subject: msg.subject ?? "(no subject)", body: msg.bodyPreview ?? null, occurredAt: when, externalId: ext, contactId, companyId, meta: JSON.stringify({ from: msg.from?.emailAddress, to, cc, mailbox, hasAttachments: msg.hasAttachments ?? false }) } }).catch(() => null);
+    await prisma.activity.create({ data: { type: "EMAIL", direction: "OUTBOUND", subject: msg.subject ?? "(no subject)", body: msg.bodyPreview ?? null, occurredAt: when, externalId: ext, contactId, companyId, dealId: dealFor(msg.subject ?? "", contactId, companyId) ?? null, meta: JSON.stringify({ from: msg.from?.emailAddress, to, cc, mailbox, hasAttachments: msg.hasAttachments ?? false }) } }).catch(() => null);
     logged++;
   }
   return logged;

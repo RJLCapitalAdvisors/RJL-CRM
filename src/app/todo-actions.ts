@@ -90,12 +90,19 @@ export async function openMomentumDraft(momentumId: string) {
       const closing = "Could you send these over when you get a chance and I will pass them along.";
       const block = `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">${opening}</p><ul style="margin:0 0 10pt 18pt;">${asks.map((x) => `<li style="margin:0;${F}">${x}</li>`).join("")}</ul><p style="margin:0 0 10pt 0;${F}">${closing}</p>`;
       const plain = [opening, ...asks.map((x) => `• ${x}`), closing].join("\n");
-      // the thread: my latest email to the sponsor about this deal (to the person, else anyone at the firm)
-      const words = dealName.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
-      const about = (x: { subject: string | null }) => words.some((w) => (x.subject ?? "").toLowerCase().includes(w));
+      // the thread: my latest email to the sponsor team about this deal, with nobody else on it. Never an intro
+      // or a thread that has a third party (an LP, another sponsor) on copy: those are not the place to ask.
+      const { subjectMatchesDeal } = await import("@/lib/deal-match");
+      const myDomain = me.email.split("@")[1]?.toLowerCase();
+      const sponsorDomain = deal.sponsorCompany?.domain?.toLowerCase();
+      const sponsorEmails = new Set(to.map((x) => x.toLowerCase()));
+      const parties = (x: { toRecipients?: { emailAddress: { address: string } }[]; ccRecipients?: { emailAddress: { address: string } }[] }) => [...(x.toRecipients ?? []), ...(x.ccRecipients ?? [])].map((r) => r.emailAddress.address.toLowerCase());
+      const sponsorOnly = (x: Parameters<typeof parties>[0]) => parties(x).every((addr) => addr.endsWith(`@${myDomain}`) || (sponsorDomain && addr.endsWith(`@${sponsorDomain}`)) || sponsorEmails.has(addr));
+      const notIntro = (x: { subject?: string | null }) => !/^\s*((re|fw|fwd)\s*:\s*)*intro\b/i.test(x.subject ?? "");
       const toPerson = await sentMessagesTo(me.email, to[0], 15).catch(() => []);
       const toFirm = deal.sponsorCompany?.domain ? await sentMessagesToDomain(me.email, deal.sponsorCompany.domain, 25).catch(() => []) : [];
-      const original = toPerson.find(about) ?? toFirm.find(about) ?? toPerson[0] ?? toFirm[0];
+      const pool = [...toPerson, ...toFirm].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i).sort((x, y) => (y.sentDateTime ?? "").localeCompare(x.sentDateTime ?? ""));
+      const original = pool.find((x) => sponsorOnly(x) && subjectMatchesDeal(x.subject, deal)) ?? pool.find((x) => sponsorOnly(x) && notIntro(x));
       if (original) {
         const draft = await createReplyAllDraft(me.email, original.id);
         const body = draft.body?.content ?? "";

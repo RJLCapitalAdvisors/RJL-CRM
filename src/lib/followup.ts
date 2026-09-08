@@ -103,7 +103,7 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
   const dom = row.contact.company?.domain ?? domainOf(email);
   const toFirm = dom ? await sentMessagesToDomain(mailbox, dom, 25) : [];
   // 1) the deal email itself (to this person, else to anyone at the firm); 2) else the latest thread with the firm
-  let original = toPerson.find(aboutDeal) ?? toFirm.find(aboutDeal) ?? [...toPerson, ...toFirm].sort((a, b) => (b.sentDateTime ?? "").localeCompare(a.sentDateTime ?? ""))[0];
+  const original = toPerson.find(aboutDeal) ?? toFirm.find(aboutDeal) ?? [...toPerson, ...toFirm].sort((a, b) => (b.sentDateTime ?? "").localeCompare(a.sentDateTime ?? ""))[0];
   if (!original) {
     // a teammate may have sent this LP the deal: reply from their copy, in my mailbox
     const users = (await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { email: true } }).catch(() => [] as { email: string | null }[])).filter((u) => u.email!.toLowerCase() !== mailbox.toLowerCase());

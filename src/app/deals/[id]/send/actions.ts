@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/current-user";
-import { createSendDrafts, finalizeEngagement, launchDealEmails, renderDealEmail, sendPreviewToSelf, type LaunchItem, type SendItem } from "@/lib/send-deal";
+import { createSendDrafts, finalizeEngagement, launchDealEmails, renderDealEmail, renderGeneralDealEmail, reviseDealEmail, sendPreviewToSelf, type LaunchItem, type SendItem } from "@/lib/send-deal";
 
 export async function finalizeEngagementAction(dealId: string, keepCompanyIds: string[], addCompanyIds: string[]) {
   const r = await finalizeEngagement(dealId, keepCompanyIds, addCompanyIds);
@@ -53,4 +53,17 @@ export async function previewToMeAction(dealId: string, item: LaunchItem, fileKe
   const me = await currentUser();
   if (!me) return { ok: false, error: "Sign in with Microsoft first." };
   return sendPreviewToSelf(dealId, item, me.email, fileKeys);
+}
+
+/** The General email: the deal email with nobody's name, which every firm's email derives from. */
+export async function previewGeneralEmail(dealId: string, templateId: string) {
+  const me = await currentUser();
+  const r = await renderGeneralDealEmail({ templateId, dealId, senderName: me?.name ?? "RJL Capital Advisors", mailbox: me?.email ?? "jonathan@rjlcapadvisors.com" });
+  return { subject: r.subject, html: r.html };
+}
+
+/** "Emphasize the business plan more": Claude edits the General email as asked. */
+export async function reviseGeneralEmailAction(dealId: string, subject: string, html: string, instruction: string) {
+  if (!instruction.trim()) return { error: "Say what to change." };
+  return reviseDealEmail({ dealId, subject, html, instruction });
 }

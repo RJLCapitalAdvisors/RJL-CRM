@@ -5,7 +5,8 @@ import { missingFor, itemLabel } from "@/lib/checklist";
 import { intro, metricsHtml, subjectLine } from "@/lib/deal-copy";
 import { processIntake } from "@/app/intake/actions";
 import { applyForwarderInstructions } from "@/lib/forwarder-notes";
-import { detectMultipleDeals, extractDealFacts, matchExistingDeal, mergeIntoDeal, recordDealEmail, recordDealFiles } from "@/lib/deal-knowledge";
+import { detectMultipleDeals, extractDealFacts, matchExistingDeal, mergeIntoDeal, recordDealEmail, recordDealFiles, recordLinkFiles } from "@/lib/deal-knowledge";
+import { fetchCloudFiles, findCloudLinks } from "@/lib/cloud-links";
 
 /**
  * The deals@ mailbox. Every new email there is a deal someone on the team forwarded:
@@ -46,7 +47,7 @@ async function readAttachments(messageId: string): Promise<{ names: string[]; te
   return { names, texts };
 }
 
-function replyHtml(deal: Record<string, unknown>, dealUrl: string): string {
+function replyHtml(deal: Record<string, unknown>, dealUrl: string, linkNotes: string[] = []): string {
   const missing = missingFor(deal as never);
   const strategy = (deal.strategy as string | null) ?? null;
   const font = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
@@ -63,6 +64,7 @@ ${metricsHtml(deal)}
 </div>
 <p><b>Still missing${strategy ? ` (${strategy.toLowerCase()} checklist)` : ""}</b></p>
 ${list}
+${linkNotes.length ? `<p><b>Links I could not open</b></p><ul style="margin:0 0 10pt 18pt;">${linkNotes.map((n) => `<li>${n}</li>`).join("")}</ul>` : ""}
 <p style="color:#6b716e;font-size:9pt;">Reply to the sponsor for the missing items; when their answers come back to this mailbox the ticket updates itself. Edit anything on the ticket in the CRM.</p>
 </div>`;
 }
@@ -83,6 +85,15 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
 
   const bodyText = msg.body?.contentType === "html" ? emailHtmlToText(msg.body.content) : (msg.body?.content ?? "");
   const { names, texts } = msg.hasAttachments ? await readAttachments(msg.id) : { names: [], texts: [] };
+  // Drive / Dropbox / OneDrive / Box links in the email: their documents count as attachments
+  const cloud = await fetchCloudFiles(findCloudLinks(msg.body?.content, bodyText)).catch(() => ({ files: [], notes: [] as string[] }));
+  for (const f of cloud.files) {
+    if (names.some((n) => n.toLowerCase() === f.name.toLowerCase())) continue;
+    names.push(f.name);
+    const text = await attachmentToText(f.name, f.contentType, f.bytes).catch(() => null);
+    if (text) texts.push({ name: f.name, text });
+  }
+  const linkFiles = cloud.files.map((f) => ({ name: f.name, contentType: f.contentType, size: f.size, url: f.url, source: f.source }));
   const rawText = assembleDealText(bodyText, texts);
   const fwd = forwardedSender(bodyText);
   const external = !INTERNAL.test(fromAddr);
@@ -93,7 +104,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   const existingId = await matchExistingDeal({ conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: cleanSubject, bodyText, senderEmail: external ? fromAddr : fwd.email });
   if (existingId) {
     await recordDealEmail(existingId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "FOLLOWUP" });
-    const files = msg.hasAttachments ? await recordDealFiles(existingId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0) : 0;
+    const files = (msg.hasAttachments ? await recordDealFiles(existingId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0) : 0) + (await recordLinkFiles(existingId, ext, linkFiles, external ? fromAddr : fwd.email, received).catch(() => 0));
     const facts = await extractDealFacts(existingId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
     const filled = await mergeIntoDeal(existingId, rawText, cleanSubject).catch(() => 0);
     if (!external) await applyForwarderInstructions(existingId, bodyText).catch(() => null);
@@ -102,7 +113,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     const still = missingFor(deal).map((it) => itemLabel(it, deal.strategy));
     let replied = false;
     try {
-      await replyOnThread(msg, followUpReplyHtml(deal.propertyName ?? deal.name, `${base}/deals/${deal.id}`, files, facts, filled, still));
+      await replyOnThread(msg, followUpReplyHtml(deal.propertyName ?? deal.name, `${base}/deals/${deal.id}`, files, facts, filled, still, cloud.notes));
       replied = true;
     } catch (e) {
       console.error("deals@ follow-up reply failed", e);
@@ -128,6 +139,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
         const mine = all.value.filter((a) => part.attachments.some((n) => n.toLowerCase() === a.name.toLowerCase()));
         await recordDealFiles(intakeN.dealId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received, mine as never).catch(() => 0);
       }
+      await recordLinkFiles(intakeN.dealId, key, linkFiles.filter((f) => part.attachments.some((n) => n.toLowerCase() === f.name.toLowerCase())), external ? fromAddr : fwd.email, received).catch(() => 0);
       await extractDealFacts(intakeN.dealId, text, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
       const owner = fromAddr ? await prisma.user.findFirst({ where: { email: { equals: fromAddr, mode: "insensitive" } } }) : null;
       if (owner) await prisma.deal.update({ where: { id: intakeN.dealId }, data: { ownerId: owner.id } });
@@ -141,7 +153,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
       const sections: string[] = [];
       for (const c of created) {
         const dl = await prisma.deal.findUniqueOrThrow({ where: { id: c.id } });
-        sections.push(replyHtml(dl as unknown as Record<string, unknown>, `${base}/deals/${dl.id}`));
+        sections.push(replyHtml(dl as unknown as Record<string, unknown>, `${base}/deals/${dl.id}`, sections.length === 0 ? cloud.notes : []));
       }
       await replyOnThread(msg, `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p style="margin:0 0 12pt 0;">This email carried ${created.length} deals; a ticket was created for each.</p>${sections.join('<hr style="border:0;border-top:1px solid #ddd;margin:16pt 0;">')}</div>`);
       replied = true;
@@ -164,6 +176,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   await prisma.dealIntake.update({ where: { id: intake.id }, data: { messageId: ext } });
   await recordDealEmail(intake.dealId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "INTAKE" }).catch(() => null);
   if (msg.hasAttachments) await recordDealFiles(intake.dealId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0);
+  await recordLinkFiles(intake.dealId, ext, linkFiles, external ? fromAddr : fwd.email, received).catch(() => 0);
   await extractDealFacts(intake.dealId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
   // whoever forwarded it to deals@ owns the deal
   const owner = fromAddr ? await prisma.user.findFirst({ where: { email: { equals: fromAddr, mode: "insensitive" } } }) : null;
@@ -176,7 +189,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
   let replied = false;
   try {
-    await replyOnThread(msg, replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`));
+    await replyOnThread(msg, replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes));
     replied = true;
   } catch (e) {
     console.error("deals@ reply failed", e);
@@ -203,6 +216,7 @@ export async function ensureDealsSubscription(): Promise<string> {
   if (!graphConfigured() || !process.env.APP_URL || !process.env.CRON_SECRET) return "not configured";
   const resource = `/users/${MAILBOX()}/mailFolders/inbox/messages`;
   const notificationUrl = `${process.env.APP_URL.replace(/\/$/, "")}/api/graph/notify`;
+  if (!notificationUrl.startsWith("https://")) return "skipped: Graph only notifies https URLs (APP_URL is local)";
   const subs = await graph<{ value: { id: string; resource: string; expirationDateTime: string; notificationUrl: string }[] }>("/subscriptions");
   const mine = subs.value.find((s) => s.resource.toLowerCase() === resource.toLowerCase() && s.notificationUrl === notificationUrl);
   const expiration = new Date(Date.now() + 4000 * 60_000).toISOString(); // just under Graph's ~3-day maximum for mail
@@ -228,11 +242,12 @@ export async function sendDealsReply(dealId: string): Promise<boolean> {
 }
 
 
-function followUpReplyHtml(name: string, link: string, files: number, facts: number, filled: number, still: string[]) {
+function followUpReplyHtml(name: string, link: string, files: number, facts: number, filled: number, still: string[], linkNotes: string[] = []) {
   const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
   const li = (s: string) => `<li style="margin:0;${F}">${s}</li>`;
   return `<div style="${F}">
 <p style="margin:0 0 10pt 0;${F}">Added to <a href="${link}">${name}</a>: ${files} file${files === 1 ? "" : "s"} to Attachments, ${facts} answer${facts === 1 ? "" : "s"} to Questions answered${filled ? `, ${filled} ticket field${filled === 1 ? "" : "s"} filled in` : ""}.</p>
 ${still.length ? `<p style="margin:0 0 4pt 0;${F}"><b>Still missing:</b></p><ul style="margin:0 0 10pt 18pt;">${still.map(li).join("")}</ul>` : `<p style="margin:0 0 10pt 0;${F}">Checklist is complete.</p>`}
+${linkNotes.length ? `<p style="margin:0 0 4pt 0;${F}"><b>Links I could not open:</b></p><ul style="margin:0 0 10pt 18pt;">${linkNotes.map(li).join("")}</ul>` : ""}
 </div>`;
 }

@@ -1,3 +1,6 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { createDraft, getMessage, graph, graphConfigured, listAttachments, outlookDesktopLink, type GraphAttachment } from "@/lib/graph";
 import { signatureFor, type FollowUpResult } from "@/lib/followup";
@@ -85,7 +88,7 @@ export async function renderDealEmail(opts: { templateId: string; deal: Record<s
   return { subject, html, text: body };
 }
 
-export type DealFile = { key: string; mailbox: string; messageId: string; attachmentId: string; name: string; size: number; contentType: string | null; from: string; receivedAt: string };
+export type DealFile = { key: string; mailbox: string; messageId: string; attachmentId: string; name: string; size: number; contentType: string | null; from: string; receivedAt: string; url?: string | null };
 const IMAGE = /\.(png|jpe?g|gif|bmp|svg|webp)$/i;
 const isModel = (n: string) => /\.(xlsx|xlsm|xls)$/i.test(n);
 const isOM = (n: string) => /\.pdf$/i.test(n);
@@ -110,7 +113,7 @@ export async function dealFiles(dealId: string): Promise<DealFile[]> {
     const seen = new Set<string>();
     return [...(faq ? [faq] : []), ...recorded
       .filter((f) => (seen.has(f.name.toLowerCase()) ? false : (seen.add(f.name.toLowerCase()), true)))
-      .map((f) => ({ key: `${f.graphId}::${f.attachmentId}`, mailbox: f.mailbox, messageId: f.graphId, attachmentId: f.attachmentId, name: f.name, size: f.size, contentType: f.contentType, from: f.fromEmail ?? "", receivedAt: f.receivedAt.toISOString() }))
+      .map((f) => ({ key: `${f.graphId}::${f.attachmentId}`, mailbox: f.mailbox, messageId: f.graphId, attachmentId: f.attachmentId, name: f.name, size: f.size, contentType: f.contentType, from: f.fromEmail ?? "", receivedAt: f.receivedAt.toISOString(), url: f.url }))
       .sort((a, b) => Number(isModel(b.name) || isOM(b.name)) - Number(isModel(a.name) || isOM(a.name)))];
   }
   const it = await prisma.dealIntake.findFirst({ where: { dealId, messageId: { not: null } } });
@@ -259,9 +262,15 @@ async function chosenFiles(dealId: string, keys: string[] | undefined): Promise<
       if (pdf) atts.push({ "@odata.type": "#microsoft.graph.fileAttachment", id: FAQ_KEY, name: pdf.name, contentType: "application/pdf", size: pdf.bytes.byteLength, isInline: false, _bytes: pdf.bytes });
       continue;
     }
+    if (f.url) {
+      const { fetchCloudFileByUrl } = await import("@/lib/cloud-links");
+      const bytes = await fetchCloudFileByUrl(f.url, f.name).catch(() => null);
+      if (bytes) atts.push({ "@odata.type": "#microsoft.graph.fileAttachment", id: f.attachmentId, name: f.name, contentType: f.contentType, size: bytes.byteLength, isInline: false, _bytes: bytes });
+      continue;
+    }
     atts.push({ "@odata.type": "#microsoft.graph.fileAttachment", id: f.attachmentId, name: f.name, contentType: f.contentType, size: f.size, isInline: false, _msg: f.messageId });
   }
-  const anchor = files.find((f) => f.key !== FAQ_KEY) ?? files[0];
+  const anchor = files.find((f) => f.key !== FAQ_KEY && !f.url) ?? files.find((f) => f.key !== FAQ_KEY) ?? files[0];
   return { mailbox: anchor.mailbox || DEALS_MAILBOX(), messageId: anchor.messageId, atts };
 }
 export type LaunchResult = { rowId: string; firm: string; to: string[]; ok: boolean; error?: string };
@@ -313,5 +322,42 @@ export async function sendPreviewToSelf(dealId: string, item: LaunchItem, mailbo
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+}
+
+// ---------- the General email: one version for everyone, and edits asked of the CRM ----------
+
+/** The deal email with no one's name in it: the starting point every firm's email derives from. */
+export async function renderGeneralDealEmail(opts: { templateId: string; dealId: string; senderName: string; mailbox: string }) {
+  const { FIRST_NAME_MARKER } = await import("@/lib/first-name-marker");
+  const deal = await prisma.deal.findUniqueOrThrow({ where: { id: opts.dealId } });
+  return renderDealEmail({ templateId: opts.templateId, deal: deal as unknown as Record<string, unknown>, contact: { firstName: FIRST_NAME_MARKER, lastName: "", email: "", id: "" }, company: null, openingLine: "hope you are well.", bodyOverride: null, senderName: opts.senderName, mailbox: opts.mailbox });
+}
+
+const Revised = z.object({ subject: z.string().describe("The subject line, unchanged unless the request was about it."), html: z.string().describe("The full email HTML after the change.") });
+
+/** Apply a plain-English request ("emphasize the business plan more") to the email; everything else stays as it was. */
+export async function reviseDealEmail(opts: { dealId: string; subject: string; html: string; instruction: string }): Promise<{ subject: string; html: string } | { error: string }> {
+  if (!process.env.ANTHROPIC_API_KEY) return { error: "Claude is not configured." };
+  const deal = await prisma.deal.findUnique({ where: { id: opts.dealId }, include: { facts: { orderBy: { createdAt: "desc" }, take: 40 } } });
+  const facts = deal?.facts.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n") ?? "";
+  try {
+    const client = new Anthropic();
+    const res = await client.messages.parse({
+      model: "claude-opus-5",
+      max_tokens: 6000,
+      system: [
+        "You edit an outbound deal email for RJL Capital Advisors, a real estate capital advisor emailing institutional investors. Apply the requested change and nothing else.",
+        "Keep: the HTML structure and inline styles, the greeting line with its empty <span data-first-name> placeholder, the bold lead-ins, the signature block at the end (verbatim), and every fact and number. Never invent figures; if the request needs information you do not have, work with what is in the email and the deal notes.",
+        "Tone: concise, direct, professional, one-to-one (not a blast). Return the complete email HTML.",
+      ].join(" "),
+      messages: [{ role: "user", content: ["REQUEST:", opts.instruction.trim(), "", "SUBJECT:", opts.subject, "", "EMAIL HTML:", opts.html, "", "DEAL NOTES (Questions answered on the ticket, for reference):", facts || "(none)"].join("\n") }],
+      output_config: { format: zodOutputFormat(Revised) },
+    });
+    const out = res.parsed_output;
+    if (!out?.html) return { error: "No revision came back." };
+    return { subject: out.subject || opts.subject, html: out.html };
+  } catch (e) {
+    return { error: String(e instanceof Error ? e.message : e).slice(0, 200) };
   }
 }

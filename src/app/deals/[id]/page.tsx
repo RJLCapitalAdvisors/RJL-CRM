@@ -13,6 +13,8 @@ import { signFileToken } from "@/lib/tokens";
 import { faqFileName } from "@/lib/faq-pdf";
 import { EngagementCard } from "./engagement-card";
 import { engagementGroups } from "@/lib/send-deal";
+import { EmailLog } from "@/components/email-log";
+import { dealEmailRows } from "@/lib/deal-emails";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +38,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   if (!deal) notFound();
   const showEngagement = deal.stage === "Engagement Letter Sent" || deal.stage === "Engagement Letter Signed";
   const groups = showEngagement ? (await engagementGroups(deal.id)).filter((g) => g.companyId).map((g) => ({ companyId: g.companyId, name: g.name, status: g.status })) : [];
+  const emails = [...(await dealEmailRows(deal.id)), ...deal.activities.filter((a) => a.type !== "EMAIL")].sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());
   const update = updateDeal.bind(null, deal.id);
   const addNote = addDealNote.bind(null, deal.id);
   const name = deal.propertyName ?? deal.name;
@@ -79,43 +82,20 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
       center={
         <>
           {showEngagement && <EngagementCard dealId={deal.id} groups={groups} signed={deal.stage === "Engagement Letter Signed"} />}
-          <div className="card">
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <h2 className="text-sm font-semibold">Emails and notes on this deal</h2>
-              <span className="text-xs text-muted">{sent} deal emails sent</span>
-            </div>
-            <form action={addNote} className="flex gap-2 border-b border-line p-3">
-              <input name="body" placeholder="Log a note…" className="input" />
-              <button className="btn-secondary" type="submit">
-                Add
-              </button>
-            </form>
-            <ul className="divide-y divide-line">
-              {deal.activities.map((a) => (
-                <li key={a.id} className="px-4 py-3 text-sm">
-                  <div className="flex items-center justify-between text-xs text-muted">
-                    <span className="font-semibold uppercase tracking-wide">
-                      {a.type}
-                      {a.direction ? ` · ${a.direction.toLowerCase()}` : ""}
-                      {a.contact && (
-                        <>
-                          {" · "}
-                          <Link href={`/contacts/${a.contact.id}`} className="normal-case tracking-normal text-sky-600 hover:underline">
-                            {fullName(a.contact)}
-                          </Link>
-                          {a.contact.company ? ` (${a.contact.company.name})` : ""}
-                        </>
-                      )}
-                    </span>
-                    <span>{fmtDate(a.occurredAt)}</span>
-                  </div>
-                  {a.subject && <div className="mt-0.5 font-medium">{a.subject}</div>}
-                  {a.body && <div className="mt-0.5 line-clamp-4 whitespace-pre-wrap text-ink-soft">{a.body}</div>}
-                </li>
-              ))}
-              {deal.activities.length === 0 && <li className="px-4 py-8 text-center text-sm text-muted">Nothing yet. Emails you send from the outreach queue, forwarded emails, and notes land here.</li>}
-            </ul>
-          </div>
+          <EmailLog
+            rows={emails}
+            title="Emails on this deal"
+            aside={`${emails.filter((e) => e.type === "EMAIL").length} emails · ${sent} sent from the CRM`}
+            empty="Nothing yet. Emails the team sends or receives about this deal (to LPs, with the sponsor, through deals@) and notes land here."
+            toolbar={
+              <form action={addNote} className="flex gap-2 border-b border-line p-3">
+                <input name="body" placeholder="Log a note…" className="input" />
+                <button className="btn-secondary" type="submit">
+                  Add
+                </button>
+              </form>
+            }
+          />
         </>
       }
       right={

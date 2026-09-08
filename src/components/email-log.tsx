@@ -11,13 +11,14 @@ const list = (ps?: Party[]) => (ps ?? []).map(who).filter(Boolean);
 const ICON = { EMAIL: Mail, NOTE: MessageSquare, CALL: Phone, MEETING: Users } as const;
 
 /** Activity feed, HubSpot style: emails (expandable, with who/when/preview) and anything else logged. */
-export function EmailLog({ rows, title = "Activity", empty }: { rows: EmailRow[]; title?: string; empty: string }) {
+export function EmailLog({ rows, title = "Activity", empty, aside, toolbar }: { rows: EmailRow[]; title?: string; empty: string; aside?: React.ReactNode; toolbar?: React.ReactNode }) {
   return (
     <div className="card">
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold">{title}</h2>
-        <span className="text-xs text-muted">{rows.length}</span>
+        <span className="text-xs text-muted">{aside ?? rows.length}</span>
       </div>
+      {toolbar}
       {rows.length === 0 ? (
         <div className="px-4 py-8 text-center text-sm text-muted">{empty}</div>
       ) : (

@@ -14,8 +14,28 @@ import { CHECKLIST, parseDetails } from "@/lib/checklist";
 
 const q = (s: string) => encodeURIComponent(s);
 const IMAGE = /\.(png|jpe?g|gif|bmp|svg|webp)$/i;
-const STOP = new Set(["opportunity", "acquisition", "development", "retail", "portfolio", "recap", "deal", "apartments", "multifamily", "ground", "capital", "group", "partners", "the", "and", "with"]);
-const words = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3 && !STOP.has(w));
+export { STOP, words } from "@/lib/deal-match";
+import { words } from "@/lib/deal-match";
+
+const SameDeal = z.object({ sameDeal: z.boolean().describe("True only if the email is about this exact deal (same property / same capital raise), not merely a similar deal or the same sponsor."), why: z.string().describe("One short line.") });
+
+/** A word-overlap candidate is only a match once Claude agrees the email is about that very deal. */
+async function confirmSameDeal(deal: { name: string; propertyName: string | null; sponsorName: string | null; city: string | null; state: string | null; summary: string | null }, subject: string, senderEmail: string | null | undefined, bodyText: string): Promise<boolean> {
+  if (!process.env.ANTHROPIC_API_KEY) return false;
+  try {
+    const client = new Anthropic();
+    const res = await client.messages.parse({
+      model: "claude-sonnet-5",
+      max_tokens: 200,
+      system: "You keep a real estate capital advisor's deal board free of duplicates and mis-filed emails. Decide whether an incoming email is about the SAME deal as an existing ticket. Same deal means the same property or the same specific capital raise. A different property, a different sponsor's deal, a fund blast, or a deal that merely shares an asset class, tenant type, or market is NOT the same deal.",
+      messages: [{ role: "user", content: ["EXISTING TICKET", `Name: ${deal.propertyName ?? deal.name}`, `Sponsor: ${deal.sponsorName ?? "unknown"}`, `Location: ${[deal.city, deal.state].filter(Boolean).join(", ") || "unknown"}`, `Notes: ${deal.summary ?? ""}`, "", "INCOMING EMAIL", `Subject: ${subject}`, `From: ${senderEmail ?? ""}`, bodyText.slice(0, 5000)].join("\n") }],
+      output_config: { format: zodOutputFormat(SameDeal) },
+    });
+    return res.parsed_output?.sameDeal === true;
+  } catch {
+    return false;
+  }
+}
 
 /** Which existing active deal an incoming deals@ email belongs to, if any. */
 export async function matchExistingDeal(opts: { conversationId?: string | null; subject: string; bodyText: string; senderEmail?: string | null }): Promise<string | null> {
@@ -23,24 +43,31 @@ export async function matchExistingDeal(opts: { conversationId?: string | null; 
     const byThread = await prisma.dealEmail.findFirst({ where: { conversationId: opts.conversationId }, orderBy: { receivedAt: "desc" } });
     if (byThread) return byThread.dealId;
   }
-  const deals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, city: true, sponsorCompanyId: true, sponsorCompany: { select: { domain: true } } } });
+  const deals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, summary: true, sponsorCompanyId: true, sponsorCompany: { select: { domain: true } } } });
   const subj = opts.subject.toLowerCase();
   const head = opts.bodyText.slice(0, 1500).toLowerCase();
   const senderDomain = opts.senderEmail?.split("@")[1]?.toLowerCase();
-  let best: { id: string; score: number } | null = null;
+  const scored: { deal: (typeof deals)[number]; score: number }[] = [];
   for (const d of deals) {
     const ws = words(d.propertyName ?? d.name);
     if (!ws.length) continue;
     const inSubject = ws.filter((w) => subj.includes(w)).length;
     const inBody = ws.filter((w) => head.includes(w)).length;
+    // the deal's own name has to be substantially present (all of a short name, most of a long one),
+    // not just its city, its sponsor, or a generic word or two
+    const hit = Math.max(inSubject, inBody);
+    if (hit === 0 || hit < Math.ceil(ws.length * 0.6)) continue;
     let score = inSubject * 2 + inBody;
     if (d.city && (subj.includes(d.city.toLowerCase()) || head.includes(d.city.toLowerCase()))) score += 1;
     if (senderDomain && d.sponsorCompany?.domain === senderDomain) score += 2;
-    // need the deal's own name to be present, not just its city or sponsor
-    if (inSubject + inBody === 0) continue;
-    if (!best || score > best.score) best = { id: d.id, score };
+    if (score >= 2) scored.push({ deal: d, score });
   }
-  return best && best.score >= 2 ? best.id : null;
+  scored.sort((a, b) => b.score - a.score);
+  // words can lie ("grocery anchored", "value-add"): the top candidates have to survive a same-deal check
+  for (const { deal } of scored.slice(0, 3)) {
+    if (await confirmSameDeal(deal, opts.subject, opts.senderEmail, opts.bodyText)) return deal.id;
+  }
+  return null;
 }
 
 export async function recordDealEmail(dealId: string, m: { messageId: string; graphId?: string | null; conversationId?: string | null; subject?: string | null; fromEmail?: string | null; receivedAt?: Date; kind: "INTAKE" | "FOLLOWUP" }) {
@@ -54,6 +81,17 @@ export async function recordDealFiles(dealId: string, mailbox: string, graphId: 
   for (const a of list) {
     if (a.isInline || a["@odata.type"] !== "#microsoft.graph.fileAttachment" || IMAGE.test(a.name)) continue;
     await prisma.dealFile.upsert({ where: { graphId_attachmentId: { graphId, attachmentId: a.id } }, create: { dealId, name: a.name, size: a.size, contentType: a.contentType, mailbox, graphId, attachmentId: a.id, fromEmail, receivedAt }, update: { dealId } });
+    n++;
+  }
+  return n;
+}
+
+/** Files pulled from a Drive / Dropbox / OneDrive link in the email join the ticket like attachments (bytes re-fetched from the link when needed). */
+export async function recordLinkFiles(dealId: string, messageKey: string, files: { name: string; contentType: string | null; size: number; url: string; source: string }[], fromEmail: string | null, receivedAt: Date) {
+  let n = 0;
+  for (const f of files) {
+    const attachmentId = `link:${f.url}`.slice(0, 900);
+    await prisma.dealFile.upsert({ where: { graphId_attachmentId: { graphId: messageKey, attachmentId } }, create: { dealId, name: f.name, size: f.size, contentType: f.contentType, mailbox: "link", graphId: messageKey, attachmentId, url: f.url, fromEmail, receivedAt }, update: { dealId, url: f.url } });
     n++;
   }
   return n;
