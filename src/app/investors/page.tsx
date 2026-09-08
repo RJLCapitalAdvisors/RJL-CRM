@@ -8,12 +8,14 @@ import { InvestorSearch, type InvestorRow, type Spec } from "./search";
 import { vintageForYear } from "@/lib/investor-specs";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 export default async function InvestorsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const dealId = str(sp.dealId);
   const mode = str(sp.mode) === "engagement" && dealId ? "engagement" : "search";
-  const suggestions = mode === "engagement" && dealId ? await suggestInvestors(dealId, { force: str(sp.refresh) === "1" }).catch(() => []) : [];
+  // AI suggestions are a nice-to-have on the engagement page: cap the wait so the page never stalls on them
+  const suggestions = mode === "engagement" && dealId ? await Promise.race([suggestInvestors(dealId, { force: str(sp.refresh) === "1" }).catch(() => []), new Promise<never[]>((r) => setTimeout(() => r([]), 40_000))]) : [];
   // Flat queries joined in code: SQLite caps query parameters, so nested includes over ~1,300 companies fail.
   const [companies, allCriteria, deal, deals] = await Promise.all([
     prisma.company.findMany({ where: { roles: { contains: "Investor" } }, select: { id: true, name: true, roles: true, domain: true, city: true, state: true, lastActivityAt: true }, orderBy: { name: "asc" } }),

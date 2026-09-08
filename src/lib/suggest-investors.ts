@@ -92,7 +92,7 @@ export async function suggestInvestors(dealId: string, opts: { force?: boolean }
   const client = new Anthropic();
   const res = await client.messages.parse({
     model: "claude-opus-5",
-    max_tokens: 2500,
+    max_tokens: 8000,
     system: `You are the deal team's memory at RJL Capital Advisors, a real estate capital advisor. Given a new deal and dossiers on candidate equity groups (criteria on file, how each responded to past deals we sent them, how much we email with them), pick the groups that most deserve to be on the sponsor engagement letter. Weigh: explicit fit with this deal's asset class, market, check size and position; past interest in similar deals (Taking A Look, Interested, Intro Made) or explicit asks for more deal flow; active correspondence; and penalize groups that passed on very similar deals for reasons that still apply (wrong geography, product type, size). Do not pick groups whose notes say they are out of the market or between funds. Be concrete in the reasons.`,
     messages: [{ role: "user", content: `DEAL\n${deal.propertyName ?? deal.name} - ${[deal.assetClass, deal.strategy, deal.city && deal.state ? `${deal.city}, ${deal.state}` : deal.state].filter(Boolean).join(", ")}\nAsk: ${askMM ? `$${askMM}MM` : "n/a"} ${deal.executionType ?? ""}\nSummary: ${deal.summary ?? ""}\n\nCANDIDATES\n${dossier}` }],
     output_config: { format: zodOutputFormat(Out) },

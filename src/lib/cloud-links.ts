@@ -142,51 +142,88 @@ function unzipDocs(bytes: Uint8Array, url: string, source: CloudFile["source"]):
   return out;
 }
 
-/** A zip on disk (a whole data room) read entry by entry: only the documents, within the caps. */
+/** What matters most in a data room comes first when the cap bites: decks, OMs, models, then everything else. */
+const PRIORITY = /equity deck|deck|offering|\bom\b|memorandum|model|underwriting|pro ?forma|summary|rent roll|t-?12|budget/i;
+const entryName = (e: { fileName: string | Buffer }) => (Buffer.isBuffer(e.fileName) ? e.fileName.toString("utf8") : String(e.fileName)).replace(/^\/+/, "");
+
+/** A zip on disk (a whole data room) read entry by entry: only the documents, within the caps, best ones first. */
 function unzipDocsFromDisk(file: string, url: string, source: CloudFile["source"]): Promise<{ files: CloudFile[]; skipped: number }> {
-  return new Promise((resolve) => {
-    const files: CloudFile[] = [];
-    let skipped = 0;
-    let total = 0;
-    yauzl.open(file, { lazyEntries: true }, (err, zip) => {
-      if (err || !zip) return resolve({ files, skipped });
-      const finish = () => {
-        try {
-          zip.close();
-        } catch {
-          /* closed */
-        }
-        resolve({ files, skipped });
-      };
-      zip.on("error", finish);
-      zip.on("end", finish);
+  // pass 1: what is in there
+  const list = new Promise<{ name: string; size: number }[]>((resolve) => {
+    const names: { name: string; size: number }[] = [];
+    // decodeStrings: false so an odd entry name (Dropbox zips carry a root "/" entry) is skipped instead of aborting the whole archive
+    yauzl.open(file, { lazyEntries: true, decodeStrings: false }, (err, zip) => {
+      if (err || !zip) return resolve(names);
+      zip.on("error", () => resolve(names));
+      zip.on("end", () => resolve(names));
       zip.on("entry", (entry) => {
-        if (/\/$/.test(entry.fileName)) return zip.readEntry();
-        if (!wanted(entry.fileName, entry.uncompressedSize) || files.length >= MAX_FILES || total + entry.uncompressedSize > MAX_TOTAL) {
-          if (DOC.test(entry.fileName)) skipped++;
-          return zip.readEntry();
-        }
-        zip.openReadStream(entry, (e, stream) => {
-          if (e || !stream) {
-            skipped++;
-            return zip.readEntry();
-          }
-          const chunks: Buffer[] = [];
-          stream.on("data", (c: Buffer) => chunks.push(c));
-          stream.on("error", () => {
-            skipped++;
-            zip.readEntry();
-          });
-          stream.on("end", () => {
-            const data = new Uint8Array(Buffer.concat(chunks));
-            const name = entry.fileName.split("/").pop()!;
-            total += data.byteLength;
-            files.push({ name, contentType: typeFor(name, null), size: data.byteLength, bytes: data, url: `${url}#${encodeURIComponent(entry.fileName)}`, source });
-            zip.readEntry();
-          });
-        });
+        const name = entryName(entry);
+        if (name && !/\/$/.test(name) && wanted(name, entry.uncompressedSize)) names.push({ name, size: entry.uncompressedSize });
+        zip.readEntry();
       });
       zip.readEntry();
+    });
+  });
+  return list.then((all) => {
+    // round-robin across top-level folders (one property each in a data room), best documents of each folder first
+    const byFolder = new Map<string, { name: string; size: number }[]>();
+    for (const e of all) {
+      const folder = e.name.includes("/") ? e.name.split("/")[0] : "";
+      byFolder.set(folder, [...(byFolder.get(folder) ?? []), e]);
+    }
+    for (const list of byFolder.values()) list.sort((x, y) => Number(PRIORITY.test(y.name)) - Number(PRIORITY.test(x.name)) || x.name.localeCompare(y.name));
+    const take = new Set<string>();
+    let total = 0;
+    let progress = true;
+    while (progress && take.size < MAX_FILES) {
+      progress = false;
+      for (const list of byFolder.values()) {
+        const e = list.shift();
+        if (!e) continue;
+        progress = true;
+        if (take.size >= MAX_FILES || total + e.size > MAX_TOTAL) continue;
+        take.add(e.name);
+        total += e.size;
+      }
+    }
+    const skipped = all.length - take.size;
+    if (!take.size) return { files: [], skipped };
+    // pass 2: pull the chosen ones
+    return new Promise<{ files: CloudFile[]; skipped: number }>((resolve) => {
+      const files: CloudFile[] = [];
+      yauzl.open(file, { lazyEntries: true, decodeStrings: false }, (err, zip) => {
+        if (err || !zip) return resolve({ files, skipped });
+        const finish = () => {
+          try {
+            zip.close();
+          } catch {
+            /* closed */
+          }
+          resolve({ files, skipped });
+        };
+        zip.on("error", finish);
+        zip.on("end", finish);
+        zip.on("entry", (entry) => {
+          const name = entryName(entry);
+          if (!take.has(name)) return zip.readEntry();
+          zip.openReadStream(entry, (e, stream) => {
+            if (e || !stream) return zip.readEntry();
+            const chunks: Buffer[] = [];
+            stream.on("data", (c: Buffer) => chunks.push(c));
+            stream.on("error", () => zip.readEntry());
+            stream.on("end", () => {
+              const data = new Uint8Array(Buffer.concat(chunks));
+              const base = name.split("/").pop()!;
+              // keep the folder in the name when the same file name appears in several property folders
+              const dup = all.filter((x) => x.name.split("/").pop() === base).length > 1;
+              const shown = dup ? `${name.split("/")[0]} - ${base}` : base;
+              files.push({ name: shown, contentType: typeFor(base, null), size: data.byteLength, bytes: data, url: `${url}#${encodeURIComponent(name)}`, source });
+              zip.readEntry();
+            });
+          });
+        });
+        zip.readEntry();
+      });
     });
   });
 }
