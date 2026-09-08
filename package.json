@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/copy-bridge.js",
+    "prebuild": "node scripts/copy-bridge.js && tsx scripts/onboarding-md.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

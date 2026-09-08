@@ -3,6 +3,8 @@ import { PageHeader } from "@/components/ui";
 import { currentUser } from "@/lib/current-user";
 import { saveSignature } from "../todo-actions";
 import { SignatureEditor } from "./signature-editor";
+import { OnboardingChecklist } from "./onboarding-checklist";
+import { ADMIN_STEPS, YOUR_STEPS } from "@/lib/onboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +60,23 @@ export default async function SettingsPage() {
             </div>
           </div>
         </div>
+
+        <div id="onboarding" className="card">
+          <div className="flex items-center justify-between border-b border-line bg-cream px-5 py-3">
+            <div className="font-semibold">New to the CRM? Setup checklist</div>
+            <div className="text-sm text-muted">Ticks are remembered on this browser</div>
+          </div>
+          <OnboardingChecklist steps={YOUR_STEPS} storageKey={`rjl-onboarding:${me?.email ?? "anon"}`} />
+        </div>
+        {me?.canEditCriteria && (
+          <div id="onboarding-admin" className="card">
+            <div className="flex items-center justify-between border-b border-line bg-cream px-5 py-3">
+              <div className="font-semibold">Bringing someone new on: what Jonathan does</div>
+              <div className="text-sm text-muted">Also in docs/ONBOARDING.md</div>
+            </div>
+            <OnboardingChecklist steps={ADMIN_STEPS} storageKey="rjl-onboarding-admin" />
+          </div>
+        )}
 
         <h2 className="pt-2 text-base font-semibold">Email signatures</h2>
         {users.map((u) => (
