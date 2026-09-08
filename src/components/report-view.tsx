@@ -76,7 +76,7 @@ export function ReportView({ report, slots = {} }: { report: Report; slots?: Rep
       {!slots.headerEditor && showSections && (
         <>
           <h2 style={S.h2}>Notable Feedback Themes</h2>
-          <ul style={S.ul}>
+          <ul style={{ ...S.ul, listStyle: "disc" }}>
             {themes.map((t, i) => (
               <li key={i} style={S.li}>
                 {t}
@@ -85,7 +85,7 @@ export function ReportView({ report, slots = {} }: { report: Report; slots?: Rep
           </ul>
           <div style={S.rule}>{RULE}</div>
           <h2 style={S.h2}>Items Needed from Sponsor</h2>
-          <ul style={S.ul}>
+          <ul style={{ ...S.ul, listStyle: "disc" }}>
             {items.map((t, i) => (
               <li key={i} style={S.li}>
                 {t}

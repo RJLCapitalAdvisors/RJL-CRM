@@ -151,3 +151,22 @@ export async function setCompanyRoles(id: string, roles: string[]) {
   revalidatePath(`/companies/${id}`);
   return { proposed: false };
 }
+
+/** Asset classes from the list row. Sponsors: written directly. Investors: Jonathan writes, everyone else proposes. */
+export async function setCompanyAssetClasses(id: string, classes: string[]) {
+  const { ASSET_CLASSES } = await import("@/lib/taxonomy");
+  const clean = classes.filter((c) => (ASSET_CLASSES as readonly string[]).includes(c));
+  const co = await prisma.company.findUnique({ where: { id }, select: { roles: true } });
+  const roles = parseList(co?.roles);
+  const investor = roles.some((r) => r === "Investor" || r === "Retail Investor" || r === "Lender");
+  const me = await currentUser();
+  if (investor && !me?.canEditCriteria) {
+    await proposeManualChanges(id, { assetClasses: toJson(clean) }, me?.name ?? "A teammate");
+    revalidatePath("/");
+    return { proposed: true };
+  }
+  await prisma.investorCriteria.upsert({ where: { companyId: id }, create: { companyId: id, assetClasses: toJson(clean) }, update: { assetClasses: toJson(clean) } });
+  revalidatePath("/companies");
+  revalidatePath(`/companies/${id}`);
+  return { proposed: false };
+}

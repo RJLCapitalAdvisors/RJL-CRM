@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { PageHeader, Pager } from "@/components/ui";
 import { ListFilters } from "@/components/list-filters";
 import { RoleCell } from "@/components/role-cell";
+import { AssetCell } from "@/components/asset-cell";
 import { parseList } from "@/lib/taxonomy";
 import { fmtDate, str } from "@/lib/format";
 import { CompanyLogo } from "@/components/company-logo";
@@ -71,13 +72,13 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
             <tr>
               <th>Company</th>
               <th>Roles</th>
-              <th>Location</th>
               <th>Asset classes</th>
               <th>Check sizes</th>
               <th className="text-right">Contacts</th>
               <th className="text-right">Deals</th>
               <th>Owner</th>
               <th>Last activity</th>
+              <th>Location</th>
             </tr>
           </thead>
           <tbody>
@@ -92,9 +93,8 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                 <td>
                   <RoleCell companyId={c.id} roles={c.roles} />
                 </td>
-                <td className="whitespace-nowrap">{[c.city, c.state].filter(Boolean).join(", ") || <span className="text-muted">—</span>}</td>
-                <td className="max-w-[240px] truncate" title={parseList(c.criteria?.assetClasses).join(", ")}>
-                  {parseList(c.criteria?.assetClasses).join(", ") || <span className="text-muted">—</span>}
+                <td>
+                  <AssetCell companyId={c.id} assetClasses={parseList(c.criteria?.assetClasses)} />
                 </td>
                 <td className="max-w-[220px] truncate" title={parseList(c.criteria?.checkSizes).join(", ")}>
                   {parseList(c.criteria?.checkSizes).join(", ") || <span className="text-muted">—</span>}
@@ -103,6 +103,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                 <td className="text-right">{c._count.deals}</td>
                 <td className="whitespace-nowrap">{c.owner?.name ?? <span className="text-muted">—</span>}</td>
                 <td className="whitespace-nowrap text-muted">{fmtDate(c.lastActivityAt)}</td>
+                <td className="whitespace-nowrap">{[c.city, c.state].filter(Boolean).join(", ") || <span className="text-muted">—</span>}</td>
               </tr>
             ))}
             {rows.length === 0 && (

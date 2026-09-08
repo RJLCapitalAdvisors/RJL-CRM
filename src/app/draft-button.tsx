@@ -8,8 +8,14 @@ import { useRouter } from "next/navigation";
  * step 2 is a direct link (rjlcrm: bridge -> desktop Outlook, web as fallback). The direct click matters:
  * browsers only launch another app on a real user gesture.
  */
-export type DraftLinks = { ok: true; webLink: string; outlookLink: string | null; messageId: string | null } | { ok: false; reason: string };
-const desktopHref = (r: { outlookLink: string | null; webLink: string; messageId: string | null }) => (r.messageId ? `rjlcrm:open?mid=${encodeURIComponent(r.messageId)}${r.outlookLink ? `&eid=${r.outlookLink.replace(/^outlook:/, "")}` : ""}` : r.outlookLink ?? r.webLink);
+export type DraftLinks = { ok: true; webLink: string; outlookLink: string | null; messageId: string | null; replyTo?: { messageId: string; greeting: string; attachments: boolean } } | { ok: false; reason: string };
+type Links = { outlookLink: string | null; webLink: string; messageId: string | null; replyTo?: { messageId: string; greeting: string; attachments: boolean } };
+/** rjlcrm: is the small per-user link type (scripts/setup-outlook-link.ps1). reply = Outlook builds the reply-all itself from the original email; open = show a server draft. */
+const desktopHref = (r: Links) => {
+  if (r.replyTo) return `rjlcrm:reply?mid=${encodeURIComponent(r.replyTo.messageId)}&greet=${encodeURIComponent(r.replyTo.greeting)}&att=${r.replyTo.attachments ? 1 : 0}${r.messageId ? `&draft=${encodeURIComponent(r.messageId)}` : ""}${r.outlookLink ? `&eid=${r.outlookLink.replace(/^outlook:/, "")}` : ""}`;
+  if (r.messageId) return `rjlcrm:open?mid=${encodeURIComponent(r.messageId)}${r.outlookLink ? `&eid=${r.outlookLink.replace(/^outlook:/, "")}` : ""}`;
+  return r.outlookLink ?? r.webLink;
+};
 
 export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", action, disabled, title }: { label?: string; readyLabel?: string; action: () => Promise<DraftLinks>; disabled?: boolean; title?: string }) {
   const [pending, start] = useTransition();

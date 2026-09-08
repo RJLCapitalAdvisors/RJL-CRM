@@ -64,7 +64,8 @@ function insertAtTop(bodyHtml: string, block: string) {
   return block + bodyHtml;
 }
 
-export type FollowUpResult = { ok: true; webLink: string; outlookLink: string | null; messageId: string | null; mode: "replyAll" | "new"; attachments: number } | { ok: false; reason: string };
+export type ReplyTo = { messageId: string; greeting: string; attachments: boolean };
+export type FollowUpResult = { ok: true; webLink: string; outlookLink: string | null; messageId: string | null; mode: "replyAll" | "new"; attachments: number; replyTo?: ReplyTo } | { ok: false; reason: string };
 
 export async function createFollowUpDraft(rowId: string, mailbox: string): Promise<FollowUpResult> {
   if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
@@ -77,7 +78,14 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
   if (row.followUpDraftId && row.followUpMailbox) {
     try {
       const d = await getMessage(row.followUpMailbox, row.followUpDraftId, "id,isDraft,webLink,internetMessageId");
-      if (d.isDraft && d.webLink) return { ok: true, webLink: d.webLink, outlookLink: await outlookDesktopLink(row.followUpMailbox, d.id), messageId: d.internetMessageId ?? null, mode: "replyAll", attachments: 0 };
+      if (d.isDraft && d.webLink) {
+        const firstN = row.contact.firstName?.trim();
+        const sentBefore = await sentMessagesTo(row.followUpMailbox, email, 15).catch(() => [] as GraphMessage[]);
+        const dealWords = (row.deal.propertyName ?? row.deal.name).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+        const orig = sentBefore.find((m) => dealWords.some((w) => (m.subject ?? "").toLowerCase().includes(w))) ?? sentBefore[0];
+        const o = orig ? await getMessage(row.followUpMailbox, orig.id, "id,internetMessageId").catch(() => null) : null;
+        return { ok: true, webLink: d.webLink, outlookLink: await outlookDesktopLink(row.followUpMailbox, d.id), messageId: d.internetMessageId ?? null, mode: "replyAll", attachments: 0, replyTo: o?.internetMessageId ? { messageId: o.internetMessageId, greeting: `Hi${firstN ? ` ${firstN}` : ""} - please confirm receipt.`, attachments: Boolean(orig?.hasAttachments) } : undefined };
+      }
     } catch {
       /* draft gone; make a new one */
     }
@@ -132,7 +140,12 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
   const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
   // keep updatedAt as it was: the LP has not been followed up with until the draft is actually sent
   await prisma.dealInvestor.update({ where: { id: rowId }, data: { followUpDraftId: draft.id, followUpDraftAt: new Date(), followUpMailbox: mailbox, updatedAt: row.updatedAt } });
-  return { ok: true, webLink: fresh.webLink ?? draft.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: original ? "replyAll" : "new", attachments };
+  let replyTo: ReplyTo | undefined;
+  if (original) {
+    const o = await getMessage(mailbox, original.id, "id,internetMessageId").catch(() => null);
+    if (o?.internetMessageId) replyTo = { messageId: o.internetMessageId, greeting: `Hi${first ? ` ${first}` : ""} - please confirm receipt.`, attachments: Boolean(original.hasAttachments) };
+  }
+  return { ok: true, webLink: fresh.webLink ?? draft.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: original ? "replyAll" : "new", attachments, replyTo };
 }
 
 /**
@@ -149,7 +162,16 @@ export async function syncFollowUpDrafts(): Promise<number> {
     rows.map(async (r) => {
       try {
         const m = await getMessage(r.followUpMailbox!, r.followUpDraftId!, "id,isDraft,sentDateTime,subject");
-        if (m.isDraft) return;
+        if (m.isDraft) {
+          // replied from Outlook directly (local reply-all): any outbound email to this LP since the click counts
+          const since = (await prisma.dealInvestor.findUnique({ where: { id: r.id }, select: { followUpDraftAt: true } }))?.followUpDraftAt;
+          const local = since ? await prisma.activity.findFirst({ where: { contactId: r.contactId, type: "EMAIL", direction: "OUTBOUND", occurredAt: { gt: since } }, orderBy: { occurredAt: "desc" } }) : null;
+          if (!local) return;
+          await prisma.dealInvestor.update({ where: { id: r.id }, data: { status: 3, followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null, updatedAt: local.occurredAt } });
+          await graph(`/users/${encodeURIComponent(r.followUpMailbox!)}/messages/${encodeURIComponent(r.followUpDraftId!)}`, { method: "DELETE" }).catch(() => {}); // the unused server draft
+          sent++;
+          return;
+        }
         await prisma.dealInvestor.update({ where: { id: r.id }, data: { status: 3, followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null, updatedAt: m.sentDateTime ? new Date(m.sentDateTime) : new Date() } });
         const { logActivity } = await import("@/lib/activity");
         await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: m.subject ?? "Follow-up", body: "Follow-up sent from Outlook (Handle)", contactId: r.contactId, dealId: r.dealId, occurredAt: m.sentDateTime ? new Date(m.sentDateTime) : new Date() });
@@ -172,7 +194,7 @@ export async function createThreadReplyDraft(mailbox: string, internetMessageId:
   const sig = await signatureFor(mailbox);
   await updateDraftBody(mailbox, draft.id, insertAtTop(draft.body?.content ?? "", `<div style="${FONT}"><p style="margin:0 0 12pt 0;${FONT}"><br></p>${sig}<br></div>`));
   const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
-  return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: "replyAll", attachments: 0 };
+  return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: "replyAll", attachments: 0, replyTo: { messageId: internetMessageId, greeting: "", attachments: false } };
 }
 
 /**
@@ -189,15 +211,18 @@ export async function replyToLatestWith(mailbox: string, email: string, subjectH
   const blank = `<div style="${FONT}"><p style="margin:0 0 12pt 0;${FONT}"><br></p>${sig}<br></div>`;
   let draft: GraphMessage;
   let mode: "replyAll" | "new" = "new";
+  let replyTo: ReplyTo | undefined;
   if (original) {
     draft = await createReplyAllDraft(mailbox, original.id);
     await updateDraftBody(mailbox, draft.id, insertAtTop(draft.body?.content ?? "", blank));
     mode = "replyAll";
+    const o = await getMessage(mailbox, original.id, "id,internetMessageId").catch(() => null);
+    if (o?.internetMessageId) replyTo = { messageId: o.internetMessageId, greeting: "", attachments: false };
   } else {
     draft = await createDraft(mailbox, { subject: subjectHint, toRecipients: [email], bodyHtml: `<html><body>${blank}</body></html>` });
   }
   const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
-  return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode, attachments: 0 };
+  return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode, attachments: 0, replyTo };
 }
 
 /**
