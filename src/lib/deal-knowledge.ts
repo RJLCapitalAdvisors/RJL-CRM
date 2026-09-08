@@ -129,3 +129,29 @@ export async function factsFor(dealId: string, question: string, limit = 3) {
     .slice(0, limit)
     .map((x) => x.f);
 }
+
+const Split = z.object({
+  deals: z.array(z.object({
+    name: z.string().describe("Property or deal name, e.g. 'Westwind Apartments'."),
+    attachments: z.array(z.string()).describe("File names (exactly as listed) that belong to this deal. A file that clearly covers all deals can appear under each."),
+    hint: z.string().describe("One line that identifies this deal in the email body (location, size, asset), so the extractor can focus on it."),
+  })).describe("One entry per distinct deal in the email. A single deal with several files is ONE entry. Empty if the email is not about any deal."),
+});
+
+/**
+ * Some forwards carry several deals at once (two OMs, a portfolio split into separate opportunities). Each needs
+ * its own ticket, so we first ask how many there are and which files belong to which.
+ */
+export async function detectMultipleDeals(bodyText: string, attachmentNames: string[], attachmentTexts: { name: string; text: string }[]): Promise<{ name: string; attachments: string[]; hint: string }[]> {
+  if (!process.env.ANTHROPIC_API_KEY) return [];
+  const client = new Anthropic();
+  const peek = attachmentTexts.map((a) => `=== ${a.name} ===\n${a.text.slice(0, 1500)}`).join("\n\n");
+  const res = await client.messages.parse({
+    model: "claude-sonnet-5",
+    max_tokens: 800,
+    system: "You triage emails sent to a real estate capital advisor's deal inbox. Decide how many DISTINCT deals (separate properties or separately-capitalized opportunities) the email presents. Most emails present exactly one deal, often with several files (OM, model, comps) that all belong to it: that is one entry. Only split when the email clearly offers separate deals (different properties, each with its own ask). Assign every listed file to the deal it belongs to.",
+    messages: [{ role: "user", content: `EMAIL BODY:\n${bodyText.slice(0, 6000)}\n\nATTACHMENTS: ${attachmentNames.join(" | ") || "(none)"}\n\nFIRST LINES OF EACH ATTACHMENT:\n${peek.slice(0, 12000)}` }],
+    output_config: { format: zodOutputFormat(Split) },
+  });
+  return res.parsed_output?.deals ?? [];
+}

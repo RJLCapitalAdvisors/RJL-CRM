@@ -129,6 +129,30 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
   }
   await prisma.momentum.updateMany({ where: { kind: "MENTIONED", status: "OPEN", NOT: { dealId: { in: mentioned.map((d) => d.id) } } }, data: { status: "DONE" } });
 
+  // 3a) engagement letter sent and the sponsor has not answered in 18 hours
+  const ENGAGEMENT_HOURS = 18;
+  const letters = await prisma.deal.findMany({ where: { stage: "Engagement Letter Sent" }, include: { sponsorCompany: { select: { id: true, name: true } } } });
+  const liveLetterDeals = new Set<string>();
+  for (const d of letters) {
+    let det: { engagementSentAt?: string; engagementDraftId?: string; engagementMailbox?: string } = {};
+    try { det = JSON.parse(d.details || "{}"); } catch { /* ignore */ }
+    if (!det.engagementSentAt) continue;
+    const sentAt = new Date(det.engagementSentAt);
+    if (now - sentAt.getTime() < ENGAGEMENT_HOURS * 3600_000) continue;
+    const reply = d.sponsorCompanyId ? await prisma.activity.findFirst({ where: { companyId: d.sponsorCompanyId, type: "EMAIL", direction: "INBOUND", occurredAt: { gt: sentAt } }, select: { id: true } }) : null;
+    if (reply) continue;
+    liveLetterDeals.add(d.id);
+    const party = d.sponsorName ?? d.sponsorCompany?.name ?? "Sponsor";
+    let lastMessageId: string | null = null;
+    if (det.engagementDraftId && det.engagementMailbox) {
+      const { getMessage } = await import("@/lib/graph");
+      lastMessageId = (await getMessage(det.engagementMailbox, det.engagementDraftId, "id,internetMessageId").catch(() => null))?.internetMessageId ?? null;
+    }
+    const sponsorContact = d.sponsorCompanyId ? await prisma.contact.findFirst({ where: { companyId: d.sponsorCompanyId, email: { not: null } }, orderBy: { lastActivityAt: "desc" }, select: { id: true } }) : null;
+    await upsert(d.id, "ENGAGEMENT", party, { companyId: d.sponsorCompanyId, contactId: sponsorContact?.id ?? null, summary: `Engagement letter sent ${sentAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}; no reply from the sponsor`, waitingSince: sentAt, lastMessageId });
+  }
+  await prisma.momentum.updateMany({ where: { kind: "ENGAGEMENT", status: "OPEN", NOT: { dealId: { in: [...liveLetterDeals] } } }, data: { status: "DONE" } });
+
   // 3b) an LP asked the sponsor for something: goes to the top of the list, Handle drafts the request to the sponsor
   const { detectLpAsks } = await import("@/lib/lp-asks");
   for (const ask of await detectLpAsks().catch(() => [])) {

@@ -94,15 +94,24 @@ const isOM = (n: string) => /\.pdf$/i.test(n);
  * Every file the sponsor sent us on this deal: attachments on the forwarded email in deals@ and on any later
  * message in that same thread (sponsor replies with more docs). Images and signature logos are left out.
  */
+export const FAQ_KEY = "faq";
+/** The generated Investor FAQ appears as a file whenever the ticket has Questions answered. */
+async function faqEntry(dealId: string): Promise<DealFile | null> {
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { propertyName: true, name: true, _count: { select: { facts: true } } } });
+  if (!deal || deal._count.facts === 0) return null;
+  const { faqFileName } = await import("@/lib/faq-pdf");
+  return { key: FAQ_KEY, mailbox: "", messageId: "", attachmentId: "", name: faqFileName(deal.propertyName ?? deal.name), size: 0, contentType: "application/pdf", from: "RJL CRM", receivedAt: new Date().toISOString() };
+}
+
 export async function dealFiles(dealId: string): Promise<DealFile[]> {
-  // the ticket's Attachments window is the source of truth once it has entries
+  const faq = await faqEntry(dealId);
   const recorded = await prisma.dealFile.findMany({ where: { dealId }, orderBy: { receivedAt: "desc" } });
   if (recorded.length) {
     const seen = new Set<string>();
-    return recorded
+    return [...(faq ? [faq] : []), ...recorded
       .filter((f) => (seen.has(f.name.toLowerCase()) ? false : (seen.add(f.name.toLowerCase()), true)))
       .map((f) => ({ key: `${f.graphId}::${f.attachmentId}`, mailbox: f.mailbox, messageId: f.graphId, attachmentId: f.attachmentId, name: f.name, size: f.size, contentType: f.contentType, from: f.fromEmail ?? "", receivedAt: f.receivedAt.toISOString() }))
-      .sort((a, b) => Number(isModel(b.name) || isOM(b.name)) - Number(isModel(a.name) || isOM(a.name)));
+      .sort((a, b) => Number(isModel(b.name) || isOM(b.name)) - Number(isModel(a.name) || isOM(a.name)))];
   }
   const it = await prisma.dealIntake.findFirst({ where: { dealId, messageId: { not: null } } });
   if (!it?.messageId || !graphConfigured()) return [];
@@ -160,9 +169,9 @@ async function dealAttachments(dealId: string): Promise<{ mailbox: string; messa
   return { mailbox: DEALS_MAILBOX(), messageId: msg.id, atts };
 }
 
-async function copyAcross(src: { mailbox: string; messageId: string }, att: GraphAttachment, dstMailbox: string, dstMessageId: string) {
+async function copyAcross(src: { mailbox: string; messageId: string }, att: GraphAttachment & { _bytes?: Uint8Array }, dstMailbox: string, dstMessageId: string) {
   const q = encodeURIComponent;
-  const bytes = new Uint8Array(await graph<ArrayBuffer>(`/users/${q(src.mailbox)}/messages/${q(src.messageId)}/attachments/${q(att.id)}/$value`, { raw: true }));
+  const bytes = att._bytes ?? new Uint8Array(await graph<ArrayBuffer>(`/users/${q(src.mailbox)}/messages/${q(src.messageId)}/attachments/${q(att.id)}/$value`, { raw: true }));
   if (bytes.byteLength < 3 * 1024 * 1024) {
     await graph(`/users/${q(dstMailbox)}/messages/${q(dstMessageId)}/attachments`, { method: "POST", body: JSON.stringify({ "@odata.type": "#microsoft.graph.fileAttachment", name: att.name, contentType: att.contentType ?? "application/octet-stream", contentBytes: Buffer.from(bytes).toString("base64") }) });
     return;
@@ -242,8 +251,18 @@ async function chosenFiles(dealId: string, keys: string[] | undefined): Promise<
   if (!keys) return dealAttachments(dealId).catch(() => null); // no choice made: everything the sponsor sent
   const files = (await dealFiles(dealId)).filter((f) => keys.includes(f.key));
   if (!files.length) return null;
-  // group by source message so copyAcross can read each attachment from where it lives
-  return { mailbox: files[0].mailbox, messageId: files[0].messageId, atts: files.map((f) => ({ "@odata.type": "#microsoft.graph.fileAttachment", id: f.attachmentId, name: f.name, contentType: f.contentType, size: f.size, isInline: false, _msg: f.messageId }) as GraphAttachment & { _msg: string }) };
+  const atts: (GraphAttachment & { _msg?: string; _bytes?: Uint8Array })[] = [];
+  for (const f of files) {
+    if (f.key === FAQ_KEY) {
+      const { buildFaqPdf } = await import("@/lib/faq-pdf");
+      const pdf = await buildFaqPdf(dealId);
+      if (pdf) atts.push({ "@odata.type": "#microsoft.graph.fileAttachment", id: FAQ_KEY, name: pdf.name, contentType: "application/pdf", size: pdf.bytes.byteLength, isInline: false, _bytes: pdf.bytes });
+      continue;
+    }
+    atts.push({ "@odata.type": "#microsoft.graph.fileAttachment", id: f.attachmentId, name: f.name, contentType: f.contentType, size: f.size, isInline: false, _msg: f.messageId });
+  }
+  const anchor = files.find((f) => f.key !== FAQ_KEY) ?? files[0];
+  return { mailbox: anchor.mailbox || DEALS_MAILBOX(), messageId: anchor.messageId, atts };
 }
 export type LaunchResult = { rowId: string; firm: string; to: string[]; ok: boolean; error?: string };
 

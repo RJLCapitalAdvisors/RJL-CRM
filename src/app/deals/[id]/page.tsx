@@ -8,6 +8,9 @@ import { fmtDate, fullName } from "@/lib/format";
 import { TRACKER_STATUSES, investorLabel, statusOf } from "@/lib/tracker";
 import { addDealNote, updateDeal } from "../actions";
 import { StageSelect } from "./stage-select";
+import { AttachmentList } from "@/components/attachment-list";
+import { signFileToken } from "@/lib/tokens";
+import { faqFileName } from "@/lib/faq-pdf";
 import { EngagementCard } from "./engagement-card";
 import { engagementGroups } from "@/lib/send-deal";
 
@@ -177,17 +180,13 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
               </>
             )}
           </div>
-          <AssocCard title="Attachments" count={deal.files.length} empty="Files the sponsor sends on this deal (through deals@) collect here.">
-            {deal.files.map((f) => (
-              <div key={f.id} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
-                <a href={`/api/deals/${deal.id}/files/${f.id}`} className="min-w-0 truncate hover:underline" title="Download">
-                  {f.name}
-                </a>
-                <span className="shrink-0 text-xs text-muted">
-                  {f.size >= 1_000_000 ? `${(f.size / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1000))} KB`} · {fmtDate(f.receivedAt)}
-                </span>
-              </div>
-            ))}
+          <AssocCard title="Attachments" count={deal.files.length + (deal.facts.length ? 1 : 0)} empty="Files the sponsor sends on this deal (through deals@) collect here.">
+            <AttachmentList
+              files={[
+                ...(deal.facts.length ? [{ id: "faq", kind: "faq" as const, name: faqFileName(name), size: 0, date: "built from Questions answered", url: `/api/deals/${deal.id}/faq.pdf?t=${signFileToken(`faq:${deal.id}`)}` }] : []),
+                ...deal.files.map((f) => ({ id: f.id, name: f.name, size: f.size, date: fmtDate(f.receivedAt), url: `/api/deals/${deal.id}/files/${f.id}?t=${signFileToken(`file:${f.id}`)}` })),
+              ]}
+            />
           </AssocCard>
           <AssocCard title="Questions answered" count={deal.facts.length} empty="What the sponsor tells us in follow-up emails is filed here and used to answer investor questions.">
             {deal.facts.map((f) => (

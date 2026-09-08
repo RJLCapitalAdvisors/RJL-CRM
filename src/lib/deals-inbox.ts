@@ -5,7 +5,7 @@ import { missingFor, itemLabel } from "@/lib/checklist";
 import { intro, metricsHtml, subjectLine } from "@/lib/deal-copy";
 import { processIntake } from "@/app/intake/actions";
 import { applyForwarderInstructions } from "@/lib/forwarder-notes";
-import { extractDealFacts, matchExistingDeal, mergeIntoDeal, recordDealEmail, recordDealFiles } from "@/lib/deal-knowledge";
+import { detectMultipleDeals, extractDealFacts, matchExistingDeal, mergeIntoDeal, recordDealEmail, recordDealFiles } from "@/lib/deal-knowledge";
 
 /**
  * The deals@ mailbox. Every new email there is a deal someone on the team forwarded:
@@ -110,6 +110,46 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     await prisma.dealIntake.create({ data: { source: "WEBHOOK", fromEmail: external ? fromAddr : fwd.email, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, toEmail: MAILBOX(), subject: msg.subject, rawText: rawText.slice(0, 200_000), attachments: JSON.stringify(names), extracted: "{}", missing: "[]", notes: `Follow-up on existing deal ${existingId}`, status: "CONVERTED", messageId: ext } }).catch(() => null);
     await graph(`/users/${q(MAILBOX())}/messages/${q(msg.id)}`, { method: "PATCH", body: JSON.stringify({ isRead: true }) }).catch(() => {});
     return { dealId: existingId, replied };
+  }
+
+  // Several deals in one email? One ticket each, with only its own files.
+  const parts = msg.hasAttachments || bodyText.length > 400 ? await detectMultipleDeals(bodyText, names, texts).catch(() => []) : [];
+  if (parts.length > 1) {
+    const created: { id: string; name: string }[] = [];
+    for (const [i, part] of parts.entries()) {
+      const own = texts.filter((t) => part.attachments.some((n) => n.toLowerCase() === t.name.toLowerCase()));
+      const text = assembleDealText(`THIS EMAIL CONTAINS ${parts.length} DEALS. Extract ONLY the deal "${part.name}" (${part.hint}). Ignore the others.\n\n${bodyText}`, own.length ? own : []);
+      const intakeN = await processIntake({ rawText: text, subject: `${cleanSubject} - ${part.name}`, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, fromEmail: external ? fromAddr : fwd.email, toEmail: MAILBOX(), source: "WEBHOOK", attachments: own.map((t) => t.name) });
+      const key = i === 0 ? ext : `${ext}#${i + 1}`;
+      await prisma.dealIntake.update({ where: { id: intakeN.id }, data: { messageId: key } }).catch(() => null);
+      await recordDealEmail(intakeN.dealId, { messageId: key, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "INTAKE" }).catch(() => null);
+      if (msg.hasAttachments) {
+        const all = await graph<{ value: Att[] }>(`/users/${q(MAILBOX())}/messages/${q(msg.id)}/attachments?$select=id,name,contentType,size,isInline`).catch(() => ({ value: [] as Att[] }));
+        const mine = all.value.filter((a) => part.attachments.some((n) => n.toLowerCase() === a.name.toLowerCase()));
+        await recordDealFiles(intakeN.dealId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received, mine as never).catch(() => 0);
+      }
+      await extractDealFacts(intakeN.dealId, text, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
+      const owner = fromAddr ? await prisma.user.findFirst({ where: { email: { equals: fromAddr, mode: "insensitive" } } }) : null;
+      if (owner) await prisma.deal.update({ where: { id: intakeN.dealId }, data: { ownerId: owner.id } });
+      if (!external) await applyForwarderInstructions(intakeN.dealId, bodyText).catch(() => null);
+      const dl = await prisma.deal.findUniqueOrThrow({ where: { id: intakeN.dealId } });
+      created.push({ id: dl.id, name: dl.propertyName ?? dl.name });
+    }
+    const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
+    let replied = false;
+    try {
+      const sections: string[] = [];
+      for (const c of created) {
+        const dl = await prisma.deal.findUniqueOrThrow({ where: { id: c.id } });
+        sections.push(replyHtml(dl as unknown as Record<string, unknown>, `${base}/deals/${dl.id}`));
+      }
+      await replyOnThread(msg, `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p style="margin:0 0 12pt 0;">This email carried ${created.length} deals; a ticket was created for each.</p>${sections.join('<hr style="border:0;border-top:1px solid #ddd;margin:16pt 0;">')}</div>`);
+      replied = true;
+    } catch (e) {
+      console.error("deals@ multi reply failed", e);
+    }
+    await graph(`/users/${q(MAILBOX())}/messages/${q(msg.id)}`, { method: "PATCH", body: JSON.stringify({ isRead: true }) }).catch(() => {});
+    return { dealId: created[0].id, replied };
   }
 
   const intake = await processIntake({

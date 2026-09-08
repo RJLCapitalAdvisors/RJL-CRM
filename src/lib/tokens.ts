@@ -22,3 +22,16 @@ export function unsubscribeUrl(contactId: string): string {
   const base = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   return `${base}/unsubscribe/${signContactToken(contactId)}`;
 }
+
+/** Capability link for one file: HMAC over "file:<id>" or "faq:<dealId>". */
+export function signFileToken(subject: string): string {
+  const sig = createHmac("sha256", secret()).update(subject).digest("base64url").slice(0, 24);
+  return `${Buffer.from(subject, "utf8").toString("base64url")}.${sig}`;
+}
+export function verifyFileToken(token: string): string | null {
+  const [b, sig] = token.split(".");
+  if (!b || !sig) return null;
+  const subject = Buffer.from(b, "base64url").toString("utf8");
+  const expected = createHmac("sha256", secret()).update(subject).digest("base64url").slice(0, 24);
+  return expected.length === sig.length && timingSafeEqual(Buffer.from(expected), Buffer.from(sig)) ? subject : null;
+}
