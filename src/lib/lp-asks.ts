@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { graph } from "@/lib/graph";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
-import { subjectMatchesDeal } from "@/lib/deal-match";
+import { houseSubjectMatches, subjectMatchesDeal } from "@/lib/deal-match";
 
 /**
  * When an LP replies to a deal asking for something (a 5-year model, the sponsor's markets, a rent roll),
@@ -41,10 +41,10 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     // which deal: the deals this firm was sent (active, on the report), then the one the email itself names.
     // A firm on several deals answers each on its own thread; an email that names none of them is about
     // something else (an intro, another deal) and must not be pinned to any ticket.
-    const rows = await prisma.dealInvestor.findMany({ where: { contact: { companyId: a.companyId! }, deal: { stage: { in: [...ACTIVE_STAGES] } }, status: { gte: 2 } }, include: { deal: { select: { id: true, propertyName: true, name: true, city: true, sponsorName: true } } }, orderBy: { updatedAt: "desc" } });
+    const rows = await prisma.dealInvestor.findMany({ where: { contact: { companyId: a.companyId! }, deal: { stage: { in: [...ACTIVE_STAGES] } }, status: { gte: 2 } }, include: { deal: { select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true } } }, orderBy: { updatedAt: "desc" } });
     const candidates = rows.map((r) => r.deal).filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
     let dealId: string | null = a.dealId && candidates.some((x) => x.id === a.dealId) ? a.dealId : null;
-    if (!dealId) dealId = candidates.find((x) => subjectMatchesDeal(a.subject, x))?.id ?? null;
+    if (!dealId) dealId = candidates.find((x) => subjectMatchesDeal(a.subject, x) || houseSubjectMatches(a.subject, x))?.id ?? null;
     if (!candidates.length) {
       await prisma.lpAskScan.create({ data: { externalId: a.externalId!, result: "no-deal" } }).catch(() => {});
       continue;

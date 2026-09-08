@@ -28,7 +28,7 @@ export const ExtractedDealSchema = z.object({
   occupancy: z.number().nullable().describe("Percent"),
   onMarket: z.boolean().nullable(),
   sponsorExperience: z.string().nullable().describe("Sponsor bio: overall and local market experience"),
-  summary: z.string().nullable().describe("2-4 sentence neutral summary of the deal and business plan for an investor email"),
+  summary: z.string().nullable().describe("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), the value-add opportunity, notable physical attributes. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
   details: z.object(detailShape),
   // underwriting snapshot
   units: z.number().nullable(),
@@ -101,7 +101,7 @@ const ClaudeOutput = z.object({
   occupancy: str("Occupancy percent as a number (91)."),
   onMarket: z.enum(["on", "off", ""]).describe("on if marketed/listed, off if off-market."),
   sponsorExperience: str("Sponsor bio: overall and local market experience, quoted or closely paraphrased."),
-  summary: str("2-4 sentence neutral summary of the deal and business plan for an investor email."),
+  summary: str("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), the value-add opportunity, notable physical attributes. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
   details: z.object(Object.fromEntries(CHECKLIST.filter((it) => !it.core).map((it) => [it.key, str(`${it.label}. ${it.question}${it.kind === "doc" ? " Answer Received only if the document is attached or explicitly provided." : ""}`)]))),
   units: str("Number of units, keys (hotel) or beds (student housing), digits only."),
   squareFeet: str("Building or GLA square feet, digits only."),
@@ -172,13 +172,13 @@ Read the email (including quoted/forwarded content) and fill the schema. Rules:
 - Percentages are plain numbers (65% -> 65). LTV may appear as LTC or leverage.
 - requestType: "Equity" for JV/LP/pref/co-GP equity raises, "Debt" for loans/bridge/construction/refi, "Both" if both.
 - strategy: "Development" for ground-up / construction; "Acquisitions" for buying an existing asset.
-- unitMix, holdPeriod, loanTerm, amortization: pick the closest listed option; never write free text there. Put unit counts and sizes in the summary instead.
+- unitMix, holdPeriod, loanTerm, amortization: pick the closest listed option; never write free text there. Unit counts and sizes belong in unitMix / units / squareFeet, never in the summary.
 - executionType: an equity raise that is the majority of total equity is "JV Equity" (LP Equity is only a minority slice).
 - expectedClose: the closing date or month if the email or model states one; otherwise empty so we ask for it.
 - assetClass must be one of the listed values; map synonyms (apartments -> Multifamily, BTR -> Build-For-Rent (SFR), hotel -> Hospitality, warehouse -> Industrial, shopping center -> Retail).
 - state is the two-letter code. If only a metro is given, infer the state and note it in confidenceNotes.
 - For each checklist item in details: quote or closely paraphrase what the sponsor said. For documents (proforma, rent roll/T12, trade-out report, capex budget, comps) answer "Received" only if the document is attached or explicitly provided; otherwise empty.
-- summary is a neutral 2-4 sentence description suitable for an investor email.`;
+- summary is the business plan paragraph for the investor email: lead with location and market context, then anchor/key tenants, the value-add opportunity, notable physical attributes. 4-6 sentences, flowing prose, no dashes as punctuation. Never put in the summary what has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count.`;
 
 export async function extractWithClaude(rawText: string, subject?: string | null, attachments: string[] = []): Promise<ExtractedDeal> {
   const client = new Anthropic();

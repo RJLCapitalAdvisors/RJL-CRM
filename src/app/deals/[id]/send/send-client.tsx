@@ -12,7 +12,7 @@ export type Firm = { rowId: string; status: number; company: string; domain: str
 export type DealFileLite = { key: string; name: string; size: number };
 type Draft = { subject: string; html: string; touched: boolean };
 /** Everything on this page that is worth keeping if you leave and come back (kept on the deal, per deal). */
-export type SendState = { templateId?: string; general?: Draft | null; drafts?: Record<string, Draft>; include?: string[]; to?: Record<string, string[]>; chosenFiles?: string[]; savedAt?: string };
+export type SendState = { templateId?: string; general?: Draft | null; drafts?: Record<string, Draft>; include?: string[]; to?: Record<string, string[]>; chosenFiles?: string[]; cc?: string; savedAt?: string };
 
 const GENERAL = "general";
 
@@ -24,12 +24,14 @@ const GENERAL = "general";
  * Everything you do here saves itself to the deal a second after you do it, so you can leave and come back.
  * Bottom: "Send preview email to me" (the General one goes with a blank greeting) and LAUNCH (each firm gets its own email).
  */
-export function SendClient({ dealId, firms, templates, defaultTemplateId, files, saved }: { dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null }) {
+export function SendClient({ dealId, firms, templates, defaultTemplateId, files, saved, team = [] }: { dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[] }) {
   const [chosenFiles, setChosenFiles] = useState<Set<string>>(new Set(saved?.chosenFiles?.filter((k) => files.some((f) => f.key === k)) ?? files.slice(0, 6).map((f) => f.key))); // the FAQ, OM and model first; a whole data room is not the default
   const [templateId, setTemplateId] = useState(saved?.templateId && templates.some((t) => t.id === saved.templateId) ? saved.templateId : defaultTemplateId);
   const [include, setInclude] = useState<Set<string>>(new Set(saved?.include?.filter((id) => firms.some((f) => f.rowId === id && f.status <= 1)) ?? firms.filter((f) => f.status <= 1).map((f) => f.rowId)));
   const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((saved?.to?.[f.rowId] ?? (f.extraContactIds.length ? [f.primaryContactId, ...f.extraContactIds] : f.defaultContactIds)).filter((id) => f.people.some((p) => p.id === id)))])));
   const [general, setGeneral] = useState<Draft | null>(saved?.general ?? null);
+  const [cc, setCc] = useState<string>(saved?.cc ?? ""); // copied on every firm's email (teammates, usually)
+  const ccList = () => cc.split(/[,;\s]+/).map((x) => x.trim()).filter((x) => x.includes("@"));
   const [drafts, setDrafts] = useState<Record<string, Draft>>(saved?.drafts ?? {}); // only firms whose email was edited on its own
   const [current, setCurrent] = useState<string>(GENERAL);
   const [picker, setPicker] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
     const t0 = setTimeout(() => setSaveState("dirty"), 0);
     const t = setTimeout(() => {
       setSaveState("saving");
-      const state: SendState = { templateId, general, drafts, include: [...include], to: Object.fromEntries(Object.entries(to).map(([k, v]) => [k, [...v]])), chosenFiles: [...chosenFiles], savedAt: new Date().toISOString() };
+      const state: SendState = { templateId, general, drafts, include: [...include], to: Object.fromEntries(Object.entries(to).map(([k, v]) => [k, [...v]])), chosenFiles: [...chosenFiles], cc, savedAt: new Date().toISOString() };
       saveSendStateAction(dealId, state)
         .then(() => setSaveState("saved"))
         .catch(() => setSaveState("dirty"));
@@ -104,7 +106,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templateId, general, drafts, include, to, chosenFiles]);
+  }, [templateId, general, drafts, include, to, chosenFiles, cc]);
 
   // the people picker closes on a click anywhere else, or Escape
   useEffect(() => {
@@ -147,7 +149,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
       .filter((f) => include.has(f.rowId) && f.status <= 1)
       .map((f) => {
         const d = draftFor(f);
-        return { rowId: f.rowId, toContactIds: [...(to[f.rowId] ?? [])], subject: d?.subject ?? "", html: d?.html ?? "" };
+        return { rowId: f.rowId, toContactIds: [...(to[f.rowId] ?? [])], subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() };
       });
 
   const launch = () => {
@@ -354,6 +356,15 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
             )}
           </div>
           <div className="px-4 py-3">
+            <div className="mb-2 flex items-center gap-2 text-sm">
+              <span className="w-14 text-xs text-muted">Cc</span>
+              <input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Copied on every firm's email, e.g. aviel@rjlcapadvisors.com" className="input py-1" />
+              {team.filter((t) => !ccList().some((x) => x.toLowerCase() === t.email.toLowerCase())).map((t) => (
+                <button key={t.email} type="button" className="chip shrink-0 text-[11px] hover:bg-cream" onClick={() => setCc((v) => (v.trim() ? `${v.trim().replace(/[,;]$/, "")}, ${t.email}` : t.email))} title={`Copy ${t.name}`}>
+                  + {t.name.split(" ")[0]}
+                </button>
+              ))}
+            </div>
             <div className="mb-2 flex items-center gap-2 text-sm">
               <span className="w-14 text-xs text-muted">Subject</span>
               <input value={shown?.subject ?? ""} onChange={(e) => setSubject(e.target.value)} className="input py-1" />

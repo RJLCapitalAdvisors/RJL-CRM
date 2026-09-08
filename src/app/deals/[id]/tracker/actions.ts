@@ -156,3 +156,12 @@ export async function saveTrackerMeta(dealId: string, fd: FormData) {
   touch(dealId);
   revalidatePath(`/share/tracker`);
 }
+
+/** "Refresh responses": re-read the team mailboxes for this deal's firms and update statuses, notes and LP requests. */
+export async function refreshResponsesAction(dealId: string) {
+  const { refreshResponses } = await import("@/lib/refresh-responses");
+  await refreshResponses(dealId).catch(() => null);
+  revalidatePath(`/deals/${dealId}/tracker`);
+  revalidatePath(`/deals/${dealId}`);
+  revalidatePath("/");
+}

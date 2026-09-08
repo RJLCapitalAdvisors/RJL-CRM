@@ -238,7 +238,7 @@ export async function syncSendDrafts(): Promise<number> {
   return sent;
 }
 
-export type LaunchItem = { rowId: string; toContactIds: string[]; subject: string; html: string };
+export type LaunchItem = { rowId: string; toContactIds: string[]; subject: string; html: string; cc?: string[] };
 type Src = Awaited<ReturnType<typeof dealAttachments>>;
 async function chosenFiles(dealId: string, keys: string[] | undefined): Promise<Src> {
   if (!keys) return dealAttachments(dealId).catch(() => null); // no choice made: everything the sponsor sent
@@ -266,8 +266,8 @@ async function chosenFiles(dealId: string, keys: string[] | undefined): Promise<
 export type LaunchResult = { rowId: string; firm: string; to: string[]; ok: boolean; error?: string };
 
 /** Build a message in the sender's mailbox with the deal's attachments and send it. */
-async function sendMessage(mailbox: string, to: string[], subject: string, html: string, src: Src) {
-  const draft = await createDraft(mailbox, { subject, toRecipients: to, bodyHtml: `<html><body>${html}</body></html>` });
+async function sendMessage(mailbox: string, to: string[], subject: string, html: string, src: Src, cc: string[] = []) {
+  const draft = await createDraft(mailbox, { subject, toRecipients: to, ccRecipients: cc.filter((c) => c && !to.some((t) => t.toLowerCase() === c.toLowerCase())), bodyHtml: `<html><body>${html}</body></html>` });
   if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
   const fresh = await getMessage(mailbox, draft.id, "id,internetMessageId");
   await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(draft.id)}/send`, { method: "POST" });
@@ -290,7 +290,7 @@ export async function launchDealEmails(dealId: string, items: LaunchItem[], mail
       continue;
     }
     try {
-      const messageId = await sendMessage(mailbox, to, item.subject, item.html, src);
+      const messageId = await sendMessage(mailbox, to, item.subject, item.html, src, item.cc ?? []);
       const now = new Date();
       await prisma.dealInvestor.update({ where: { id: row.id }, data: { status: Math.max(row.status, 2), bodyOverride: item.html, extraContactIds: toJson(people.map((p) => p.id).filter((id) => id !== row.contactId)), sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: now } });
       for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: item.subject, body: "Deal email sent (Send deal)", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId, occurredAt: now }).catch(() => {});

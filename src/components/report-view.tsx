@@ -51,6 +51,7 @@ export function ReportView({ report, slots = {} }: { report: Report; slots?: Rep
   return (
     <div className="report" style={S.page}>
       <img src="/logo.png" alt="RJL Capital Advisors" style={S.logo} />
+      <p style={{ ...S.center, fontSize: 16, fontWeight: 700, textDecoration: "underline", margin: "0 0 10px 0" }}>Progress Report</p>
       <p style={S.center}>
         <b>Deal Name:</b> {name}
       </p>

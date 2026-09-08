@@ -9,7 +9,7 @@ import { str } from "@/lib/format";
 import { loadReport } from "@/lib/tracker-report";
 import { signContactToken } from "@/lib/tokens";
 import { missingFor, itemLabel } from "@/lib/checklist";
-import { createFollowUpCampaign, regenerateTrackerSummary, removeTrackerRow, saveTrackerMeta } from "./actions";
+import { createFollowUpCampaign, regenerateTrackerSummary, removeTrackerRow, saveTrackerMeta , refreshResponsesAction } from "./actions";
 import { NoteCell, StatusBadge } from "./tracker-row";
 import { TrackerContactPicker } from "./contact-picker";
 import { CopyLink } from "./copy-link";
@@ -67,6 +67,11 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
 
       <div className="mx-8 mb-3 flex flex-wrap items-center gap-3">
         <TrackerContactPicker dealId={deal.id} />
+        <form action={refreshResponsesAction.bind(null, deal.id)}>
+          <button className="btn-secondary" type="submit" title="Re-reads every team mailbox for these firms: new replies update statuses and notes here and LP requests on the Dashboard. Takes a minute.">
+            Refresh responses
+          </button>
+        </form>
         <form action={regenerateTrackerSummary.bind(null, deal.id)}>
           <button className="btn-secondary" type="submit" title="Rewrites the feedback themes and items needed from the notes below. Also happens on its own whenever you save a note.">
             Rewrite from notes

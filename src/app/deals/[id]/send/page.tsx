@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { currentUser } from "@/lib/current-user";
 import { PageHeader } from "@/components/ui";
 import { dealFiles, syncSendDrafts, usualRecipients } from "@/lib/send-deal";
 import { SendClient, type Firm, type SendState } from "./send-client";
@@ -20,6 +21,8 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   const house = templates.find((t) => t.name.startsWith("Deal email (house")) ?? templates[0];
 
   const files = await dealFiles(deal.id).catch(() => []);
+  const me = await currentUser();
+  const team = (await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { name: true, email: true }, orderBy: { name: "asc" } })).filter((u) => u.email && u.email.toLowerCase() !== me?.email?.toLowerCase()).map((u) => ({ name: u.name, email: u.email! }));
   const sendState = ((): SendState | null => {
     try {
       const st = (JSON.parse(deal.details || "{}") as { sendState?: SendState }).sendState;
@@ -58,7 +61,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
           </Link>
         }
       />
-      <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size }))} saved={sendState} />
+      <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size }))} saved={sendState} team={team} />
     </>
   );
 }
