@@ -13,7 +13,7 @@ always available. This guide is for *building* the CRM with Claude Code from a s
    ```powershell
    mkdir C:\Users\<you>\Projects
    cd C:\Users\<you>\Projects
-   git clone https://github.com/<github-user>/rjl-crm.git
+   git clone https://github.com/RJLCapitalAdvisors/RJL-CRM.git rjl-crm
    cd rjl-crm
    npm install
    ```
@@ -34,7 +34,7 @@ always available. This guide is for *building* the CRM with Claude Code from a s
 ## Every day
 
 - Start of day: `git pull` (gets what was done on the other machine).
-- End of day: commit and `git push` (Claude does this for you when you say "save our work").
+- End of day: commit and push. Claude commits; the push is one command you run: `git push` (Claude will hand it to you).
 - Deploy to the live site: `npx vercel --prod --yes` (Claude does this after each change).
 
 ## What lives where
