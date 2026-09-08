@@ -51,7 +51,10 @@ export async function bestContactForCompany(companyId: string) {
 async function sponsorRecipient(dealId: string, sponsorCompanyId: string | null) {
   const sent = await prisma.activity.findFirst({ where: { dealId, type: "EMAIL", direction: "INBOUND", contactId: { not: null } }, orderBy: { occurredAt: "asc" }, include: { contact: true } });
   if (sent?.contact?.email) return sent.contact;
-  return sponsorCompanyId ? bestContactForCompany(sponsorCompanyId) : null;
+  const fromCompany = sponsorCompanyId ? await bestContactForCompany(sponsorCompanyId) : null;
+  if (fromCompany) return fromCompany;
+  const [first] = await sponsorContactsFor(dealId);
+  return first ? prisma.contact.findUnique({ where: { id: first.id } }) : null;
 }
 
 export async function createEngagementDraft(dealId: string, companyIds: string[], mailbox: string): Promise<FollowUpResult & { added?: number }> {
@@ -121,4 +124,42 @@ export async function syncEngagementDrafts(): Promise<number> {
     }
   }
   return moved;
+}
+
+/**
+ * The sponsor-side people for a deal, in order of confidence: contacts at the sponsor company we usually
+ * email (or all of them), else external people on the deal's own email threads who are not LPs on the
+ * report, else the person who sent the deal in. Never empty when any email about the deal exists.
+ */
+export async function sponsorContactsFor(dealId: string): Promise<{ id: string; email: string; firstName: string | null }[]> {
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { sponsorCompany: { include: { contacts: { where: { email: { not: null } } } } } } });
+  if (!deal) return [];
+  const pick = (cs: { id: string; email: string | null; firstName: string | null }[]) => cs.filter((c) => c.email).map((c) => ({ id: c.id, email: c.email!, firstName: c.firstName }));
+  if (deal.sponsorCompany?.contacts.length) {
+    const { usualRecipients } = await import("@/lib/send-deal");
+    const ids = await usualRecipients(deal.sponsorCompany.id, deal.sponsorCompany.contacts);
+    const usual = deal.sponsorCompany.contacts.filter((c) => ids.includes(c.id));
+    return pick(usual.length ? usual : deal.sponsorCompany.contacts);
+  }
+  // people on the deal's email threads who are not investors on the report
+  const lpCompanyIds = new Set((await prisma.dealInvestor.findMany({ where: { dealId }, select: { contact: { select: { companyId: true } } } })).map((r) => r.contact.companyId).filter(Boolean));
+  const acts = await prisma.activity.findMany({ where: { dealId, type: "EMAIL", contactId: { not: null } }, include: { contact: true }, orderBy: { occurredAt: "desc" }, take: 50 });
+  const seen = new Map<string, { id: string; email: string; firstName: string | null }>();
+  for (const a of acts) {
+    const c = a.contact!;
+    if (!c.email || (c.companyId && lpCompanyIds.has(c.companyId)) || /@(rjlcapadvisors|rjlequities)\.com$/i.test(c.email)) continue;
+    if (!seen.has(c.id)) seen.set(c.id, { id: c.id, email: c.email, firstName: c.firstName });
+  }
+  if (seen.size) {
+    // remember the link so the next lookup is instant
+    const first = acts.find((a) => a.contact?.id === [...seen.keys()][0])?.contact;
+    if (first?.companyId && !deal.sponsorCompanyId) await prisma.deal.update({ where: { id: dealId }, data: { sponsorCompanyId: first.companyId } }).catch(() => {});
+    return [...seen.values()];
+  }
+  const intake = await prisma.dealIntake.findFirst({ where: { dealId }, select: { fromEmail: true } });
+  if (intake?.fromEmail) {
+    const c = await prisma.contact.findUnique({ where: { email: intake.fromEmail.toLowerCase() } });
+    if (c?.email) return pick([c]);
+  }
+  return [];
 }

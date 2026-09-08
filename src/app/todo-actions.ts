@@ -76,15 +76,13 @@ export async function openMomentumDraft(momentumId: string) {
     // LP request: a fresh email to the sponsor team listing what the investor asked for
     if (m.kind === "LP_ASK") {
       const { createDraft, getMessage, outlookDesktopLink } = await import("@/lib/graph");
-      const { usualRecipients } = await import("@/lib/send-deal");
-      const deal = await prisma.deal.findUnique({ where: { id: m.dealId }, include: { sponsorCompany: { include: { contacts: { where: { email: { not: null } } } } } } });
+      const { sponsorContactsFor } = await import("@/lib/engagement");
+      const deal = await prisma.deal.findUnique({ where: { id: m.dealId }, select: { propertyName: true, name: true } });
       if (!deal) return { ok: false as const, reason: "Deal not found." };
-      const people = deal.sponsorCompany?.contacts ?? [];
-      const ids = deal.sponsorCompany ? await usualRecipients(deal.sponsorCompany.id, people) : [];
-      const to = people.filter((p) => ids.includes(p.id)).map((p) => p.email!);
-      if (!to.length && people[0]?.email) to.push(people[0].email);
-      if (!to.length) return { ok: false as const, reason: "No sponsor email on file for this deal." };
-      const firstName = people.find((p) => p.email === to[0])?.firstName;
+      const people = await sponsorContactsFor(m.dealId);
+      const to = people.map((p) => p.email);
+      if (!to.length) return { ok: false as const, reason: "No sponsor contact found for this deal. Link the sponsor company on the deal ticket." };
+      const firstName = people[0]?.firstName;
       const asks = m.summary.replace(/^.*?asks:\s*/, "").split(";").map((s) => s.trim()).filter(Boolean);
       const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
       const html = `<html><body><div style="${F}"><p style="margin:0 0 10pt 0;${F}">Hi${firstName ? ` ${firstName}` : ""} - hope you are well. ${m.party} came back on ${deal.propertyName ?? deal.name} with a few requests:</p><ul style="margin:0 0 10pt 18pt;">${asks.map((x) => `<li style="margin:0;${F}">${x}</li>`).join("")}</ul><p style="margin:0 0 10pt 0;${F}">Could you send these over when you get a chance and I will pass them along.</p>${await signatureFor(me.email)}</div></body></html>`;
