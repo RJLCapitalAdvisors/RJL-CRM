@@ -186,10 +186,16 @@ export async function syncFollowUpDrafts(): Promise<number> {
 /** Reply-all draft on the latest message of a thread (found by Internet Message-ID), body = just the signature. */
 export async function createThreadReplyDraft(mailbox: string, internetMessageId: string): Promise<FollowUpResult> {
   if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
-  const found = await graph<{ value: GraphMessage[] }>(`/users/${encodeURIComponent(mailbox)}/messages?$filter=internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'&$select=id,subject`);
-  const msg = found.value[0];
-  if (!msg) return { ok: false, reason: "That email is not in your mailbox (it may be in a teammate's)." };
-  const draft = await createReplyAllDraft(mailbox, msg.id);
+  const found = await graph<{ value: (GraphMessage & { isDraft?: boolean })[] }>(`/users/${encodeURIComponent(mailbox)}/messages?$filter=internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'&$select=id,subject,isDraft`);
+  // a discarded reply draft (often left in Deleted Items) cannot be replied to; only a real sent or received message will do
+  const msg = found.value.find((m) => !m.isDraft);
+  if (!msg) return { ok: false, reason: found.value.length ? "That message is only a draft here." : "That email is not in your mailbox (it may be in a teammate's)." };
+  let draft: GraphMessage;
+  try {
+    draft = await createReplyAllDraft(mailbox, msg.id);
+  } catch (e) {
+    return { ok: false, reason: `Outlook would not build a reply on that message: ${String(e instanceof Error ? e.message : e).slice(0, 120)}` };
+  }
   const sig = await signatureFor(mailbox);
   await updateDraftBody(mailbox, draft.id, insertAtTop(draft.body?.content ?? "", `<div style="${FONT}"><p style="margin:0 0 12pt 0;${FONT}"><br></p>${sig}<br></div>`));
   const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");

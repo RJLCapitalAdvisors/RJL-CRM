@@ -50,9 +50,10 @@ export async function scanIntros(mailbox: string): Promise<{ found: number; upda
     let replies = 0;
     if (m.conversationId) {
       try {
-        const thread = await pageAll(`/users/${q(mailbox)}/messages?$filter=conversationId eq '${m.conversationId.replace(/'/g, "''")}'&$select=id,internetMessageId,receivedDateTime,sentDateTime,from,toRecipients,ccRecipients&$top=50`, 100);
+        const thread = await pageAll(`/users/${q(mailbox)}/messages?$filter=conversationId eq '${m.conversationId.replace(/'/g, "''")}'&$select=id,internetMessageId,receivedDateTime,sentDateTime,from,toRecipients,ccRecipients,isDraft&$top=50`, 100);
         const internal = (a?: string) => !a || /@(rjlcapadvisors|rjlequities|livikapital).com$/i.test(a);
         for (const t of thread) {
+          if ((t as { isDraft?: boolean }).isDraft) continue; // a discarded reply draft is not activity and cannot be replied to
           // an internal-only side conversation (a teammate replying just to us) is not activity with the parties
           const everyone = [t.from?.emailAddress.address, ...(t.toRecipients ?? []).map((r) => r.emailAddress.address), ...(t.ccRecipients ?? []).map((r) => r.emailAddress.address)];
           if (everyone.every(internal)) continue;
