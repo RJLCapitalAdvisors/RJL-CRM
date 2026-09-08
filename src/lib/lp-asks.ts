@@ -39,8 +39,18 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     // which deal: the one on the email, else the single active deal this firm is on the report of
     let dealId = a.dealId;
     if (!dealId) {
-      const rows = await prisma.dealInvestor.findMany({ where: { contact: { companyId: a.companyId! }, deal: { stage: { in: [...ACTIVE_STAGES] } }, status: { gte: 2 } }, select: { dealId: true }, distinct: ["dealId"] });
+      // which of the deals this firm was sent is the email about: subject words, else the one we emailed them about most recently
+      const rows = await prisma.dealInvestor.findMany({ where: { contact: { companyId: a.companyId! }, deal: { stage: { in: [...ACTIVE_STAGES] } }, status: { gte: 2 } }, include: { deal: { select: { id: true, propertyName: true, name: true, city: true } } }, orderBy: { updatedAt: "desc" } });
       if (rows.length === 1) dealId = rows[0].dealId;
+      else if (rows.length > 1) {
+        const subj = (a.subject ?? "").toLowerCase();
+        const bySubject = rows.find((r) => [r.deal.propertyName ?? r.deal.name, r.deal.city ?? ""].join(" ").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3 && !["retail", "portfolio", "recap", "deal", "opportunity", "capital", "intros"].includes(w)).some((w) => subj.includes(w)));
+        if (bySubject) dealId = bySubject.dealId;
+        else {
+          const lastOut = await prisma.activity.findFirst({ where: { companyId: a.companyId!, type: "EMAIL", direction: "OUTBOUND", dealId: { in: rows.map((r) => r.dealId) } }, orderBy: { occurredAt: "desc" }, select: { dealId: true } });
+          dealId = lastOut?.dealId ?? rows[0].dealId;
+        }
+      }
     }
     if (!dealId) {
       await prisma.lpAskScan.create({ data: { externalId: a.externalId!, result: "no-deal" } }).catch(() => {});
