@@ -34,6 +34,21 @@ async function pageThrough(mailbox: string, folder: "sentitems" | "inbox", since
 }
 
 /** The deal an email is about: its name in the subject; else, for someone on a deal's report or at its sponsor, the city or a property word. */
+/** A contact imported without a name gets it from the display name on the first email we see them on. */
+async function fillContactName(contactId: string, displayName: string | undefined) {
+  if (!displayName || displayName.includes("@")) return;
+  let n = displayName.replace(/^["']|["']$/g, "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+  if (n.includes(",")) {
+    const [l, f] = n.split(",").map((x) => x.trim());
+    n = `${f} ${l}`;
+  }
+  const parts = n.split(/\s+/).filter((x) => x && !/^(mr|mrs|ms|dr)\.?$/i.test(x));
+  if (!parts.length || parts.length > 4) return;
+  const c = await prisma.contact.findUnique({ where: { id: contactId }, select: { firstName: true, lastName: true } });
+  if (!c || (c.firstName && c.firstName.trim())) return;
+  await prisma.contact.update({ where: { id: contactId }, data: { firstName: parts[0], lastName: parts.length > 1 ? parts.slice(1).join(" ") : c.lastName } }).catch(() => null);
+}
+
 export async function dealResolver() {
   const activeDeals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, investors: { select: { contactId: true } } } });
   const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null) =>
@@ -73,6 +88,7 @@ export async function syncMailbox(mailbox: string): Promise<{ scanned: number; l
       if (c) {
         contactId = c.id;
         companyId = c.companyId;
+        await fillContactName(c.id, p.name);
         break;
       }
     }
@@ -134,7 +150,7 @@ export async function syncRecentSent(mailbox: string, hours = 6): Promise<number
     let contactId: string | null = null, companyId: string | null = null;
     for (const p of external) {
       const c = await prisma.contact.findUnique({ where: { email: p.address.toLowerCase() }, select: { id: true, companyId: true } });
-      if (c) { contactId = c.id; companyId = c.companyId; break; }
+      if (c) { contactId = c.id; companyId = c.companyId; await fillContactName(c.id, p.name); break; }
     }
     if (!contactId) continue;
     const when = new Date(msg.sentDateTime ?? msg.receivedDateTime ?? Date.now());
