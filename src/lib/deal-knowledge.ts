@@ -155,3 +155,13 @@ export async function detectMultipleDeals(bodyText: string, attachmentNames: str
   });
   return res.parsed_output?.deals ?? [];
 }
+
+const normName = (s: string) => s.toLowerCase().replace(/(.*?)/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/(the|apartments|apartment|portfolio|deal|llc)/g, "").replace(/s+/g, " ").trim();
+
+/** Rule: one deal, one ticket. An active deal with the same (normalized) name is the same deal. */
+export async function findSameDeal(propertyName: string | null | undefined, excludeId?: string): Promise<{ id: string; name: string } | null> {
+  const key = normName(propertyName ?? "");
+  if (key.length < 4) return null;
+  const deals = await prisma.deal.findMany({ where: { stage: { notIn: ["Deal Lost", "Deal Closed"] }, ...(excludeId ? { id: { not: excludeId } } : {}) }, select: { id: true, name: true, propertyName: true } });
+  return deals.find((d) => normName(d.propertyName ?? d.name) === key) ?? null;
+}

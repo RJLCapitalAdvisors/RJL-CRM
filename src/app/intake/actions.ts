@@ -114,6 +114,13 @@ export async function createDealFromIntake(id: string): Promise<string> {
   const d = applyDealRules({ ...EMPTY, ...(JSON.parse(it.extracted) as Partial<ExtractedDeal>) } as ExtractedDeal);
   const sponsor = d.sponsorName ? await prisma.company.findFirst({ where: { name: { contains: d.sponsorName } }, select: { id: true } }) : null;
   const propertyName = d.propertyName ?? it.subject ?? "New deal";
+  // one deal, one ticket: if we already track this deal, attach the intake to it instead of creating another
+  const { findSameDeal } = await import("@/lib/deal-knowledge");
+  const same = await findSameDeal(propertyName);
+  if (same) {
+    await prisma.dealIntake.update({ where: { id }, data: { dealId: same.id, status: "CONVERTED", notes: `Matched existing deal ${same.name}` } }).catch(() => null);
+    return same.id;
+  }
   const deal = await prisma.deal.create({
     data: {
       name: d.sponsorName ? `${d.sponsorName} | ${propertyName}` : propertyName,

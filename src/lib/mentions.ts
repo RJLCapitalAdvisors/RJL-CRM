@@ -92,6 +92,8 @@ export async function detectMentionedDeals(): Promise<{ threads: number; created
     for (const d of out.deals) {
       if (!d.name.trim()) continue;
       if (existing.some((e) => fuzzyMatch(d.name, e.propertyName ?? e.name))) continue;
+      const { findSameDeal } = await import("@/lib/deal-knowledge");
+      if (await findSameDeal(d.name)) continue; // same deal already on the board under another sponsor/partner
       const [city, state] = d.location.split(",").map((x) => x.trim());
       await prisma.deal.create({
         data: {
