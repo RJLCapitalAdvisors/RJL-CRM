@@ -103,6 +103,13 @@ export async function quietIntros(since = new Date(Date.now() - INTRO_WINDOW_DAY
   const rows = await prisma.intro.findMany({ where: { status: "OPEN", introducedAt: { gte: since }, OR: [{ lastActivityAt: { lt: cutoff } }, { replies: 0, introducedAt: { lt: unanswered } }] }, orderBy: { lastActivityAt: "desc" } });
   const seen = new Map<string, (typeof rows)[number]>();
   for (const r of rows) {
+    if (r.handledAt) {
+      const recips = (JSON.parse(r.recipients || "[]") as string[]).map((x) => x.toLowerCase());
+      const replied = recips.length
+        ? await prisma.activity.findFirst({ where: { type: "EMAIL", direction: "OUTBOUND", occurredAt: { gt: r.handledAt }, contact: { email: { in: recips } } }, select: { id: true } })
+        : null;
+      if (replied || Date.now() - r.handledAt.getTime() < 30 * 60_000) continue; // handled: gone (or give the mailbox sync a moment)
+    }
     const key = r.subject.toLowerCase().replace(/^s*intros*[-:–—]?s*/, "").replace(/s+/g, " ").trim();
     if (!seen.has(key)) seen.set(key, r);
   }

@@ -131,6 +131,7 @@ export async function openIntroDraft(introId: string) {
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
   const intro = await prisma.intro.findUnique({ where: { id: introId } });
   if (!intro) return { ok: false as const, reason: "Gone." };
+  await prisma.intro.update({ where: { id: introId }, data: { handledAt: new Date() } }); // drops off once the reply shows in Sent Items
   const { createThreadReplyDraft, replyToLatestWith, replyViaTeammateCopy } = await import("@/lib/followup");
   try {
     // 1) the intro thread itself: in my mailbox, else from the teammate's copy who sent it

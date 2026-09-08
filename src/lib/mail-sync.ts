@@ -111,6 +111,35 @@ export async function syncMailbox(mailbox: string): Promise<{ scanned: number; l
   return { scanned: messages.length, logged };
 }
 
+/**
+ * Quick pass for the dashboard: only this person's Sent Items from the last few hours, so a follow-up they
+ * just sent is recognized on the very next page load instead of the next full sync.
+ */
+export async function syncRecentSent(mailbox: string, hours = 6): Promise<number> {
+  if (!graphConfigured()) return 0;
+  const since = new Date(Date.now() - hours * 3600_000);
+  const msgs = await pageThrough(mailbox, "sentitems", since).catch(() => [] as Msg[]);
+  let logged = 0;
+  for (const msg of msgs) {
+    const ext = msg.internetMessageId ?? msg.id;
+    if (await prisma.activity.findUnique({ where: { externalId: ext }, select: { id: true } })) continue;
+    const to = (msg.toRecipients ?? []).map((r) => r.emailAddress);
+    const cc = (msg.ccRecipients ?? []).map((r) => r.emailAddress);
+    const external = [...to, ...cc].filter((p) => p?.address && !isInternal(p.address));
+    if (!external.length) continue;
+    let contactId: string | null = null, companyId: string | null = null;
+    for (const p of external) {
+      const c = await prisma.contact.findUnique({ where: { email: p.address.toLowerCase() }, select: { id: true, companyId: true } });
+      if (c) { contactId = c.id; companyId = c.companyId; break; }
+    }
+    if (!contactId) continue;
+    const when = new Date(msg.sentDateTime ?? msg.receivedDateTime ?? Date.now());
+    await prisma.activity.create({ data: { type: "EMAIL", direction: "OUTBOUND", subject: msg.subject ?? "(no subject)", body: msg.bodyPreview ?? null, occurredAt: when, externalId: ext, contactId, companyId, meta: JSON.stringify({ from: msg.from?.emailAddress, to, cc, mailbox, hasAttachments: msg.hasAttachments ?? false }) } }).catch(() => null);
+    logged++;
+  }
+  return logged;
+}
+
 /** Every active team mailbox. Skips quietly when Microsoft is not configured. */
 export async function syncAllMailboxes(): Promise<Record<string, { scanned: number; logged: number } | string>> {
   if (!graphConfigured()) return {};
@@ -128,7 +157,7 @@ export async function syncAllMailboxes(): Promise<Record<string, { scanned: numb
 
 /** Called from page loads: refresh the log in the background if it has been a while. */
 let lastKick = 0;
-export function kickMailSync(minMinutes = 10) {
+export function kickMailSync(minMinutes = 3) {
   if (!graphConfigured() || Date.now() - lastKick < minMinutes * 60_000) return;
   lastKick = Date.now();
   const run = async () => {

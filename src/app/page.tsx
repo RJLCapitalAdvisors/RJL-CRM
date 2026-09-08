@@ -11,7 +11,7 @@ import { DraftButton } from "./draft-button";
 import { listMomentum } from "@/lib/momentum";
 import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
 import { currentUser } from "@/lib/current-user";
-import { kickMailSync } from "@/lib/mail-sync";
+import { kickMailSync, syncRecentSent } from "@/lib/mail-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +57,7 @@ function Window({ title, count, children, empty }: { title: string; count: numbe
 export default async function Dashboard() {
   kickMailSync();
   const me = await currentUser();
+  if (me) await syncRecentSent(me.email).catch(() => 0); // what you just sent counts right away
   const showCriteria = Boolean(me?.canEditCriteria);
   const [proposals, quiet, momentum, intros, readyDeals] = await Promise.all([
     showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING", createdAt: { gte: HOME_SINCE } }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]),

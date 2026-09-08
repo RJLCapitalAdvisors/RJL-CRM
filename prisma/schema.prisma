@@ -400,6 +400,7 @@ model Intro {
   lastActivityAt DateTime
   lastMessageId  String? // Internet Message-ID of the latest message in the thread (Handle replies to it)
   replies        Int      @default(0) // messages in the thread after the intro
+  handledAt      DateTime? // Handle was clicked; disappears once a reply to the parties shows up in Sent Items
   status         String   @default("OPEN") // OPEN | DISMISSED | DONE
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
