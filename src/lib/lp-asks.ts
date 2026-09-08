@@ -43,6 +43,10 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     // something else (an intro, another deal) and must not be pinned to any ticket.
     const rows = await prisma.dealInvestor.findMany({ where: { contact: { companyId: a.companyId! }, deal: { stage: { in: [...ACTIVE_STAGES] } }, status: { gte: 2 } }, include: { deal: { select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true } } }, orderBy: { updatedAt: "desc" } });
     const candidates = rows.map((r) => r.deal).filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
+    if (a.dealId && !candidates.some((x) => x.id === a.dealId)) {
+      const linked = await prisma.deal.findFirst({ where: { id: a.dealId, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true } });
+      if (linked) candidates.unshift(linked);
+    }
     let dealId: string | null = a.dealId && candidates.some((x) => x.id === a.dealId) ? a.dealId : null;
     if (!dealId) dealId = candidates.find((x) => subjectMatchesDeal(a.subject, x) || houseSubjectMatches(a.subject, x))?.id ?? null;
     if (!candidates.length) {
@@ -85,7 +89,12 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     if (!parsed) continue;
     // progress report: note + status
     const dateTag = a.occurredAt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    const reportRows = await prisma.dealInvestor.findMany({ where: { dealId, contact: { companyId: a.companyId! } } });
+    let reportRows = await prisma.dealInvestor.findMany({ where: { dealId, contact: { companyId: a.companyId! } } });
+    if (!reportRows.length && a.contactId) {
+      // the firm answered a deal email but was never put on the report (sent by hand): add it as Deal Sent first
+      await prisma.dealInvestor.create({ data: { dealId, contactId: a.contactId, status: 2, updatedAt: a.occurredAt } }).catch(() => null);
+      reportRows = await prisma.dealInvestor.findMany({ where: { dealId, contactId: a.contactId } });
+    }
     const newStatus = parsed.stance === "pass" ? 8 : parsed.stance === "interested" ? 5 : parsed.stance === "reviewing" ? 4 : null;
     for (const r of reportRows) {
       const note = parsed.note ? `${parsed.note} (${dateTag})` : null;
