@@ -127,6 +127,11 @@ export function metrics(d: D): string[] {
   if (!dev && y1) out.push(`Year 1 Cap Rate: ${pct(y1)}`);
   const yoc = n(d.yieldOnCost);
   if (yoc) out.push(`Yield on Cost at Stabilization: ${pct(yoc)}`);
+  else if (!dev && t12 && n(d.purchasePrice) && n(d.totalCapitalization)) {
+    // no yield on cost stated: in-place NOI over all-in cost, from the going-in cap rate and the purchase price
+    const goingIn = (t12 * (n(d.purchasePrice) as number)) / (n(d.totalCapitalization) as number);
+    if (goingIn > 0 && goingIn < 30) out.push(`Going-In Yield on Cost: ${pct(Math.round(goingIn * 100) / 100)}`);
+  }
   const irr = n(d.irr);
   const em = n(d.equityMultiple);
   const hold = s(d.holdPeriod);

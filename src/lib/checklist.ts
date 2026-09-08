@@ -15,7 +15,7 @@ export type ChecklistItem = {
   strategy: ("Acquisitions" | "Development")[];
   onlyAssetClasses?: string[]; // include only for these classes
   excludeAssetClasses?: string[]; // skip for these classes
-  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose" | "purchasePrice"; // maps to a Deal column
+  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose" | "purchasePrice" | "yieldOnCost"; // maps to a Deal column
 };
 
 const RESIDENTIAL = ["Multifamily", "Build-For-Rent (SFR)", "Student Housing", "Senior Housing", "Mixed Use"];
@@ -26,6 +26,7 @@ export const CHECKLIST: ChecklistItem[] = [
   { key: "occupancy", label: "Current occupancy", question: "Current physical/economic occupancy (%)", kind: "number", strategy: ["Acquisitions"], excludeAssetClasses: ["Land"], core: "occupancy" },
   { key: "leaseTradeOut", label: "Lease trade-out report", question: "Recent lease trade-out report showing new vs. expiring rents", kind: "doc", strategy: ["Acquisitions"], onlyAssetClasses: RESIDENTIAL },
   { key: "insuranceTaxes", label: "How insurance and taxes are underwritten", devLabel: "How stabilized insurance and taxes are calculated", question: "Color on how insurance and real estate taxes are underwritten (basis, reassessment, quotes)", kind: "text", strategy: ["Acquisitions", "Development"] },
+  { key: "yieldOnCost", label: "Yield on cost at stabilization", devLabel: "Stabilized yield on cost (stabilized NOI over total project cost)", question: "Stabilized NOI over total all-in cost, or the cap rate on all-in cost basis", kind: "number", strategy: ["Acquisitions", "Development"], excludeAssetClasses: ["Land"], core: "yieldOnCost" },
   { key: "businessPlan", label: "Business plan", question: "Explanation of the business plan (value-add, hold period, exit)", kind: "text", strategy: ["Acquisitions"], core: "summary" },
   { key: "capexBudget", label: "Capex budget", question: "Capital expenditure budget and scope", kind: "doc", strategy: ["Acquisitions"], excludeAssetClasses: ["Land"] },
   { key: "sponsorBio", label: "Sponsor bio (overall and local market experience)", question: "Sponsor track record: overall experience and experience in this market", kind: "text", strategy: ["Acquisitions", "Development"], core: "sponsorExperience" },
@@ -70,6 +71,7 @@ export type DealLikeForChecklist = {
   strategy?: string | null;
   assetClass?: string | null;
   occupancy?: number | null;
+  yieldOnCost?: number | null;
   summary?: string | null;
   sponsorExperience?: string | null;
   onMarket?: boolean | null;
@@ -136,6 +138,8 @@ export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): stri
   switch (item.core) {
     case "occupancy":
       return deal.occupancy != null ? `${deal.occupancy}%` : null;
+    case "yieldOnCost":
+      return deal.yieldOnCost != null ? `${deal.yieldOnCost}%` : null;
     case "summary":
       return deal.summary ?? null;
     case "sponsorExperience":

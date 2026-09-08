@@ -116,7 +116,7 @@ const ClaudeOutput = z.object({
   irr: str("Projected IRR percent as a number (18.4)."),
   capRateT12: str("T12 / trailing / going-in cap rate percent as a number."),
   capRateY1: str("Year 1 cap rate percent as a number."),
-  yieldOnCost: str("Yield on cost at stabilization, percent as a number. If pad/outparcel sales pay down basis during the hold: stabilized NOI excluding pad income divided by (total capitalization minus total pad sale net proceeds)."),
+  yieldOnCost: str("Yield on cost, percent as a number, ALWAYS filled when the material allows: stabilized NOI over total all-in cost (total capitalization). Models label it yield on cost, return on cost, stabilized yield, cap rate on all-in cost, cap rate on total cost, or untrended/trended yield; take the stabilized figure if shown, else the going-in cap rate on all-in cost, else compute it from stabilized (or year 3) NOI and total capitalization and say so in confidenceNotes. If pad/outparcel sales pay down basis during the hold: stabilized NOI excluding pad income divided by (total capitalization minus total pad sale net proceeds). Development deals: stabilized NOI over total project cost."),
   cashOnCash: str("Stabilized cash-on-cash percent as a number."),
   holdPeriod: z.enum([...DEAL_HOLD_PERIODS, ""]).describe("Hold period snapped to the closest option (a 3.2-year hold is '3 year'). Empty if not stated."),
   contactName: str("Name of the person who sent the deal."),
