@@ -133,7 +133,7 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
   const { detectLpAsks } = await import("@/lib/lp-asks");
   for (const ask of await detectLpAsks().catch(() => [])) {
     const d = await prisma.deal.findUnique({ where: { id: ask.dealId }, select: { sponsorCompanyId: true, sponsorName: true } });
-    await upsert(ask.dealId, "LP_ASK", ask.lpName, { companyId: d?.sponsorCompanyId ?? null, contactId: ask.contactId, summary: `${ask.lpName} asks: ${ask.asks.join("; ")}`, waitingSince: ask.at, lastMessageId: ask.messageId });
+    await upsert(ask.dealId, "LP_ASK", ask.lpName, { companyId: d?.sponsorCompanyId ?? null, contactId: ask.contactId, summary: `${ask.lpName} asks: ${ask.asks.join("; ")}${ask.answered.length ? ` | Already on the ticket: ${ask.answered.map((x) => `${x.ask} -> ${x.answer.slice(0, 120)}`).join(" / ")}` : ""}`, waitingSince: ask.at, lastMessageId: ask.messageId });
   }
 
   // 4) open action items older than QUIET_DAYS (Fireflies will feed these once connected)

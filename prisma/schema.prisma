@@ -201,6 +201,9 @@ model Deal {
   actions    DealAction[]
 
   createdAt DateTime @default(now())
+  emails    DealEmail[]
+  files     DealFile[]
+  facts     DealFact[]
   updatedAt DateTime @updatedAt
 
   @@index([stage])
@@ -420,4 +423,54 @@ model LpAskScan {
   externalId String   @id
   result     String?
   scannedAt  DateTime @default(now())
+}
+
+/// Every email that reached deals@ about a deal: the original intake and every follow-up (threads are matched on conversationId).
+model DealEmail {
+  id             String   @id @default(cuid())
+  dealId         String
+  deal           Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  messageId      String   @unique // Internet Message-ID
+  graphId        String? // id in the deals@ mailbox
+  conversationId String?
+  subject        String?
+  fromEmail      String?
+  receivedAt     DateTime @default(now())
+  kind           String   @default("FOLLOWUP") // INTAKE | FOLLOWUP
+  createdAt      DateTime @default(now())
+
+  @@index([dealId, receivedAt])
+  @@index([conversationId])
+}
+
+/// Files the sponsor sent on a deal, wherever they arrived; the ticket's Attachments window and the Send deal picker read this.
+model DealFile {
+  id           String   @id @default(cuid())
+  dealId       String
+  deal         Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  name         String
+  size         Int      @default(0)
+  contentType  String?
+  mailbox      String // where the bytes live (deals@)
+  graphId      String // message id in that mailbox
+  attachmentId String
+  fromEmail    String?
+  receivedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@unique([graphId, attachmentId])
+  @@index([dealId, receivedAt])
+}
+
+/// Things the sponsor has told us about a deal (Q&A). Grows with every follow-up; used to answer LP questions.
+model DealFact {
+  id        String   @id @default(cuid())
+  dealId    String
+  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  question  String
+  answer    String
+  source    String? // email subject / date it came from
+  createdAt DateTime @default(now())
+
+  @@index([dealId, createdAt])
 }

@@ -22,7 +22,7 @@ const Out = z.object({
   note: z.string().describe("One line for the progress report, dated by the caller, e.g. 'Reviewing; asked for 5-year model and sponsor markets'."),
 });
 
-export type LpAsk = { dealId: string; lpCompanyId: string; lpName: string; asks: string[]; note: string; stance: string; messageId: string; contactId: string | null; at: Date };
+export type LpAsk = { dealId: string; lpCompanyId: string; lpName: string; asks: string[]; answered: { ask: string; answer: string }[]; note: string; stance: string; messageId: string; contactId: string | null; at: Date };
 
 export async function detectLpAsks(): Promise<LpAsk[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
@@ -97,7 +97,16 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
       const note = parsed.note ? `${parsed.note} (${dateTag})` : null;
       await prisma.dealInvestor.update({ where: { id: r.id }, data: { ...(note ? { note: r.note ? `${r.note} | ${note}` : note, noteDate: a.occurredAt } : {}), ...(newStatus && newStatus > r.status && r.status < 6 ? { status: newStatus } : {}), updatedAt: a.occurredAt } });
     }
-    if (parsed.asks.length) out.push({ dealId, lpCompanyId: a.companyId!, lpName: a.company!.name, asks: parsed.asks, note: parsed.note, stance: parsed.stance, messageId: a.externalId!, contactId: a.contactId, at: a.occurredAt });
+    if (parsed.asks.length) {
+      // anything the sponsor already told us (Questions answered on the ticket) gets surfaced with the ask
+      const { factsFor } = await import("@/lib/deal-knowledge");
+      const answered: { ask: string; answer: string }[] = [];
+      for (const ask of parsed.asks) {
+        const hit = (await factsFor(dealId, ask, 1))[0];
+        if (hit) answered.push({ ask, answer: hit.answer });
+      }
+      out.push({ dealId, lpCompanyId: a.companyId!, lpName: a.company!.name, asks: parsed.asks, answered, note: parsed.note, stance: parsed.stance, messageId: a.externalId!, contactId: a.contactId, at: a.occurredAt });
+    }
   }
   return out;
 }

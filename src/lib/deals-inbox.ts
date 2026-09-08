@@ -5,6 +5,7 @@ import { missingFor, itemLabel } from "@/lib/checklist";
 import { intro, metricsHtml, subjectLine } from "@/lib/deal-copy";
 import { processIntake } from "@/app/intake/actions";
 import { applyForwarderInstructions } from "@/lib/forwarder-notes";
+import { extractDealFacts, matchExistingDeal, mergeIntoDeal, recordDealEmail, recordDealFiles } from "@/lib/deal-knowledge";
 
 /**
  * The deals@ mailbox. Every new email there is a deal someone on the team forwarded:
@@ -74,7 +75,7 @@ async function replyOnThread(msg: Msg, html: string) {
 }
 
 export async function processDealsMessage(messageId: string): Promise<{ dealId: string; replied: boolean } | { skipped: string }> {
-  const msg = await graph<Msg>(`/users/${q(MAILBOX())}/messages/${q(messageId)}?$select=id,internetMessageId,subject,receivedDateTime,hasAttachments,isRead,from,body`);
+  const msg = await graph<Msg>(`/users/${q(MAILBOX())}/messages/${q(messageId)}?$select=id,internetMessageId,subject,receivedDateTime,hasAttachments,isRead,from,body,conversationId`);
   const ext = msg.internetMessageId ?? msg.id;
   if (await prisma.dealIntake.findUnique({ where: { messageId: ext } })) return { skipped: "already processed" };
   const fromAddr = msg.from?.emailAddress.address?.toLowerCase() ?? "";
@@ -85,6 +86,31 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   const rawText = assembleDealText(bodyText, texts);
   const fwd = forwardedSender(bodyText);
   const external = !INTERNAL.test(fromAddr);
+  const cleanSubject = (msg.subject ?? "").replace(/^\s*((fw|fwd|re):\s*)+/i, "");
+  const received = new Date(msg.receivedDateTime ?? Date.now());
+
+  // Is this about a deal we already have? Then it is a follow-up: files and answers join that ticket.
+  const existingId = await matchExistingDeal({ conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: cleanSubject, bodyText, senderEmail: external ? fromAddr : fwd.email });
+  if (existingId) {
+    await recordDealEmail(existingId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "FOLLOWUP" });
+    const files = msg.hasAttachments ? await recordDealFiles(existingId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0) : 0;
+    const facts = await extractDealFacts(existingId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
+    const filled = await mergeIntoDeal(existingId, rawText, cleanSubject).catch(() => 0);
+    if (!external) await applyForwarderInstructions(existingId, bodyText).catch(() => null);
+    const deal = await prisma.deal.findUniqueOrThrow({ where: { id: existingId } });
+    const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
+    const still = missingFor(deal).map((it) => itemLabel(it, deal.strategy));
+    let replied = false;
+    try {
+      await replyOnThread(msg, followUpReplyHtml(deal.propertyName ?? deal.name, `${base}/deals/${deal.id}`, files, facts, filled, still));
+      replied = true;
+    } catch (e) {
+      console.error("deals@ follow-up reply failed", e);
+    }
+    await prisma.dealIntake.create({ data: { source: "WEBHOOK", fromEmail: external ? fromAddr : fwd.email, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, toEmail: MAILBOX(), subject: msg.subject, rawText: rawText.slice(0, 200_000), attachments: JSON.stringify(names), extracted: "{}", missing: "[]", notes: `Follow-up on existing deal ${existingId}`, status: "CONVERTED", messageId: ext } }).catch(() => null);
+    await graph(`/users/${q(MAILBOX())}/messages/${q(msg.id)}`, { method: "PATCH", body: JSON.stringify({ isRead: true }) }).catch(() => {});
+    return { dealId: existingId, replied };
+  }
 
   const intake = await processIntake({
     rawText,
@@ -96,6 +122,9 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     attachments: names,
   });
   await prisma.dealIntake.update({ where: { id: intake.id }, data: { messageId: ext } });
+  await recordDealEmail(intake.dealId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "INTAKE" }).catch(() => null);
+  if (msg.hasAttachments) await recordDealFiles(intake.dealId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0);
+  await extractDealFacts(intake.dealId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
   // whoever forwarded it to deals@ owns the deal
   const owner = fromAddr ? await prisma.user.findFirst({ where: { email: { equals: fromAddr, mode: "insensitive" } } }) : null;
   if (owner) await prisma.deal.update({ where: { id: intake.dealId }, data: { ownerId: owner.id } });
@@ -156,4 +185,14 @@ export async function sendDealsReply(dealId: string): Promise<boolean> {
   const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
   await replyOnThread(msg, replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`));
   return true;
+}
+
+
+function followUpReplyHtml(name: string, link: string, files: number, facts: number, filled: number, still: string[]) {
+  const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
+  const li = (s: string) => `<li style="margin:0;${F}">${s}</li>`;
+  return `<div style="${F}">
+<p style="margin:0 0 10pt 0;${F}">Added to <a href="${link}">${name}</a>: ${files} file${files === 1 ? "" : "s"} to Attachments, ${facts} answer${facts === 1 ? "" : "s"} to Questions answered${filled ? `, ${filled} ticket field${filled === 1 ? "" : "s"} filled in` : ""}.</p>
+${still.length ? `<p style="margin:0 0 4pt 0;${F}"><b>Still missing:</b></p><ul style="margin:0 0 10pt 18pt;">${still.map(li).join("")}</ul>` : `<p style="margin:0 0 10pt 0;${F}">Checklist is complete.</p>`}
+</div>`;
 }

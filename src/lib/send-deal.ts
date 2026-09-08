@@ -95,6 +95,15 @@ const isOM = (n: string) => /\.pdf$/i.test(n);
  * message in that same thread (sponsor replies with more docs). Images and signature logos are left out.
  */
 export async function dealFiles(dealId: string): Promise<DealFile[]> {
+  // the ticket's Attachments window is the source of truth once it has entries
+  const recorded = await prisma.dealFile.findMany({ where: { dealId }, orderBy: { receivedAt: "desc" } });
+  if (recorded.length) {
+    const seen = new Set<string>();
+    return recorded
+      .filter((f) => (seen.has(f.name.toLowerCase()) ? false : (seen.add(f.name.toLowerCase()), true)))
+      .map((f) => ({ key: `${f.graphId}::${f.attachmentId}`, mailbox: f.mailbox, messageId: f.graphId, attachmentId: f.attachmentId, name: f.name, size: f.size, contentType: f.contentType, from: f.fromEmail ?? "", receivedAt: f.receivedAt.toISOString() }))
+      .sort((a, b) => Number(isModel(b.name) || isOM(b.name)) - Number(isModel(a.name) || isOM(a.name)));
+  }
   const it = await prisma.dealIntake.findFirst({ where: { dealId, messageId: { not: null } } });
   if (!it?.messageId || !graphConfigured()) return [];
   const q = encodeURIComponent;
