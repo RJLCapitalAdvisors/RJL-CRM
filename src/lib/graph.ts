@@ -149,8 +149,8 @@ export async function addAttachment(mailbox: string, messageId: string, file: { 
   const CHUNK = 327_680 * 12; // Graph upload sessions want chunks in multiples of 320 KiB (a plain 4 MB chunk is rejected with 400)
   for (let s = 0; s < bytes.byteLength; s += CHUNK) {
     const e = Math.min(s + CHUNK, bytes.byteLength);
-    const res = await fetch(session.uploadUrl, { method: "PUT", headers: { "Content-Length": String(e - s), "Content-Range": `bytes ${s}-${e - 1}/${bytes.byteLength}` }, body: bytes.slice(s, e) });
-    if (!res.ok) throw new Error(`upload failed ${res.status}`);
+    const res = await fetch(session.uploadUrl, { method: "PUT", headers: { "Content-Length": String(e - s), "Content-Range": `bytes ${s}-${e - 1}/${bytes.byteLength}`, "Content-Type": "application/octet-stream" }, body: bytes.slice(s, e) });
+    if (!res.ok) throw new Error(`upload failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
   }
 }
 
