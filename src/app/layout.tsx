@@ -5,6 +5,8 @@ import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search
 import { currentUser } from "@/lib/current-user";
 import "./globals.css";
 import { NavLink } from "@/components/nav-link";
+import { DealContextNav } from "@/components/deal-context-nav";
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
   title: { default: "RJL CRM", template: "%s · RJL CRM" },
@@ -35,10 +37,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           </Link>
           <nav className="flex flex-1 flex-col gap-1 px-3">
             {nav.map((n) => (
-              <NavLink key={n.href} href={n.href}>
-                <n.icon className="h-4 w-4" />
-                {n.label}
-              </NavLink>
+              <div key={n.href}>
+                <NavLink href={n.href}>
+                  <n.icon className="h-4 w-4" />
+                  {n.label}
+                </NavLink>
+                {n.href === "/deals" && (
+                  <Suspense fallback={null}>
+                    <DealContextNav />
+                  </Suspense>
+                )}
+              </div>
             ))}
           </nav>
           <div className="px-5 py-4 text-xs text-muted">

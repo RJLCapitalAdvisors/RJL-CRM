@@ -1,7 +1,8 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useId, useState, useTransition, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { DEAL_STAGES } from "@/lib/taxonomy";
@@ -99,6 +100,15 @@ function Column({ stage, deals, total, truncated, preview }: { stage: string; de
 function Card({ deal, overlay = false }: { deal: BoardDeal; overlay?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal.id, disabled: overlay });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
+  const router = useRouter();
+  const down = useRef<{ x: number; y: number } | null>(null);
+  // a click anywhere on the card opens the ticket; moving more than a few pixels is a drag, not a click
+  const openIfClick = (e: React.MouseEvent) => {
+    if (overlay || !down.current) return;
+    const moved = Math.hypot(e.clientX - down.current.x, e.clientY - down.current.y);
+    down.current = null;
+    if (moved < 6 && !(e.target as HTMLElement).closest("a,button")) router.push(`/deals/${deal.id}`);
+  };
   const title = deal.propertyName ?? deal.name;
   return (
     <div
@@ -106,7 +116,12 @@ function Card({ deal, overlay = false }: { deal: BoardDeal; overlay?: boolean })
       style={style}
       {...listeners}
       {...attributes}
-      className={`card cursor-grab p-3 text-sm active:cursor-grabbing ${isDragging && !overlay ? "opacity-30" : ""} ${overlay ? "rotate-1 shadow-xl" : ""}`}
+      onPointerDownCapture={(e) => {
+        down.current = { x: e.clientX, y: e.clientY };
+      }}
+      onClick={openIfClick}
+      title="Click to open; drag to move between stages"
+      className={`card cursor-pointer p-3 text-sm active:cursor-grabbing ${isDragging && !overlay ? "opacity-30" : ""} ${overlay ? "rotate-1 shadow-xl" : ""}`}
     >
       {deal.sponsorName && <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-sky-600">{deal.sponsorName}</div>}
       <Link href={`/deals/${deal.id}`} className="mt-0.5 block font-medium leading-snug hover:underline" onPointerDown={(e) => e.stopPropagation()}>
