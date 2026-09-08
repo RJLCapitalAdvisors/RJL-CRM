@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { graph, type GraphAttachment } from "@/lib/graph";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
-import { CHECKLIST, parseDetails } from "@/lib/checklist";
+import { CHECKLIST, parseDetails, reconcileDocuments } from "@/lib/checklist";
 
 /**
  * A deal keeps learning. Every email about it that reaches deals@ after the first one is a follow-up:
@@ -156,7 +156,9 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   maybe("interestRate", d.interestRate); maybe("loanTerm", d.loanTerm); maybe("lenderType", d.lenderType); maybe("irr", d.irr); maybe("equityMultiple", d.equityMultiple);
   maybe("capRateT12", d.capRateT12); maybe("capRateY1", d.capRateY1); maybe("yieldOnCost", d.yieldOnCost); maybe("cashOnCash", d.cashOnCash); maybe("holdPeriod", d.holdPeriod);
   maybe("sponsorExperience", d.sponsorExperience); maybe("expectedClose", (d as { expectedClose?: string | null }).expectedClose ?? null);
-  await prisma.deal.update({ where: { id: dealId }, data: { ...core, details: JSON.stringify(details) } });
+  const fileNames = (await prisma.dealFile.findMany({ where: { dealId }, select: { name: true } })).map((f) => f.name);
+  const reconciled = reconcileDocuments(details as Record<string, string | null | undefined>, fileNames);
+  await prisma.deal.update({ where: { id: dealId }, data: { ...core, details: JSON.stringify(reconciled) } });
   return filled;
 }
 

@@ -21,7 +21,7 @@ export type ChecklistItem = {
 const RESIDENTIAL = ["Multifamily", "Build-For-Rent (SFR)", "Student Housing", "Senior Housing", "Mixed Use"];
 
 export const CHECKLIST: ChecklistItem[] = [
-  { key: "proforma", label: "Proforma / Excel underwriting", devLabel: "Proforma / Excel underwriting (with equity-broker fee included)", question: "Has the sponsor provided the proforma or Excel underwriting model?", kind: "doc", strategy: ["Acquisitions", "Development"] },
+  { key: "proforma", label: "Excel underwriting model (proforma)", devLabel: "Excel underwriting model (proforma, with equity-broker fee included)", question: "Has the sponsor provided the Excel underwriting model?", kind: "doc", strategy: ["Acquisitions", "Development"] },
   { key: "rentRollT12", label: "Rent roll and T12", question: "Current rent roll and trailing-12 operating statement", kind: "doc", strategy: ["Acquisitions"], excludeAssetClasses: ["Land"] },
   { key: "occupancy", label: "Current occupancy", question: "Current physical/economic occupancy (%)", kind: "number", strategy: ["Acquisitions"], excludeAssetClasses: ["Land"], core: "occupancy" },
   { key: "leaseTradeOut", label: "Lease trade-out report", question: "Recent lease trade-out report showing new vs. expiring rents", kind: "doc", strategy: ["Acquisitions"], onlyAssetClasses: RESIDENTIAL },
@@ -95,9 +95,42 @@ export function parseDetails(v: unknown): Record<string, string | null> {
 }
 
 /** Current answer for an item, reading the core column when the item maps to one. */
+/** Wording that means the document is NOT here, however the extractor phrased it. */
+export const NOT_PROVIDED = /not (?:yet )?(?:provided|included|attached|received|available|shared|sent)|no (?:excel|model|full|separate|standalone)|only (?:summary|summarized|in the (?:om|pdf|deck))|missing|to follow|will (?:send|provide|share)|pending|requested|forthcoming|n\/a/i;
+/** Which file names satisfy which document item. */
+export const DOC_FILE_PATTERNS: Record<string, RegExp> = {
+  proforma: /\.(?:xlsx|xlsm|xls)$/i,
+  rentRollT12: /rent ?roll|t-?12|trailing|operating statement|op ?stat/i,
+  leaseTradeOut: /trade[- ]?out/i,
+  capexBudget: /capex|capital (?:budget|expenditure)|renovation budget/i,
+  comps: /\bcomps?\b|comparables/i,
+};
+/**
+ * Make the document items honest against the files actually on hand: the Excel model counts only when an Excel
+ * file is attached; any document answered with "not provided" wording is blank (so it is asked for); a file that
+ * matches an item marks it Received.
+ */
+export function reconcileDocuments<T extends Record<string, string | null | undefined>>(details: T, fileNames: string[]): T {
+  const out: Record<string, string | null | undefined> = { ...details };
+  for (const it of CHECKLIST) {
+    if (it.kind !== "doc") continue;
+    const re = DOC_FILE_PATTERNS[it.key];
+    const file = re ? fileNames.find((n) => re.test(n)) : undefined;
+    if (file) {
+      out[it.key] = `Received - ${file}`;
+      continue;
+    }
+    const cur = (out[it.key] ?? "").trim();
+    if (!cur) continue;
+    if (it.key === "proforma") out[it.key] = ""; // no Excel file, no model, whatever the PDF summarizes
+    else if (NOT_PROVIDED.test(cur)) out[it.key] = "";
+  }
+  return out as T;
+}
+
 export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): string | null {
   const details = parseDetails(deal.details);
-  const own = details[item.key];
+  const own = item.kind === "doc" && details[item.key] && NOT_PROVIDED.test(details[item.key]!) ? null : details[item.key];
   // date and loan-term items are satisfied only by the real ticket fields, never by a free-text note
   if (own && item.core !== "expectedClose" && item.core !== "loanTerm" && item.core !== "purchasePrice") return own;
   switch (item.core) {

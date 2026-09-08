@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { reconcileDocuments } from "@/lib/checklist";
 import { logActivity } from "@/lib/activity";
 import { extractDeal, missingItems, type ExtractedDeal, EMPTY, applyDealRules } from "@/lib/intake";
 import { detailsFromForm } from "@/components/checklist-fields";
@@ -22,6 +23,7 @@ export async function processIntake(input: { rawText: string; subject?: string |
   try {
     const r = await extractDeal(input.rawText, input.subject, input.fromName, input.fromEmail, input.attachments ?? []);
     extracted = r.data;
+    extracted.details = reconcileDocuments(extracted.details ?? {}, input.attachments ?? []);
     extractor = r.extractor;
     notes = r.data.confidenceNotes;
   } catch (e) {
