@@ -89,10 +89,7 @@ export async function openMomentumDraft(momentumId: string) {
       const opening = `Hi${firstName ? ` ${firstName}` : ""} - hope you are well. ${m.party} came back on ${dealName} with a few requests:`;
       const closing = "Could you send these over when you get a chance and I will pass them along.";
       const block = `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">${opening}</p><ul style="margin:0 0 10pt 18pt;">${asks.map((x) => `<li style="margin:0;${F}">${x}</li>`).join("")}</ul><p style="margin:0 0 10pt 0;${F}">${closing}</p>`;
-      const plain = `${opening}
-${asks.map((x) => `• ${x}`).join("
-")}
-${closing}`;
+      const plain = [opening, ...asks.map((x) => `• ${x}`), closing].join("\n");
       // the thread: my latest email to the sponsor about this deal (to the person, else anyone at the firm)
       const words = dealName.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
       const about = (x: { subject: string | null }) => words.some((w) => (x.subject ?? "").toLowerCase().includes(w));
