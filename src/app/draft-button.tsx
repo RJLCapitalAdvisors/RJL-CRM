@@ -32,6 +32,9 @@ export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", 
         <a href={ready.webLink} target="_blank" className="text-xs text-muted hover:underline">
           or open in Outlook web
         </a>
+        <a href="/settings#outlook" className="text-[11px] text-sky-700 hover:underline" title="One-time setup so these buttons open desktop Outlook on this computer">
+          Outlook not opening? Connect it
+        </a>
       </div>
     );
   }

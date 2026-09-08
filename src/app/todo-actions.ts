@@ -154,11 +154,16 @@ export async function dismissMomentum(id: string) {
 // ---------- intros to reconsider ----------
 /** Handle on an intro: reply-all on the latest message of that thread (from your mailbox), blank, with your signature. */
 export async function openIntroDraft(introId: string) {
+  const r = await openIntroDraftInner(introId);
+  if (r.ok) await prisma.intro.update({ where: { id: introId }, data: { handledAt: new Date() } }).catch(() => null); // marked handled; drops off once the reply shows in Sent Items
+  return r;
+}
+
+async function openIntroDraftInner(introId: string) {
   const me = await currentUser();
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
   const intro = await prisma.intro.findUnique({ where: { id: introId } });
   if (!intro) return { ok: false as const, reason: "Gone." };
-  await prisma.intro.update({ where: { id: introId }, data: { handledAt: new Date() } }); // drops off once the reply shows in Sent Items
   const { createThreadReplyDraft, replyToLatestWith, replyViaTeammateCopy } = await import("@/lib/followup");
   try {
     // 1) the intro thread itself: in my mailbox, else from the teammate's copy who sent it

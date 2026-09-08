@@ -138,6 +138,7 @@ export default async function Dashboard() {
                     <div className="font-semibold">{i.partyA && i.partyB ? `${i.partyA} | ${i.partyB}` : i.subject.replace(/^\s*intro\b\s*[-:–—]?\s*/i, "")}</div>
                     <div className="truncate text-xs text-muted">
                       {i.introducedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })} by {i.mailbox.split("@")[0]} · quiet {days(i.lastActivityAt)}d · {i.replies} repl{i.replies === 1 ? "y" : "ies"}
+                      {i.handledAt && <span className="text-sky-700"> · handled {i.handledAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}, drops off when your reply is sent</span>}
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-0.5">

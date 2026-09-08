@@ -108,7 +108,7 @@ export async function quietIntros(since = new Date(Date.now() - INTRO_WINDOW_DAY
       const replied = recips.length
         ? await prisma.activity.findFirst({ where: { type: "EMAIL", direction: "OUTBOUND", occurredAt: { gt: r.handledAt }, contact: { email: { in: recips } } }, select: { id: true } })
         : null;
-      if (replied || Date.now() - r.handledAt.getTime() < 30 * 60_000) continue; // handled: gone (or give the mailbox sync a moment)
+      if (replied) continue; // gone once the reply is in Sent Items; until then it stays, marked handled
     }
     const key = r.subject.toLowerCase().replace(/^s*intros*[-:–—]?s*/, "").replace(/s+/g, " ").trim();
     if (!seen.has(key)) seen.set(key, r);

@@ -46,3 +46,13 @@ always available. This guide is for *building* the CRM with Claude Code from a s
 | Source code | Git repo on GitHub + each laptop | GitHub |
 | Secrets (`.env`) | Each laptop + your password manager | You |
 | Plan and decisions | `docs/PROJECT-NOTES.md` (in Git) and `CRM Build Plan.md` (SharePoint) | GitHub / SharePoint |
+
+## Team member: connect Outlook (no repo, 2 minutes)
+
+For anyone who only *uses* the CRM (Aviel, Nikko, Shawn, Esther). Handle / Open in Outlook prepare the draft in your own mailbox, then hand it to desktop Outlook through a per-computer link. Do this once per computer:
+
+1. Sign in to https://rjl-crm.vercel.app with Microsoft (bottom of the sidebar).
+2. Settings -> "Outlook on this computer" -> download and run **Connect RJL CRM to Outlook.bat** (if Windows says it protected your PC: More info -> Run anyway).
+3. Click "Test the Outlook link" on the same page. A confirmation box pops up when it works.
+
+Debugging on your own: the reason a draft could not be prepared shows in red under the Handle button. If the draft was prepared but nothing opened, the link on that computer is the problem (rerun the .bat). Every attempt is logged at `%LOCALAPPDATA%\RJL CRM\last.log`; send that file to Jonathan. The draft itself is always in your Outlook Drafts folder and behind "open in Outlook web".
