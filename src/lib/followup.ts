@@ -156,3 +156,28 @@ export async function createThreadReplyDraft(mailbox: string, internetMessageId:
   const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
   return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: "replyAll", attachments: 0 };
 }
+
+/**
+ * Fallback when the thread we recorded is not in this mailbox (it was in a teammate's or in deals@):
+ * reply-all to the latest email in MY mailbox with that person (preferring one that mentions the deal),
+ * else start a fresh email to them with the deal in the subject. Body is blank with my signature.
+ */
+export async function replyToLatestWith(mailbox: string, email: string, subjectHint: string, dealWords: string[] = []): Promise<FollowUpResult> {
+  if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
+  const sent = await sentMessagesTo(mailbox, email, 15).catch(() => [] as GraphMessage[]);
+  const about = (m: GraphMessage) => dealWords.some((w) => (m.subject ?? "").toLowerCase().includes(w));
+  const original = sent.find(about) ?? sent[0];
+  const sig = await signatureFor(mailbox);
+  const blank = `<div style="${FONT}"><p style="margin:0 0 12pt 0;${FONT}"><br></p>${sig}<br></div>`;
+  let draft: GraphMessage;
+  let mode: "replyAll" | "new" = "new";
+  if (original) {
+    draft = await createReplyAllDraft(mailbox, original.id);
+    await updateDraftBody(mailbox, draft.id, insertAtTop(draft.body?.content ?? "", blank));
+    mode = "replyAll";
+  } else {
+    draft = await createDraft(mailbox, { subject: subjectHint, toRecipients: [email], bodyHtml: `<html><body>${blank}</body></html>` });
+  }
+  const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
+  return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode, attachments: 0 };
+}

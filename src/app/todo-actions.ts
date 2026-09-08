@@ -70,15 +70,30 @@ export async function openMomentumDraft(momentumId: string) {
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
   const m = await prisma.momentum.findUnique({ where: { id: momentumId } });
   if (!m) return { ok: false as const, reason: "Gone." };
-  const { createThreadReplyDraft, createFollowUpDraft } = await import("@/lib/followup");
+  const { createThreadReplyDraft, createFollowUpDraft, replyToLatestWith } = await import("@/lib/followup");
   try {
-    if (m.lastMessageId) return await createThreadReplyDraft(me.email, m.lastMessageId);
-    // no thread on record (e.g. an action item): fall back to the deal's tracker row for that contact, else fail politely
+    // 1) the exact thread we recorded, if it is in my mailbox
+    if (m.lastMessageId) {
+      const r = await createThreadReplyDraft(me.email, m.lastMessageId);
+      if (r.ok) return r;
+    }
+    // 2) an LP on the deal's report: the normal deal follow-up
     if (m.contactId) {
       const row = await prisma.dealInvestor.findFirst({ where: { dealId: m.dealId, contactId: m.contactId } });
       if (row) return await createFollowUpDraft(row.id, me.email);
     }
-    return { ok: false as const, reason: "No email thread on record for this yet. Write to them from Outlook." };
+    // 3) the person we are waiting on (sponsor contact, else the company's usual person): latest thread with them in MY mailbox, else a fresh email
+    const deal = await prisma.deal.findUnique({ where: { id: m.dealId }, select: { propertyName: true, name: true, sponsorCompanyId: true } });
+    let contact = m.contactId ? await prisma.contact.findUnique({ where: { id: m.contactId } }) : null;
+    if (!contact?.email) {
+      const { bestContactForCompany } = await import("@/lib/engagement");
+      const cid = m.companyId ?? deal?.sponsorCompanyId ?? null;
+      contact = cid ? await bestContactForCompany(cid) : null;
+    }
+    if (!contact?.email) return { ok: false as const, reason: `No email address on file for ${m.party}. Add one on their contact page.` };
+    const dealName = deal?.propertyName ?? deal?.name ?? "";
+    const words = dealName.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+    return await replyToLatestWith(me.email, contact.email, `RE: ${dealName}`, words);
   } catch (e) {
     return { ok: false as const, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
   }

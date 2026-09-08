@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
  * browsers only launch another app on a real user gesture.
  */
 export type DraftLinks = { ok: true; webLink: string; outlookLink: string | null; messageId: string | null } | { ok: false; reason: string };
-const desktopHref = (r: { outlookLink: string | null; webLink: string; messageId: string | null }) => (r.messageId ? `rjlcrm:open?mid=${encodeURIComponent(r.messageId)}` : r.outlookLink ?? r.webLink);
+const desktopHref = (r: { outlookLink: string | null; webLink: string; messageId: string | null }) => (r.messageId ? `rjlcrm:open?mid=${encodeURIComponent(r.messageId)}${r.outlookLink ? `&eid=${r.outlookLink.replace(/^outlook:/, "")}` : ""}` : r.outlookLink ?? r.webLink);
 
 export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", action, disabled, title }: { label?: string; readyLabel?: string; action: () => Promise<DraftLinks>; disabled?: boolean; title?: string }) {
   const [pending, start] = useTransition();
