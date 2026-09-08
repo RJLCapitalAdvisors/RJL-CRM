@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { graph } from "@/lib/graph";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
+import { mergeNote } from "@/lib/tracker";
 import { houseSubjectMatches, subjectMatchesDeal } from "@/lib/deal-match";
 
 /**
@@ -98,7 +99,7 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const newStatus = parsed.stance === "pass" ? 8 : parsed.stance === "interested" ? 5 : parsed.stance === "reviewing" ? 4 : null;
     for (const r of reportRows) {
       const note = parsed.note ? `${parsed.note} (${dateTag})` : null;
-      await prisma.dealInvestor.update({ where: { id: r.id }, data: { ...(note ? { note: r.note ? `${r.note} | ${note}` : note, noteDate: a.occurredAt } : {}), ...(newStatus && newStatus > r.status && r.status < 6 ? { status: newStatus } : {}), updatedAt: a.occurredAt } });
+      await prisma.dealInvestor.update({ where: { id: r.id }, data: { ...(note ? { note: mergeNote(r.note, note), noteDate: a.occurredAt } : {}), ...(newStatus && newStatus > r.status && r.status < 6 ? { status: newStatus } : {}), updatedAt: a.occurredAt } });
     }
     if (parsed.asks.length) {
       // anything the sponsor already told us (Questions answered on the ticket) gets surfaced with the ask

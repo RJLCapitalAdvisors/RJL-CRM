@@ -33,7 +33,7 @@ export function faqFileName(dealName: string) {
 }
 
 /** The firm logo (public/logo.png): from disk locally, from the site when running on Vercel. */
-async function logoBytes(): Promise<Uint8Array | null> {
+export async function logoBytes(): Promise<Uint8Array | null> {
   try {
     return new Uint8Array(await readFile(path.join(process.cwd(), "public", "logo.png")));
   } catch {

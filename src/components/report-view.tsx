@@ -42,7 +42,8 @@ const RULE = "_".repeat(50);
 
 export function ReportView({ report, slots = {} }: { report: Report; slots?: ReportSlots }) {
   const { deal, name, rows } = report;
-  const address = [deal.propertyAddress, [deal.city, deal.state].filter(Boolean).join(", ")].filter(Boolean).join(", ");
+  const cityState = [deal.city, deal.state].filter(Boolean).join(", ");
+  const address = deal.propertyAddress && deal.city && deal.propertyAddress.toLowerCase().includes(deal.city.toLowerCase()) ? deal.propertyAddress : [deal.propertyAddress, cityState].filter(Boolean).join(", ");
   const themes = (deal.trackerThemes ?? "").split(/\n+/).map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
   const items = (deal.trackerItemsNote ?? "").split(/\n+/).map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
   const showSections = themes.length > 0 || items.length > 0;

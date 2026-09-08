@@ -2,12 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
+import { AttachmentList } from "@/components/attachment-list";
+import { progressReportFileName } from "@/lib/progress-report-pdf";
 import { ReportView } from "@/components/report-view";
 import { AWAITING_RESPONSE, TRACKER_STATUSES, fmtReportDate } from "@/lib/tracker";
 import { AutoSaveForm } from "@/components/autosave-form";
 import { str } from "@/lib/format";
 import { loadReport } from "@/lib/tracker-report";
-import { signContactToken } from "@/lib/tokens";
+import { signContactToken, signFileToken } from "@/lib/tokens";
 import { missingFor, itemLabel } from "@/lib/checklist";
 import { createFollowUpCampaign, regenerateTrackerSummary, removeTrackerRow, saveTrackerMeta , refreshResponsesAction } from "./actions";
 import { NoteCell, StatusBadge } from "./tracker-row";
@@ -28,6 +30,7 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
   const { deal, name, lastUpdated } = report;
   const awaiting = deal.investors.filter((r) => AWAITING_RESPONSE.includes(r.status) && r.contact.email && !r.contact.unsubscribed).length;
   const shareUrl = `${(process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}/share/tracker/${signContactToken(deal.id)}`;
+  const pdfUrl = `/api/deals/${deal.id}/progress-report.pdf?t=${signFileToken(`report:${deal.id}`)}`;
   const checklistGaps = missingFor(deal).map((it) => itemLabel(it, deal.strategy));
   const counts = new Map<number, number>();
   for (const r of deal.investors) counts.set(r.status, (counts.get(r.status) ?? 0) + 1);
@@ -67,6 +70,12 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
 
       <div className="mx-8 mb-3 flex flex-wrap items-center gap-3">
         <TrackerContactPicker dealId={deal.id} />
+        <div className="flex items-center rounded-md border border-line bg-paper" title="Drag this file straight into an Outlook email, or click to download">
+          <AttachmentList files={[{ id: "report-pdf", kind: "faq", name: progressReportFileName(name), size: 0, date: "", url: pdfUrl }]} />
+          <a href={pdfUrl} download className="btn-soft mr-1 px-2.5 py-1 text-xs" title="Download the PDF">
+            Download PDF
+          </a>
+        </div>
         <form action={refreshResponsesAction.bind(null, deal.id)}>
           <button className="btn-secondary" type="submit" title="Re-reads every team mailbox for these firms: new replies update statuses and notes here and LP requests on the Dashboard. Takes a minute.">
             Refresh responses

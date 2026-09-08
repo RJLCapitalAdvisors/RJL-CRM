@@ -17,7 +17,7 @@ export function looksLikeDeparture(subject: string | null | undefined, text: str
 }
 
 /** Queue "remove this contact" for approval (once per contact while pending). */
-export async function proposeContactRemoval(contactId: string, evidence: string, sourceRef?: string | null): Promise<boolean> {
+export async function proposeContactRemoval(contactId: string, evidence: string, sourceRef?: string | null, replacements: string[] = []): Promise<boolean> {
   const c = await prisma.contact.findUnique({ where: { id: contactId }, include: { company: { select: { id: true, name: true } } } });
   if (!c || c.departedAt) return false;
   const pending = await prisma.criteriaProposal.findFirst({ where: { contactId, status: "PENDING", changes: { contains: "removeContact" } } });
@@ -30,8 +30,8 @@ export async function proposeContactRemoval(contactId: string, evidence: string,
       sourceRef: sourceRef ?? null,
       companyId: c.company?.id ?? null,
       contactId,
-      summary: `${who} appears to have left ${firm}`,
-      changes: JSON.stringify([{ field: "removeContact", from: `${who} at ${firm}`, to: "Marked as departed: no more emails, off the pickers", evidence: evidence.replace(/\s+/g, " ").trim().slice(0, 240) }]),
+      summary: `${who} appears to have left ${firm}${replacements.length ? `. New contact there: ${replacements.join(", ")} (added under ${firm})` : ""}`,
+      changes: JSON.stringify([{ field: "removeContact", from: `${who} at ${firm}`, to: `Marked as departed: no more emails, off the pickers${replacements.length ? `. ${replacements.join(", ")} added at ${firm}` : ""}`, evidence: evidence.replace(/\s+/g, " ").trim().slice(0, 240) }]),
     },
   });
   return true;
@@ -50,6 +50,41 @@ function departedNameIn(text: string): string | null {
 function bouncedAddressIn(text: string): string | null {
   const m = text.match(/(?:delivered to|recipient(?: address)?|address|user|mailbox)\s*:?\s*<?([\w.+-]+@[\w-]+\.[\w.-]+)/i) ?? text.match(/<?([\w.+-]+@[\w-]+\.[\w.-]+)>?\s*(?:\(|:)?\s*(?:user unknown|does not exist|not found|rejected|couldn't be found|could not be found)/i);
   return m ? m[1].toLowerCase().replace(/[.,;:]+$/, "") : null;
+}
+
+/**
+ * "Please contact Mike McFadden mmcfadden@brixtoncapital.com": the person the notice points to joins the CRM
+ * under the departed person's company, so the next deal reaches them. Returns the names added or found.
+ */
+export async function addReplacementContacts(text: string, departedContactId: string | null): Promise<string[]> {
+  const departed = departedContactId ? await prisma.contact.findUnique({ where: { id: departedContactId }, select: { companyId: true, email: true } }) : null;
+  const out: string[] = [];
+  // "contact Mike McFadden mmcfadden@...", "reach out to Jason Braidwood at jbraidwood@...", "please email Casey Layton at clayton@..."
+  const re = /(?:contact|reach out to|reach|direct(?:ed)? (?:any |all )?(?:inquiries|questions|requests)[^.]{0,30}? to|email|e-mail|forward(?:ed)? to)\s+([A-Z][\w'’.-]+(?:\s+(?:[A-Z]\.?\s+)?[A-Z][\w'’.-]+){1,2})[^@\n]{0,40}?(?:<|\(|at\s+|:\s*)?([\w.+-]+@[\w-]+\.[\w.-]+)/g;
+  for (const m of text.matchAll(re)) {
+    const name = m[1].replace(/\s+(at|via|by)$/i, "").trim();
+    const email = m[2].toLowerCase().replace(/[.,;:)>]+$/, "");
+    if (/rjlcapadvisors|rjlequities|postmaster|mailer-daemon|noreply|no-reply/i.test(email)) continue;
+    if (departed?.email && email === departed.email.toLowerCase()) continue;
+    const parts = name.split(/\s+/).filter((x) => !/^(mr|mrs|ms|dr)\.?$/i.test(x));
+    const existing = await prisma.contact.findUnique({ where: { email } });
+    if (existing) {
+      // known already: make sure they sit under the firm and have a name
+      const data: { companyId?: string; firstName?: string; lastName?: string } = {};
+      if (!existing.companyId && departed?.companyId) data.companyId = departed.companyId;
+      if (!existing.firstName && parts.length) { data.firstName = parts[0]; data.lastName = parts.slice(1).join(" ") || undefined; }
+      if (Object.keys(data).length) await prisma.contact.update({ where: { id: existing.id }, data }).catch(() => null);
+      out.push(`${[existing.firstName ?? parts[0], existing.lastName ?? parts.slice(1).join(" ")].filter(Boolean).join(" ")} (already in the CRM)`);
+      continue;
+    }
+    // the firm: the departed person's, else any company on the email's domain
+    const domain = email.split("@")[1];
+    const companyId = departed?.companyId ?? (await prisma.company.findFirst({ where: { domain }, select: { id: true } }))?.id ?? null;
+    const phone = text.slice(m.index ?? 0, (m.index ?? 0) + m[0].length + 60).match(/\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/)?.[0] ?? null;
+    await prisma.contact.create({ data: { firstName: parts[0], lastName: parts.slice(1).join(" ") || null, email, companyId, phone } }).catch(() => null);
+    out.push(name);
+  }
+  return out;
 }
 
 /** One inbound email: if it says someone left, queue the removal for that person only. Returns proposals made. */
@@ -80,7 +115,10 @@ export async function noteDepartureIfAny(opts: { subject: string | null; text: s
     }
   }
   let n = 0;
-  for (const id of ids) if (await proposeContactRemoval(id, text, opts.messageId)) n++;
+  for (const id of ids) {
+    const added = BOUNCE_SUBJECT.test(opts.subject ?? "") ? [] : await addReplacementContacts(text, id).catch(() => [] as string[]);
+    if (await proposeContactRemoval(id, text, opts.messageId, added)) n++;
+  }
   return n;
 }
 

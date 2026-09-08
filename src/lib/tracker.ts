@@ -36,3 +36,28 @@ export function fmtReportDate(d: Date | null | undefined) {
   if (!d) return "";
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
+
+const noteWords = (s: string) => new Set(s.toLowerCase().replace(/\(\w{3} \d{1,2}\)/g, "").split(/[^a-z0-9]+/).filter((w) => w.length > 3));
+/** Two note segments about the same thing (same date tag, most words shared) count as one. */
+export function sameNote(a: string, b: string): boolean {
+  const da = a.match(/\((\w{3} \d{1,2})\)\s*$/)?.[1], db = b.match(/\((\w{3} \d{1,2})\)\s*$/)?.[1];
+  if (da && db && da !== db) return false;
+  const A = noteWords(a), B = noteWords(b);
+  if (!A.size || !B.size) return a.trim() === b.trim();
+  let hit = 0;
+  for (const w of A) if (B.has(w)) hit++;
+  return hit / Math.min(A.size, B.size) >= 0.6;
+}
+/** Append a note to a report row unless an equivalent one is already there; segments are joined with " | ". */
+export function mergeNote(existing: string | null | undefined, note: string): string {
+  const parts = (existing ?? "").split(" | ").map((x) => x.trim()).filter(Boolean);
+  if (parts.some((p) => sameNote(p, note))) return parts.join(" | ");
+  return [...parts, note.trim()].join(" | ");
+}
+/** Collapse duplicate segments already sitting in a note. */
+export function dedupeNote(existing: string | null | undefined): string | null {
+  const parts = (existing ?? "").split(" | ").map((x) => x.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const p of parts) if (!out.some((o) => sameNote(o, p))) out.push(p);
+  return out.length ? out.join(" | ") : null;
+}
