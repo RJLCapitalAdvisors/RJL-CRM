@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { houseSubjectMatches, subjectMatchesDeal } from "@/lib/deal-match";
 import { graph, copyAttachment, createDraft, createReplyAllDraft, getMessage, graphConfigured, listAttachments, outlookDesktopLink, recentSent, sentMessagesTo, sentMessagesToDomain, updateDraftBody, type GraphMessage } from "@/lib/graph";
 import { domainOf } from "@/lib/domains";
 import { investorLabel } from "@/lib/tracker";
@@ -81,8 +82,7 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
       if (d.isDraft && d.webLink) {
         const firstN = row.contact.firstName?.trim();
         const sentBefore = await sentMessagesTo(row.followUpMailbox, email, 15).catch(() => [] as GraphMessage[]);
-        const dealWords = (row.deal.propertyName ?? row.deal.name).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
-        const orig = sentBefore.find((m) => dealWords.some((w) => (m.subject ?? "").toLowerCase().includes(w))) ?? sentBefore[0];
+        const orig = sentBefore.find((m) => subjectMatchesDeal(m.subject, row.deal) || houseSubjectMatches(m.subject, row.deal));
         const o = orig ? await getMessage(row.followUpMailbox, orig.id, "id,internetMessageId").catch(() => null) : null;
         return { ok: true, webLink: d.webLink, outlookLink: await outlookDesktopLink(row.followUpMailbox, d.id), messageId: d.internetMessageId ?? null, mode: "replyAll", attachments: 0, replyTo: o?.internetMessageId ? { messageId: o.internetMessageId, greeting: `Hi${firstN ? ` ${firstN}` : ""} - please confirm receipt.`, attachments: Boolean(orig?.hasAttachments) } : undefined };
       }
@@ -96,20 +96,19 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
 
   // The deal email that actually went to this firm. Look at mail to this person first, then to anyone at the
   // firm's domain (the report may list a colleague of the person we really wrote to), matching on the deal name.
-  const dealName = (row.deal.propertyName ?? row.deal.name).toLowerCase();
-  const words = dealName.split(/[^a-z0-9]+/).filter((w) => w.length > 3);
-  const aboutDeal = (m: GraphMessage) => words.some((w) => (m.subject ?? "").toLowerCase().includes(w));
+  // about this deal: its name (whole words) or its house-style subject (opportunity + city + ask). Never another deal's thread.
+  const aboutDeal = (m: GraphMessage) => subjectMatchesDeal(m.subject, row.deal) || houseSubjectMatches(m.subject, row.deal);
   const toPerson = await sentMessagesTo(mailbox, email, 15);
   const dom = row.contact.company?.domain ?? domainOf(email);
   const toFirm = dom ? await sentMessagesToDomain(mailbox, dom, 25) : [];
-  // 1) the deal email itself (to this person, else to anyone at the firm); 2) else the latest thread with the firm
-  const original = toPerson.find(aboutDeal) ?? toFirm.find(aboutDeal) ?? [...toPerson, ...toFirm].sort((a, b) => (b.sentDateTime ?? "").localeCompare(a.sentDateTime ?? ""))[0];
+  // the deal email itself: to this person, else to anyone at the firm. No deal thread means a fresh email, not someone else's thread.
+  const original = toPerson.find(aboutDeal) ?? toFirm.find(aboutDeal);
   if (!original) {
     // a teammate may have sent this LP the deal: reply from their copy, in my mailbox
     const users = (await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { email: true } }).catch(() => [] as { email: string | null }[])).filter((u) => u.email!.toLowerCase() !== mailbox.toLowerCase());
     for (const u of users) {
       const theirs = await sentMessagesTo(u.email!, email, 15).catch(() => [] as GraphMessage[]);
-      const hit = theirs.find(aboutDeal) ?? theirs[0];
+      const hit = theirs.find(aboutDeal);
       if (hit) {
         const full = await getMessage(u.email!, hit.id, "id,internetMessageId").catch(() => null);
         if (full?.internetMessageId) {
