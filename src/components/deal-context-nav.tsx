@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ClipboardList, FileText, Mail, Search, ScrollText } from "lucide-react";
+import { ClipboardList, FileText, Mail, ScrollText } from "lucide-react";
 import { dealNavInfo } from "@/app/deal-nav-actions";
 
 /**
@@ -32,13 +32,12 @@ export function DealContextNav() {
   }, [dealId]);
 
   if (!dealId || !info || info.id !== dealId) return null;
-  const mode = params.get("mode");
+  // the order of the work: ticket, engagement letter (which includes finding the investors), send, then the progress report
   const steps = [
     { href: `/deals/${dealId}`, label: "Ticket", icon: ClipboardList, on: pathname === `/deals/${dealId}` },
-    { href: `/deals/${dealId}/tracker`, label: "Progress report", icon: FileText, on: pathname === `/deals/${dealId}/tracker` },
-    { href: `/investors?dealId=${dealId}`, label: "Find investors", icon: Search, on: pathname === "/investors" && mode !== "engagement" },
-    { href: `/investors?dealId=${dealId}&mode=engagement`, label: "Engagement letter", icon: ScrollText, on: pathname === "/investors" && mode === "engagement" },
+    { href: `/investors?dealId=${dealId}&mode=engagement`, label: "Engagement letter", icon: ScrollText, on: pathname === "/investors" },
     { href: `/deals/${dealId}/send`, label: "Send deal", icon: Mail, on: pathname === `/deals/${dealId}/send` },
+    { href: `/deals/${dealId}/tracker`, label: "Progress report", icon: FileText, on: pathname === `/deals/${dealId}/tracker` },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
