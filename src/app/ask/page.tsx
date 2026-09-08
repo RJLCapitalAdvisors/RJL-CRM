@@ -2,6 +2,8 @@ import { PageHeader } from "@/components/ui";
 import { currentUser } from "@/lib/current-user";
 import { AskClient } from "./ask-client";
 
+export const metadata = { title: "Ask the CRM" };
+
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 

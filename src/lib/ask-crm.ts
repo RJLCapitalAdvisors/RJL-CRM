@@ -5,6 +5,7 @@ import { investorLabel, statusOf } from "@/lib/tracker";
 import { missingFor, itemLabel } from "@/lib/checklist";
 import { listMomentum } from "@/lib/momentum";
 import { quietIntros } from "@/lib/intros";
+import { stripDashes } from "@/lib/style";
 
 /**
  * "Ask the CRM": one chat box over everything the company has put into the CRM. Claude answers from real rows
@@ -225,7 +226,7 @@ export async function askCrm(history: ChatMessage[], userName: string): Promise<
     const toolUses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (res.stop_reason !== "tool_use" || !toolUses.length) {
       const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
-      return { answer: text || "I could not put an answer together. Try asking another way.", lookups };
+      return { answer: stripDashes(text) || "I could not put an answer together. Try asking another way.", lookups };
     }
     messages.push({ role: "assistant", content: res.content });
     const results: Anthropic.ToolResultBlockParam[] = [];

@@ -1,6 +1,8 @@
 import { login } from "./actions";
 import { str } from "@/lib/format";
 
+export const metadata = { title: "Sign in" };
+
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

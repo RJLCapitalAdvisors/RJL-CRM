@@ -16,6 +16,7 @@ const q = (s: string) => encodeURIComponent(s);
 const IMAGE = /\.(png|jpe?g|gif|bmp|svg|webp)$/i;
 export { STOP, words } from "@/lib/deal-match";
 import { words } from "@/lib/deal-match";
+import { stripDashes } from "@/lib/style";
 
 const SameDeal = z.object({ sameDeal: z.boolean().describe("True only if the email is about this exact deal (same property / same capital raise), not merely a similar deal or the same sponsor."), why: z.string().describe("One short line.") });
 
@@ -120,7 +121,7 @@ export async function extractDealFacts(dealId: string, text: string, source: str
     output_config: { format: zodOutputFormat(Facts) },
   });
   const facts = res.parsed_output?.facts ?? [];
-  if (facts.length) await prisma.dealFact.createMany({ data: facts.map((f) => ({ dealId, question: f.question.slice(0, 500), answer: f.answer.slice(0, 2000), source })) });
+  if (facts.length) await prisma.dealFact.createMany({ data: facts.map((f) => ({ dealId, question: stripDashes(f.question).slice(0, 500), answer: stripDashes(f.answer).slice(0, 2000), source })) });
   return facts.length;
 }
 

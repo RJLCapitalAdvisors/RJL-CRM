@@ -6,6 +6,12 @@ import { TemplateForm } from "@/components/template-form";
 import { findUnknownFields } from "@/lib/merge";
 import { deleteTemplate, duplicateTemplate, updateTemplate } from "../actions";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const t = await prisma.emailTemplate.findUnique({ where: { id }, select: { name: true } }).catch(() => null);
+  return { title: t?.name ?? "Template" };
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function TemplatePage({ params }: { params: Promise<{ id: string }> }) {

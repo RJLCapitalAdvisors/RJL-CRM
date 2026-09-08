@@ -3,11 +3,14 @@ import { PageHeader } from "@/components/ui";
 import { claudeConfigured } from "@/lib/intake";
 import { submitPastedEmail } from "./actions";
 
+export const metadata = { title: "Deal intake" };
+
 export const dynamic = "force-dynamic";
 
 /**
  * Fallback for the forward-to mailbox: paste a deal email and it becomes a deal in Deal Received,
  * exactly as a forwarded email will once the mailbox is live.
+
  */
 export default function PasteDealPage() {
   const mailboxLive = Boolean(process.env.RESEND_WEBHOOK_SECRET && process.env.RESEND_API_KEY);

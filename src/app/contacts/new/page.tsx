@@ -4,6 +4,8 @@ import { ContactForm } from "@/components/contact-form";
 import { createContact } from "../actions";
 import { str } from "@/lib/format";
 
+export const metadata = { title: "New contact" };
+
 export default async function NewContactPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const companyId = str(sp.companyId);

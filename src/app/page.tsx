@@ -13,6 +13,8 @@ import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
 import { currentUser } from "@/lib/current-user";
 import { kickMailSync, syncRecentSent } from "@/lib/mail-sync";
 
+export const metadata = { title: "Dashboard" };
+
 export const dynamic = "force-dynamic";
 
 const DAY = 86_400_000;
@@ -66,6 +68,7 @@ export default async function Dashboard() {
     quietIntros(),
     prisma.deal.findMany({ where: { stage: "Engagement Letter Signed" }, include: { owner: { select: { name: true } }, _count: { select: { investors: true } } }, orderBy: { updatedAt: "desc" } }),
   ]);
+
   const companies = new Map((await prisma.company.findMany({ where: { id: { in: proposals.map((p) => p.companyId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   const people = new Map((await prisma.contact.findMany({ where: { id: { in: proposals.map((p) => p.contactId).filter(Boolean) as string[] } }, select: { id: true, firstName: true, lastName: true } })).map((c) => [c.id, [c.firstName, c.lastName].filter(Boolean).join(" ")]));
   const today = new Date();

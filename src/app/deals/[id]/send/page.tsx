@@ -6,6 +6,12 @@ import { PageHeader } from "@/components/ui";
 import { dealFiles, syncSendDrafts, usualRecipients } from "@/lib/send-deal";
 import { SendClient, type Firm, type SendState } from "./send-client";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const d = await prisma.deal.findUnique({ where: { id }, select: { name: true, propertyName: true } });
+  return { title: `Send ${d ? d.propertyName ?? d.name : "deal"}` };
+}
+
 export const dynamic = "force-dynamic";
 
 /** Send deal: pick who at each agreed firm gets it, personalize the first line, review, then drafts land in your Outlook to fire one by one. */

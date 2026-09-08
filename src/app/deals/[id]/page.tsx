@@ -16,6 +16,12 @@ import { engagementGroups } from "@/lib/send-deal";
 import { EmailLog } from "@/components/email-log";
 import { dealEmailRows } from "@/lib/deal-emails";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const d = await prisma.deal.findUnique({ where: { id }, select: { name: true, propertyName: true } });
+  return { title: d ? d.propertyName ?? d.name : "Deal" };
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function DealPage({ params }: { params: Promise<{ id: string }> }) {

@@ -7,6 +7,8 @@ import { fmtDate, fullName, str } from "@/lib/format";
 import { parseList } from "@/lib/taxonomy";
 import { CompanyLogo } from "@/components/company-logo";
 
+export const metadata = { title: "Contacts" };
+
 export const dynamic = "force-dynamic";
 const PAGE = 50;
 const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);

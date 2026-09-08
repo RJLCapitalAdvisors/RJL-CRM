@@ -6,6 +6,8 @@ import { ACTIVE_STAGES } from "@/lib/taxonomy";
 import { AWAITING_RESPONSE, TRACKER_STATUSES } from "@/lib/tracker";
 import { fmtDate } from "@/lib/format";
 
+export const metadata = { title: "Progress reports" };
+
 export const dynamic = "force-dynamic";
 const DAY = 86_400_000;
 
@@ -15,6 +17,7 @@ async function loadRows() {
     where: { stage: { in: [...ACTIVE_STAGES] }, investors: { some: {} } },
     include: { sponsorCompany: { select: { domain: true, name: true } }, investors: { select: { status: true, updatedAt: true } } },
   });
+
   const now = Date.now();
   const rows = deals
     .map((d) => {

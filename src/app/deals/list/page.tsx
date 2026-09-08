@@ -5,6 +5,8 @@ import { DEAL_STAGES, stageTone } from "@/lib/taxonomy";
 import { PageHeader, Pager, SearchForm } from "@/components/ui";
 import { fmtDate, fmtMoney, str } from "@/lib/format";
 
+export const metadata = { title: "Deals list" };
+
 export const dynamic = "force-dynamic";
 const PAGE = 50;
 
@@ -20,6 +22,7 @@ export default async function DealListPage({ searchParams }: { searchParams: Pro
     prisma.deal.count({ where }),
     prisma.deal.findMany({ where, orderBy: { updatedAt: "desc" }, skip: (page - 1) * PAGE, take: PAGE, include: { owner: true } }),
   ]);
+
   const makeHref = (p: number) => {
     const u = new URLSearchParams();
     if (q) u.set("q", q);

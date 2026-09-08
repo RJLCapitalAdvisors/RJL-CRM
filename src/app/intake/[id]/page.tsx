@@ -10,6 +10,12 @@ import { renderTemplate, toHtml, type MergeContext } from "@/lib/merge";
 import { fmtDate, str } from "@/lib/format";
 import { convertIntakeToDeal, dismissIntake, reprocessIntake, updateExtracted } from "../actions";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const i = await prisma.dealIntake.findUnique({ where: { id }, select: { subject: true } }).catch(() => null);
+  return { title: i?.subject ?? "Deal intake" };
+}
+
 export const dynamic = "force-dynamic";
 
 function Field({ id, label, value, span = 1 }: { id: string; label: string; value: unknown; span?: number }) {

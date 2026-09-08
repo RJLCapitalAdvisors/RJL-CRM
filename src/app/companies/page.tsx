@@ -9,6 +9,8 @@ import { parseList } from "@/lib/taxonomy";
 import { fmtDate, str } from "@/lib/format";
 import { CompanyLogo } from "@/components/company-logo";
 
+export const metadata = { title: "Companies" };
+
 export const dynamic = "force-dynamic";
 const PAGE = 50;
 const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);

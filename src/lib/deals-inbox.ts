@@ -7,6 +7,7 @@ import { processIntake } from "@/app/intake/actions";
 import { applyForwarderInstructions } from "@/lib/forwarder-notes";
 import { detectMultipleDeals, extractDealFacts, matchExistingDeal, mergeIntoDeal, recordDealEmail, recordDealFiles, recordLinkFiles } from "@/lib/deal-knowledge";
 import { fetchCloudFiles, findCloudLinks } from "@/lib/cloud-links";
+import { enrichFromCalls } from "@/lib/fireflies";
 
 /**
  * The deals@ mailbox. Every new email there is a deal someone on the team forwarded:
@@ -153,6 +154,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
       }
       await recordPulled(intakeN.dealId, key, part.attachments);
       await extractDealFacts(intakeN.dealId, text, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
+      await enrichFromCalls(intakeN.dealId).catch(() => null); // Fireflies calls with the sponsor feed the bio and business plan
       const owner = fromAddr ? await prisma.user.findFirst({ where: { email: { equals: fromAddr, mode: "insensitive" } } }) : null;
       if (owner) await prisma.deal.update({ where: { id: intakeN.dealId }, data: { ownerId: owner.id } });
       if (!external) await applyForwarderInstructions(intakeN.dealId, bodyText).catch(() => null);
@@ -190,6 +192,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   if (msg.hasAttachments) await recordDealFiles(intake.dealId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0);
   await recordPulled(intake.dealId, ext);
   await extractDealFacts(intake.dealId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
+  await enrichFromCalls(intake.dealId).catch(() => null); // Fireflies calls with the sponsor feed the bio and business plan
   // whoever forwarded it to deals@ owns the deal
   const owner = fromAddr ? await prisma.user.findFirst({ where: { email: { equals: fromAddr, mode: "insensitive" } } }) : null;
   if (owner) await prisma.deal.update({ where: { id: intake.dealId }, data: { ownerId: owner.id } });

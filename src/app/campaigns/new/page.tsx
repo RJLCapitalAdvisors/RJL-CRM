@@ -7,6 +7,8 @@ import { fullName, str } from "@/lib/format";
 import { createCampaign } from "../actions";
 import { AudienceTable } from "./audience-table";
 
+export const metadata = { title: "New email blast" };
+
 export const dynamic = "force-dynamic";
 
 export default async function NewCampaignPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

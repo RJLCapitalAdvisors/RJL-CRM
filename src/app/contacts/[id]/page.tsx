@@ -8,6 +8,12 @@ import { fmtDate, fullName } from "@/lib/format";
 import { statusOf } from "@/lib/tracker";
 import { addContactNote, updateContact } from "../actions";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const c = await prisma.contact.findUnique({ where: { id }, select: { firstName: true, lastName: true, email: true } });
+  return { title: c ? [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "Contact" : "Contact" };
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function ContactPage({ params }: { params: Promise<{ id: string }> }) {

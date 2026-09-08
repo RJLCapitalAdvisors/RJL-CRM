@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { graph } from "@/lib/graph";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
 import { mergeNote } from "@/lib/tracker";
+import { stripDashes } from "@/lib/style";
 import { houseSubjectMatches, subjectMatchesDeal } from "@/lib/deal-match";
 
 /**
@@ -21,7 +22,7 @@ const q = (s: string) => encodeURIComponent(s);
 const Out = z.object({
   asks: z.array(z.string()).describe("Each thing the investor asked for from the sponsor or RJL, as a short imperative line, e.g. '5-year model', 'Which markets BrightStar operates in'. Empty if the email asks for nothing."),
   stance: z.enum(["reviewing", "interested", "pass", "unclear"]).describe("Where the investor stands after this email."),
-  note: z.string().describe("One line for the progress report, dated by the caller, e.g. 'Reviewing; asked for 5-year model and sponsor markets'."),
+  note: z.string().describe("One line for the progress report the sponsor will read. Its value is the actual reason the investor passed, declined or hesitated (wrong mandate, timing, asset class fit, size, market, structure), so relay their real reasoning, not just the outcome. Only what the investor actually said, lightly cleaned up for grammar; no generic status language like 'awaiting response' (that is the status column). Strip pleasantries and filler (hi, hope you are well, thanks for sharing, keep us posted). Empty if there was no substantive response, an auto-reply, or only an acknowledgement. No dashes as punctuation."),
   dealIndex: z.number().int().describe("Index in the DEALS list of the deal this email is about. -1 if it is about a different deal, an intro, a general catch-up, or unclear. Never guess: an email that does not identify the deal is -1."),
 });
 
@@ -98,7 +99,8 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     }
     const newStatus = parsed.stance === "pass" ? 8 : parsed.stance === "interested" ? 5 : parsed.stance === "reviewing" ? 4 : null;
     for (const r of reportRows) {
-      const note = parsed.note ? `${parsed.note} (${dateTag})` : null;
+      const cleaned = stripDashes(parsed.note ?? "").trim();
+      const note = cleaned && !/^(confirmed receipt|acknowledged|received|thanks?)\b/i.test(cleaned) ? `${cleaned} (${dateTag})` : null;
       await prisma.dealInvestor.update({ where: { id: r.id }, data: { ...(note ? { note: mergeNote(r.note, note), noteDate: a.occurredAt } : {}), ...(newStatus && newStatus > r.status && r.status < 6 ? { status: newStatus } : {}), updatedAt: a.occurredAt } });
     }
     if (parsed.asks.length) {

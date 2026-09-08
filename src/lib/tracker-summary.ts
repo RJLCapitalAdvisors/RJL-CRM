@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { stripDashes } from "@/lib/style";
 import { investorLabel, statusOf } from "@/lib/tracker";
 
 /**
@@ -31,7 +32,7 @@ export async function generateTrackerSummary(dealId: string): Promise<{ themes: 
     output_config: { format: zodOutputFormat(Out) },
   });
   if (!res.parsed_output) return null;
-  const out = res.parsed_output;
+  const out = { themes: res.parsed_output.themes.map((x) => stripDashes(x)), items: res.parsed_output.items.map((x) => stripDashes(x)) };
   await prisma.deal.update({ where: { id: dealId }, data: { trackerThemes: out.themes.join("\n") || null, trackerItemsNote: out.items.join("\n") || null } });
   return out;
 }

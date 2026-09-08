@@ -7,7 +7,7 @@ import "./globals.css";
 import { NavLink } from "@/components/nav-link";
 
 export const metadata: Metadata = {
-  title: "RJL CRM",
+  title: { default: "RJL CRM", template: "%s · RJL CRM" },
   description: "RJL Capital Advisors CRM",
 };
 

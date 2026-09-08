@@ -14,6 +14,12 @@ import { currentUser } from "@/lib/current-user";
 import { EmailLog } from "@/components/email-log";
 import { kickMailSync } from "@/lib/mail-sync";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const c = await prisma.company.findUnique({ where: { id }, select: { name: true } });
+  return { title: c?.name ?? "Company" };
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function CompanyPage({ params }: { params: Promise<{ id: string }> }) {

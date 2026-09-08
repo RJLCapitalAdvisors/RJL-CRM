@@ -16,6 +16,12 @@ import { NoteCell, StatusBadge } from "./tracker-row";
 import { TrackerContactPicker } from "./contact-picker";
 import { CopyLink } from "./copy-link";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const d = await prisma.deal.findUnique({ where: { id }, select: { name: true, propertyName: true } });
+  return { title: `${d ? d.propertyName ?? d.name : "Deal"} Progress Report` };
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function TrackerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {

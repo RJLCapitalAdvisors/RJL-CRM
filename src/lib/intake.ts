@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
+import { houseText } from "@/lib/style";
 import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
 import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LOAN_TERMS, UNIT_MIXES } from "@/lib/taxonomy";
 import { CHECKLIST, missingFor, type DealLikeForChecklist } from "@/lib/checklist";
@@ -27,7 +28,7 @@ export const ExtractedDealSchema = z.object({
   equityMultiple: z.number().nullable(),
   occupancy: z.number().nullable().describe("Percent"),
   onMarket: z.boolean().nullable(),
-  sponsorExperience: z.string().nullable().describe("Sponsor bio: overall and local market experience"),
+  sponsorExperience: z.string().nullable().describe("Sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes."),
   summary: z.string().nullable().describe("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), the value-add opportunity, notable physical attributes. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
   details: z.object(detailShape),
   // underwriting snapshot
@@ -100,7 +101,7 @@ const ClaudeOutput = z.object({
   equityMultiple: str("Projected equity multiple as a number (1.9)."),
   occupancy: str("Occupancy percent as a number (91)."),
   onMarket: z.enum(["on", "off", ""]).describe("on if marketed/listed, off if off-market."),
-  sponsorExperience: str("Sponsor bio: overall and local market experience, quoted or closely paraphrased."),
+  sponsorExperience: str("Sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes."),
   summary: str("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), the value-add opportunity, notable physical attributes. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
   details: z.object(Object.fromEntries(CHECKLIST.filter((it) => !it.core).map((it) => [it.key, str(`${it.label}. ${it.question}${it.kind === "doc" ? " Answer Received only if the document is attached or explicitly provided." : ""}`)]))),
   units: str("Number of units, keys (hotel) or beds (student housing), digits only."),
@@ -111,16 +112,16 @@ const ClaudeOutput = z.object({
   totalDebt: str("Total debt in US dollars, digits only."),
   executionType: z.enum(["JV Equity", "LP Equity", "Co-GP Equity", "Preferred Equity", "Senior Debt", "Mezz Debt", "Fund Investment", ""]).describe("Position in the capital stack being raised. Any equity raise that is the majority of total equity is JV Equity; LP Equity only for a minority slice."),
   interestRate: str("Debt interest rate as written (6.1% fixed, SOFR + 300)."),
-  lenderType: str("Lender or lender type: agency/Freddie/Fannie, bank, debt fund, life co, CMBS."),
+  lenderType: str("Lender or lender type (agency/Freddie/Fannie, bank, debt fund, life co, CMBS) ONLY when the documents state it; never inferred."),
   irr: str("Projected IRR percent as a number (18.4)."),
   capRateT12: str("T12 / trailing / going-in cap rate percent as a number."),
   capRateY1: str("Year 1 cap rate percent as a number."),
-  yieldOnCost: str("Yield on cost at stabilization percent as a number."),
+  yieldOnCost: str("Yield on cost at stabilization, percent as a number. If pad/outparcel sales pay down basis during the hold: stabilized NOI excluding pad income divided by (total capitalization minus total pad sale net proceeds)."),
   cashOnCash: str("Stabilized cash-on-cash percent as a number."),
   holdPeriod: z.enum([...DEAL_HOLD_PERIODS, ""]).describe("Hold period snapped to the closest option (a 3.2-year hold is '3 year'). Empty if not stated."),
   contactName: str("Name of the person who sent the deal."),
   contactEmail: str("Email of the person who sent the deal."),
-  confidenceNotes: str("Anything ambiguous or inferred."),
+  confidenceNotes: str("Anything ambiguous, inferred, left blank for lack of a source, or where a special rule (pad sale) was applied."),
 });
 type ClaudeOutput = z.infer<typeof ClaudeOutput>;
 
@@ -131,7 +132,7 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     const x = Number(t);
     return isNaN(x) ? null : x;
   };
-  const t = (v: string) => (v.trim() ? v.trim() : null);
+  const t = (v: string) => houseText((v.trim() ? v.trim() : null));
   const details = Object.fromEntries(Object.entries(o.details).map(([k, v]) => [k, t(v as string)])) as ExtractedDeal["details"];
   return {
     sponsorName: t(o.sponsorName), propertyName: t(o.propertyName), propertyAddress: t(o.propertyAddress), city: t(o.city),
@@ -167,7 +168,11 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
 const SYSTEM = `You extract commercial real estate deal details from emails forwarded to a capital advisory firm (RJL Capital Advisors) so the team can see what the sponsor provided and what is still missing.
 Read the email (including quoted/forwarded content) and fill the schema. Rules:
 - The subject line can be stale (a reply on an old thread, a forward under an old subject). Name and describe the deal from the attachments and the body; when they describe a different property than the subject, the attachments win.
-- Use an empty string for anything not stated. Never invent numbers or facts.
+- Use an empty string for anything not stated. Never invent numbers or facts. No placeholders: never write "TBD", "N/A", "unknown" or a guess; leave it blank and mention it in confidenceNotes.
+- Enum-like fields (seller profile, lender type, deal sourcing, lender, closing time frame): fill them only when the source documents state them explicitly. Never infer the closest match; if you are tempted to, leave it blank and say so in confidenceNotes.
+- Pad sale / outparcel rule: when the deal has scheduled pad or outparcel sales during the hold that pay down basis, yield on cost at stabilization must net those proceeds out of the denominator: (Stabilized NOI excluding pad income) / (Total Capitalization minus total pad sale net proceeds). Never divide by full total cap in that case; say in confidenceNotes that the pad sale rule was applied.
+- sponsorExperience is the sponsor bio: 3-4 sentences on founding background, focus/strategy, scale/track record. No return figures, no dashes.
+- Style everywhere: no em dashes, en dashes or double hyphens as punctuation in any text you write. Plain sentences and commas.
 - Dollar amounts are plain numbers in USD ("$12.5MM" -> 12500000, "$3,200,000" -> 3200000).
 - Percentages are plain numbers (65% -> 65). LTV may appear as LTC or leverage.
 - requestType: "Equity" for JV/LP/pref/co-GP equity raises, "Debt" for loans/bridge/construction/refi, "Both" if both.

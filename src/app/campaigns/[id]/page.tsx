@@ -8,6 +8,12 @@ import { fmtDate, fullName, str } from "@/lib/format";
 import { deleteCampaign, markRecipientSent, removeRecipient, sendCampaign, sendOneRecipient, skipRecipient, unskipRecipient, updateCampaignCopy, updateRecipient } from "../actions";
 import { SendButton } from "./send-button";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const c = await prisma.campaign.findUnique({ where: { id }, select: { name: true } }).catch(() => null);
+  return { title: c?.name ?? "Email blast" };
+}
+
 export const dynamic = "force-dynamic";
 
 const tone: Record<string, string> = {

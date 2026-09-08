@@ -6,6 +6,8 @@ import { SignatureEditor } from "./signature-editor";
 import { OnboardingChecklist } from "./onboarding-checklist";
 import { ADMIN_STEPS, YOUR_STEPS } from "@/lib/onboarding";
 
+export const metadata = { title: "Settings" };
+
 export const dynamic = "force-dynamic";
 
 /** Per-person settings: the Outlook connection on this computer (with a self-check) and email signatures. */

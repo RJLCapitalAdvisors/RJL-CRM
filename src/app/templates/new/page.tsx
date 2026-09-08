@@ -2,6 +2,8 @@ import { PageHeader } from "@/components/ui";
 import { TemplateForm } from "@/components/template-form";
 import { createTemplate } from "../actions";
 
+export const metadata = { title: "New template" };
+
 export default function NewTemplatePage() {
   return (
     <>

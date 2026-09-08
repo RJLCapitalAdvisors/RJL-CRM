@@ -3,6 +3,8 @@ import { PageHeader } from "@/components/ui";
 import { DealForm } from "@/components/deal-form";
 import { createDeal } from "../actions";
 
+export const metadata = { title: "New deal" };
+
 export default async function NewDealPage() {
   const users = await prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } });
   return (

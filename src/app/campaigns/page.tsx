@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { PageHeader, Empty } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
 
+export const metadata = { title: "Email blasts" };
+
 export const dynamic = "force-dynamic";
 
 const tone: Record<string, string> = {
@@ -18,6 +20,7 @@ export default async function CampaignsPage() {
     orderBy: { createdAt: "desc" },
     include: { deal: true, template: true, recipients: { select: { status: true } } },
   });
+
   return (
     <>
       <PageHeader

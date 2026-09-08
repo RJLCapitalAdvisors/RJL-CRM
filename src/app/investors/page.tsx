@@ -6,6 +6,8 @@ import { INVESTMENT_TYPES, parseList } from "@/lib/taxonomy";
 import { str } from "@/lib/format";
 import { InvestorSearch, type InvestorRow, type Spec } from "./search";
 
+export const metadata = { title: "Investor search" };
+
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 

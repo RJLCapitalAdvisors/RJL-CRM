@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/ui";
 import { Board, type BoardDeal } from "./board";
 import { str } from "@/lib/format";
 
+export const metadata = { title: "Deals" };
+
 export const dynamic = "force-dynamic";
 const CLOSED_PREVIEW = 15;
 

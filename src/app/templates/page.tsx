@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { PageHeader, Empty } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
 
+export const metadata = { title: "Templates" };
+
 export const dynamic = "force-dynamic";
 
 export default async function TemplatesPage() {
