@@ -44,7 +44,7 @@ if ($mode -eq 'reply' -and $mid) {
     $reply = $orig.ReplyAll()
     $reply.Display()   # Outlook inserts the user's signature on display
     if ($greet) {
-      $g = [System.Web.HttpUtility]::HtmlEncode($greet)
+      $g = [System.Web.HttpUtility]::HtmlEncode($greet) -replace "`r`n|`n", "<br>"
       $body = $reply.HTMLBody
       $block = "<p style=""margin:0 0 12pt 0;font-family:Calibri,Arial,sans-serif;font-size:11pt;"">$g</p>"
       if ($body -match '<body[^>]*>') { $reply.HTMLBody = $body -replace '(<body[^>]*>)', ('$1' + $block) } else { $reply.HTMLBody = $block + $body }

@@ -73,20 +73,43 @@ export async function openMomentumDraft(momentumId: string) {
   if (!m) return { ok: false as const, reason: "Gone." };
   const { createThreadReplyDraft, createFollowUpDraft, replyToLatestWith, replyViaTeammateCopy, signatureFor } = await import("@/lib/followup");
   try {
-    // LP request: a fresh email to the sponsor team listing what the investor asked for
+    // LP request: reply-all on my latest thread with the sponsor about this deal, the asks written on top
     if (m.kind === "LP_ASK") {
-      const { createDraft, getMessage, outlookDesktopLink } = await import("@/lib/graph");
+      const { createDraft, createReplyAllDraft, getMessage, outlookDesktopLink, sentMessagesTo, sentMessagesToDomain, updateDraftBody } = await import("@/lib/graph");
       const { sponsorContactsFor } = await import("@/lib/engagement");
-      const deal = await prisma.deal.findUnique({ where: { id: m.dealId }, select: { propertyName: true, name: true } });
+      const deal = await prisma.deal.findUnique({ where: { id: m.dealId }, include: { sponsorCompany: { select: { domain: true } } } });
       if (!deal) return { ok: false as const, reason: "Deal not found." };
       const people = await sponsorContactsFor(m.dealId);
       const to = people.map((p) => p.email);
       if (!to.length) return { ok: false as const, reason: "No sponsor contact found for this deal. Link the sponsor company on the deal ticket." };
       const firstName = people[0]?.firstName;
-      const asks = m.summary.replace(/^.*?asks:\s*/, "").split(";").map((s) => s.trim()).filter(Boolean);
+      const dealName = deal.propertyName ?? deal.name;
+      const asks = m.summary.replace(/^.*?asks:s*/, "").split(" | Already on the ticket:")[0].split(";").map((s) => s.trim()).filter(Boolean);
       const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
-      const html = `<html><body><div style="${F}"><p style="margin:0 0 10pt 0;${F}">Hi${firstName ? ` ${firstName}` : ""} - hope you are well. ${m.party} came back on ${deal.propertyName ?? deal.name} with a few requests:</p><ul style="margin:0 0 10pt 18pt;">${asks.map((x) => `<li style="margin:0;${F}">${x}</li>`).join("")}</ul><p style="margin:0 0 10pt 0;${F}">Could you send these over when you get a chance and I will pass them along.</p>${await signatureFor(me.email)}</div></body></html>`;
-      const draft = await createDraft(me.email, { subject: `${deal.propertyName ?? deal.name} | ${m.party} follow-up items`, toRecipients: to, bodyHtml: html });
+      const opening = `Hi${firstName ? ` ${firstName}` : ""} - hope you are well. ${m.party} came back on ${dealName} with a few requests:`;
+      const closing = "Could you send these over when you get a chance and I will pass them along.";
+      const block = `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">${opening}</p><ul style="margin:0 0 10pt 18pt;">${asks.map((x) => `<li style="margin:0;${F}">${x}</li>`).join("")}</ul><p style="margin:0 0 10pt 0;${F}">${closing}</p>`;
+      const plain = `${opening}
+${asks.map((x) => `• ${x}`).join("
+")}
+${closing}`;
+      // the thread: my latest email to the sponsor about this deal (to the person, else anyone at the firm)
+      const words = dealName.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+      const about = (x: { subject: string | null }) => words.some((w) => (x.subject ?? "").toLowerCase().includes(w));
+      const toPerson = await sentMessagesTo(me.email, to[0], 15).catch(() => []);
+      const toFirm = deal.sponsorCompany?.domain ? await sentMessagesToDomain(me.email, deal.sponsorCompany.domain, 25).catch(() => []) : [];
+      const original = toPerson.find(about) ?? toFirm.find(about) ?? toPerson[0] ?? toFirm[0];
+      if (original) {
+        const draft = await createReplyAllDraft(me.email, original.id);
+        const body = draft.body?.content ?? "";
+        const at = body.search(/<body[^>]*>/i);
+        const html = at >= 0 ? body.replace(/(<body[^>]*>)/i, `$1${block}${await signatureFor(me.email)}<br></div>`) : `${block}${await signatureFor(me.email)}</div>${body}`;
+        await updateDraftBody(me.email, draft.id, html);
+        const fresh = await getMessage(me.email, draft.id, "id,webLink,internetMessageId");
+        const orig = await getMessage(me.email, original.id, "id,internetMessageId").catch(() => null);
+        return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "replyAll" as const, attachments: 0, replyTo: orig?.internetMessageId ? { messageId: orig.internetMessageId, greeting: plain, attachments: false } : undefined };
+      }
+      const draft = await createDraft(me.email, { subject: `${dealName} | ${m.party} follow-up items`, toRecipients: to, bodyHtml: `<html><body>${block}${await signatureFor(me.email)}</div></body></html>` });
       const fresh = await getMessage(me.email, draft.id, "id,webLink,internetMessageId");
       return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "new" as const, attachments: 0 };
     }
