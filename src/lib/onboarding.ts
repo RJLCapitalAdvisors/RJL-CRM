@@ -73,6 +73,11 @@ export const YOUR_STEPS: Step[] = [
     link: { href: "/", label: "Dashboard" },
   },
   {
+    title: "Use Ask the CRM before digging",
+    detail: "The top item in the sidebar is a chat box over everything in the CRM: what is missing on a deal, who at a firm to call, what an investor said on any deal, which investors fit a deal, what is waiting on the Dashboard. Answers link back to the records. It only reads.",
+    link: { href: "/ask", label: "Ask the CRM" },
+  },
+  {
     title: "Know the house rules",
     detail: "Roles and investor criteria are set by Jonathan; your edits become proposals for him. Never make a second ticket for a deal that is already on the board. Progress reports come from the deal ticket (Progress report button), not from Word.",
   },

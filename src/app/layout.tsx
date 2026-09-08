@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings } from "lucide-react";
+import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare } from "lucide-react";
 import { currentUser } from "@/lib/current-user";
 import "./globals.css";
 import { NavLink } from "@/components/nav-link";
@@ -12,6 +12,7 @@ export const metadata: Metadata = {
 };
 
 const nav = [
+  { href: "/ask", label: "Ask the CRM", icon: MessageSquare },
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/deals", label: "Deals", icon: KanbanSquare },
   { href: "/companies", label: "Companies", icon: Building2 },
