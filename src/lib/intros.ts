@@ -50,8 +50,12 @@ export async function scanIntros(mailbox: string): Promise<{ found: number; upda
     let replies = 0;
     if (m.conversationId) {
       try {
-        const thread = await pageAll(`/users/${q(mailbox)}/messages?$filter=conversationId eq '${m.conversationId.replace(/'/g, "''")}'&$select=id,internetMessageId,receivedDateTime,sentDateTime,from&$top=50`, 100);
+        const thread = await pageAll(`/users/${q(mailbox)}/messages?$filter=conversationId eq '${m.conversationId.replace(/'/g, "''")}'&$select=id,internetMessageId,receivedDateTime,sentDateTime,from,toRecipients,ccRecipients&$top=50`, 100);
+        const internal = (a?: string) => !a || /@(rjlcapadvisors|rjlequities|livikapital).com$/i.test(a);
         for (const t of thread) {
+          // an internal-only side conversation (a teammate replying just to us) is not activity with the parties
+          const everyone = [t.from?.emailAddress.address, ...(t.toRecipients ?? []).map((r) => r.emailAddress.address), ...(t.ccRecipients ?? []).map((r) => r.emailAddress.address)];
+          if (everyone.every(internal)) continue;
           const at = new Date(t.sentDateTime ?? t.receivedDateTime ?? 0);
           if ((t.internetMessageId ?? t.id) !== ext) replies++;
           if (at > lastAt) {

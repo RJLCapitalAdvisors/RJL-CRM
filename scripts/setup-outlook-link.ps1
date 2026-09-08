@@ -5,8 +5,10 @@
 $dir = Join-Path $env:LOCALAPPDATA 'RJL CRM'
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 Copy-Item (Join-Path $PSScriptRoot 'outlook-open.ps1') (Join-Path $dir 'outlook-open.ps1') -Force
-$script = Join-Path $dir 'outlook-open.ps1'
-$cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`" `"%1`""
+Copy-Item (Join-Path $PSScriptRoot 'outlook-open.vbs') (Join-Path $dir 'outlook-open.vbs') -Force
+$launcher = Join-Path $dir 'outlook-open.vbs'
+# wscript runs the helper with no console window (a direct powershell.exe handler flashes a black box)
+$cmd = "wscript.exe `"$launcher`" `"%1`""
 
 New-Item -Path 'HKCU:\Software\Classes\rjlcrm' -Force | Out-Null
 Set-ItemProperty -Path 'HKCU:\Software\Classes\rjlcrm' -Name '(default)' -Value 'URL:RJL CRM'

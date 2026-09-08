@@ -21,7 +21,7 @@ const QUIET_AFTER_DAYS = 2;
 /** The dashboard starts the clock here: anything that began before this date stays off (the old backlog lives on the report and deal pages). */
 const HOME_SINCE = new Date("2026-08-31T00:00:00Z");
 const days = (d: Date) => Math.floor((Date.now() - d.getTime()) / DAY);
-const KIND: Record<string, string> = { SPONSOR_ITEMS: "waiting on sponsor", INTRO: "intro not scheduled", ACTION: "open action item", MENTIONED: "mentioned, never sent" };
+const KIND: Record<string, string> = { LP_ASK: "LP request for the sponsor", SPONSOR_ITEMS: "waiting on sponsor", INTRO: "intro not scheduled", ACTION: "open action item", MENTIONED: "mentioned, never sent" };
 
 /** LPs who were sent a deal (or followed up with) and have said nothing for QUIET_AFTER_DAYS, grouped by deal. */
 async function quietInvestors() {

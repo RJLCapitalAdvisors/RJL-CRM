@@ -112,14 +112,29 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
     }
   }
 
-  // 3) a sponsor mentioned a deal and never sent it
-  const mentioned = await prisma.deal.findMany({ where: { stage: "Deal Mentioned", updatedAt: { lte: new Date(now - QUIET_DAYS * DAY) } }, include: { sponsorCompany: { select: { id: true, name: true } } } });
+  // 3) a sponsor mentioned a deal and never sent it (mentions the sponsor promised to send, or that Jonathan logged himself)
+  const mentionedAll = await prisma.deal.findMany({ where: { stage: "Deal Mentioned", updatedAt: { lte: new Date(now - QUIET_DAYS * DAY) } }, include: { sponsorCompany: { select: { id: true, name: true } } } });
+  const mentioned = mentionedAll.filter((d) => {
+    try {
+      const det = JSON.parse(d.details || "{}") as { promised?: boolean; mentionedIn?: string };
+      return det.mentionedIn ? det.promised !== false : true;
+    } catch {
+      return true;
+    }
+  });
   for (const d of mentioned) {
     const party = d.sponsorName ?? d.sponsorCompany?.name ?? "Sponsor";
     const last = d.sponsorCompany ? await prisma.activity.findFirst({ where: { companyId: d.sponsorCompany.id, type: "EMAIL" }, orderBy: { occurredAt: "desc" }, select: { externalId: true, contactId: true } }) : null;
     await upsert(d.id, "MENTIONED", party, { companyId: d.sponsorCompany?.id, contactId: last?.contactId, summary: `Mentioned ${d.updatedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}; deal never sent`, waitingSince: d.updatedAt, lastMessageId: last?.externalId ?? null });
   }
   await prisma.momentum.updateMany({ where: { kind: "MENTIONED", status: "OPEN", NOT: { dealId: { in: mentioned.map((d) => d.id) } } }, data: { status: "DONE" } });
+
+  // 3b) an LP asked the sponsor for something: goes to the top of the list, Handle drafts the request to the sponsor
+  const { detectLpAsks } = await import("@/lib/lp-asks");
+  for (const ask of await detectLpAsks().catch(() => [])) {
+    const d = await prisma.deal.findUnique({ where: { id: ask.dealId }, select: { sponsorCompanyId: true, sponsorName: true } });
+    await upsert(ask.dealId, "LP_ASK", ask.lpName, { companyId: d?.sponsorCompanyId ?? null, contactId: ask.contactId, summary: `${ask.lpName} asks: ${ask.asks.join("; ")}`, waitingSince: ask.at, lastMessageId: ask.messageId });
+  }
 
   // 4) open action items older than QUIET_DAYS (Fireflies will feed these once connected)
   const actions = await prisma.dealAction.findMany({ where: { done: false, createdAt: { lte: new Date(now - QUIET_DAYS * DAY) }, deal: { stage: { in: [...ACTIVE_STAGES] } } }, include: { deal: { select: { id: true, sponsorCompanyId: true, sponsorName: true } } } });
@@ -133,7 +148,11 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
 export async function listMomentum(since?: Date) {
   const rows = await prisma.momentum.findMany({ where: { status: "OPEN", ...(since ? { waitingSince: { gte: since } } : {}) }, orderBy: { waitingSince: "asc" } });
   const deals = new Map((await prisma.deal.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.dealId))] } }, select: { id: true, name: true, propertyName: true } })).map((d) => [d.id, d]));
-  return rows.map((r) => ({ ...r, deal: deals.get(r.dealId)! })).filter((r) => r.deal);
+  // LP requests first (newest on top), then everything else oldest-waiting first
+  return rows
+    .map((r) => ({ ...r, deal: deals.get(r.dealId)! }))
+    .filter((r) => r.deal)
+    .sort((a, b) => (a.kind === "LP_ASK") === (b.kind === "LP_ASK") ? (a.kind === "LP_ASK" ? b.waitingSince.getTime() - a.waitingSince.getTime() : a.waitingSince.getTime() - b.waitingSince.getTime()) : a.kind === "LP_ASK" ? -1 : 1);
 }
 
 export const isInternal = (addr: string) => INTERNAL.test(addr);

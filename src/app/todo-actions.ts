@@ -71,8 +71,27 @@ export async function openMomentumDraft(momentumId: string) {
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
   const m = await prisma.momentum.findUnique({ where: { id: momentumId } });
   if (!m) return { ok: false as const, reason: "Gone." };
-  const { createThreadReplyDraft, createFollowUpDraft, replyToLatestWith, replyViaTeammateCopy } = await import("@/lib/followup");
+  const { createThreadReplyDraft, createFollowUpDraft, replyToLatestWith, replyViaTeammateCopy, signatureFor } = await import("@/lib/followup");
   try {
+    // LP request: a fresh email to the sponsor team listing what the investor asked for
+    if (m.kind === "LP_ASK") {
+      const { createDraft, getMessage, outlookDesktopLink } = await import("@/lib/graph");
+      const { usualRecipients } = await import("@/lib/send-deal");
+      const deal = await prisma.deal.findUnique({ where: { id: m.dealId }, include: { sponsorCompany: { include: { contacts: { where: { email: { not: null } } } } } } });
+      if (!deal) return { ok: false as const, reason: "Deal not found." };
+      const people = deal.sponsorCompany?.contacts ?? [];
+      const ids = deal.sponsorCompany ? await usualRecipients(deal.sponsorCompany.id, people) : [];
+      const to = people.filter((p) => ids.includes(p.id)).map((p) => p.email!);
+      if (!to.length && people[0]?.email) to.push(people[0].email);
+      if (!to.length) return { ok: false as const, reason: "No sponsor email on file for this deal." };
+      const firstName = people.find((p) => p.email === to[0])?.firstName;
+      const asks = m.summary.replace(/^.*?asks:\s*/, "").split(";").map((s) => s.trim()).filter(Boolean);
+      const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
+      const html = `<html><body><div style="${F}"><p style="margin:0 0 10pt 0;${F}">Hi${firstName ? ` ${firstName}` : ""} - hope you are well. ${m.party} came back on ${deal.propertyName ?? deal.name} with a few requests:</p><ul style="margin:0 0 10pt 18pt;">${asks.map((x) => `<li style="margin:0;${F}">${x}</li>`).join("")}</ul><p style="margin:0 0 10pt 0;${F}">Could you send these over when you get a chance and I will pass them along.</p>${await signatureFor(me.email)}</div></body></html>`;
+      const draft = await createDraft(me.email, { subject: `${deal.propertyName ?? deal.name} | ${m.party} follow-up items`, toRecipients: to, bodyHtml: html });
+      const fresh = await getMessage(me.email, draft.id, "id,webLink,internetMessageId");
+      return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "new" as const, attachments: 0 };
+    }
     // 1) the exact thread we recorded: in my mailbox, else from a teammate's (or deals@) copy
     if (m.lastMessageId) {
       const r = await createThreadReplyDraft(me.email, m.lastMessageId);

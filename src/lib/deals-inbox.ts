@@ -4,6 +4,7 @@ import { assembleDealText, attachmentToText, emailHtmlToText } from "@/lib/attac
 import { missingFor, itemLabel } from "@/lib/checklist";
 import { intro, metricsHtml, subjectLine } from "@/lib/deal-copy";
 import { processIntake } from "@/app/intake/actions";
+import { applyForwarderInstructions } from "@/lib/forwarder-notes";
 
 /**
  * The deals@ mailbox. Every new email there is a deal someone on the team forwarded:
@@ -98,6 +99,9 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   // whoever forwarded it to deals@ owns the deal
   const owner = fromAddr ? await prisma.user.findFirst({ where: { email: { equals: fromAddr, mode: "insensitive" } } }) : null;
   if (owner) await prisma.deal.update({ where: { id: intake.dealId }, data: { ownerId: owner.id } });
+
+  // anything the teammate wrote above the forwarded email is an instruction: stage, investors already introduced, notes
+  if (!external) await applyForwarderInstructions(intake.dealId, bodyText).catch((e) => console.error("forwarder instructions", e));
 
   const deal = await prisma.deal.findUniqueOrThrow({ where: { id: intake.dealId } });
   const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");

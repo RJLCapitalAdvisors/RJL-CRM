@@ -41,9 +41,13 @@ export async function syncMailbox(mailbox: string): Promise<{ scanned: number; l
   const activeDeals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true } });
   const dealFor = (subject: string) => {
     const s = subject.toLowerCase();
+    const words = (x: string) => x.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3 && !["opportunity", "acquisition", "development", "retail", "portfolio", "recap", "deal"].includes(w));
     return activeDeals.find((d) => {
       const n = (d.propertyName ?? d.name).toLowerCase();
-      return n.length > 5 && s.includes(n);
+      if (n.length > 5 && s.includes(n)) return true;
+      const ws = words(d.propertyName ?? d.name);
+      const hits = ws.filter((w) => s.includes(w)).length;
+      return ws.length > 0 && hits >= Math.min(2, ws.length);
     })?.id;
   };
 

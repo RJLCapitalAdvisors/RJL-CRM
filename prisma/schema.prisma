@@ -413,3 +413,10 @@ model MentionScan {
   companyId  String?
   scannedAt  DateTime @default(now())
 }
+
+/// Inbound LP emails already read for requests (each email is sent to Claude once).
+model LpAskScan {
+  externalId String   @id
+  result     String?
+  scannedAt  DateTime @default(now())
+}
