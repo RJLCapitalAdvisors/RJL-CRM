@@ -5,7 +5,6 @@ import { PageHeader } from "@/components/ui";
 import { INVESTMENT_TYPES, parseList } from "@/lib/taxonomy";
 import { str } from "@/lib/format";
 import { InvestorSearch, type InvestorRow, type Spec } from "./search";
-import { vintageForYear } from "@/lib/investor-specs";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -56,8 +55,8 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
         assetClass: deal.assetClass ? [deal.assetClass, "Asset Class Agnostic"] : [],
         checkMM: deal.requestedAmount ? Math.min(100, Math.max(1, Math.round(deal.requestedAmount / 1_000_000))) : null,
         investmentType: deal.executionType && (INVESTMENT_TYPES as readonly string[]).includes(deal.executionType) ? [deal.executionType] : deal.requestType === "Debt" ? ["Senior Debt", "Mezz Debt"] : deal.requestType === "Equity" ? ["JV Equity", "Co-GP Equity", "Preferred Equity"] : [],
-        strategy: deal.strategy ? [deal.strategy] : [],
-        vintage: vintageForYear(deal.yearBuilt) ? [vintageForYear(deal.yearBuilt)] : [],
+        strategy: deal.strategy ? [deal.strategy, "Both"] : [], // LPs listed as Both must always be in the pool
+        vintage: [], // year built is not a criterion for every deal; Jonathan adds it when it matters
       }
     : null;
 
