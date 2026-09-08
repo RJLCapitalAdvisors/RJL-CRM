@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { graph } from "@/lib/graph";
 import { currentUser, requireCriteriaAdmin } from "@/lib/current-user";
 
 const s = (fd: FormData, k: string) => {
@@ -111,14 +112,28 @@ export async function openIntroDraft(introId: string) {
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
   const intro = await prisma.intro.findUnique({ where: { id: introId } });
   if (!intro) return { ok: false as const, reason: "Gone." };
-  const { createThreadReplyDraft } = await import("@/lib/followup");
+  const { createThreadReplyDraft, replyToLatestWith } = await import("@/lib/followup");
   try {
-    const r = await createThreadReplyDraft(me.email, intro.lastMessageId ?? intro.messageId);
-    if (r.ok || me.email.toLowerCase() === intro.mailbox.toLowerCase()) return r;
-    // the thread lives in a teammate's mailbox: start a fresh note to the same people instead
+    // 1) the intro thread itself, if it is in my mailbox
+    for (const mid of [intro.lastMessageId, intro.messageId]) {
+      if (!mid) continue;
+      const r = await createThreadReplyDraft(me.email, mid);
+      if (r.ok) return r;
+    }
+    // 2) the thread lives in a teammate mailbox: my latest thread with the people on the intro, else a fresh note to them
+    const to = (JSON.parse(intro.recipients || "[]") as string[]).filter(Boolean);
+    if (!to.length) return { ok: false as const, reason: "No outside recipients on that intro." };
+    const words = [intro.partyA, intro.partyB].filter(Boolean).map((w) => String(w).toLowerCase());
+    const first = await replyToLatestWith(me.email, to[0], `RE: ${intro.subject}`, words);
+    if (first.ok && first.mode === "replyAll") return first;
+    // nothing with them in my mailbox either: a fresh email to everyone who was on the intro
     const { createDraft, getMessage, outlookDesktopLink } = await import("@/lib/graph");
     const { signatureFor } = await import("@/lib/followup");
-    const to = JSON.parse(intro.recipients || "[]") as string[];
+    if (first.ok && first.messageId) {
+      // replyToLatestWith already made a fresh draft to the first person; swap it for one addressed to everyone
+      const f = await graph(`/users/${encodeURIComponent(me.email)}/messages?$filter=internetMessageId eq '${first.messageId.replace(/'/g, "''")}'&$select=id`) as { value: { id: string }[] };
+      if (f.value[0]) await graph(`/users/${encodeURIComponent(me.email)}/messages/${encodeURIComponent(f.value[0].id)}`, { method: "DELETE" }).catch(() => {});
+    }
     const draft = await createDraft(me.email, { subject: `RE: ${intro.subject}`, toRecipients: to, bodyHtml: `<html><body><div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p><br></p>${await signatureFor(me.email)}</div></body></html>` });
     const fresh = await getMessage(me.email, draft.id, "id,webLink,internetMessageId");
     return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "new" as const, attachments: 0 };
