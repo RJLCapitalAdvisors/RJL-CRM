@@ -95,7 +95,25 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
   const dom = row.contact.company?.domain ?? domainOf(email);
   const toFirm = dom ? await sentMessagesToDomain(mailbox, dom, 25) : [];
   // 1) the deal email itself (to this person, else to anyone at the firm); 2) else the latest thread with the firm
-  const original = toPerson.find(aboutDeal) ?? toFirm.find(aboutDeal) ?? [...toPerson, ...toFirm].sort((a, b) => (b.sentDateTime ?? "").localeCompare(a.sentDateTime ?? ""))[0];
+  let original = toPerson.find(aboutDeal) ?? toFirm.find(aboutDeal) ?? [...toPerson, ...toFirm].sort((a, b) => (b.sentDateTime ?? "").localeCompare(a.sentDateTime ?? ""))[0];
+  if (!original) {
+    // a teammate may have sent this LP the deal: reply from their copy, in my mailbox
+    const users = (await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { email: true } }).catch(() => [] as { email: string | null }[])).filter((u) => u.email!.toLowerCase() !== mailbox.toLowerCase());
+    for (const u of users) {
+      const theirs = await sentMessagesTo(u.email!, email, 15).catch(() => [] as GraphMessage[]);
+      const hit = theirs.find(aboutDeal) ?? theirs[0];
+      if (hit) {
+        const full = await getMessage(u.email!, hit.id, "id,internetMessageId").catch(() => null);
+        if (full?.internetMessageId) {
+          const r = await replyViaTeammateCopy(mailbox, full.internetMessageId);
+          if (r?.ok) {
+            await prisma.dealInvestor.update({ where: { id: rowId }, data: { followUpDraftId: null, updatedAt: row.updatedAt } });
+            return r;
+          }
+        }
+      }
+    }
+  }
 
   let draft;
   let attachments = 0;
@@ -180,4 +198,37 @@ export async function replyToLatestWith(mailbox: string, email: string, subjectH
   }
   const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
   return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode, attachments: 0 };
+}
+
+/**
+ * The exact thread is not in my mailbox but a teammate (or deals@) has it: build the reply-all in MY mailbox from
+ * their copy. Everyone on the original stays on the To line (minus me), the original is quoted underneath.
+ */
+export async function replyViaTeammateCopy(mailbox: string, internetMessageId: string): Promise<FollowUpResult | null> {
+  if (!graphConfigured()) return null;
+  const users = await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { email: true } });
+  const boxes = [...users.map((u) => u.email!), process.env.DEALS_MAILBOX ?? "deals@rjlcapadvisors.com"].filter((b) => b.toLowerCase() !== mailbox.toLowerCase());
+  for (const box of boxes) {
+    let found: { value: (GraphMessage & { body?: { content: string } })[] };
+    try {
+      found = await graph(`/users/${encodeURIComponent(box)}/messages?$filter=internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'&$select=id,subject,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime,body`);
+    } catch {
+      continue;
+    }
+    const m = found.value?.[0];
+    if (!m) continue;
+    const me = mailbox.toLowerCase();
+    const people = [m.from?.emailAddress, ...(m.toRecipients ?? []).map((r) => r.emailAddress), ...(m.ccRecipients ?? []).map((r) => r.emailAddress)].filter((p): p is { address: string; name?: string } => Boolean(p?.address));
+    const to = [...new Set(people.map((p) => p.address.toLowerCase()).filter((a) => a !== me))];
+    if (!to.length) continue;
+    const subject = /^\s*re:/i.test(m.subject ?? "") ? m.subject! : `RE: ${m.subject ?? ""}`;
+    const when = new Date(m.sentDateTime ?? m.receivedDateTime ?? Date.now()).toLocaleString("en-US", { dateStyle: "long", timeStyle: "short" });
+    const header = `<div style="border-top:1px solid #E1E1E1;padding-top:6pt;margin-top:12pt;${FONT}"><b>From:</b> ${m.from?.emailAddress.name ?? ""} &lt;${m.from?.emailAddress.address ?? ""}&gt;<br><b>Sent:</b> ${when}<br><b>To:</b> ${(m.toRecipients ?? []).map((r) => r.emailAddress.address).join("; ")}<br>${(m.ccRecipients ?? []).length ? `<b>Cc:</b> ${(m.ccRecipients ?? []).map((r) => r.emailAddress.address).join("; ")}<br>` : ""}<b>Subject:</b> ${m.subject ?? ""}</div>`;
+    const original = (m.body?.content ?? "").replace(/^[\s\S]*?<body[^>]*>/i, "").replace(/<\/body>[\s\S]*$/i, "");
+    const html = `<html><body><div style="${FONT}"><p style="margin:0 0 12pt 0;${FONT}"><br></p>${await signatureFor(mailbox)}<br></div>${header}${original}</body></html>`;
+    const draft = await createDraft(mailbox, { subject, toRecipients: to, bodyHtml: html });
+    const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
+    return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: "replyAll", attachments: 0 };
+  }
+  return null;
 }

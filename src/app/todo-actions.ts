@@ -71,12 +71,14 @@ export async function openMomentumDraft(momentumId: string) {
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
   const m = await prisma.momentum.findUnique({ where: { id: momentumId } });
   if (!m) return { ok: false as const, reason: "Gone." };
-  const { createThreadReplyDraft, createFollowUpDraft, replyToLatestWith } = await import("@/lib/followup");
+  const { createThreadReplyDraft, createFollowUpDraft, replyToLatestWith, replyViaTeammateCopy } = await import("@/lib/followup");
   try {
-    // 1) the exact thread we recorded, if it is in my mailbox
+    // 1) the exact thread we recorded: in my mailbox, else from a teammate's (or deals@) copy
     if (m.lastMessageId) {
       const r = await createThreadReplyDraft(me.email, m.lastMessageId);
       if (r.ok) return r;
+      const t = await replyViaTeammateCopy(me.email, m.lastMessageId);
+      if (t?.ok) return t;
     }
     // 2) an LP on the deal's report: the normal deal follow-up
     if (m.contactId) {
@@ -112,13 +114,18 @@ export async function openIntroDraft(introId: string) {
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
   const intro = await prisma.intro.findUnique({ where: { id: introId } });
   if (!intro) return { ok: false as const, reason: "Gone." };
-  const { createThreadReplyDraft, replyToLatestWith } = await import("@/lib/followup");
+  const { createThreadReplyDraft, replyToLatestWith, replyViaTeammateCopy } = await import("@/lib/followup");
   try {
-    // 1) the intro thread itself, if it is in my mailbox
+    // 1) the intro thread itself: in my mailbox, else from the teammate's copy who sent it
     for (const mid of [intro.lastMessageId, intro.messageId]) {
       if (!mid) continue;
       const r = await createThreadReplyDraft(me.email, mid);
       if (r.ok) return r;
+    }
+    for (const mid of [intro.lastMessageId, intro.messageId]) {
+      if (!mid) continue;
+      const t = await replyViaTeammateCopy(me.email, mid);
+      if (t?.ok) return t;
     }
     // 2) the thread lives in a teammate mailbox: my latest thread with the people on the intro, else a fresh note to them
     const to = (JSON.parse(intro.recipients || "[]") as string[]).filter(Boolean);

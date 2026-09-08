@@ -10,6 +10,8 @@ import { graph, graphConfigured } from "@/lib/graph";
 const DAY = 86_400_000;
 const LOOKBACK_DAYS = 365;
 export const QUIET_INTRO_DAYS = 14;
+/** An intro nobody has answered at all is flagged much sooner. */
+export const UNANSWERED_INTRO_DAYS = 3;
 const q = (s: string) => encodeURIComponent(s);
 const INTRO_RE = /^\s*intro\b\s*[-:–—]?\s*(.*)$/i;
 
@@ -93,7 +95,8 @@ export const INTRO_WINDOW_DAYS = 120;
  */
 export async function quietIntros(since = new Date(Date.now() - INTRO_WINDOW_DAYS * DAY)) {
   const cutoff = new Date(Date.now() - QUIET_INTRO_DAYS * DAY);
-  const rows = await prisma.intro.findMany({ where: { status: "OPEN", lastActivityAt: { lt: cutoff }, introducedAt: { gte: since } }, orderBy: { lastActivityAt: "desc" } });
+  const unanswered = new Date(Date.now() - UNANSWERED_INTRO_DAYS * DAY);
+  const rows = await prisma.intro.findMany({ where: { status: "OPEN", introducedAt: { gte: since }, OR: [{ lastActivityAt: { lt: cutoff } }, { replies: 0, introducedAt: { lt: unanswered } }] }, orderBy: { lastActivityAt: "desc" } });
   const seen = new Map<string, (typeof rows)[number]>();
   for (const r of rows) {
     const key = r.subject.toLowerCase().replace(/^s*intros*[-:–—]?s*/, "").replace(/s+/g, " ").trim();

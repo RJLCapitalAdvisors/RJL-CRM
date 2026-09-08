@@ -406,3 +406,10 @@ model Intro {
 
   @@index([lastActivityAt])
 }
+
+/// Email threads already read for deal mentions (so each thread state is only sent to Claude once).
+model MentionScan {
+  externalId String   @id // Internet Message-ID of the newest message in the thread when read
+  companyId  String?
+  scannedAt  DateTime @default(now())
+}
