@@ -44,7 +44,7 @@ export async function bestContactForCompany(companyId: string) {
     const c = await prisma.contact.findUnique({ where: { id: counts[0].contactId } });
     if (c?.email) return c;
   }
-  return prisma.contact.findFirst({ where: { companyId, email: { not: null }, unsubscribed: false }, orderBy: [{ marketingContact: "desc" }, { lastActivityAt: "desc" }] });
+  return prisma.contact.findFirst({ where: { companyId, email: { not: null }, unsubscribed: false, departedAt: null }, orderBy: [{ marketingContact: "desc" }, { lastActivityAt: "desc" }] });
 }
 
 /** Who at the sponsor gets the letter: the person who sent us the deal, else our most-emailed contact there. */
@@ -132,7 +132,7 @@ export async function syncEngagementDrafts(): Promise<number> {
  * report, else the person who sent the deal in. Never empty when any email about the deal exists.
  */
 export async function sponsorContactsFor(dealId: string): Promise<{ id: string; email: string; firstName: string | null }[]> {
-  const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { sponsorCompany: { include: { contacts: { where: { email: { not: null } } } } } } });
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { sponsorCompany: { include: { contacts: { where: { email: { not: null }, departedAt: null } } } } } });
   if (!deal) return [];
   const pick = (cs: { id: string; email: string | null; firstName: string | null }[]) => cs.filter((c) => c.email).map((c) => ({ id: c.id, email: c.email!, firstName: c.firstName }));
   if (deal.sponsorCompany?.contacts.length) {

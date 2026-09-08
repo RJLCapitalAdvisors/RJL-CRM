@@ -13,7 +13,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   await syncSendDrafts().catch(() => 0);
   const [deal, templates] = await Promise.all([
-    prisma.deal.findUnique({ where: { id }, include: { investors: { include: { contact: { include: { company: { include: { contacts: { where: { email: { not: null } }, orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }] } } } } } }, orderBy: { createdAt: "asc" } } } }),
+    prisma.deal.findUnique({ where: { id }, include: { investors: { include: { contact: { include: { company: { include: { contacts: { where: { email: { not: null }, departedAt: null }, orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }] } } } } } }, orderBy: { createdAt: "asc" } } } }),
     prisma.emailTemplate.findMany({ where: { kind: "DEAL", NOT: { name: { contains: "Engagement" } } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   if (!deal) notFound();

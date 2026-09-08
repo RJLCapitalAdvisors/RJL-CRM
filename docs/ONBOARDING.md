@@ -11,7 +11,7 @@ Generated from `src/lib/onboarding.ts` by `npm run build`; the same checklist is
 3. **Send them the CRM address and this checklist**
    https://rjl-crm.vercel.app. Their first Microsoft sign-in creates their CRM user automatically (only @rjlcapadvisors.com addresses are accepted). No password to hand over.
 4. **Explain who edits what**
-   Roles (Investor / Sponsor / Lender / Broker) and investor criteria are Jonathan's to set. Anyone else's edits become proposals on Jonathan's Dashboard (Criteria updates window) to approve or dismiss. Sponsors' asset classes may fill themselves in from their website.
+   Roles (Investor / Sponsor / Lender / Broker) and investor criteria are Jonathan's to set. Anyone else's edits become proposals on Jonathan's Dashboard (Data updates window) to approve or dismiss. Sponsors' asset classes may fill themselves in from their website.
 5. **After their first sign-in: check their signature** ([Settings](https://rjl-crm.vercel.app/settings))
    Settings shows a signature box per person. The CRM picks the signature up from a recent sent email the first time it drafts something; if the box is still empty, ask them to paste it from Outlook.
 6. **If they are coming from the HubSpot era**
@@ -32,7 +32,7 @@ Generated from `src/lib/onboarding.ts` by `npm run build`; the same checklist is
 6. **Forward deals to deals@rjlcapadvisors.com** ([Deals board](https://rjl-crm.vercel.app/deals))
    Forward the sponsor's email with its attachments (or Drive / Dropbox links). A ticket appears in Deal Received within a minute and you get a reply with the deal written as it would go to investors plus the checklist gaps. A line above the forward ("introduced to X and Y", "already sent to market") is read and applied. Later emails about the same deal add to the same ticket: one deal, one ticket.
 7. **Learn the Dashboard's five windows** ([Dashboard](https://rjl-crm.vercel.app/))
-   LP follow-ups (investors who went quiet), Deal momentum (sponsor items, LP requests, unanswered engagement letters), Intros to reconsider, Deals ready for launch, Criteria updates (Jonathan only). Handle always replies on the existing thread with everyone on it; the item drops off once your email is sent.
+   LP follow-ups (investors who went quiet), Deal momentum (sponsor items, LP requests, unanswered engagement letters), Intros to reconsider, Deals ready for launch, Data updates (Jonathan only: criteria corrections and people who left their firm). Handle always replies on the existing thread with everyone on it; the item drops off once your email is sent.
 8. **Know the house rules**
    Roles and investor criteria are set by Jonathan; your edits become proposals for him. Never make a second ticket for a deal that is already on the board. Progress reports come from the deal ticket (Progress report button), not from Word.
 

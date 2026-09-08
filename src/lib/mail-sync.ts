@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { houseSubjectMatches, subjectLooselyMatchesDeal, subjectMatchesDeal } from "@/lib/deal-match";
 import { noteDealSent } from "@/lib/deal-outbound";
+import { DEPARTURE_SUBJECT, noteDepartureIfAny } from "@/lib/departures";
 import { graph, graphConfigured, type GraphMessage } from "@/lib/graph";
 import { domainOf } from "@/lib/domains";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
@@ -103,7 +104,12 @@ export async function syncMailbox(mailbox: string): Promise<{ scanned: number; l
         }
       }
     }
-    if (!contactId && !companyId) continue; // nobody we track
+    if (!contactId && !companyId) {
+      // a bounce or auto-reply from a mail system about someone we know: "so-and-so is no longer with the firm"
+      if (!outbound && DEPARTURE_SUBJECT.test((m.subject ?? "").trim())) await noteDepartureIfAny({ subject: m.subject ?? null, text: m.bodyPreview ?? null, fromAddress: from?.address ?? null, contactId: null, messageId: m.internetMessageId ?? null }).catch(() => 0);
+      continue; // nobody we track
+    }
+    if (!outbound && DEPARTURE_SUBJECT.test((m.subject ?? "").trim())) await noteDepartureIfAny({ subject: m.subject ?? null, text: m.bodyPreview ?? null, fromAddress: from?.address ?? null, contactId, messageId: m.internetMessageId ?? null }).catch(() => 0);
 
     const when = new Date(m.sentDateTime ?? m.receivedDateTime ?? Date.now());
     const sentDeal = dealFor(m.subject ?? "", contactId, companyId);

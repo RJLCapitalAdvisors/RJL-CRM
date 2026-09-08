@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
 import { investorLabel } from "@/lib/tracker";
 import { syncFollowUpDrafts } from "@/lib/followup";
-import { PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
+import { EXTRA_FIELD_LABELS, PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
 import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft } from "./todo-actions";
 import { DraftButton } from "./draft-button";
 import { listMomentum } from "@/lib/momentum";
@@ -67,13 +67,14 @@ export default async function Dashboard() {
     prisma.deal.findMany({ where: { stage: "Engagement Letter Signed" }, include: { owner: { select: { name: true } }, _count: { select: { investors: true } } }, orderBy: { updatedAt: "desc" } }),
   ]);
   const companies = new Map((await prisma.company.findMany({ where: { id: { in: proposals.map((p) => p.companyId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
+  const people = new Map((await prisma.contact.findMany({ where: { id: { in: proposals.map((p) => p.contactId).filter(Boolean) as string[] } }, select: { id: true, firstName: true, lastName: true } })).map((c) => [c.id, [c.firstName, c.lastName].filter(Boolean).join(" ")]));
   const today = new Date();
   const quietCount = quiet.reduce((n, g) => n + g.rows.length, 0);
   const cols = showCriteria ? "2xl:grid-cols-5" : "2xl:grid-cols-4";
 
   return (
     <>
-      <PageHeader compact title="Dashboard" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP follow-ups · ${momentum.length} momentum · ${intros.length} intros to reconsider · ${readyDeals.length} ready to launch${showCriteria ? ` · ${proposals.length} criteria updates` : ""}`} />
+      <PageHeader compact title="Dashboard" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP follow-ups · ${momentum.length} momentum · ${intros.length} intros to reconsider · ${readyDeals.length} ready to launch${showCriteria ? ` · ${proposals.length} data updates` : ""}`} />
       <div className={`grid gap-3 px-5 py-4 md:grid-cols-2 xl:grid-cols-3 ${cols}`}>
         <Window title="LP follow-ups" count={quietCount} empty={`Everyone you have sent a deal to has responded, or got it less than ${QUIET_AFTER_DAYS} days ago.`}>
           <ul className="divide-y divide-line">
@@ -176,22 +177,22 @@ export default async function Dashboard() {
         </Window>
 
         {showCriteria && (
-          <Window title="Criteria updates" count={proposals.length} empty="Nothing to approve. Corrections from investor emails, notes, calls, or teammates land here.">
+          <Window title="Data updates" count={proposals.length} empty="Nothing to approve. Criteria corrections from investor emails, notes, calls or teammates, and people who left their firm, land here.">
             <ul className="divide-y divide-line">
               {proposals.map((p) => {
                 const changes = JSON.parse(p.changes) as Change[];
                 return (
                   <li key={p.id} className="px-3 py-2.5">
                     <div className="flex items-baseline justify-between gap-2">
-                      <Link href={`/companies/${p.companyId}`} className="font-semibold hover:underline">
-                        {(p.companyId && companies.get(p.companyId)) ?? "Investor"}
+                      <Link href={p.contactId && changes.some((c) => c.field === "removeContact") ? `/contacts/${p.contactId}` : `/companies/${p.companyId}`} className="font-semibold hover:underline">
+                        {changes.some((c) => c.field === "removeContact") && p.contactId ? `${people.get(p.contactId) || "Contact"}${p.companyId && companies.get(p.companyId) ? ` · ${companies.get(p.companyId)}` : ""}` : (p.companyId && companies.get(p.companyId)) ?? "Investor"}
                       </Link>
                       <span className="shrink-0 text-[11px] text-muted">{p.source === "NOTE" ? "note" : p.source === "EMAIL" ? "email" : p.source === "FIREFLIES" ? "call" : p.sourceRef ?? "teammate"}</span>
                     </div>
                     <ul className="mt-1 space-y-1">
                       {changes.map((c) => (
                         <li key={c.field} className="text-xs">
-                          <span className="text-muted">{PROPOSAL_FIELDS[c.field]?.label ?? c.field}:</span> <span className="line-through text-muted">{c.from || "blank"}</span> <span className="font-medium">{c.to}</span>
+                          <span className="text-muted">{c.field === "removeContact" ? EXTRA_FIELD_LABELS.removeContact : PROPOSAL_FIELDS[c.field]?.label ?? c.field}:</span> <span className="line-through text-muted">{c.from || "blank"}</span> <span className="font-medium">{c.to}</span>
                           {c.evidence && <div className="italic text-muted">“{c.evidence}”</div>}
                         </li>
                       ))}

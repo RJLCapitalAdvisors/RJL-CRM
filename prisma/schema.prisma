@@ -80,6 +80,7 @@ model Contact {
 
   marketingContact Boolean @default(false)
   unsubscribed     Boolean @default(false)
+  departedAt       DateTime? // left the firm (auto-reply / bounce said so, Jonathan approved the removal)
   bounceReason     String?
 
   criteria   InvestorCriteria?

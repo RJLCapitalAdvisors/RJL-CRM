@@ -25,7 +25,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
       where: { id },
       include: {
         owner: true,
-        sponsorCompany: { include: { contacts: { where: { email: { not: null } }, orderBy: { lastActivityAt: "desc" }, take: 8 } } },
+        sponsorCompany: { include: { contacts: { where: { email: { not: null }, departedAt: null }, orderBy: { lastActivityAt: "desc" }, take: 8 } } },
         activities: { orderBy: { occurredAt: "desc" }, take: 60, include: { contact: { include: { company: true } } } },
         investors: { include: { contact: { include: { company: true } } }, orderBy: [{ status: "desc" }, { updatedAt: "desc" }] },
         campaigns: { select: { id: true, name: true, followUp: true, createdAt: true, recipients: { select: { status: true } } }, orderBy: { createdAt: "desc" } },

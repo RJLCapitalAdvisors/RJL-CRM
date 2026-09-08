@@ -23,7 +23,7 @@ export const ADMIN_STEPS: Step[] = [
   },
   {
     title: "Explain who edits what",
-    detail: "Roles (Investor / Sponsor / Lender / Broker) and investor criteria are Jonathan's to set. Anyone else's edits become proposals on Jonathan's Dashboard (Criteria updates window) to approve or dismiss. Sponsors' asset classes may fill themselves in from their website.",
+    detail: "Roles (Investor / Sponsor / Lender / Broker) and investor criteria are Jonathan's to set. Anyone else's edits become proposals on Jonathan's Dashboard (Data updates window) to approve or dismiss. Sponsors' asset classes may fill themselves in from their website.",
   },
   {
     title: "After their first sign-in: check their signature",
@@ -69,7 +69,7 @@ export const YOUR_STEPS: Step[] = [
   },
   {
     title: "Learn the Dashboard's five windows",
-    detail: "LP follow-ups (investors who went quiet), Deal momentum (sponsor items, LP requests, unanswered engagement letters), Intros to reconsider, Deals ready for launch, Criteria updates (Jonathan only). Handle always replies on the existing thread with everyone on it; the item drops off once your email is sent.",
+    detail: "LP follow-ups (investors who went quiet), Deal momentum (sponsor items, LP requests, unanswered engagement letters), Intros to reconsider, Deals ready for launch, Data updates (Jonathan only: criteria corrections and people who left their firm). Handle always replies on the existing thread with everyone on it; the item drops off once your email is sent.",
     link: { href: "/", label: "Dashboard" },
   },
   {
