@@ -137,3 +137,27 @@ export async function sentMessagesToDomain(mailbox: string, domain: string, top 
   const r = await graph<{ value: GraphMessage[] }>(`/users/${q(mailbox)}/mailFolders/sentitems/messages?$search=${q(`"participants:${kw}"`)}&$top=${top}&$select=id,subject,conversationId,sentDateTime,hasAttachments,toRecipients,ccRecipients,webLink`);
   return [...r.value].sort((a, b) => (b.sentDateTime ?? "").localeCompare(a.sentDateTime ?? ""));
 }
+
+/** Attach bytes to a message: small files inline, big ones through an upload session (Graph's 3 MB rule). */
+export async function addAttachment(mailbox: string, messageId: string, file: { name: string; contentType: string; bytes: Uint8Array }) {
+  const { name, contentType, bytes } = file;
+  if (bytes.byteLength < 3 * 1024 * 1024) {
+    await graph(`/users/${q(mailbox)}/messages/${q(messageId)}/attachments`, { method: "POST", body: JSON.stringify({ "@odata.type": "#microsoft.graph.fileAttachment", name, contentType, contentBytes: Buffer.from(bytes).toString("base64") }) });
+    return;
+  }
+  const session = await graph<{ uploadUrl: string }>(`/users/${q(mailbox)}/messages/${q(messageId)}/attachments/createUploadSession`, { method: "POST", body: JSON.stringify({ AttachmentItem: { attachmentType: "file", name, size: bytes.byteLength } }) });
+  const CHUNK = 4 * 1024 * 1024;
+  for (let s = 0; s < bytes.byteLength; s += CHUNK) {
+    const e = Math.min(s + CHUNK, bytes.byteLength);
+    const res = await fetch(session.uploadUrl, { method: "PUT", headers: { "Content-Length": String(e - s), "Content-Range": `bytes ${s}-${e - 1}/${bytes.byteLength}` }, body: bytes.slice(s, e) });
+    if (!res.ok) throw new Error(`upload failed ${res.status}`);
+  }
+}
+
+/** A top-level mail folder by name, created if missing; returns its id. */
+export async function ensureMailFolder(mailbox: string, displayName: string): Promise<string> {
+  const r = await graph<{ value: { id: string; displayName: string }[] }>(`/users/${q(mailbox)}/mailFolders?$filter=displayName eq '${displayName.replace(/'/g, "''")}'&$select=id,displayName`);
+  if (r.value[0]) return r.value[0].id;
+  const made = await graph<{ id: string }>(`/users/${q(mailbox)}/mailFolders`, { method: "POST", body: JSON.stringify({ displayName }) });
+  return made.id;
+}

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { dealFiles, syncSendDrafts, usualRecipients } from "@/lib/send-deal";
-import { SendClient, type Firm } from "./send-client";
+import { SendClient, type Firm, type SendState } from "./send-client";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +20,14 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   const house = templates.find((t) => t.name.startsWith("Deal email (house")) ?? templates[0];
 
   const files = await dealFiles(deal.id).catch(() => []);
+  const sendState = ((): SendState | null => {
+    try {
+      const st = (JSON.parse(deal.details || "{}") as { sendState?: SendState }).sendState;
+      return st && typeof st === "object" ? st : null;
+    } catch {
+      return null;
+    }
+  })();
   const defaults = new Map<string, string[]>();
   for (const r of deal.investors) {
     if (r.contact.companyId && !defaults.has(r.contact.companyId)) defaults.set(r.contact.companyId, await usualRecipients(r.contact.companyId, r.contact.company?.contacts ?? []));
@@ -50,7 +58,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
           </Link>
         }
       />
-      <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size }))} />
+      <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size }))} saved={sendState} />
     </>
   );
 }

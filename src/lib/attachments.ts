@@ -13,7 +13,8 @@ export async function attachmentToText(name: string, contentType: string | null,
   const ct = (contentType ?? "").toLowerCase();
   try {
     if (lower.endsWith(".pdf") || ct.includes("pdf")) {
-      const pdfParse = (await import("pdf-parse")).default as unknown as (b: Buffer) => Promise<{ text: string; numpages: number }>;
+      // the package index runs a debug routine (reads a test PDF) when loaded outside CommonJS; the lib entry is the real parser
+      const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
       const r = await pdfParse(Buffer.from(bytes));
       return r.text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
     }

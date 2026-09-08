@@ -166,6 +166,7 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
 
 const SYSTEM = `You extract commercial real estate deal details from emails forwarded to a capital advisory firm (RJL Capital Advisors) so the team can see what the sponsor provided and what is still missing.
 Read the email (including quoted/forwarded content) and fill the schema. Rules:
+- The subject line can be stale (a reply on an old thread, a forward under an old subject). Name and describe the deal from the attachments and the body; when they describe a different property than the subject, the attachments win.
 - Use an empty string for anything not stated. Never invent numbers or facts.
 - Dollar amounts are plain numbers in USD ("$12.5MM" -> 12500000, "$3,200,000" -> 3200000).
 - Percentages are plain numbers (65% -> 65). LTV may appear as LTC or leverage.

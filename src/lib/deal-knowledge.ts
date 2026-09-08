@@ -20,15 +20,15 @@ import { words } from "@/lib/deal-match";
 const SameDeal = z.object({ sameDeal: z.boolean().describe("True only if the email is about this exact deal (same property / same capital raise), not merely a similar deal or the same sponsor."), why: z.string().describe("One short line.") });
 
 /** A word-overlap candidate is only a match once Claude agrees the email is about that very deal. */
-async function confirmSameDeal(deal: { name: string; propertyName: string | null; sponsorName: string | null; city: string | null; state: string | null; summary: string | null }, subject: string, senderEmail: string | null | undefined, bodyText: string): Promise<boolean> {
+async function confirmSameDeal(deal: { name: string; propertyName: string | null; sponsorName: string | null; city: string | null; state: string | null; summary: string | null }, subject: string, senderEmail: string | null | undefined, bodyText: string, attachments: { names: string[]; text: string }): Promise<boolean> {
   if (!process.env.ANTHROPIC_API_KEY) return false;
   try {
     const client = new Anthropic();
     const res = await client.messages.parse({
       model: "claude-sonnet-5",
       max_tokens: 200,
-      system: "You keep a real estate capital advisor's deal board free of duplicates and mis-filed emails. Decide whether an incoming email is about the SAME deal as an existing ticket. Same deal means the same property or the same specific capital raise. A different property, a different sponsor's deal, a fund blast, or a deal that merely shares an asset class, tenant type, or market is NOT the same deal.",
-      messages: [{ role: "user", content: ["EXISTING TICKET", `Name: ${deal.propertyName ?? deal.name}`, `Sponsor: ${deal.sponsorName ?? "unknown"}`, `Location: ${[deal.city, deal.state].filter(Boolean).join(", ") || "unknown"}`, `Notes: ${deal.summary ?? ""}`, "", "INCOMING EMAIL", `Subject: ${subject}`, `From: ${senderEmail ?? ""}`, bodyText.slice(0, 5000)].join("\n") }],
+      system: "You keep a real estate capital advisor's deal board free of duplicates and mis-filed emails. Decide whether an incoming email is about the SAME deal as an existing ticket. Same deal means the same property or the same specific capital raise. A different property, a different sponsor's deal, a fund blast, or a deal that merely shares an asset class, tenant type, or market is NOT the same deal. The subject line is often stale (a reply on an old thread, a forward under an old subject): the attachments (their names and contents) and the body decide. A sponsor sending a new property on an old thread is a NEW deal.",
+      messages: [{ role: "user", content: ["EXISTING TICKET", `Name: ${deal.propertyName ?? deal.name}`, `Sponsor: ${deal.sponsorName ?? "unknown"}`, `Location: ${[deal.city, deal.state].filter(Boolean).join(", ") || "unknown"}`, `Notes: ${deal.summary ?? ""}`, "", "INCOMING EMAIL", `Subject: ${subject}`, `From: ${senderEmail ?? ""}`, bodyText.slice(0, 5000), "", `ATTACHMENTS: ${attachments.names.join(" | ") || "(none)"}`, attachments.text.slice(0, 3000)].join("\n") }],
       output_config: { format: zodOutputFormat(SameDeal) },
     });
     return res.parsed_output?.sameDeal === true;
@@ -38,10 +38,14 @@ async function confirmSameDeal(deal: { name: string; propertyName: string | null
 }
 
 /** Which existing active deal an incoming deals@ email belongs to, if any. */
-export async function matchExistingDeal(opts: { conversationId?: string | null; subject: string; bodyText: string; senderEmail?: string | null }): Promise<string | null> {
+export async function matchExistingDeal(opts: { conversationId?: string | null; subject: string; bodyText: string; senderEmail?: string | null; attachmentNames?: string[]; attachmentText?: string }): Promise<string | null> {
   if (opts.conversationId) {
-    const byThread = await prisma.dealEmail.findFirst({ where: { conversationId: opts.conversationId }, orderBy: { receivedAt: "desc" } });
-    if (byThread) return byThread.dealId;
+    const byThread = await prisma.dealEmail.findFirst({ where: { conversationId: opts.conversationId }, orderBy: { receivedAt: "desc" }, include: { deal: { select: { name: true, propertyName: true, sponsorName: true, city: true, state: true, summary: true } } } });
+    if (byThread) {
+      // same thread, but a sponsor sometimes sends the next property on the old thread: with documents attached, check
+      if (!opts.attachmentNames?.length) return byThread.dealId;
+      if (await confirmSameDeal(byThread.deal, opts.subject, opts.senderEmail, opts.bodyText, { names: opts.attachmentNames, text: opts.attachmentText ?? "" })) return byThread.dealId;
+    }
   }
   const deals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, summary: true, sponsorCompanyId: true, sponsorCompany: { select: { domain: true } } } });
   const subj = opts.subject.toLowerCase();
@@ -65,7 +69,7 @@ export async function matchExistingDeal(opts: { conversationId?: string | null; 
   scored.sort((a, b) => b.score - a.score);
   // words can lie ("grocery anchored", "value-add"): the top candidates have to survive a same-deal check
   for (const { deal } of scored.slice(0, 3)) {
-    if (await confirmSameDeal(deal, opts.subject, opts.senderEmail, opts.bodyText)) return deal.id;
+    if (await confirmSameDeal(deal, opts.subject, opts.senderEmail, opts.bodyText, { names: opts.attachmentNames ?? [], text: opts.attachmentText ?? "" })) return deal.id;
   }
   return null;
 }
@@ -111,7 +115,7 @@ export async function extractDealFacts(dealId: string, text: string, source: str
   const res = await client.messages.parse({
     model: "claude-sonnet-5",
     max_tokens: 2500,
-    system: `A deal sponsor sent RJL Capital Advisors (a real estate capital advisor) more information about a deal they are raising capital for. Extract the information as question/answer pairs so the team can answer investors later. Cover everything substantive: numbers, comps, market data, timeline, structure, answers to earlier questions. Do not repeat facts already known (listed) unless the new email updates them. Skip pleasantries.`,
+    system: `A deal sponsor sent RJL Capital Advisors (a real estate capital advisor) more information about a deal they are raising capital for. Extract the information as question/answer pairs so the team can answer investors later; these pairs go into an Investor FAQ that ANY investor may receive. Cover what is substantive and general to the deal: the property, market, business plan, numbers, comps, capital structure, returns, timeline, sponsor track record, answers to earlier questions about the deal. Leave out anything that was private to one conversation or one counterparty: other or prior offerings the sponsor mentioned, what a particular investor said or asked, terms or concessions offered to one party, negotiation back-and-forth, opinions about people, internal or personal remarks. Do not repeat facts already known (listed) unless the new email updates them. Skip pleasantries.`,
     messages: [{ role: "user", content: `Deal: ${deal.propertyName ?? deal.name}\nSponsor: ${deal.sponsorName ?? ""}\n\nALREADY KNOWN:\n${known || "(nothing yet)"}\n\nNEW EMAIL (${source}):\n${text.slice(0, 60000)}` }],
     output_config: { format: zodOutputFormat(Facts) },
   });
@@ -183,12 +187,12 @@ const Split = z.object({
 export async function detectMultipleDeals(bodyText: string, attachmentNames: string[], attachmentTexts: { name: string; text: string }[]): Promise<{ name: string; attachments: string[]; hint: string }[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
   const client = new Anthropic();
-  const peek = attachmentTexts.map((a) => `=== ${a.name} ===\n${a.text.slice(0, 1500)}`).join("\n\n");
+  const peek = attachmentTexts.map((a) => `=== ${a.name} ===\n${a.text.slice(0, attachmentTexts.length > 12 ? 600 : 1500)}`).join("\n\n");
   const res = await client.messages.parse({
     model: "claude-sonnet-5",
-    max_tokens: 800,
+    max_tokens: 2000,
     system: "You triage emails sent to a real estate capital advisor's deal inbox. Decide how many DISTINCT deals (separate properties or separately-capitalized opportunities) the email presents. Most emails present exactly one deal, often with several files (OM, model, comps) that all belong to it: that is one entry. Only split when the email clearly offers separate deals (different properties, each with its own ask). Assign every listed file to the deal it belongs to.",
-    messages: [{ role: "user", content: `EMAIL BODY:\n${bodyText.slice(0, 6000)}\n\nATTACHMENTS: ${attachmentNames.join(" | ") || "(none)"}\n\nFIRST LINES OF EACH ATTACHMENT:\n${peek.slice(0, 12000)}` }],
+    messages: [{ role: "user", content: `EMAIL BODY:\n${bodyText.slice(0, 6000)}\n\nATTACHMENTS: ${attachmentNames.join(" | ") || "(none)"}\n\nFIRST LINES OF EACH ATTACHMENT:\n${peek.slice(0, 40000)}` }],
     output_config: { format: zodOutputFormat(Split) },
   });
   return res.parsed_output?.deals ?? [];

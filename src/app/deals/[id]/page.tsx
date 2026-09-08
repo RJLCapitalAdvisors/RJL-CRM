@@ -6,7 +6,7 @@ import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/r
 import { CompanyLogo } from "@/components/company-logo";
 import { fmtDate, fullName } from "@/lib/format";
 import { TRACKER_STATUSES, investorLabel, statusOf } from "@/lib/tracker";
-import { addDealNote, updateDeal } from "../actions";
+import { addDealNote, deleteFact, updateDeal } from "../actions";
 import { StageSelect } from "./stage-select";
 import { AttachmentList } from "@/components/attachment-list";
 import { signFileToken } from "@/lib/tokens";
@@ -170,8 +170,15 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           </AssocCard>
           <AssocCard title="Questions answered" count={deal.facts.length} empty="What the sponsor tells us in follow-up emails is filed here and used to answer investor questions.">
             {deal.facts.map((f) => (
-              <div key={f.id} className="px-4 py-2 text-sm">
-                <div className="font-medium">{f.question}</div>
+              <div key={f.id} className="group px-4 py-2 text-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-medium">{f.question}</div>
+                  <form action={deleteFact.bind(null, deal.id, f.id)}>
+                    <button type="submit" className="shrink-0 text-[11px] text-muted opacity-0 transition-opacity hover:underline group-hover:opacity-100" title="Take this off the ticket and out of the Investor FAQ">
+                      remove
+                    </button>
+                  </form>
+                </div>
                 <div className="text-ink-soft">{f.answer}</div>
                 {f.source && <div className="mt-0.5 text-[11px] text-muted">{f.source}</div>}
               </div>

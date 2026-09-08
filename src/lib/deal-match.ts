@@ -36,7 +36,7 @@ export function subjectMatchesDeal(subject: string | null | undefined, d: DealNa
   for (const p of dealPhrases(d)) if (subj.includes(norm(p))) return true;
   const ws = words(d.propertyName ?? d.name);
   if (!ws.length) return false;
-  const hits = ws.filter((w) => subj.includes(w)).length;
+  const hits = ws.filter((w) => subj.includes(` ${w} `)).length; // whole words: "multi" is not "multifamily"
   const need = ws.length <= 2 ? ws.length : Math.ceil(ws.length * 0.6);
   return hits >= need;
 }
@@ -52,4 +52,37 @@ export function subjectLooselyMatchesDeal(subject: string | null | undefined, d:
   const city = d.city?.trim();
   if (city && city.length >= 4 && subj.includes(norm(city))) return true;
   return words(d.propertyName ?? d.name).some((w) => w.length >= 5 && subj.includes(` ${w} `));
+}
+
+/** Dollar amounts written any way ("$11,000,000", "$11MM", "$5.6 million") as plain numbers. */
+export function amountsIn(text: string): number[] {
+  const out: number[] = [];
+  for (const m of text.matchAll(/\$\s?([\d,.]+)\s*(mm|million|m|k|bn|b)?/gi)) {
+    let n = Number(m[1].replace(/,/g, ""));
+    if (!isFinite(n) || n <= 0) continue;
+    const u = (m[2] ?? "").toLowerCase();
+    if (u === "mm" || u === "m" || u === "million") n *= 1_000_000;
+    else if (u === "k") n *= 1_000;
+    else if (u === "bn" || u === "b") n *= 1_000_000_000;
+    out.push(n);
+  }
+  return out;
+}
+
+/**
+ * The subject is a house-style deal email for this deal ("Retail Acquisition Opportunity in Boynton Beach, FL |
+ * $11,000,000 of JV Equity"): it says "opportunity", names the deal's city, and any amount in it is the deal's ask.
+ * A deal with no city never matches this way (too generic).
+ */
+export function houseSubjectMatches(subject: string | null | undefined, deal: { city?: string | null; state?: string | null; requestedAmount?: number | null }): boolean {
+  if (!subject || !deal.city || deal.city.trim().length < 3) return false;
+  const subj = subject.toLowerCase().replace(/[\u200b\u200c\u200d\ufeff]/g, "");
+  if (!/opportunit/.test(subj)) return false;
+  const city = deal.city.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const norm = " " + subj.replace(/[^a-z0-9$.,]+/g, " ") + " ";
+  if (!norm.includes(" " + city + " ") && !norm.includes(" in " + city)) return false;
+  const amounts = amountsIn(subject);
+  if (!amounts.length) return true;
+  if (!deal.requestedAmount) return false;
+  return amounts.some((x) => Math.abs(x - deal.requestedAmount!) / deal.requestedAmount! < 0.02);
 }

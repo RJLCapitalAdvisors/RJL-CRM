@@ -1,4 +1,11 @@
+import { createWriteStream } from "fs";
+import { readFile, stat, unlink } from "fs/promises";
+import os from "os";
+import path from "path";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { unzipSync } from "fflate";
+import yauzl from "yauzl";
 import { graph, graphConfigured } from "@/lib/graph";
 
 /**
@@ -6,15 +13,18 @@ import { graph, graphConfigured } from "@/lib/graph";
  * and model. When such a link reaches deals@, we open it, pull the documents down (a folder link yields all
  * of them) and treat them exactly like attachments: parsed for the ticket, listed under Attachments, sent on
  * to investors. Public / anyone-with-the-link shares only; anything that wants a sign-in is reported back.
+ * Folder downloads (a whole data room can be a few hundred MB) stream to disk and are read entry by entry.
  */
 
 export type CloudFile = { name: string; contentType: string | null; size: number; bytes: Uint8Array; url: string; source: "Dropbox" | "Google Drive" | "OneDrive" | "Box" };
 export type CloudResult = { files: CloudFile[]; notes: string[] };
 
-const MAX_FILE = 40 * 1024 * 1024;
-const MAX_TOTAL = 120 * 1024 * 1024;
-const MAX_FILES = 15;
+const MAX_FILE = 40 * 1024 * 1024; // one document
+const MAX_TOTAL = 250 * 1024 * 1024; // all documents kept from one email
+const MAX_ARCHIVE = 450 * 1024 * 1024; // a folder zip on disk
+const MAX_FILES = 40;
 const TIMEOUT = 25_000;
+const ARCHIVE_TIMEOUT = 120_000;
 const DOC = /\.(pdf|xlsx|xlsm|xls|csv|docx|doc|pptx|ppt|txt)$/i;
 const HOST = /^https?:\/\/(?:[a-z0-9-]+\.)*(dropbox\.com|drive\.google\.com|docs\.google\.com|1drv\.ms|onedrive\.live\.com|sharepoint\.com|box\.com)\//i;
 const URL_RE = /https?:\/\/[^\s"'<>()\[\]]+/gi;
@@ -63,9 +73,12 @@ const fileNameFrom = (res: Response, fallback: string) => {
 };
 
 const isHtml = (res: Response) => (res.headers.get("content-type") ?? "").toLowerCase().includes("text/html");
+const isZip = (res: Response, name: string) => /\.zip$/i.test(name) || (res.headers.get("content-type") ?? "").toLowerCase().includes("zip");
+const UA = { "User-Agent": "Mozilla/5.0 (RJL CRM)" };
 
+/** Small things in memory: a document, or an HTML page (a sign-in wall, a confirm form). */
 async function download(url: string, init: RequestInit = {}): Promise<{ res: Response; bytes: Uint8Array } | { res: Response; html: string } | null> {
-  const res = await fetch(url, { ...init, redirect: "follow", signal: AbortSignal.timeout(TIMEOUT), headers: { "User-Agent": "Mozilla/5.0 (RJL CRM)", ...(init.headers ?? {}) } });
+  const res = await fetch(url, { ...init, redirect: "follow", signal: AbortSignal.timeout(TIMEOUT), headers: { ...UA, ...(init.headers ?? {}) } });
   if (!res.ok) return null;
   if (isHtml(res)) return { res, html: (await res.text()).slice(0, 400_000) };
   const len = Number(res.headers.get("content-length") ?? 0);
@@ -73,6 +86,31 @@ async function download(url: string, init: RequestInit = {}): Promise<{ res: Res
   const buf = new Uint8Array(await res.arrayBuffer());
   if (buf.byteLength > MAX_FILE) return null;
   return { res, bytes: buf };
+}
+
+/** Big things to disk (folder zips): streamed, capped, cleaned up by the caller. */
+async function downloadToDisk(url: string): Promise<{ res: Response; path: string; size: number; name: string } | { res: Response; html: string } | null> {
+  const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(ARCHIVE_TIMEOUT), headers: UA });
+  if (!res.ok || !res.body) return null;
+  if (isHtml(res)) return { res, html: (await res.text()).slice(0, 400_000) };
+  const len = Number(res.headers.get("content-length") ?? 0);
+  if (len > MAX_ARCHIVE) return null;
+  const file = path.join(os.tmpdir(), `rjlcrm-${Date.now()}-${Math.random().toString(36).slice(2)}.bin`);
+  let written = 0;
+  const cap = new (class extends (await import("stream")).Transform {
+    _transform(chunk: Buffer, _enc: string, cb: (err?: Error | null, data?: Buffer) => void) {
+      written += chunk.byteLength;
+      if (written > MAX_ARCHIVE) return cb(new Error("archive too large"));
+      cb(null, chunk);
+    }
+  })();
+  try {
+    await pipeline(Readable.fromWeb(res.body as never), cap, createWriteStream(file));
+  } catch {
+    await unlink(file).catch(() => {});
+    return null;
+  }
+  return { res, path: file, size: (await stat(file)).size, name: fileNameFrom(res, "download.bin") };
 }
 
 const typeFor = (name: string, fromServer: string | null) => {
@@ -86,15 +124,17 @@ const typeFor = (name: string, fromServer: string | null) => {
   return fromServer && !fromServer.includes("octet-stream") ? fromServer.split(";")[0] : "application/octet-stream";
 };
 
-/** A zip (a Dropbox folder, a OneDrive folder) becomes its documents. */
+const wanted = (entryPath: string, size: number) => DOC.test(entryPath) && !/__MACOSX|(^|\/)\./.test(entryPath) && size <= MAX_FILE && size > 0;
+
+/** A small zip in memory (OneDrive folder fallback) becomes its documents. */
 function unzipDocs(bytes: Uint8Array, url: string, source: CloudFile["source"]): CloudFile[] {
   const out: CloudFile[] = [];
   try {
-    const entries = unzipSync(bytes, { filter: (f) => DOC.test(f.name) && !/__MACOSX|\/\./.test(f.name) && f.originalSize <= MAX_FILE });
-    for (const [path, data] of Object.entries(entries)) {
-      const name = path.split("/").pop()!;
+    const entries = unzipSync(bytes, { filter: (f) => wanted(f.name, f.originalSize) });
+    for (const [p, data] of Object.entries(entries)) {
+      const name = p.split("/").pop()!;
       if (!name) continue;
-      out.push({ name, contentType: typeFor(name, null), size: data.byteLength, bytes: data, url: `${url}#${encodeURIComponent(path)}`, source });
+      out.push({ name, contentType: typeFor(name, null), size: data.byteLength, bytes: data, url: `${url}#${encodeURIComponent(p)}`, source });
     }
   } catch {
     /* not a zip we can read */
@@ -102,20 +142,85 @@ function unzipDocs(bytes: Uint8Array, url: string, source: CloudFile["source"]):
   return out;
 }
 
+/** A zip on disk (a whole data room) read entry by entry: only the documents, within the caps. */
+function unzipDocsFromDisk(file: string, url: string, source: CloudFile["source"]): Promise<{ files: CloudFile[]; skipped: number }> {
+  return new Promise((resolve) => {
+    const files: CloudFile[] = [];
+    let skipped = 0;
+    let total = 0;
+    yauzl.open(file, { lazyEntries: true }, (err, zip) => {
+      if (err || !zip) return resolve({ files, skipped });
+      const finish = () => {
+        try {
+          zip.close();
+        } catch {
+          /* closed */
+        }
+        resolve({ files, skipped });
+      };
+      zip.on("error", finish);
+      zip.on("end", finish);
+      zip.on("entry", (entry) => {
+        if (/\/$/.test(entry.fileName)) return zip.readEntry();
+        if (!wanted(entry.fileName, entry.uncompressedSize) || files.length >= MAX_FILES || total + entry.uncompressedSize > MAX_TOTAL) {
+          if (DOC.test(entry.fileName)) skipped++;
+          return zip.readEntry();
+        }
+        zip.openReadStream(entry, (e, stream) => {
+          if (e || !stream) {
+            skipped++;
+            return zip.readEntry();
+          }
+          const chunks: Buffer[] = [];
+          stream.on("data", (c: Buffer) => chunks.push(c));
+          stream.on("error", () => {
+            skipped++;
+            zip.readEntry();
+          });
+          stream.on("end", () => {
+            const data = new Uint8Array(Buffer.concat(chunks));
+            const name = entry.fileName.split("/").pop()!;
+            total += data.byteLength;
+            files.push({ name, contentType: typeFor(name, null), size: data.byteLength, bytes: data, url: `${url}#${encodeURIComponent(entry.fileName)}`, source });
+            zip.readEntry();
+          });
+        });
+      });
+      zip.readEntry();
+    });
+  });
+}
+
+/** A file or folder link that answers with either a document or a zip: handled from disk so size does not matter. */
+async function fetchDocumentOrArchive(url: string, source: CloudFile["source"], fallbackName: string): Promise<CloudResult | "html" | null> {
+  const r = await downloadToDisk(url);
+  if (!r) return null;
+  if ("html" in r) return "html";
+  try {
+    const name = r.name === "download.bin" ? fallbackName : r.name;
+    if (isZip(r.res, name)) {
+      const { files, skipped } = await unzipDocsFromDisk(r.path, url, source);
+      const notes: string[] = [];
+      if (!files.length) notes.push(`${source} folder had no PDF / Excel / Word documents I could take: ${url}`);
+      else if (skipped) notes.push(`${source} folder: kept ${files.length} document${files.length === 1 ? "" : "s"}, left ${skipped} out (over the size limit or past the first ${MAX_FILES}): ${url}`);
+      return { files, notes };
+    }
+    if (!DOC.test(name) || r.size > MAX_FILE) return { files: [], notes: [] };
+    const bytes = new Uint8Array(await readFile(r.path));
+    return { files: [{ name, contentType: typeFor(name, r.res.headers.get("content-type")), size: bytes.byteLength, bytes, url, source }], notes: [] };
+  } finally {
+    await unlink(r.path).catch(() => {});
+  }
+}
+
 // ---------- Dropbox ----------
 async function dropbox(url: string): Promise<CloudResult> {
   const u = new URL(url);
   u.searchParams.set("dl", "1");
-  const r = await download(u.toString());
-  if (!r) return { files: [], notes: [`Dropbox link could not be downloaded: ${url}`] };
-  if ("html" in r) return { files: [], notes: [`Dropbox link needs a password or sign-in: ${url}`] };
-  const name = fileNameFrom(r.res, u.pathname.split("/").pop() ?? "dropbox-file");
-  if (/\.zip$/i.test(name) || (r.res.headers.get("content-type") ?? "").includes("zip")) {
-    const files = unzipDocs(r.bytes, url, "Dropbox");
-    return { files, notes: files.length ? [] : [`Dropbox folder had no PDF / Excel / Word documents: ${url}`] };
-  }
-  if (!DOC.test(name)) return { files: [], notes: [] };
-  return { files: [{ name, contentType: typeFor(name, r.res.headers.get("content-type")), size: r.bytes.byteLength, bytes: r.bytes, url, source: "Dropbox" }], notes: [] };
+  const r = await fetchDocumentOrArchive(u.toString(), "Dropbox", u.pathname.split("/").pop() ?? "dropbox-file");
+  if (!r) return { files: [], notes: [`Dropbox link could not be downloaded (too large, or not public): ${url}`] };
+  if (r === "html") return { files: [], notes: [`Dropbox link needs a password or sign-in: ${url}`] };
+  return r;
 }
 
 // ---------- Google Drive / Docs ----------
@@ -236,12 +341,10 @@ async function onedrive(url: string): Promise<CloudResult> {
   }
   const u = new URL(url);
   u.searchParams.set("download", "1");
-  const r = await download(u.toString()).catch(() => null);
-  if (!r || "html" in r) return { files: [], notes: [`OneDrive / SharePoint link needs a sign-in or is not shared with anyone: ${url}`] };
-  const name = fileNameFrom(r.res, "onedrive-file.pdf");
-  if (/\.zip$/i.test(name)) return { files: unzipDocs(r.bytes, url, "OneDrive"), notes: [] };
-  if (!DOC.test(name)) return { files: [], notes: [] };
-  return { files: [{ name, contentType: typeFor(name, r.res.headers.get("content-type")), size: r.bytes.byteLength, bytes: r.bytes, url, source: "OneDrive" }], notes: [] };
+  const r = await fetchDocumentOrArchive(u.toString(), "OneDrive", "onedrive-file.pdf").catch(() => null);
+  if (!r) return { files: [], notes: [`OneDrive / SharePoint link could not be downloaded: ${url}`] };
+  if (r === "html") return { files: [], notes: [`OneDrive / SharePoint link needs a sign-in or is not shared with anyone: ${url}`] };
+  return r;
 }
 
 // ---------- Box ----------
@@ -253,6 +356,7 @@ async function box(url: string): Promise<CloudResult> {
   if (!r || "html" in r) return { files: [], notes: [`Box link could not be downloaded directly (open it and attach the files, or ask the sponsor for a direct link): ${url}`] };
   const name = fileNameFrom(r.res, `box-${hash}.pdf`);
   if (!DOC.test(name)) return { files: [], notes: [] };
+  if (/\.zip$/i.test(name)) return { files: unzipDocs(r.bytes, url, "Box"), notes: [] };
   return { files: [{ name, contentType: typeFor(name, r.res.headers.get("content-type")), size: r.bytes.byteLength, bytes: r.bytes, url, source: "Box" }], notes: [] };
 }
 
@@ -271,6 +375,7 @@ export async function fetchCloudFiles(urls: string[]): Promise<CloudResult> {
     }
     for (const f of r.files) {
       if (out.files.some((x) => x.name.toLowerCase() === f.name.toLowerCase() && x.size === f.size)) continue;
+      if (total + f.size > MAX_TOTAL) continue;
       total += f.size;
       out.files.push(f);
     }
@@ -279,7 +384,7 @@ export async function fetchCloudFiles(urls: string[]): Promise<CloudResult> {
   return out;
 }
 
-/** Re-fetch one file recorded from a link (for downloads and for attaching to investor emails). */
+/** Re-fetch one file recorded from a link (only for files recorded before they were kept in the deals@ mailbox). */
 export async function fetchCloudFileByUrl(url: string, name: string): Promise<Uint8Array | null> {
   const base = url.replace(/#.*$/, "");
   const r = await fetchCloudFiles([base]);

@@ -67,3 +67,13 @@ export async function reviseGeneralEmailAction(dealId: string, subject: string, 
   if (!instruction.trim()) return { error: "Say what to change." };
   return reviseDealEmail({ dealId, subject, html, instruction });
 }
+
+/** Autosave for the Send deal page: the General email, per-firm edits, who gets what, files, template. Kept on the deal. */
+export async function saveSendStateAction(dealId: string, state: Record<string, unknown>) {
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { details: true } });
+  if (!deal) return { ok: false as const };
+  const details = JSON.parse(deal.details || "{}") as Record<string, unknown>;
+  details.sendState = state;
+  await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify(details) } });
+  return { ok: true as const };
+}

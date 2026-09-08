@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
-import { subjectLooselyMatchesDeal, subjectMatchesDeal } from "@/lib/deal-match";
+import { houseSubjectMatches, subjectLooselyMatchesDeal, subjectMatchesDeal } from "@/lib/deal-match";
+import { noteDealSent } from "@/lib/deal-outbound";
 import { graph, graphConfigured, type GraphMessage } from "@/lib/graph";
 import { domainOf } from "@/lib/domains";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
@@ -33,10 +34,11 @@ async function pageThrough(mailbox: string, folder: "sentitems" | "inbox", since
 }
 
 /** The deal an email is about: its name in the subject; else, for someone on a deal's report or at its sponsor, the city or a property word. */
-async function dealResolver() {
-  const activeDeals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, sponsorCompanyId: true, investors: { select: { contactId: true } } } });
+export async function dealResolver() {
+  const activeDeals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, investors: { select: { contactId: true } } } });
   const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null) =>
     activeDeals.find((d) => subjectMatchesDeal(subject, d))?.id ??
+    activeDeals.find((d) => houseSubjectMatches(subject, d))?.id ??
     activeDeals.find((d) => ((contactId && d.investors.some((r) => r.contactId === contactId)) || (companyId && d.sponsorCompanyId === companyId)) && subjectLooselyMatchesDeal(subject, d))?.id;
   return dealFor;
 }
@@ -88,6 +90,7 @@ export async function syncMailbox(mailbox: string): Promise<{ scanned: number; l
     if (!contactId && !companyId) continue; // nobody we track
 
     const when = new Date(m.sentDateTime ?? m.receivedDateTime ?? Date.now());
+    const sentDeal = dealFor(m.subject ?? "", contactId, companyId);
     await prisma.activity.create({
       data: {
         type: "EMAIL",
@@ -98,10 +101,11 @@ export async function syncMailbox(mailbox: string): Promise<{ scanned: number; l
         externalId: ext,
         contactId,
         companyId,
-        dealId: dealFor(m.subject ?? "", contactId, companyId) ?? null,
+        dealId: sentDeal ?? null,
         meta: JSON.stringify({ from, to, cc, mailbox, hasAttachments: m.hasAttachments ?? false }),
       },
     });
+    if (outbound && sentDeal) await noteDealSent({ dealId: sentDeal, contactId, companyId, mailbox, graphId: m.id, hasAttachments: m.hasAttachments ?? false, when, toEmails: to.map((p) => p.address) }).catch(() => false);
     const bump = [contactId ? prisma.contact.updateMany({ where: { id: contactId, OR: [{ lastActivityAt: null }, { lastActivityAt: { lt: when } }] }, data: { lastActivityAt: when } }) : null, companyId ? prisma.company.updateMany({ where: { id: companyId, OR: [{ lastActivityAt: null }, { lastActivityAt: { lt: when } }] }, data: { lastActivityAt: when } }) : null];
     await Promise.all(bump);
     logged++;
@@ -134,7 +138,9 @@ export async function syncRecentSent(mailbox: string, hours = 6): Promise<number
     }
     if (!contactId) continue;
     const when = new Date(msg.sentDateTime ?? msg.receivedDateTime ?? Date.now());
-    await prisma.activity.create({ data: { type: "EMAIL", direction: "OUTBOUND", subject: msg.subject ?? "(no subject)", body: msg.bodyPreview ?? null, occurredAt: when, externalId: ext, contactId, companyId, dealId: dealFor(msg.subject ?? "", contactId, companyId) ?? null, meta: JSON.stringify({ from: msg.from?.emailAddress, to, cc, mailbox, hasAttachments: msg.hasAttachments ?? false }) } }).catch(() => null);
+    const sentDeal = dealFor(msg.subject ?? "", contactId, companyId);
+    await prisma.activity.create({ data: { type: "EMAIL", direction: "OUTBOUND", subject: msg.subject ?? "(no subject)", body: msg.bodyPreview ?? null, occurredAt: when, externalId: ext, contactId, companyId, dealId: sentDeal ?? null, meta: JSON.stringify({ from: msg.from?.emailAddress, to, cc, mailbox, hasAttachments: msg.hasAttachments ?? false }) } }).catch(() => null);
+    if (sentDeal) await noteDealSent({ dealId: sentDeal, contactId, companyId, mailbox, graphId: msg.id, hasAttachments: msg.hasAttachments ?? false, when, toEmails: to.map((p) => p.address) }).catch(() => false);
     logged++;
   }
   return logged;

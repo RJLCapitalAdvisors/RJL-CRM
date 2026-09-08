@@ -124,3 +124,9 @@ export async function updateDealDetails(id: string, fd: FormData) {
   await prisma.deal.update({ where: { id }, data: { details: JSON.stringify(details) } });
   revalidatePath(`/deals/${id}`);
 }
+
+/** Take a question/answer off the ticket (and out of the Investor FAQ): private to one conversation, wrong, or stale. */
+export async function deleteFact(dealId: string, factId: string) {
+  await prisma.dealFact.deleteMany({ where: { id: factId, dealId } });
+  revalidatePath(`/deals/${dealId}`);
+}

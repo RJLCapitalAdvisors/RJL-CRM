@@ -99,12 +99,20 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   const external = !INTERNAL.test(fromAddr);
   const cleanSubject = (msg.subject ?? "").replace(/^\s*((fw|fwd|re):\s*)+/i, "");
   const received = new Date(msg.receivedDateTime ?? Date.now());
+  // keep the pulled documents on a message in deals@ ("CRM Files"), so they serve and send like any attachment
+  const { stashFiles } = await import("@/lib/file-store");
+  const stash = cloud.files.length ? await stashFiles(cloud.files, cleanSubject || "deal files").catch((e) => { console.error("stash failed", e); return null; }) : null;
+  const recordPulled = async (dealId: string, messageKey: string, only?: string[]) => {
+    const keep = (n: string) => !only || only.some((x) => x.toLowerCase() === n.toLowerCase());
+    if (stash) return recordDealFiles(dealId, stash.mailbox, stash.graphId, external ? fromAddr : fwd.email, received, stash.atts.filter((a) => keep(a.name))).catch(() => 0);
+    return recordLinkFiles(dealId, messageKey, linkFiles.filter((f) => keep(f.name)), external ? fromAddr : fwd.email, received).catch(() => 0);
+  };
 
   // Is this about a deal we already have? Then it is a follow-up: files and answers join that ticket.
-  const existingId = await matchExistingDeal({ conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: cleanSubject, bodyText, senderEmail: external ? fromAddr : fwd.email });
+  const existingId = await matchExistingDeal({ conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: cleanSubject, bodyText, senderEmail: external ? fromAddr : fwd.email, attachmentNames: names, attachmentText: texts.map((t) => `=== ${t.name} ===\n${t.text.slice(0, 1500)}`).join("\n") });
   if (existingId) {
     await recordDealEmail(existingId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "FOLLOWUP" });
-    const files = (msg.hasAttachments ? await recordDealFiles(existingId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0) : 0) + (await recordLinkFiles(existingId, ext, linkFiles, external ? fromAddr : fwd.email, received).catch(() => 0));
+    const files = (msg.hasAttachments ? await recordDealFiles(existingId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0) : 0) + (await recordPulled(existingId, ext));
     const facts = await extractDealFacts(existingId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
     const filled = await mergeIntoDeal(existingId, rawText, cleanSubject).catch(() => 0);
     if (!external) await applyForwarderInstructions(existingId, bodyText).catch(() => null);
@@ -139,7 +147,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
         const mine = all.value.filter((a) => part.attachments.some((n) => n.toLowerCase() === a.name.toLowerCase()));
         await recordDealFiles(intakeN.dealId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received, mine as never).catch(() => 0);
       }
-      await recordLinkFiles(intakeN.dealId, key, linkFiles.filter((f) => part.attachments.some((n) => n.toLowerCase() === f.name.toLowerCase())), external ? fromAddr : fwd.email, received).catch(() => 0);
+      await recordPulled(intakeN.dealId, key, part.attachments);
       await extractDealFacts(intakeN.dealId, text, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
       const owner = fromAddr ? await prisma.user.findFirst({ where: { email: { equals: fromAddr, mode: "insensitive" } } }) : null;
       if (owner) await prisma.deal.update({ where: { id: intakeN.dealId }, data: { ownerId: owner.id } });
@@ -176,7 +184,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   await prisma.dealIntake.update({ where: { id: intake.id }, data: { messageId: ext } });
   await recordDealEmail(intake.dealId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "INTAKE" }).catch(() => null);
   if (msg.hasAttachments) await recordDealFiles(intake.dealId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0);
-  await recordLinkFiles(intake.dealId, ext, linkFiles, external ? fromAddr : fwd.email, received).catch(() => 0);
+  await recordPulled(intake.dealId, ext);
   await extractDealFacts(intake.dealId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
   // whoever forwarded it to deals@ owns the deal
   const owner = fromAddr ? await prisma.user.findFirst({ where: { email: { equals: fromAddr, mode: "insensitive" } } }) : null;

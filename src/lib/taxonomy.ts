@@ -321,3 +321,6 @@ export const AMORTIZATIONS = [
   "40 year amortization (HUD)",
 ] as const;
 export const LENDER_TYPES = ["Agency (Fannie Mae)", "Agency (Freddie Mac)", "Agency", "HUD", "Bank", "Credit Union", "Life Company", "CMBS", "Debt Fund", "Bridge Lender", "Private Lender", "Seller Financing", "Construction Lender", "Other"] as const;
+
+/** Pipeline order, for "has this deal reached stage X yet" checks. */
+export const STAGE_ORDER = ["Deal Mentioned", "Deal Received", "Deal Underwritten", "Engagement Letter Sent", "Engagement Letter Signed", "Deal Taken To Market", "Intro To Capital Made", "Term Sheet Issued", "Term Sheet Signed", "Deal Closed"];

@@ -2,12 +2,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { createDraft, getMessage, graph, graphConfigured, listAttachments, outlookDesktopLink, type GraphAttachment } from "@/lib/graph";
+import { addAttachment, createDraft, getMessage, graph, graphConfigured, listAttachments, outlookDesktopLink, type GraphAttachment } from "@/lib/graph";
 import { signatureFor, type FollowUpResult } from "@/lib/followup";
 import { bestContactForCompany } from "@/lib/engagement";
 import { renderTemplate, toHtml, type MergeContext } from "@/lib/merge";
 import { unsubscribeUrl } from "@/lib/tokens";
-import { parseList, toJson } from "@/lib/taxonomy";
+import { parseList, toJson, STAGE_ORDER } from "@/lib/taxonomy";
 import { logActivity } from "@/lib/activity";
 
 /**
@@ -18,7 +18,7 @@ import { logActivity } from "@/lib/activity";
  *   syncSendDrafts      when a draft is actually sent, the row becomes Deal Sent and the deal moves to Deal Taken To Market
  */
 
-export const STAGE_ORDER = ["Deal Mentioned", "Deal Received", "Deal Underwritten", "Engagement Letter Sent", "Engagement Letter Signed", "Deal Taken To Market", "Intro To Capital Made", "Term Sheet Issued", "Term Sheet Signed", "Deal Closed"];
+export { STAGE_ORDER };
 const FONT = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
 const DEALS_MAILBOX = () => process.env.DEALS_MAILBOX ?? "deals@rjlcapadvisors.com";
 
@@ -175,17 +175,7 @@ async function dealAttachments(dealId: string): Promise<{ mailbox: string; messa
 async function copyAcross(src: { mailbox: string; messageId: string }, att: GraphAttachment & { _bytes?: Uint8Array }, dstMailbox: string, dstMessageId: string) {
   const q = encodeURIComponent;
   const bytes = att._bytes ?? new Uint8Array(await graph<ArrayBuffer>(`/users/${q(src.mailbox)}/messages/${q(src.messageId)}/attachments/${q(att.id)}/$value`, { raw: true }));
-  if (bytes.byteLength < 3 * 1024 * 1024) {
-    await graph(`/users/${q(dstMailbox)}/messages/${q(dstMessageId)}/attachments`, { method: "POST", body: JSON.stringify({ "@odata.type": "#microsoft.graph.fileAttachment", name: att.name, contentType: att.contentType ?? "application/octet-stream", contentBytes: Buffer.from(bytes).toString("base64") }) });
-    return;
-  }
-  const session = await graph<{ uploadUrl: string }>(`/users/${q(dstMailbox)}/messages/${q(dstMessageId)}/attachments/createUploadSession`, { method: "POST", body: JSON.stringify({ AttachmentItem: { attachmentType: "file", name: att.name, size: bytes.byteLength } }) });
-  const CHUNK = 4 * 1024 * 1024;
-  for (let s = 0; s < bytes.byteLength; s += CHUNK) {
-    const e = Math.min(s + CHUNK, bytes.byteLength);
-    const res = await fetch(session.uploadUrl, { method: "PUT", headers: { "Content-Length": String(e - s), "Content-Range": `bytes ${s}-${e - 1}/${bytes.byteLength}` }, body: bytes.slice(s, e) });
-    if (!res.ok) throw new Error(`upload failed ${res.status}`);
-  }
+  await addAttachment(dstMailbox, dstMessageId, { name: att.name, contentType: att.contentType ?? "application/octet-stream", bytes });
 }
 
 export async function createSendDrafts(dealId: string, templateId: string, items: SendItem[], mailbox: string, senderName: string): Promise<SendResult[]> {
