@@ -7,7 +7,7 @@ import { SESSION_COOKIE, verifySession } from "@/lib/session";
  * Public: login and auth routes, sponsor progress-report links, unsubscribe links, inbound-mail webhooks.
  * With no APP_PASSWORD and no Azure app configured (local development) everything is open.
  */
-const PUBLIC = [/^\/login/, /^\/api\/auth\//, /^\/api\/graph\//, /^\/api\/cron\//, /^\/share\//, /^\/unsubscribe\//, /^\/api\/inbound/, /^\/api\/deals\/[^/]+\/(files\/|faq\.pdf|progress-report\.pdf)/, /^\/logo\.png$/, /^\/israel-logo\.png$/, /^\/outlook-bridge\//, /^\/favicon/, /^\/_next\//];
+const PUBLIC = [/^\/login/, /^\/api\/auth\//, /^\/api\/graph\//, /^\/api\/cron\//, /^\/share\//, /^\/unsubscribe\//, /^\/api\/inbound/, /^\/api\/deals\/[^/]+\/(files\/|faq\.pdf|progress-report\.pdf)/, /^\/logo\.png$/, /^\/israel-logo\.(png|svg)$/, /^\/outlook-bridge\//, /^\/favicon/, /^\/_next\//];
 export const COOKIE = "rjl_session";
 
 export async function sessionToken(password: string, secret: string) {
