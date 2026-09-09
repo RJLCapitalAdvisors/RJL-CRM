@@ -510,3 +510,98 @@ model ChatMessage {
 
   @@index([threadId, createdAt])
 }
+
+// ---------- RJL Israel: apartments and the people around them (kept apart from RJL Capital Advisors) ----------
+model IlApartment {
+  id             String    @id @default(cuid())
+  name           String
+  stage          String    @default("Apartment Received")
+  apartmentType  String?
+  city           String?
+  neighborhood   String?
+  street         String?
+  projectName    String?
+  rooms          Float?
+  floor          Int?
+  totalFloors    Int?
+  internalSqm    Float?
+  mirpesetSqm    Float?
+  gardenSqm      Float?
+  direction      String    @default("[]") // JSON list of air directions
+  parking        Int?
+  storage        Boolean   @default(false)
+  elevator       Boolean   @default(false)
+  mamad          Boolean   @default(false)
+  priceNis       Float?
+  builtYear      Int?
+  completionDate String?
+  condition      String?
+  description    String?
+  source         String?
+  developerId    String?
+  developer      IlCompany? @relation(fields: [developerId], references: [id])
+  agentContactId String?
+  agent          IlContact? @relation("IlAgent", fields: [agentContactId], references: [id])
+  sellerContactId String?
+  seller         IlContact? @relation("IlSeller", fields: [sellerContactId], references: [id])
+  notes          IlNote[]
+  closedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([stage, updatedAt])
+  @@index([city])
+}
+
+model IlCompany {
+  id         String        @id @default(cuid())
+  name       String
+  kind       String?
+  city       String?
+  website    String?
+  phone      String?
+  notes      String?
+  contacts   IlContact[]
+  apartments IlApartment[]
+  ilNotes    IlNote[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model IlContact {
+  id           String        @id @default(cuid())
+  firstName    String?
+  lastName     String?
+  email        String?
+  phone        String?
+  roles        String        @default("[]") // JSON list
+  language     String?
+  budgetMinNis Float?
+  budgetMaxNis Float?
+  wantsCities  String?
+  wantsRooms   String?
+  notes        String?
+  companyId    String?
+  company      IlCompany?    @relation(fields: [companyId], references: [id])
+  agentOf      IlApartment[] @relation("IlAgent")
+  sellerOf     IlApartment[] @relation("IlSeller")
+  ilNotes      IlNote[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([lastName, firstName])
+}
+
+model IlNote {
+  id          String       @id @default(cuid())
+  body        String
+  apartmentId String?
+  apartment   IlApartment? @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  contactId   String?
+  contact     IlContact?   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyId   String?
+  company     IlCompany?   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+
+  @@index([apartmentId, createdAt])
+}

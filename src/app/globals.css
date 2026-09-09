@@ -109,3 +109,50 @@ body {
 
 /* single-handle slider: the whole control takes the pointer */
 .range-single { pointer-events: auto; }
+
+
+/* RJL Israel: the same components, in black. Token overrides scoped to the section. */
+.israel {
+  --color-ink: #f2f4f7;
+  --color-ink-soft: #c9ced6;
+  --color-cream: #171a1f;
+  --color-cream-50: #14171b;
+  --color-sky: #2b4664;
+  --color-sky-600: #7fa9d6;
+  --color-sky-50: #1a2532;
+  --color-paper: #101317;
+  --color-line: #262b33;
+  --color-muted: #8b93a1;
+  color: var(--color-ink);
+  color-scheme: dark;
+}
+.israel .btn-primary {
+  background: #ffffff;
+  color: #0c0e11;
+}
+.israel .btn-primary:hover {
+  background: #e2e6ec;
+}
+.israel .input {
+  background: #14171b;
+  color: var(--color-ink);
+  border-color: var(--color-line);
+}
+.israel .input::placeholder {
+  color: #6b7380;
+}
+.israel .card {
+  background: var(--color-paper);
+}
+.israel .chip {
+  border-color: var(--color-line);
+}
+.israel .bg-white {
+  background: #101317;
+}
+.israel .text-white {
+  color: #f2f4f7;
+}
+.israel option {
+  background: #14171b;
+}

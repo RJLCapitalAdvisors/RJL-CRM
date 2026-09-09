@@ -19,13 +19,19 @@ export async function sessionToken(password: string, secret: string) {
 export async function proxy(req: NextRequest) {
   const password = process.env.APP_PASSWORD;
   const gated = Boolean(password || process.env.AZURE_CLIENT_ID);
-  if (!gated) return NextResponse.next();
   const { pathname } = req.nextUrl;
-  if (PUBLIC.some((re) => re.test(pathname))) return NextResponse.next();
-  if (await verifySession(req.cookies.get(SESSION_COOKIE)?.value)) return NextResponse.next();
+  // the root layout reads this to decide which shell (RJL Capital Advisors or RJL Israel) wraps the page
+  const withPath = () => {
+    const h = new Headers(req.headers);
+    h.set("x-pathname", pathname);
+    return NextResponse.next({ request: { headers: h } });
+  };
+  if (!gated) return withPath();
+  if (PUBLIC.some((re) => re.test(pathname))) return withPath();
+  if (await verifySession(req.cookies.get(SESSION_COOKIE)?.value)) return withPath();
   if (password) {
     const expected = await sessionToken(password, process.env.APP_SECRET ?? "dev-secret");
-    if (req.cookies.get(COOKIE)?.value === expected) return NextResponse.next();
+    if (req.cookies.get(COOKIE)?.value === expected) return withPath();
   }
   const url = req.nextUrl.clone();
   url.pathname = "/login";

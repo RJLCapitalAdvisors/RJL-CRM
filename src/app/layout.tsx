@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare } from "lucide-react";
+import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, ArrowLeftRight } from "lucide-react";
 import { currentUser } from "@/lib/current-user";
+import { headers } from "next/headers";
 import "./globals.css";
 import { NavLink } from "@/components/nav-link";
 import { DealContextNav } from "@/components/deal-context-nav";
@@ -27,6 +28,14 @@ const nav = [
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  if (pathname.startsWith("/israel") || pathname === "/start") {
+    return (
+      <html lang="en">
+        <body className="min-h-screen">{children}</body>
+      </html>
+    );
+  }
   const user = await currentUser().catch(() => null);
   return (
     <html lang="en">
@@ -50,6 +59,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </div>
             ))}
           </nav>
+          <div className="px-3 pb-1">
+            <Link href="/start" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted hover:bg-sky/40 hover:text-ink">
+              <ArrowLeftRight className="h-4 w-4" /> Switch to RJL Israel
+            </Link>
+          </div>
           <div className="px-5 py-4 text-xs text-muted">
             {user ? (
               <>
