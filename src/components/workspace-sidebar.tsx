@@ -7,6 +7,7 @@ import { Suspense, useEffect } from "react";
 import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare } from "lucide-react";
 import { NavLink } from "@/components/nav-link";
 import { DealContextNav } from "@/components/deal-context-nav";
+import { isIsraelPath } from "@/lib/workspace";
 
 const CA_NAV = [
   { href: "/ask", label: "Ask the CRM", icon: MessageSquare },
@@ -29,7 +30,6 @@ const IL_NAV = [
   { href: "/israel/search", label: "Apartment search", icon: Search },
 ];
 
-export const isIsraelPath = (p: string) => p === "/israel" || p.startsWith("/israel/");
 
 /**
  * One sidebar for both businesses. The two logos sit at the top; the one you are in is open with its pages

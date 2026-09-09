@@ -10,7 +10,7 @@ export function NavLink({ href, children, exact = false }: { href: string; child
     <Link
       href={href}
       className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-        active ? "bg-ink text-white" : "text-ink hover:bg-sky/40"
+        active ? "bg-ink text-paper" : "text-ink hover:bg-sky/40"
       }`}
     >
       {children}

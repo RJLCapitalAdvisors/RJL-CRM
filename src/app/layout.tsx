@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { currentUser } from "@/lib/current-user";
 import "./globals.css";
-import { WorkspaceSidebar, isIsraelPath } from "@/components/workspace-sidebar";
+import { WorkspaceSidebar } from "@/components/workspace-sidebar";
+import { isIsraelPath } from "@/lib/workspace";
 
 export const metadata: Metadata = {
   title: { default: "RJL CRM", template: "%s · RJL CRM" },
