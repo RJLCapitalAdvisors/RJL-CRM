@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AutoSaveForm } from "@/components/autosave-form";
 import { Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
+import { SelectField } from "@/components/select-field";
 import { IL_ROLES, parseJsonList } from "@/lib/israel";
 
 type Ct = Partial<{ firstName: string | null; lastName: string | null; email: string | null; phone: string | null; companyId: string | null; roles: string; language: string | null; budgetMinNis: number | null; budgetMaxNis: number | null; wantsCities: string | null; wantsRooms: string | null; notes: string | null }>;
@@ -43,14 +44,14 @@ export function IlContactForm({ c = {}, companies, action, autosave = false, sub
           <Text name="phone" value={c.phone} placeholder="+972 5x xxx xxxx" />
         </Row>
         <Row label="Company">
-          <select name="companyId" defaultValue={c.companyId ?? ""} className="input">
+          <SelectField name="companyId" defaultValue={c.companyId ?? ""} className="input">
             <option value="">None</option>
             {companies.map((co) => (
               <option key={co.id} value={co.id}>
                 {co.name}
               </option>
             ))}
-          </select>
+          </SelectField>
         </Row>
         <Row label="Language">
           <Select name="language" value={c.language ?? ""} options={["English", "Hebrew", "French", "Russian", "Spanish"]} />

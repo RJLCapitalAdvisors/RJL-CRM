@@ -4,6 +4,7 @@ import { RangeSlider } from "./range-slider";
 import { CHECK_STOPS, HOLD_STOPS, VINTAGE_STOPS, checkRangeFrom, holdRangeFrom, vintageRangeFrom } from "@/lib/ranges";
 import { Field } from "./record-layout";
 import { AutoSaveForm } from "./autosave-form";
+import { SelectField } from "@/components/select-field";
 
 export type CriteriaLike = {
   assetClasses: string;
@@ -56,12 +57,12 @@ export function CriteriaForm({ criteria, roles, action }: { criteria: CriteriaLi
         <MultiSelect name="returnProfile" options={RETURN_PROFILES} selected={parseList(c?.returnProfile)} />
       </Field>
       <Field label="Development, acquisitions, or both" htmlFor="strategy">
-        <select id="strategy" name="strategy" defaultValue={c?.strategy ?? ""} className="input">
+        <SelectField id="strategy" name="strategy" defaultValue={c?.strategy ?? ""} className="input">
           <option value="">—</option>
           {STRATEGIES.map((o) => (
             <option key={o}>{o}</option>
           ))}
-        </select>
+        </SelectField>
       </Field>
       <Field label="Hold period">
         <RangeSlider name="hold" stops={HOLD_STOPS} min={hold?.[0]} max={hold?.[1]} />
@@ -70,26 +71,26 @@ export function CriteriaForm({ criteria, roles, action }: { criteria: CriteriaLi
         <RangeSlider name="vintage" stops={VINTAGE_STOPS} min={vint?.[0]} max={vint?.[1]} />
       </Field>
       <Field label="Opportunity Zone interest" htmlFor="ozInterest">
-        <select id="ozInterest" name="ozInterest" defaultValue={yn(c?.ozInterest)} className="input">
+        <SelectField id="ozInterest" name="ozInterest" defaultValue={yn(c?.ozInterest)} className="input">
           <option value="">—</option>
           <option value="yes">Yes</option>
           <option value="no">No</option>
-        </select>
+        </SelectField>
       </Field>
       <Field label="Closing time frame" htmlFor="closingTimeframe">
-        <select id="closingTimeframe" name="closingTimeframe" defaultValue={c?.closingTimeframe ?? ""} className="input">
+        <SelectField id="closingTimeframe" name="closingTimeframe" defaultValue={c?.closingTimeframe ?? ""} className="input">
           <option value="">—</option>
           {CLOSING_TIMEFRAMES.map((o) => (
             <option key={o}>{o}</option>
           ))}
-        </select>
+        </SelectField>
       </Field>
       <Field label="Open to minority position" htmlFor="openToMinority">
-        <select id="openToMinority" name="openToMinority" defaultValue={yn(c?.openToMinority)} className="input">
+        <SelectField id="openToMinority" name="openToMinority" defaultValue={yn(c?.openToMinority)} className="input">
           <option value="">—</option>
           <option value="yes">Yes</option>
           <option value="no">No</option>
-        </select>
+        </SelectField>
       </Field>
       <Field label="Other information" htmlFor="otherInfo">
         <textarea id="otherInfo" name="otherInfo" rows={3} defaultValue={c?.otherInfo ?? ""} className="input" />

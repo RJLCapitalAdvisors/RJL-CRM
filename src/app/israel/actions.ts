@@ -28,6 +28,7 @@ function apartmentData(fd: FormData) {
     street: s(fd, "street"),
     city: s(fd, "city"),
     neighborhood: s(fd, "neighborhood"),
+    projectId: s(fd, "projectId"),
     rooms: n(fd, "rooms"),
     completionDate: s(fd, "completionDate"),
     floor: i(fd, "floor"),
@@ -75,7 +76,7 @@ export async function deleteApartment(id: string) {
   redirect("/israel/apartments");
 }
 
-export async function addIlNote(target: { apartmentId?: string; contactId?: string; companyId?: string; dealId?: string }, fd: FormData) {
+export async function addIlNote(target: { apartmentId?: string; contactId?: string; companyId?: string; dealId?: string; projectId?: string }, fd: FormData) {
   const body = s(fd, "body");
   if (!body) return;
   await prisma.ilNote.create({ data: { ...target, body } });
@@ -83,6 +84,7 @@ export async function addIlNote(target: { apartmentId?: string; contactId?: stri
   if (target.contactId) revalidatePath(`/israel/contacts/${target.contactId}`);
   if (target.companyId) revalidatePath(`/israel/companies/${target.companyId}`);
   if (target.dealId) revalidatePath(`/israel/deals/${target.dealId}`);
+  if (target.projectId) revalidatePath(`/israel/projects/${target.projectId}`);
 }
 
 function companyData(fd: FormData) {
@@ -166,4 +168,35 @@ export async function deleteIlDeal(id: string) {
   await prisma.ilDeal.delete({ where: { id } });
   revalidatePath("/israel/deals");
   redirect("/israel/deals");
+}
+
+// ---------- projects: whole buildings, the apartments hang off them ----------
+function projectData(fd: FormData) {
+  return {
+    name: s(fd, "name") ?? (s(fd, "street") || "Project"),
+    developerId: s(fd, "developerId"),
+    street: s(fd, "street"),
+    city: s(fd, "city"),
+    neighborhood: s(fd, "neighborhood"),
+    totalUnits: i(fd, "totalUnits"),
+    parkingSpaces: i(fd, "parkingSpaces"),
+    stories: i(fd, "stories"),
+    completionDate: s(fd, "completionDate"),
+    description: s(fd, "description"),
+  };
+}
+export async function createIlProject(fd: FormData) {
+  const p = await prisma.ilProject.create({ data: projectData(fd) });
+  revalidatePath("/israel/projects");
+  redirect(`/israel/projects/${p.id}`);
+}
+export async function updateIlProject(id: string, fd: FormData) {
+  await prisma.ilProject.update({ where: { id }, data: projectData(fd) });
+  revalidatePath(`/israel/projects/${id}`);
+  revalidatePath("/israel/projects");
+}
+export async function deleteIlProject(id: string) {
+  await prisma.ilProject.delete({ where: { id } });
+  revalidatePath("/israel/projects");
+  redirect("/israel/projects");
 }

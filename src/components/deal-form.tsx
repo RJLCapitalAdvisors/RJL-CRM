@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AMORTIZATIONS, ASSET_CLASSES, DEAL_HOLD_PERIODS, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES, US_STATES } from "@/lib/taxonomy";
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
 import { NumberInput } from "./number-input";
+import { SelectField } from "@/components/select-field";
 import { AutoSaveForm } from "./autosave-form";
 import { isPref, prefMetrics } from "@/lib/pref";
 
@@ -100,9 +101,10 @@ function Text({ name, value, placeholder }: { name: string; value?: string | num
 }
 /** Dropdown that keeps a stored value visible even if it is not in the standard list. */
 function Select({ name, value, options, blank = "—", onChange }: { name: string; value: string; options: readonly string[]; blank?: string; onChange?: (v: string) => void }) {
+  const [inner, setInner] = useState(value);
   const list = value && !options.includes(value) ? [value, ...options] : options;
   return (
-    <select name={name} defaultValue={onChange ? undefined : value} value={onChange ? value : undefined} onChange={onChange ? (e) => onChange(e.target.value) : undefined} className="input">
+    <select name={name} value={onChange ? value : inner} onChange={(e) => (onChange ? onChange(e.target.value) : setInner(e.target.value))} className="input">
       <option value="">{blank}</option>
       {list.map((o) => (
         <option key={o} value={o}>
@@ -162,14 +164,14 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
           </Row>
         )}
         <Row label="Owner">
-          <select name="ownerId" defaultValue={d?.ownerId ?? ""} className="input">
+          <SelectField name="ownerId" defaultValue={d?.ownerId ?? ""} className="input">
             <option value="">Unassigned</option>
             {users.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name}
               </option>
             ))}
-          </select>
+          </SelectField>
         </Row>
         <Row label="Expected close" hint="e.g. November 2026 or Q1 2027">
           <Text name="expectedClose" value={d?.expectedClose} />

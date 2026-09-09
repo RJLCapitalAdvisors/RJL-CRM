@@ -126,3 +126,18 @@ body.israel {
 .israel .bg-sky {
   color: #ffffff;
 }
+.israel .btn-primary,
+.israel nav a.bg-ink {
+  background-color: #2f4fa3;
+  color: #ffffff;
+}
+.israel .btn-primary:hover {
+  background-color: #23397a;
+}
+.israel .btn-soft {
+  background-color: #2f4fa3;
+  color: #ffffff;
+}
+.israel .btn-soft:hover {
+  background-color: #23397a;
+}

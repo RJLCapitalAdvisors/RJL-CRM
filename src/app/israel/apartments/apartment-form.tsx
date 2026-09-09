@@ -4,17 +4,18 @@ import { useState } from "react";
 import { AutoSaveForm } from "@/components/autosave-form";
 import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
+import { SelectField } from "@/components/select-field";
 import { IL_CITIES, IL_DIRECTIONS, IL_MACHSAN_LOCATIONS, IL_PARKING, PRICE_PER_METER_NOTE, feet, nis, parseJsonList, pricePerMeter, sqft, usdFmt } from "@/lib/israel";
 import type { FxRate } from "@/lib/fx";
 
 export type IlApartmentForm = Partial<{
-  name: string; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
+  name: string; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
   internalSqm: number | null; mirpesetSqm: number | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean;
   priceNis: number | null; description: string | null;
 }>;
 
 /** The apartment ticket, laid out like a deal ticket: one straight column of fields with the conversions computed beside them. */
-export function ApartmentForm({ a = {}, fx, action, autosave = false, submitLabel = "Create apartment" }: { a?: IlApartmentForm; fx: FxRate | null; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
+export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = false, submitLabel = "Create apartment" }: { a?: IlApartmentForm; fx: FxRate | null; projects?: { id: string; name: string; city: string | null }[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
   const [internal, setInternal] = useState<number | null>(a.internalSqm ?? null);
   const [mirpeset, setMirpeset] = useState<number | null>(a.mirpesetSqm ?? null);
   const [ceiling, setCeiling] = useState<number | null>(a.ceilingCm ?? null);
@@ -32,6 +33,17 @@ export function ApartmentForm({ a = {}, fx, action, autosave = false, submitLabe
       <Group title="Apartment">
         <Row label="Name">
           <Text name="name" value={a.name} placeholder="Rehavia Gardens, Apt 12" />
+        </Row>
+        <Row label="Project" hint="The building or development this apartment is in. Projects are listed under Projects.">
+          <SelectField name="projectId" defaultValue={a.projectId ?? ""}>
+            <option value="">No project</option>
+            {projects.map((pr) => (
+              <option key={pr.id} value={pr.id}>
+                {pr.name}
+                {pr.city ? ` · ${pr.city}` : ""}
+              </option>
+            ))}
+          </SelectField>
         </Row>
         <Row label="Building address">
           <Text name="street" value={a.street} placeholder="Ramban 12" />

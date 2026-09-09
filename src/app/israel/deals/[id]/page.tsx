@@ -7,6 +7,7 @@ import { IL_DEAL_STAGES, apartmentLine, ilFullName, ilStageTone, nis } from "@/l
 import { addIlNote, deleteIlDeal, moveIlDeal, updateIlDeal } from "../../actions";
 import { IlDealForm } from "../deal-form";
 import { dealOptions } from "../options";
+import { SelectField } from "@/components/select-field";
 
 export const dynamic = "force-dynamic";
 
@@ -40,11 +41,11 @@ export default async function IlDealPage({ params }: { params: Promise<{ id: str
             subtitle={d.apartment ? apartmentLine(d.apartment) : undefined}
             lines={[
               <form key="stage" action={move} className="flex items-center gap-2">
-                <select name="stage" defaultValue={d.stage} className={`input w-auto border py-1 text-xs ${ilStageTone(d.stage)}`}>
+                <SelectField name="stage" defaultValue={d.stage} className={`input w-auto border py-1 text-xs ${ilStageTone(d.stage)}`}>
                   {IL_DEAL_STAGES.map((s) => (
                     <option key={s}>{s}</option>
                   ))}
-                </select>
+                </SelectField>
                 <button type="submit" className="btn-soft px-2 py-1 text-xs">
                   Move
                 </button>

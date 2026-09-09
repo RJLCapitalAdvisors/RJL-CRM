@@ -521,6 +521,8 @@ model IlApartment {
   neighborhood   String?
   street         String?
   projectName    String?
+  projectId      String?
+  project        IlProject? @relation(fields: [projectId], references: [id])
   rooms          Float?
   floor          Int?
   totalFloors    Int?
@@ -573,6 +575,7 @@ model IlCompany {
   notes      String?
   contacts   IlContact[]
   apartments IlApartment[]
+  projects   IlProject[]
   ilNotes    IlNote[]
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
@@ -615,6 +618,8 @@ model IlNote {
   company     IlCompany?   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   dealId      String?
   deal        IlDeal?      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     IlProject?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdAt   DateTime     @default(now())
 
   @@index([apartmentId, createdAt])
@@ -642,4 +647,26 @@ model IlDeal {
   updatedAt      DateTime     @updatedAt
 
   @@index([stage, updatedAt])
+}
+
+// RJL Israel: a whole project (building or development), the apartments inside it hang off it
+model IlProject {
+  id             String        @id @default(cuid())
+  name           String
+  developerId    String?
+  developer      IlCompany?    @relation(fields: [developerId], references: [id])
+  street         String?
+  city           String?
+  neighborhood   String?
+  totalUnits     Int?
+  parkingSpaces  Int?
+  stories        Int?
+  completionDate String?
+  description    String?
+  apartments     IlApartment[]
+  notes          IlNote[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([city])
 }

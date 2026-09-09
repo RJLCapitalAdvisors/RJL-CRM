@@ -1,4 +1,5 @@
 import { ROLES, parseList } from "@/lib/taxonomy";
+import { SelectField } from "@/components/select-field";
 import { CompanyPicker } from "./company-picker";
 import { Field } from "./record-layout";
 
@@ -53,21 +54,21 @@ export function ContactForm({ contact, users, action, submitLabel = "Save" }: { 
         </div>
       </Field>
       <Field label="Accredited investor?" htmlFor="accredited">
-        <select id="accredited" name="accredited" defaultValue={c?.accredited == null ? "" : c.accredited ? "yes" : "no"} className="input">
+        <SelectField id="accredited" name="accredited" defaultValue={c?.accredited == null ? "" : c.accredited ? "yes" : "no"} className="input">
           <option value="">—</option>
           <option value="yes">Yes</option>
           <option value="no">No</option>
-        </select>
+        </SelectField>
       </Field>
       <Field label="Contact owner" htmlFor="ownerId">
-        <select id="ownerId" name="ownerId" defaultValue={c?.ownerId ?? ""} className="input">
+        <SelectField id="ownerId" name="ownerId" defaultValue={c?.ownerId ?? ""} className="input">
           <option value="">Unassigned</option>
           {users.map((u) => (
             <option key={u.id} value={u.id}>
               {u.name}
             </option>
           ))}
-        </select>
+        </SelectField>
       </Field>
       <Field label="Email status">
         <div className="flex flex-col gap-1.5 pt-1 text-sm">

@@ -1,6 +1,7 @@
 import { US_STATES } from "@/lib/taxonomy";
 import { Field } from "./record-layout";
 import { AutoSaveForm } from "./autosave-form";
+import { SelectField } from "@/components/select-field";
 
 type CompanyLike = {
   name: string;
@@ -48,27 +49,27 @@ export function CompanyForm({ company, users, action, submitLabel = "Save", auto
         <input id="city" name="city" defaultValue={c?.city ?? ""} className="input" />
       </Field>
       <Field label="State" htmlFor="state">
-        <select id="state" name="state" defaultValue={c?.state ?? ""} className="input">
+        <SelectField id="state" name="state" defaultValue={c?.state ?? ""} className="input">
           <option value="">—</option>
           {Object.entries(US_STATES).map(([code, name]) => (
             <option key={code} value={code}>
               {code} · {name}
             </option>
           ))}
-        </select>
+        </SelectField>
       </Field>
       <Field label="Year founded" htmlFor="yearFounded">
         <input id="yearFounded" name="yearFounded" inputMode="numeric" defaultValue={c?.yearFounded ?? ""} className="input" />
       </Field>
       <Field label="Company owner" htmlFor="ownerId">
-        <select id="ownerId" name="ownerId" defaultValue={c?.ownerId ?? ""} className="input">
+        <SelectField id="ownerId" name="ownerId" defaultValue={c?.ownerId ?? ""} className="input">
           <option value="">Unassigned</option>
           {users.map((u) => (
             <option key={u.id} value={u.id}>
               {u.name}
             </option>
           ))}
-        </select>
+        </SelectField>
       </Field>
       <Field label="Notes" htmlFor="notes">
         <textarea id="notes" name="notes" rows={3} defaultValue={c?.notes ?? ""} className="input" />

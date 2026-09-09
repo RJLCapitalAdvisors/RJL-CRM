@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 /** The deal-form building blocks, shared: label-over-control rows in one straight column, grouped under small headings. */
 export function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -30,9 +31,10 @@ export function Text({ name, value, placeholder }: { name: string; value?: strin
 }
 /** Dropdown that keeps a stored value visible even if it is not in the standard list. */
 export function Select({ name, value, options, blank = "—", onChange }: { name: string; value: string; options: readonly string[]; blank?: string; onChange?: (v: string) => void }) {
+  const [inner, setInner] = useState(value);
   const list = value && !options.includes(value) ? [value, ...options] : options;
   return (
-    <select name={name} defaultValue={onChange ? undefined : value} value={onChange ? value : undefined} onChange={onChange ? (e) => onChange(e.target.value) : undefined} className="input">
+    <select name={name} value={onChange ? value : inner} onChange={(e) => (onChange ? onChange(e.target.value) : setInner(e.target.value))} className="input">
       <option value="">{blank}</option>
       {list.map((o) => (
         <option key={o} value={o}>

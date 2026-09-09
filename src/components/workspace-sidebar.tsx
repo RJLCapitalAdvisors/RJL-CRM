@@ -24,6 +24,7 @@ const CA_NAV = [
 
 const IL_NAV = [
   { href: "/israel", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  { href: "/israel/projects", label: "Projects", icon: Building2 },
   { href: "/israel/apartments", label: "Apartments", icon: Building2 },
   { href: "/israel/companies", label: "Companies", icon: Building2 },
   { href: "/israel/contacts", label: "Contacts", icon: Users },

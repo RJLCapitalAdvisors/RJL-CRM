@@ -3,6 +3,7 @@
 import { AutoSaveForm } from "@/components/autosave-form";
 import { Group, Row, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
+import { SelectField } from "@/components/select-field";
 
 type Opt = { id: string; label: string };
 type Deal = Partial<{ name: string; apartmentId: string | null; buyerContactId: string | null; agentContactId: string | null; offerNis: number | null; agreedPriceNis: number | null; expectedClose: string | null; lostReason: string | null; description: string | null; stage: string }>;
@@ -10,14 +11,14 @@ type Deal = Partial<{ name: string; apartmentId: string | null; buyerContactId: 
 /** A deal in the RJL Israel funnel: which apartment, which buyer, which agent, the numbers, the timing. */
 export function IlDealForm({ d = {}, apartments, buyers, agents, action, autosave = false, submitLabel = "Create deal" }: { d?: Deal; apartments: Opt[]; buyers: Opt[]; agents: Opt[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
   const pick = (name: string, value: string | null | undefined, opts: Opt[], blank: string) => (
-    <select name={name} defaultValue={value ?? ""} className="input">
+    <SelectField name={name} defaultValue={value ?? ""} className="input">
       <option value="">{blank}</option>
       {opts.map((o) => (
         <option key={o.id} value={o.id}>
           {o.label}
         </option>
       ))}
-    </select>
+    </SelectField>
   );
   const body = (
     <>
