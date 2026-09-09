@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { createDraft, getMessage, graphConfigured, outlookDesktopLink } from "@/lib/graph";
+import { createDraft, getMessage, graph, graphConfigured, outlookDesktopLink } from "@/lib/graph";
 import { signatureFor, type FollowUpResult } from "@/lib/followup";
 
 /**
@@ -111,9 +111,16 @@ export async function syncEngagementDrafts(): Promise<number> {
     const mailbox = det.engagementMailbox as string | undefined;
     if (!draftId || !mailbox || det.engagementSentAt) continue;
     try {
-      const m = await getMessage(mailbox, draftId, "id,isDraft,sentDateTime");
-      if (m.isDraft) continue;
-      const sentAt = m.sentDateTime ? new Date(m.sentDateTime) : new Date();
+      const m = await getMessage(mailbox, draftId, "id,isDraft,sentDateTime,subject");
+      let sentAt: Date | null = m.isDraft ? null : m.sentDateTime ? new Date(m.sentDateTime) : new Date();
+      if (m.isDraft) {
+        // sent from desktop Outlook as its own message: the Graph draft stays a draft, so look for the letter in Sent Items
+        const draftedAt = typeof det.engagementDraftedAt === "string" ? det.engagementDraftedAt : new Date(Date.now() - 14 * 86_400_000).toISOString();
+        const subj = (m.subject ?? "").replace(/'/g, "''").slice(0, 60);
+        const sent = subj ? await graph<{ value: { sentDateTime: string }[] }>(`/users/${encodeURIComponent(mailbox)}/mailFolders/sentitems/messages?$filter=sentDateTime ge ${draftedAt} and startswith(subject,'${subj}')&$top=5&$select=sentDateTime`).catch(() => ({ value: [] })) : { value: [] };
+        if (sent.value[0]) sentAt = new Date(sent.value[0].sentDateTime);
+      }
+      if (!sentAt) continue;
       const advance = STAGE_ORDER.indexOf(d.stage) < STAGE_ORDER.indexOf("Engagement Letter Sent");
       await prisma.deal.update({ where: { id: d.id }, data: { details: JSON.stringify({ ...det, engagementSentAt: sentAt.toISOString() }), ...(advance ? { stage: "Engagement Letter Sent" } : {}) } });
       const { logActivity } = await import("@/lib/activity");

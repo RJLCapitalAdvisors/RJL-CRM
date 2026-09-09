@@ -40,12 +40,15 @@ export async function attachmentToText(name: string, contentType: string | null,
 }
 
 /** Keep the extractor input within reason: the email first, then attachments, biggest ones trimmed. */
-export function assembleDealText(body: string, attachments: { name: string; text: string }[], cap = 140_000): string {
+export function assembleDealText(body: string, attachments: { name: string; text: string }[], cap = 180_000): string {
   let out = body.trim();
   const remaining = () => cap - out.length;
+  // each file gets an equal share of what is left, so the third model is read as well as the first
+  const share = attachments.length ? Math.max(15_000, Math.floor((cap - out.length - 400 * attachments.length) / attachments.length)) : 0;
   for (const a of attachments) {
     if (remaining() < 2000) break;
-    const slice = a.text.length > remaining() - 200 ? a.text.slice(0, remaining() - 200) + "\n…(truncated)" : a.text;
+    const budget = Math.min(share, remaining() - 200);
+    const slice = a.text.length > budget ? a.text.slice(0, budget) + "\n…(truncated)" : a.text;
     out += `\n\n===== ATTACHMENT: ${a.name} =====\n${slice}`;
   }
   return out;

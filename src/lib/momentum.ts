@@ -58,6 +58,9 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
   if (!process.env.ANTHROPIC_API_KEY) return { checked: 0, open: 0 };
   // deals sponsors mentioned in email but never sent become "Deal Mentioned" tickets first
   await import("@/lib/mentions").then((m) => m.detectMentionedDeals()).catch(() => ({ threads: 0, created: [] }));
+  // sponsor answers and engagement confirmations that arrived in team mailboxes
+  await import("@/lib/engagement").then((m) => m.syncEngagementDrafts()).catch(() => 0);
+  await import("@/lib/sponsor-replies").then((m) => m.processSponsorReplies()).catch(() => null);
   const now = Date.now();
   const deals = await prisma.deal.findMany({
     where: { stage: { in: [...ACTIVE_STAGES] }, OR: [{ hubspotId: null }, { stage: { notIn: ["Deal Received", "Deal Mentioned"] } }, { investors: { some: {} } }] },

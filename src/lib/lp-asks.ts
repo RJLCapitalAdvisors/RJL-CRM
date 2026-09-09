@@ -51,6 +51,12 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     }
     let dealId: string | null = a.dealId && candidates.some((x) => x.id === a.dealId) ? a.dealId : null;
     if (!dealId) dealId = candidates.find((x) => subjectMatchesDeal(a.subject, x) || houseSubjectMatches(a.subject, x))?.id ?? null;
+    // the sponsor answering about their own deal is not an LP response
+    const sponsorOf = await prisma.deal.findFirst({ where: { sponsorCompanyId: a.companyId!, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true } });
+    if (sponsorOf && !candidates.some((x) => x.id !== sponsorOf.id)) {
+      await prisma.lpAskScan.create({ data: { externalId: a.externalId!, result: "sponsor" } }).catch(() => {});
+      continue;
+    }
     if (!candidates.length) {
       await prisma.lpAskScan.create({ data: { externalId: a.externalId!, result: "no-deal" } }).catch(() => {});
       continue;
@@ -88,6 +94,11 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
       continue;
     }
     await prisma.lpAskScan.create({ data: { externalId: a.externalId!, result: parsed ? `${parsed.asks.length} asks` : "error" } }).catch(() => {});
+    // what they said about their own program ("too small for us", "not our market") goes to Data updates as a criteria proposal
+    if (parsed && (parsed.stance === "pass" || parsed.note)) {
+      const { proposeCriteriaChanges } = await import("@/lib/criteria-proposals");
+      await proposeCriteriaChanges({ companyId: a.companyId!, contactId: a.contactId, text: body, source: "EMAIL", sourceRef: a.externalId }).catch(() => null);
+    }
     if (!parsed) continue;
     // progress report: note + status
     const dateTag = a.occurredAt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
