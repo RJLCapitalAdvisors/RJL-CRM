@@ -56,7 +56,7 @@ export async function findCalls(terms: string[]): Promise<Transcript[]> {
 const Enriched = z.object({
   summary: z.string().describe("The business plan paragraph, rewritten to fold in what the calls added. Same rules: location and market first, anchors/key tenants, value-add thesis, physical attributes; 4-6 sentences; flowing prose; no dashes; nothing that has its own field. Return the existing text unchanged if the calls add nothing."),
   sponsorExperience: z.string().describe("The sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes. Fold in what the calls added; return the existing text unchanged if nothing new."),
-  facts: z.array(z.object({ question: z.string(), answer: z.string() })).describe("Concrete things said on the calls that an investor would ask about and that are not already on the ticket. Empty if none."),
+  facts: z.array(z.object({ question: z.string(), answer: z.string(), askedByInvestor: z.boolean().describe("True only if an investor (LP) on the call asked this and the sponsor answered it.") })).describe("Concrete things said on the calls that an investor would ask about and that are not already on the ticket. Empty if none."),
   changed: z.boolean().describe("True if either narrative changed."),
 });
 
@@ -89,6 +89,6 @@ export async function enrichFromCalls(dealId: string): Promise<{ calls: number; 
   if (Object.keys(data).length) await prisma.deal.update({ where: { id: dealId }, data });
   const source = `Call: ${calls.map((c) => `${c.title} (${c.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).join("; ")}`.slice(0, 500);
   const fresh = out.facts.filter((f) => f.question.trim() && f.answer.trim());
-  if (fresh.length) await prisma.dealFact.createMany({ data: fresh.map((f) => ({ dealId, question: houseText(f.question) ?? f.question, answer: houseText(f.answer) ?? f.answer, source })) });
+  if (fresh.length) await prisma.dealFact.createMany({ data: fresh.map((f) => ({ dealId, question: houseText(f.question) ?? f.question, answer: houseText(f.answer) ?? f.answer, source, inFaq: Boolean(f.askedByInvestor) })) });
   return { calls: calls.length, changed: Object.keys(data).length > 0, facts: fresh.length };
 }

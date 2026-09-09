@@ -109,7 +109,7 @@ async function run(name: string, input: Record<string, unknown>): Promise<unknow
         businessPlan: d.summary, sponsorBackground: d.sponsorExperience, checklistDetails: details,
         stillMissing: missingFor(d).map((it) => itemLabel(it, d.strategy)),
         files: d.files.map((f) => ({ name: f.name, received: day(f.receivedAt), from: f.fromEmail })),
-        questionsAnswered: d.facts.map((f) => ({ q: f.question, a: f.answer, source: f.source })),
+        questionsAnswered: d.facts.map((f) => ({ q: f.question, a: f.answer, source: f.source, onInvestorFaq: f.inFaq })),
         progressReport: { firms: d.investors.length, byStatus: counts },
         recentEmails: d.activities.map((a) => ({ date: day(a.occurredAt), direction: a.direction, subject: a.subject, with: a.contact ? `${[a.contact.firstName, a.contact.lastName].filter(Boolean).join(" ")} (${a.contact.company?.name ?? ""})` : null, preview: (a.body ?? "").slice(0, 200) })),
         closedLostReason: d.closedLostReason, closedWonReason: d.closedWonReason,

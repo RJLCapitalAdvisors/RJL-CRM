@@ -48,7 +48,7 @@ export async function logoBytes(): Promise<Uint8Array | null> {
 }
 
 export async function buildFaqPdf(dealId: string): Promise<{ name: string; bytes: Uint8Array } | null> {
-  const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { facts: { orderBy: { createdAt: "asc" } } } });
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { facts: { where: { inFaq: true }, orderBy: { createdAt: "asc" } } } });
   if (!deal || deal.facts.length === 0) return null;
   const name = deal.propertyName ?? deal.name;
   const doc = await PDFDocument.create();

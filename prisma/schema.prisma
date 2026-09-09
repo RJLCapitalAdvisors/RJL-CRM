@@ -475,6 +475,7 @@ model DealFact {
   createdAt DateTime @default(now())
 
   @@index([dealId, createdAt])
+  inFaq     Boolean  @default(false) // on the Investor FAQ: only questions somebody actually asked and the sponsor answered
 }
 
 // Ask the CRM conversations, per person, so a chat survives leaving the page.

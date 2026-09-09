@@ -130,3 +130,11 @@ export async function deleteFact(dealId: string, factId: string) {
   await prisma.dealFact.deleteMany({ where: { id: factId, dealId } });
   revalidatePath(`/deals/${dealId}`);
 }
+
+/** Put a Questions-answered item on the Investor FAQ, or take it off. Only questions somebody asked belong there. */
+export async function toggleFactFaq(dealId: string, factId: string) {
+  const f = await prisma.dealFact.findFirst({ where: { id: factId, dealId } });
+  if (!f) return;
+  await prisma.dealFact.update({ where: { id: factId }, data: { inFaq: !f.inFaq } });
+  revalidatePath(`/deals/${dealId}`);
+}

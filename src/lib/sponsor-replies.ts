@@ -64,7 +64,7 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
       // answers and documents mentioned become ticket knowledge
       const { extractDealFacts, mergeIntoDeal } = await import("@/lib/deal-knowledge");
       if (words.length > 40) {
-        facts += await extractDealFacts(d.id, words, `${a.subject ?? "sponsor email"} (${stamp})`).catch(() => 0);
+        facts += await extractDealFacts(d.id, words, `${a.subject ?? "sponsor email"} (${stamp})`, { mayEnterFaq: true }).catch(() => 0);
         await mergeIntoDeal(d.id, words, a.subject ?? "").catch(() => 0);
       }
       // engagement letter confirmation

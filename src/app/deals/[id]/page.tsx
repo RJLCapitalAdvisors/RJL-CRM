@@ -6,7 +6,7 @@ import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/r
 import { CompanyLogo } from "@/components/company-logo";
 import { fmtDate, fullName } from "@/lib/format";
 import { TRACKER_STATUSES, investorLabel, statusOf } from "@/lib/tracker";
-import { addDealNote, deleteFact, updateDeal } from "../actions";
+import { addDealNote, deleteFact, updateDeal , toggleFactFaq } from "../actions";
 import { StageSelect } from "./stage-select";
 import { AttachmentList } from "@/components/attachment-list";
 import { signFileToken } from "@/lib/tokens";
@@ -169,16 +169,24 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           <AssocCard title="Attachments" count={deal.files.length + (deal.facts.length ? 1 : 0)} empty="Files the sponsor sends on this deal (through deals@) collect here.">
             <AttachmentList
               files={[
-                ...(deal.facts.length ? [{ id: "faq", kind: "faq" as const, name: faqFileName(name), size: 0, date: "built from Questions answered", url: `/api/deals/${deal.id}/faq.pdf?t=${signFileToken(`faq:${deal.id}`)}` }] : []),
+                ...(deal.facts.some((f) => f.inFaq) ? [{ id: "faq", kind: "faq" as const, name: faqFileName(name), size: 0, date: "built from Questions answered", url: `/api/deals/${deal.id}/faq.pdf?t=${signFileToken(`faq:${deal.id}`)}` }] : []),
                 ...deal.files.map((f) => ({ id: f.id, name: f.name, size: f.size, date: fmtDate(f.receivedAt), url: `/api/deals/${deal.id}/files/${f.id}?t=${signFileToken(`file:${f.id}`)}` })),
               ]}
             />
           </AssocCard>
-          <AssocCard title="Questions answered" count={deal.facts.length} empty="What the sponsor tells us in follow-up emails is filed here and used to answer investor questions.">
+          <AssocCard title="Questions answered" count={deal.facts.length} empty="What the sponsor tells us in follow-up emails is filed here and used to answer investor questions. Items marked FAQ go out with the deal; only questions somebody actually asked belong there.">
             {deal.facts.map((f) => (
               <div key={f.id} className="group px-4 py-2 text-sm">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="font-medium">{f.question}</div>
+                  <div className="font-medium">
+                    {f.question}
+                    {f.inFaq && <span className="chip ml-2 bg-sky text-[10px]" title="On the Investor FAQ that goes out with the deal">FAQ</span>}
+                  </div>
+                  <form action={toggleFactFaq.bind(null, deal.id, f.id)}>
+                    <button type="submit" className="shrink-0 text-[11px] text-muted opacity-0 transition-opacity hover:underline group-hover:opacity-100" title={f.inFaq ? "Take this off the Investor FAQ (it stays on the ticket)" : "Put this on the Investor FAQ (only questions somebody actually asked belong there)"}>
+                      {f.inFaq ? "off FAQ" : "to FAQ"}
+                    </button>
+                  </form>
                   <form action={deleteFact.bind(null, deal.id, f.id)}>
                     <button type="submit" className="shrink-0 text-[11px] text-muted opacity-0 transition-opacity hover:underline group-hover:opacity-100" title="Take this off the ticket and out of the Investor FAQ">
                       remove

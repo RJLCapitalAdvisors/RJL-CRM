@@ -100,7 +100,7 @@ const isOM = (n: string) => /\.pdf$/i.test(n);
 export const FAQ_KEY = "faq";
 /** The generated Investor FAQ appears as a file whenever the ticket has Questions answered. */
 async function faqEntry(dealId: string): Promise<DealFile | null> {
-  const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { propertyName: true, name: true, _count: { select: { facts: true } } } });
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { propertyName: true, name: true, _count: { select: { facts: { where: { inFaq: true } } } } } });
   if (!deal || deal._count.facts === 0) return null;
   const { faqFileName } = await import("@/lib/faq-pdf");
   return { key: FAQ_KEY, mailbox: "", messageId: "", attachmentId: "", name: faqFileName(deal.propertyName ?? deal.name), size: 0, contentType: "application/pdf", from: "RJL CRM", receivedAt: new Date().toISOString() };
