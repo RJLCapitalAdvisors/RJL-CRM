@@ -111,7 +111,7 @@ function lookup(ctx: MergeContext, path: string): unknown {
     if (val == null) return "";
     if (path === "deal.avgUnitSize") return `${val.toLocaleString("en-US")} SF`;
     const exact = { pricePerFoot: pp && sf ? pp / sf : null, capPerFoot: tc && sf ? tc / sf : null }[path.slice(5) as "pricePerFoot" | "capPerFoot"];
-    return exact != null ? `${exact.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : val.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+    return exact != null ? `$${exact.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : val.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
   }
   if (path === "deal.location") return [ctx.deal?.city, ctx.deal?.state].filter(Boolean).join(", ");
   if (path === "deal.stateName") {

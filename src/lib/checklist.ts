@@ -153,7 +153,7 @@ export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): stri
     case "expectedClose":
       return deal.expectedClose ?? null;
     case "purchasePrice":
-      return deal.purchasePrice != null ? `${deal.purchasePrice.toLocaleString("en-US")}` : null;
+      return deal.purchasePrice != null ? `$${deal.purchasePrice.toLocaleString("en-US")}` : null;
     default:
       return null;
   }

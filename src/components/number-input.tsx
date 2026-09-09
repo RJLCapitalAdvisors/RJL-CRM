@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 /** Formats digits with thousands separators as you type. Submits the formatted text; the server strips the commas. */
-export function NumberInput({ name, defaultValue, decimals = true, placeholder, className = "input", onValue }: { name: string; defaultValue?: number | string | null; decimals?: boolean; placeholder?: string; className?: string; onValue?: (n: number | null) => void }) {
+export function NumberInput({ name, defaultValue, decimals = true, placeholder, className = "input", onValue, prefix }: { name: string; defaultValue?: number | string | null; decimals?: boolean; placeholder?: string; className?: string; onValue?: (n: number | null) => void; prefix?: string }) {
   const fmt = (raw: string) => {
     let s = raw.replace(/[^0-9.]/g, "");
     if (!decimals) s = s.replace(/\./g, "");
@@ -12,7 +12,7 @@ export function NumberInput({ name, defaultValue, decimals = true, placeholder, 
     return (int ? Number(int).toLocaleString("en-US") : "") + dec;
   };
   const [v, setV] = useState(defaultValue == null || defaultValue === "" ? "" : fmt(String(defaultValue)));
-  return (
+  const input = (
     <input
       name={name}
       value={v}
@@ -26,5 +26,12 @@ export function NumberInput({ name, defaultValue, decimals = true, placeholder, 
         onValue?.(f === "" || isNaN(n) ? null : n);
       }}
     />
+  );
+  if (!prefix) return input;
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted">{prefix}</span>
+      <div className="[&>input]:pl-7">{input}</div>
+    </div>
   );
 }

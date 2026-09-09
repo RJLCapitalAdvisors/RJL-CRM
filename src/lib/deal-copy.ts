@@ -11,7 +11,7 @@ import { isPref, prefMetrics } from "@/lib/pref";
 type D = Record<string, unknown>;
 const n = (v: unknown) => (typeof v === "number" && !isNaN(v) ? v : typeof v === "string" && v.trim() && !isNaN(Number(v.replace(/[^0-9.-]/g, ""))) ? Number(v.replace(/[^0-9.-]/g, "")) : null);
 const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
-export const usd = (v: number) => `${Math.round(v).toLocaleString("en-US")}`;
+export const usd = (v: number) => `$${Math.round(v).toLocaleString("en-US")}`;
 /** Rounded money for headlines: $5.6MM, $12MM, $850k. */
 export const usdShort = (v: number) => (v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1).replace(/\.0$/, "")}MM` : v >= 1_000 ? `$${Math.round(v / 1_000)}k` : usd(v));
 const usdCents = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

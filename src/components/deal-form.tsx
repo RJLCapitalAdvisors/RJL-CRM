@@ -229,23 +229,23 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
         <Row label="Position in the capital stack" hint={pref ? "Pref / mezz: returns below switch to last-dollar metrics" : undefined}>
           <Select name="executionType" value={execType} options={EXECUTION_TYPES} onChange={setExecType} />
         </Row>
-        <Row label={pref ? "Requested pref / mezz amount ($)" : "Requested amount ($)"}>
-          <NumberInput name="requestedAmount" defaultValue={d?.requestedAmount} decimals={false} onValue={setAsk} />
+        <Row label={pref ? "Requested pref / mezz amount" : "Requested amount"}>
+          <NumberInput name="requestedAmount" defaultValue={d?.requestedAmount} decimals={false} onValue={setAsk} prefix="$" />
         </Row>
-        <Row label={isDev ? "Land purchase price ($)" : "Purchase price ($)"}>
-          <NumberInput name="purchasePrice" defaultValue={d?.purchasePrice} decimals={false} onValue={setPrice} />
+        <Row label={isDev ? "Land purchase price" : "Purchase price"}>
+          <NumberInput name="purchasePrice" defaultValue={d?.purchasePrice} decimals={false} onValue={setPrice} prefix="$" />
         </Row>
         {p.perCount && !isDev && <Calc label={`Purchase price per ${per}`} value={money(ratio(price, count))} />}
         {p.perFoot && !isDev && <Calc label="Purchase price per SF" value={money(ratio(price, sf))} />}
         {p.perAcre && <Calc label="Purchase price per acre" value={money(ratio(price, acres))} />}
-        <Row label="Total capitalization ($)" hint="From sources and uses">
-          <NumberInput name="totalCapitalization" defaultValue={d?.totalCapitalization} decimals={false} onValue={setCap} />
+        <Row label="Total capitalization" hint="From sources and uses">
+          <NumberInput name="totalCapitalization" defaultValue={d?.totalCapitalization} decimals={false} onValue={setCap} prefix="$" />
         </Row>
         {p.perCount && <Calc label={`Total capitalization per ${per}`} value={money(ratio(cap, count))} />}
         {p.perFoot && <Calc label="Total capitalization per SF" value={money(ratio(cap, sf))} />}
         {p.perAcre && <Calc label="Total capitalization per acre" value={money(ratio(cap, acres))} />}
-        <Row label="Total debt ($)">
-          <NumberInput name="totalDebt" defaultValue={d?.totalDebt} decimals={false} onValue={setDebt} />
+        <Row label="Total debt">
+          <NumberInput name="totalDebt" defaultValue={d?.totalDebt} decimals={false} onValue={setDebt} prefix="$" />
         </Row>
         <Calc label="Total equity" value={money(equity)} hint="total capitalization minus total debt" />
       </Group>
