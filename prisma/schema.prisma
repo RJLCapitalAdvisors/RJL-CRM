@@ -476,3 +476,27 @@ model DealFact {
 
   @@index([dealId, createdAt])
 }
+
+// Ask the CRM conversations, per person, so a chat survives leaving the page.
+model ChatThread {
+  id        String        @id @default(cuid())
+  userId    String
+  title     String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id        String     @id @default(cuid())
+  threadId  String
+  thread    ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role      String // user | assistant
+  content   String
+  lookups   String? // JSON list of the lookups behind an answer
+  createdAt DateTime   @default(now())
+
+  @@index([threadId, createdAt])
+}

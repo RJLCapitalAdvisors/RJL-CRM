@@ -89,7 +89,7 @@ const ClaudeOutput = z.object({
   city: str("City."),
   state: str("Two-letter US state code."),
   assetClass: z.enum([...ASSET_CLASSES, ""]).describe("Asset class, or empty."),
-  strategy: z.enum(["Acquisitions", "Development", ""]).describe("Development for ground-up/construction; Acquisitions for buying an existing asset."),
+  strategy: z.enum(["Acquisitions", "Development", ""]).describe("Development ONLY for ground-up / new construction. An existing building being bought, recapitalized, refinanced, renovated or leased up is Acquisitions."),
   requestType: z.enum(["Equity", "Debt", "Both", ""]).describe("Equity for JV/LP/pref/co-GP raises; Debt for loans/bridge/construction/refi."),
   requestedAmount: str("Requested amount in US dollars, digits only (12500000)."),
   purchasePrice: str("Acquisitions: purchase price. Developments: the LAND price only (never the total project cost). US dollars, digits only."),
@@ -134,7 +134,7 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
   };
   const t = (v: string) => houseText((v.trim() ? v.trim() : null));
   const details = Object.fromEntries(Object.entries(o.details).map(([k, v]) => [k, t(v as string)])) as ExtractedDeal["details"];
-  return {
+  const out: ExtractedDeal = {
     sponsorName: t(o.sponsorName), propertyName: t(o.propertyName), propertyAddress: t(o.propertyAddress), city: t(o.city),
     state: t(o.state)?.toUpperCase() ?? null, assetClass: t(o.assetClass), strategy: (t(o.strategy) as ExtractedDeal["strategy"]) ?? null,
     requestType: (t(o.requestType) as ExtractedDeal["requestType"]) ?? null, requestedAmount: n(o.requestedAmount), purchasePrice: n(o.purchasePrice),
@@ -146,6 +146,13 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     capRateT12: n(o.capRateT12), capRateY1: n(o.capRateY1), yieldOnCost: n(o.yieldOnCost), cashOnCash: n(o.cashOnCash), holdPeriod: t(o.holdPeriod),
     expectedClose: t(o.expectedClose), amortization: t(o.amortization),
   };
+  // an operating building is never a development, whatever the renovation budget says
+  const existingBuilding = (out.occupancy != null && out.occupancy > 0) || (out.capRateT12 != null && out.capRateT12 > 0) || (out.yearBuilt != null && /\b(19\d\d|20[01]\d|202[0-4])\b/.test(String(out.yearBuilt)));
+  if (out.strategy === "Development" && existingBuilding) {
+    out.strategy = "Acquisitions";
+    out.confidenceNotes = [out.confidenceNotes, "Strategy set to Acquisitions: the material describes an existing, operating building (year built / occupancy / T12), not ground-up construction."].filter(Boolean).join(" ");
+  }
+  return out;
 }
 
 /** House rules applied after extraction, whichever extractor ran. */
@@ -176,7 +183,7 @@ Read the email (including quoted/forwarded content) and fill the schema. Rules:
 - Dollar amounts are plain numbers in USD ("$12.5MM" -> 12500000, "$3,200,000" -> 3200000).
 - Percentages are plain numbers (65% -> 65). LTV may appear as LTC or leverage.
 - requestType: "Equity" for JV/LP/pref/co-GP equity raises, "Debt" for loans/bridge/construction/refi, "Both" if both.
-- strategy: "Development" for ground-up / construction; "Acquisitions" for buying an existing asset.
+- strategy: "Development" ONLY for ground-up or new construction (land or a site, a GC, a construction budget and loan, lease-up from zero, delivery dates). Everything on an existing, operating building is "Acquisitions": a purchase, a recapitalization or loan modification, a refinance, a value-add renovation, a lease-up of existing units, a capex program. A year built in the past, current occupancy, in-place rents or a T12 mean Acquisitions even if the plan spends heavily on renovations.
 - unitMix, holdPeriod, loanTerm, amortization: pick the closest listed option; never write free text there. Unit counts and sizes belong in unitMix / units / squareFeet, never in the summary.
 - executionType: an equity raise that is the majority of total equity is "JV Equity" (LP Equity is only a minority slice).
 - expectedClose: the closing date or month if the email or model states one; otherwise empty so we ask for it.
