@@ -356,3 +356,55 @@ export async function reviseDealEmail(opts: { dealId: string; subject: string; h
     return { error: String(e instanceof Error ? e.message : e).slice(0, 200) };
   }
 }
+
+// ---------- one person, after launch: an LP on a call asks to see the deal ----------
+
+/**
+ * Draft the deal email to a single contact in the sender's Outlook, attachments included, ready to send.
+ * Uses the General email saved on the Send deal page (with this person's first name) when there is one, else the
+ * house template; attaches the files chosen there, else the usual first six. The person joins the progress report
+ * as Deal Not Sent and flips to Deal Sent once the draft leaves Drafts (syncSendDrafts).
+ */
+export async function draftDealToOne(dealId: string, contactId: string, mailbox: string, senderName: string): Promise<FollowUpResult> {
+  if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
+  const [deal, contact] = await Promise.all([prisma.deal.findUniqueOrThrow({ where: { id: dealId } }), prisma.contact.findUniqueOrThrow({ where: { id: contactId }, include: { company: true } })]);
+  if (!contact.email) return { ok: false, reason: `${[contact.firstName, contact.lastName].filter(Boolean).join(" ") || "This contact"} has no email address on file` };
+
+  const row = await prisma.dealInvestor.upsert({ where: { dealId_contactId: { dealId, contactId } }, create: { dealId, contactId, status: 1 }, update: {} });
+  if (row.sendDraftId && row.sendMailbox) {
+    const d = await getMessage(row.sendMailbox, row.sendDraftId, "id,isDraft,webLink,internetMessageId").catch(() => null);
+    if (d?.isDraft) return { ok: true, webLink: d.webLink ?? "", outlookLink: await outlookDesktopLink(row.sendMailbox, d.id), messageId: d.internetMessageId ?? null, mode: "new", attachments: 0 };
+  }
+
+  let state: { templateId?: string; general?: { subject: string; html: string } | null; chosenFiles?: string[] } = {};
+  try {
+    state = (JSON.parse(deal.details || "{}") as { sendState?: typeof state }).sendState ?? {};
+  } catch {
+    /* no saved send state */
+  }
+  let subject: string, html: string;
+  if (state.general?.html) {
+    const { withFirstName } = await import("@/lib/first-name-marker");
+    subject = state.general.subject;
+    html = withFirstName(state.general.html, contact.firstName);
+  } else {
+    const templates = await prisma.emailTemplate.findMany({ where: { kind: "DEAL", NOT: { name: { contains: "Engagement" } } }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+    const tpl = (state.templateId && templates.find((t) => t.id === state.templateId)) || templates.find((t) => t.name.startsWith("Deal email (house")) || templates[0];
+    if (!tpl) return { ok: false, reason: "No deal email template on file" };
+    const r = await renderDealEmail({ templateId: tpl.id, deal: deal as unknown as Record<string, unknown>, contact, company: contact.company, openingLine: null, bodyOverride: null, senderName, mailbox });
+    subject = r.subject;
+    html = r.html;
+  }
+  const keys = state.chosenFiles ?? (await dealFiles(dealId).catch(() => [])).slice(0, 6).map((f) => f.key);
+  try {
+    const src = await chosenFiles(dealId, keys);
+    const draft = await createDraft(mailbox, { subject, toRecipients: [contact.email], bodyHtml: `<html><body>${html}</body></html>` });
+    let attachments = 0;
+    if (src) for (const a of src.atts) { await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id); attachments++; }
+    const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
+    await prisma.dealInvestor.update({ where: { id: row.id }, data: { sendDraftId: draft.id, sendMailbox: mailbox, sendDraftAt: new Date(), bodyOverride: html, updatedAt: row.updatedAt } });
+    return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: "new", attachments };
+  } catch (e) {
+    return { ok: false, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+}

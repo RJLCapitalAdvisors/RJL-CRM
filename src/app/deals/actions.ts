@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { currentUser } from "@/lib/current-user";
 import { logActivity } from "@/lib/activity";
 import { DEAL_STAGES } from "@/lib/taxonomy";
 import { parseDetails } from "@/lib/checklist";
@@ -137,4 +138,29 @@ export async function toggleFactFaq(dealId: string, factId: string) {
   if (!f) return;
   await prisma.dealFact.update({ where: { id: factId }, data: { inFaq: !f.inFaq } });
   revalidatePath(`/deals/${dealId}`);
+}
+
+// ---------- Send to one person ----------
+/** People to send a deal to, by name, email or firm. */
+export async function searchContactsForDeal(q: string) {
+  const t = q.trim();
+  if (t.length < 2) return [];
+  const rows = await prisma.contact.findMany({
+    where: { email: { not: null }, departedAt: null, OR: [{ firstName: { contains: t, mode: "insensitive" } }, { lastName: { contains: t, mode: "insensitive" } }, { email: { contains: t, mode: "insensitive" } }, { company: { name: { contains: t, mode: "insensitive" } } }] },
+    select: { id: true, firstName: true, lastName: true, email: true, company: { select: { name: true } } },
+    orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { lastName: "asc" }],
+    take: 8,
+  });
+  return rows.map((r) => ({ id: r.id, name: [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email!, email: r.email!, company: r.company?.name ?? null }));
+}
+
+/** Draft the deal email to one person in the signed-in user's Outlook, attachments on, ready to send. */
+export async function sendDealToOneAction(dealId: string, contactId: string) {
+  const me = await currentUser();
+  if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft lands in your own mailbox." };
+  const { draftDealToOne } = await import("@/lib/send-deal");
+  const r = await draftDealToOne(dealId, contactId, me.email, me.name);
+  revalidatePath(`/deals/${dealId}`);
+  revalidatePath(`/deals/${dealId}/tracker`);
+  return r;
 }
