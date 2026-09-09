@@ -102,7 +102,8 @@ export async function openMomentumDraft(momentumId: string) {
       const toPerson = await sentMessagesTo(me.email, to[0], 15).catch(() => []);
       const toFirm = deal.sponsorCompany?.domain ? await sentMessagesToDomain(me.email, deal.sponsorCompany.domain, 25).catch(() => []) : [];
       const pool = [...toPerson, ...toFirm].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i).sort((x, y) => (y.sentDateTime ?? "").localeCompare(x.sentDateTime ?? ""));
-      const original = pool.find((x) => sponsorOnly(x) && subjectMatchesDeal(x.subject, deal)) ?? pool.find((x) => sponsorOnly(x) && notIntro(x));
+      const { houseSubjectMatches } = await import("@/lib/deal-match");
+      const original = pool.find((x) => sponsorOnly(x) && notIntro(x) && (subjectMatchesDeal(x.subject, deal) || houseSubjectMatches(x.subject, deal)));
       if (original) {
         const draft = await createReplyAllDraft(me.email, original.id);
         const body = draft.body?.content ?? "";

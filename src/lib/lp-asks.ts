@@ -44,7 +44,10 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     // A firm on several deals answers each on its own thread; an email that names none of them is about
     // something else (an intro, another deal) and must not be pinned to any ticket.
     const rows = await prisma.dealInvestor.findMany({ where: { contact: { companyId: a.companyId! }, deal: { stage: { in: [...ACTIVE_STAGES] } }, status: { gte: 2 } }, include: { deal: { select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true } } }, orderBy: { updatedAt: "desc" } });
-    const candidates = rows.map((r) => r.deal).filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
+    const legacyIntro = (x: { id: string }) => legacy.has(x.id);
+    const candidatesAll = rows.map((r) => r.deal).filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
+    const legacy = new Set((await prisma.deal.findMany({ where: { id: { in: candidatesAll.map((x) => x.id) }, stage: "Intro To Capital Made", hubspotId: { not: null } }, select: { id: true } })).map((x) => x.id));
+    const candidates = candidatesAll.filter((x) => !legacyIntro(x));
     if (a.dealId && !candidates.some((x) => x.id === a.dealId)) {
       const linked = await prisma.deal.findFirst({ where: { id: a.dealId, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true } });
       if (linked) candidates.unshift(linked);

@@ -210,8 +210,10 @@ export async function createThreadReplyDraft(mailbox: string, internetMessageId:
 export async function replyToLatestWith(mailbox: string, email: string, subjectHint: string, dealWords: string[] = []): Promise<FollowUpResult> {
   if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
   const sent = await sentMessagesTo(mailbox, email, 15).catch(() => [] as GraphMessage[]);
-  const about = (m: GraphMessage) => dealWords.some((w) => (m.subject ?? "").toLowerCase().includes(w));
-  const original = sent.find(about) ?? sent[0];
+  // only a thread about the matter at hand (deal words or the parties' names); a different deal's thread is never a fallback
+  const about = (m: GraphMessage) => dealWords.some((w) => w.length > 3 && new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\  const about = (m: GraphMessage) => dealWords.some((w) => (m.subject ?? "").toLowerCase().includes(w));
+  const original = sent.find(about) ?? sent[0];")}\\b`, "i").test(m.subject ?? ""));
+  const original = dealWords.length ? sent.find(about) : undefined;
   const sig = await signatureFor(mailbox);
   const blank = `<div style="${FONT}"><p style="margin:0 0 12pt 0;${FONT}"><br></p>${sig}<br></div>`;
   let draft: GraphMessage;
