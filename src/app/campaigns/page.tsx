@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader, Empty } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
+import { kickBlasts } from "@/lib/blasts";
 
 export const metadata = { title: "Email blasts" };
 
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 const tone: Record<string, string> = {
   DRAFT: "bg-cream text-ink border-line",
+  SCHEDULED: "bg-sky-50 text-ink border-sky",
   SENDING: "bg-sky text-ink border-sky",
   IN_PROGRESS: "bg-sky-50 text-ink border-sky",
   SENT: "bg-emerald-100 text-emerald-900 border-emerald-200",
@@ -16,6 +18,7 @@ const tone: Record<string, string> = {
 };
 
 export default async function CampaignsPage() {
+  kickBlasts();
   const campaigns = await prisma.campaign.findMany({
     orderBy: { createdAt: "desc" },
     include: { deal: true, template: true, recipients: { select: { status: true } } },

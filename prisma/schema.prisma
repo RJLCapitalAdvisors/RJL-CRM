@@ -299,6 +299,9 @@ model Campaign {
   minScore   Int      @default(0)
   fromName   String?
   replyTo    String?
+  segment    String? // JSON { audience: Investor | Sponsor | All, assetClasses: [] }
+  scheduledAt DateTime? // when a scheduled blast goes out
+  followUpDays String? // "3,7": resend to anyone quiet after these many days
   sentAt     DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -323,7 +326,13 @@ model CampaignRecipient {
   sentAt       DateTime?
   openedAt     DateTime?
 
+  repliedAt  DateTime?
+  lastSentAt DateTime? // last email in the sequence (first send or a follow-up)
+  followUpsSent Int    @default(0)
+  nextFollowUpAt DateTime?
+
   @@unique([campaignId, contactId])
+  @@index([nextFollowUpAt])
 }
 
 // Proposed criteria changes from Fireflies calls or emails. Applied only when approved.

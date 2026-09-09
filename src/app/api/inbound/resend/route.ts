@@ -49,7 +49,24 @@ export async function POST(req: Request) {
   if (!verifySvix(raw, req.headers, secret)) return new Response("Bad signature", { status: 401 });
 
   const event = JSON.parse(raw) as { type: string; data: { email_id: string; from: string; to: string[]; subject: string; attachments?: { filename?: string }[] } };
-  if (event.type !== "email.received") return Response.json({ ok: true, ignored: event.type });
+  // delivery events on blasts: opened / bounced / complained, matched by the provider id we stored when sending
+  if (event.type !== "email.received") {
+    const { prisma } = await import("@/lib/db");
+    const rid = event.data?.email_id;
+    const rec = rid ? await prisma.campaignRecipient.findFirst({ where: { providerId: rid }, select: { id: true, contactId: true, status: true } }) : null;
+    if (rec) {
+      if (event.type === "email.opened" && ["SENT"].includes(rec.status)) await prisma.campaignRecipient.update({ where: { id: rec.id }, data: { status: "OPENED", openedAt: new Date() } });
+      else if (event.type === "email.clicked" && ["SENT", "OPENED"].includes(rec.status)) await prisma.campaignRecipient.update({ where: { id: rec.id }, data: { status: "CLICKED", openedAt: new Date() } });
+      else if (event.type === "email.bounced") {
+        await prisma.campaignRecipient.update({ where: { id: rec.id }, data: { status: "BOUNCED", nextFollowUpAt: null, error: "bounced" } });
+        await prisma.contact.update({ where: { id: rec.contactId }, data: { bounceReason: "hard bounce (Resend)" } }).catch(() => null);
+      } else if (event.type === "email.complained") {
+        await prisma.campaignRecipient.update({ where: { id: rec.id }, data: { status: "UNSUBSCRIBED", nextFollowUpAt: null } });
+        await prisma.contact.update({ where: { id: rec.contactId }, data: { unsubscribed: true } }).catch(() => null);
+      }
+    }
+    return Response.json({ ok: true, handled: event.type, matched: Boolean(rec) });
+  }
 
   const res = await fetch(`https://api.resend.com/emails/receiving/${event.data.email_id}`, { headers: { Authorization: `Bearer ${apiKey}` } });
   if (!res.ok) return new Response(`Could not fetch email: ${res.status}`, { status: 502 });

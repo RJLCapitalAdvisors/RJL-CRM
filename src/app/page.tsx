@@ -12,6 +12,7 @@ import { listMomentum } from "@/lib/momentum";
 import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
 import { currentUser } from "@/lib/current-user";
 import { kickMailSync, syncRecentSent } from "@/lib/mail-sync";
+import { kickBlasts } from "@/lib/blasts";
 
 export const metadata = { title: "Dashboard" };
 
@@ -58,6 +59,7 @@ function Window({ title, count, children, empty }: { title: string; count: numbe
 
 export default async function Dashboard() {
   kickMailSync();
+  kickBlasts();
   const me = await currentUser();
   if (me) await syncRecentSent(me.email).catch(() => 0); // what you just sent counts right away
   const showCriteria = Boolean(me?.canEditCriteria);

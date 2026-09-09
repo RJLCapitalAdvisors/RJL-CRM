@@ -42,6 +42,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@kenjiuno/msgreader": "^1.28.0",
     "@tailwindcss/postcss": "^4",
     "@types/html-to-text": "^9.0.4",
     "@types/node": "^20",

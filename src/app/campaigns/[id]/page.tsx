@@ -7,6 +7,9 @@ import { mailtoLink, renderForRecipient, senderName } from "@/lib/campaign-rende
 import { fmtDate, fullName, str } from "@/lib/format";
 import { deleteCampaign, markRecipientSent, removeRecipient, sendCampaign, sendOneRecipient, skipRecipient, unskipRecipient, updateCampaignCopy, updateRecipient } from "../actions";
 import { SendButton } from "./send-button";
+import { BlastPanel } from "./blast-panel";
+import { blastStats } from "@/lib/blasts";
+import { currentUser } from "@/lib/current-user";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -41,6 +44,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
   if (!campaign) notFound();
 
   const configured = mailConfigured();
+  const [stats, me] = campaign.mode === "BLAST" ? await Promise.all([blastStats(campaign.id), currentUser()]) : [null, null];
   const outreach = campaign.mode === "OUTREACH";
   const pending = campaign.recipients.filter((r) => r.status === "PENDING").length;
   const sent = campaign.recipients.filter((r) => r.status === "SENT").length;
@@ -91,10 +95,12 @@ export default async function CampaignPage({ params, searchParams }: { params: P
                 </button>
               </form>
             )}
-            {!outreach && <SendButton action={sendCampaign.bind(null, campaign.id)} pending={pending} configured={configured} />}
+            {!outreach && campaign.mode !== "BLAST" && <SendButton action={sendCampaign.bind(null, campaign.id)} pending={pending} configured={configured} />}
           </>
         }
       />
+
+      {campaign.mode === "BLAST" && stats && <BlastPanel campaignId={campaign.id} status={campaign.status} scheduledAt={campaign.scheduledAt?.toISOString() ?? null} followUpDays={campaign.followUpDays} stats={stats} myEmail={me?.email ?? null} />}
 
       {!configured && !outreach && (
         <div className="mx-8 mt-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

@@ -207,3 +207,53 @@ export async function sendCampaign(id: string) {
   revalidatePath("/campaigns");
   return { sent, failed };
 }
+
+// ---------- blasts (segments, schedule, follow-ups) ----------
+import { blastStats, cancelScheduleFor, createBlast, scheduleBlast, segmentContacts, sendBlast, sendTestBlast, type Segment } from "@/lib/blasts";
+import { currentUser } from "@/lib/current-user";
+
+export async function countSegmentAction(seg: Segment): Promise<{ total: number; sample: string[] }> {
+  const rows = await segmentContacts(seg);
+  return { total: rows.length, sample: rows.slice(0, 4).map((r) => r.company ?? r.name) };
+}
+
+export async function createBlastAction(input: { name: string; templateId: string; segment: Segment; scheduledAt: string | null; followUpDays: number[] }) {
+  const me = await currentUser();
+  let id: string;
+  try {
+    id = await createBlast({ ...input, scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null, fromName: me?.name ?? null, replyTo: me?.email ?? null });
+  } catch (e) {
+    return { error: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+  revalidatePath("/campaigns");
+  redirect(`/campaigns/${id}`);
+}
+
+export async function scheduleBlastAction(id: string, atIso: string) {
+  await scheduleBlast(id, new Date(atIso));
+  revalidatePath(`/campaigns/${id}`);
+  revalidatePath("/campaigns");
+}
+
+export async function cancelScheduleAction(id: string) {
+  await cancelScheduleFor(id);
+  revalidatePath(`/campaigns/${id}`);
+  revalidatePath("/campaigns");
+}
+
+export async function sendBlastNowAction(id: string): Promise<string> {
+  const r = await sendBlast(id).catch((e) => ({ error: String(e instanceof Error ? e.message : e).slice(0, 200) }));
+  revalidatePath(`/campaigns/${id}`);
+  revalidatePath("/campaigns");
+  return "error" in r ? r.error : `Sent ${r.sent}, failed ${r.failed}, skipped ${r.skipped}.`;
+}
+
+export async function sendTestBlastAction(id: string) {
+  const me = await currentUser();
+  if (!me?.email) throw new Error("Sign in with Microsoft first.");
+  await sendTestBlast(id, me.email);
+}
+
+export async function blastStatsAction(id: string) {
+  return blastStats(id);
+}
