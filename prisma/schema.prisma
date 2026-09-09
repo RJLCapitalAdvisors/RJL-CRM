@@ -529,6 +529,15 @@ model IlApartment {
   gardenSqm      Float?
   direction      String    @default("[]") // JSON list of air directions
   parking        Int?
+  parkingSpots   String?   // None, 1, 2 - back to back, 2 side by side, 3
+  ceilingCm      Float?
+  machsanSqm     Float?
+  machsanLocation String?  // Attached to apartment, In basement
+  mirpesetDirection String @default("[]") // JSON list of air directions
+  buildingUnits  Int?
+  floorplan      Bytes?
+  floorplanType  String?
+  floorplanName  String?
   storage        Boolean   @default(false)
   elevator       Boolean   @default(false)
   mamad          Boolean   @default(false)

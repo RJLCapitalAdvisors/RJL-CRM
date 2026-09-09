@@ -217,7 +217,7 @@ export async function countSegmentAction(seg: Segment): Promise<{ total: number;
   return { total: rows.length, sample: rows.slice(0, 4).map((r) => r.company ?? r.name) };
 }
 
-export async function createBlastAction(input: { name: string; templateId: string; segment: Segment; scheduledAt: string | null; followUpDays: number[] }) {
+export async function createBlastAction(input: { name: string; templateId: string; segment: Segment; scheduledAt: string | null; followUpDays: number[]; copy?: { subject: string; bodyHtml: string } | null }) {
   const me = await currentUser();
   let id: string;
   try {
@@ -256,4 +256,36 @@ export async function sendTestBlastAction(id: string) {
 
 export async function blastStatsAction(id: string) {
   return blastStats(id);
+}
+
+// ---------- the email being written: preview it, test it, save it ----------
+
+const meAsReader = (me: { name: string; email: string } | null) => {
+  const [firstName, ...rest] = (me?.name ?? "Test Reader").split(" ");
+  return { contactId: "test", openingLine: null, bodyOverride: null, contact: { firstName, lastName: rest.join(" ") || null, email: me?.email ?? "test@example.com", company: { name: "RJL Capital Advisors" } } };
+};
+
+/** The email merged for the signed-in person, so the editor can show it the way a reader will see it. */
+export async function previewCopyAction(copy: { subject: string; bodyHtml: string }): Promise<{ subject: string; html: string }> {
+  const me = await currentUser();
+  const { subject, html } = renderForRecipient({ mode: "BLAST", subject: copy.subject, bodyHtml: copy.bodyHtml, fromName: me?.name ?? null, replyTo: me?.email ?? null, deal: null }, meAsReader(me));
+  return { subject, html };
+}
+
+/** One test email to yourself with the copy as it stands right now, before or after the blast exists. */
+export async function sendTestCopyAction(copy: { subject: string; bodyHtml: string }): Promise<string> {
+  const me = await currentUser();
+  if (!me?.email) return "Sign in with Microsoft first.";
+  try {
+    const { subject, html } = renderForRecipient({ mode: "BLAST", subject: copy.subject, bodyHtml: copy.bodyHtml, fromName: me.name, replyTo: me.email, deal: null }, meAsReader(me));
+    await sendEmail({ to: me.email, subject: `[TEST] ${subject}`, html, replyTo: me.email });
+    return `Test sent to ${me.email}.`;
+  } catch (e) {
+    return String(e instanceof Error ? e.message : e).slice(0, 200);
+  }
+}
+
+export async function saveBlastCopyAction(id: string, copy: { subject: string; bodyHtml: string }) {
+  await prisma.campaign.update({ where: { id }, data: { subject: copy.subject, bodyHtml: copy.bodyHtml } });
+  revalidatePath(`/campaigns/${id}`);
 }

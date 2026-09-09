@@ -59,7 +59,7 @@ export const parseSegment = (s: string | null | undefined): Segment => {
 export const parseDays = (s: string | null | undefined) => (s ?? "").split(/[,\s]+/).map((x) => Number(x)).filter((n) => n > 0);
 
 /** A new blast: template snapshot, segment, schedule and cadence; recipients from the segment. */
-export async function createBlast(input: { name: string; templateId: string; segment: Segment; scheduledAt: Date | null; followUpDays: number[]; fromName?: string | null; replyTo?: string | null }): Promise<string> {
+export async function createBlast(input: { name: string; templateId: string; segment: Segment; scheduledAt: Date | null; followUpDays: number[]; fromName?: string | null; replyTo?: string | null; copy?: { subject: string; bodyHtml: string } | null }): Promise<string> {
   const template = await prisma.emailTemplate.findUniqueOrThrow({ where: { id: input.templateId } });
   const rows = await segmentContacts(input.segment);
   const campaign = await prisma.campaign.create({
@@ -68,8 +68,8 @@ export async function createBlast(input: { name: string; templateId: string; seg
       mode: "BLAST",
       status: input.scheduledAt ? "SCHEDULED" : "DRAFT",
       templateId: template.id,
-      subject: template.subject,
-      bodyHtml: template.bodyHtml,
+      subject: input.copy?.subject?.trim() || template.subject,
+      bodyHtml: input.copy?.bodyHtml?.trim() || template.bodyHtml,
       roleFilter: input.segment.audience === "All" ? null : input.segment.audience,
       segment: JSON.stringify(input.segment),
       scheduledAt: input.scheduledAt,

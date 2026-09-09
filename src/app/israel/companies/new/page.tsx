@@ -7,10 +7,10 @@ export const metadata = { title: "New company" };
 export default function NewIlCompanyPage() {
   return (
     <>
-      <PageHeader compact title="New company" />
-      <div className="mx-auto max-w-2xl px-6 py-5">
+      <PageHeader title="New company" />
+      <div className="mx-auto max-w-2xl px-8 py-5">
         <div className="card p-5">
-          <IlCompanyForm action={createIlCompany} submitLabel="Create company" />
+          <IlCompanyForm action={createIlCompany} />
         </div>
       </div>
     </>

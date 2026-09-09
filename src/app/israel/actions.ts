@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { IL_STAGES } from "@/lib/israel";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -19,42 +18,36 @@ const i = (fd: FormData, k: string) => {
   const x = n(fd, k);
   return x == null ? null : Math.trunc(x);
 };
-const b = (fd: FormData, k: string) => (fd.has(k) ? fd.get(k) === "on" || fd.get(k) === "true" : null);
 const list = (fd: FormData, k: string) => JSON.stringify(fd.getAll(k).map(String).filter(Boolean));
+const yesNo = (fd: FormData, k: string) => (fd.has(k) ? s(fd, k) === "Yes" : undefined);
 
 function apartmentData(fd: FormData) {
   return {
-    name: s(fd, "name") ?? ([s(fd, "street"), s(fd, "city")].filter(Boolean).join(", ") || "Apartment"),
-    apartmentType: s(fd, "apartmentType"),
+    name: s(fd, "name") ?? (s(fd, "street") || "Apartment"),
+    street: s(fd, "street"),
     city: s(fd, "city"),
     neighborhood: s(fd, "neighborhood"),
-    street: s(fd, "street"),
-    projectName: s(fd, "projectName"),
     rooms: n(fd, "rooms"),
+    completionDate: s(fd, "completionDate"),
     floor: i(fd, "floor"),
     totalFloors: i(fd, "totalFloors"),
+    buildingUnits: i(fd, "buildingUnits"),
     internalSqm: n(fd, "internalSqm"),
     mirpesetSqm: n(fd, "mirpesetSqm"),
-    gardenSqm: n(fd, "gardenSqm"),
+    ceilingCm: n(fd, "ceilingCm"),
+    machsanSqm: n(fd, "machsanSqm"),
+    machsanLocation: s(fd, "machsanLocation"),
+    parkingSpots: s(fd, "parkingSpots"),
     direction: list(fd, "direction"),
-    parking: i(fd, "parking"),
-    storage: b(fd, "storage") ?? false,
-    elevator: b(fd, "elevator") ?? false,
-    mamad: b(fd, "mamad") ?? false,
+    mirpesetDirection: list(fd, "mirpesetDirection"),
+    mamad: yesNo(fd, "mamad") ?? false,
     priceNis: n(fd, "priceNis"),
-    builtYear: i(fd, "builtYear"),
-    completionDate: s(fd, "completionDate"),
-    condition: s(fd, "condition"),
     description: s(fd, "description"),
-    developerId: s(fd, "developerId"),
-    agentContactId: s(fd, "agentContactId"),
-    sellerContactId: s(fd, "sellerContactId"),
-    source: s(fd, "source"),
   };
 }
 
 export async function createApartment(fd: FormData) {
-  const a = await prisma.ilApartment.create({ data: { ...apartmentData(fd), stage: "Apartment Received" } });
+  const a = await prisma.ilApartment.create({ data: apartmentData(fd) });
   revalidatePath("/israel/apartments");
   redirect(`/israel/apartments/${a.id}`);
 }
@@ -65,14 +58,14 @@ export async function updateApartment(id: string, fd: FormData) {
   revalidatePath("/israel/apartments");
 }
 
-export async function setApartmentStage(id: string, fd: FormData) {
-  const stage = s(fd, "stage");
-  if (!stage || !(IL_STAGES as readonly string[]).includes(stage)) return;
-  await prisma.ilApartment.update({ where: { id }, data: { stage, closedAt: stage === "Closed" || stage === "Lost" ? new Date() : null } });
-  await prisma.ilNote.create({ data: { apartmentId: id, body: `Stage: ${stage}` } });
+/** The associations in the right column: developer (company), sales agent and seller (contacts). */
+export async function linkApartment(id: string, fd: FormData) {
+  const data: { developerId?: string | null; agentContactId?: string | null; sellerContactId?: string | null } = {};
+  if (fd.has("developerId")) data.developerId = s(fd, "developerId");
+  if (fd.has("agentContactId")) data.agentContactId = s(fd, "agentContactId");
+  if (fd.has("sellerContactId")) data.sellerContactId = s(fd, "sellerContactId");
+  await prisma.ilApartment.update({ where: { id }, data });
   revalidatePath(`/israel/apartments/${id}`);
-  revalidatePath("/israel/apartments");
-  revalidatePath("/israel");
 }
 
 export async function deleteApartment(id: string) {

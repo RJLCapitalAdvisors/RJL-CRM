@@ -8,6 +8,7 @@ import { fmtDate, fullName, str } from "@/lib/format";
 import { deleteCampaign, markRecipientSent, removeRecipient, sendCampaign, sendOneRecipient, skipRecipient, unskipRecipient, updateCampaignCopy, updateRecipient } from "../actions";
 import { SendButton } from "./send-button";
 import { BlastPanel } from "./blast-panel";
+import { BlastCopyEditor } from "./copy-editor";
 import { blastStats } from "@/lib/blasts";
 import { currentUser } from "@/lib/current-user";
 
@@ -277,6 +278,9 @@ export default async function CampaignPage({ params, searchParams }: { params: P
             <div className="card p-5 text-sm text-muted">No recipients.</div>
           )}
 
+          {campaign.mode === "BLAST" ? (
+            <BlastCopyEditor campaignId={campaign.id} subject={campaign.subject} bodyHtml={campaign.bodyHtml} sendTo={`${campaign.recipients.length.toLocaleString()} people · ${campaign.roleFilter ?? "everyone"}`} from={`${senderName(campaign)}${campaign.replyTo ? ` (${campaign.replyTo})` : ""}`} me={me?.email ?? null} />
+          ) : (
           <details className="card">
             <summary className="cursor-pointer px-5 py-3 font-semibold">Edit the email copy for this send</summary>
             <form action={updateCampaignCopy.bind(null, campaign.id)} className="space-y-3 border-t border-line p-5">
@@ -313,6 +317,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
               </div>
             </form>
           </details>
+          )}
         </section>
       </div>
     </>

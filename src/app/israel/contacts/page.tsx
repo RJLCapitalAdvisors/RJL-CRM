@@ -1,67 +1,104 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { PageHeader } from "@/components/ui";
-import { IL_ROLES, nisShort, parseJsonList } from "@/lib/israel";
+import { PageHeader, Pager, SearchForm } from "@/components/ui";
+import { fmtDate, str } from "@/lib/format";
+import { IL_ROLES, ilFullName, nisShort, parseJsonList } from "@/lib/israel";
 
 export const metadata = { title: "Contacts" };
 export const dynamic = "force-dynamic";
+const PAGE = 50;
 
+/** Contacts: buyers, sellers and sales agents, linked through to their companies. Same window as the RJL Capital Advisors list. */
 export default async function IlContactsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
-  const q = typeof sp.q === "string" ? sp.q.trim() : "";
-  const role = typeof sp.role === "string" ? sp.role : "";
-  const rows = await prisma.ilContact.findMany({
-    where: { ...(q ? { OR: [{ firstName: { contains: q, mode: "insensitive" } }, { lastName: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }, { company: { name: { contains: q, mode: "insensitive" } } }] } : {}), ...(role ? { roles: { contains: `"${role}"` } } : {}) },
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    include: { company: { select: { id: true, name: true } } },
-  });
+  const q = str(sp.q).trim();
+  const role = str(sp.role);
+  const page = Math.max(1, Number(str(sp.page)) || 1);
+  const where: Prisma.IlContactWhereInput = {
+    AND: [
+      q ? { OR: [{ firstName: { contains: q, mode: "insensitive" } }, { lastName: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }, { phone: { contains: q, mode: "insensitive" } }, { company: { name: { contains: q, mode: "insensitive" } } }] } : {},
+      role ? { roles: { contains: `"${role}"` } } : {},
+    ],
+  };
+  const [total, rows] = await Promise.all([
+    prisma.ilContact.count({ where }),
+    prisma.ilContact.findMany({ where, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], skip: (page - 1) * PAGE, take: PAGE, include: { company: { select: { id: true, name: true } } } }),
+  ]);
+  const makeHref = (p: number) => {
+    const u = new URLSearchParams();
+    if (q) u.set("q", q);
+    if (role) u.set("role", role);
+    u.set("page", String(p));
+    return `/israel/contacts?${u}`;
+  };
   return (
     <>
-      <PageHeader compact title="Contacts" subtitle={`${rows.length} buyers, sellers, agents, developers and advisors`} actions={<Link href="/israel/contacts/new" className="btn-primary">New contact</Link>} />
-      <div className="px-6 py-5">
-        <form method="get" className="mb-3 flex flex-wrap gap-2 text-sm">
-          <input name="q" defaultValue={q} placeholder="Search" className="input w-64" />
-          <select name="role" defaultValue={role} className="input w-48">
-            <option value="">Any role</option>
-            {IL_ROLES.map((r) => <option key={r}>{r}</option>)}
+      <PageHeader
+        title="Contacts"
+        subtitle={`${total.toLocaleString()} contacts`}
+        actions={
+          <Link href="/israel/contacts/new" className="btn-primary">
+            New contact
+          </Link>
+        }
+      />
+      <div className="px-8 py-4">
+        <SearchForm action="/israel/contacts" q={q} placeholder="Search name, email, phone, or company">
+          <select name="role" defaultValue={role} className="input w-40">
+            <option value="">Buyers and sellers</option>
+            {IL_ROLES.map((r) => (
+              <option key={r}>{r}</option>
+            ))}
           </select>
-          <button className="btn-secondary" type="submit">
-            Filter
-          </button>
-        </form>
-        <div className="card overflow-hidden">
-          <table className="table w-full text-sm">
+        </SearchForm>
+      </div>
+      <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="table dense w-full min-w-[1000px]">
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Roles</th>
-                <th>Company</th>
-                <th>Phone</th>
                 <th>Email</th>
+                <th>Company</th>
+                <th>Roles</th>
+                <th>Phone</th>
+                <th>Language</th>
                 <th className="text-right">Budget</th>
                 <th>Wants</th>
+                <th>Added</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((p) => (
-                <tr key={p.id}>
+              {rows.map((k) => (
+                <tr key={k.id}>
                   <td>
-                    <Link href={`/israel/contacts/${p.id}`} className="font-medium hover:underline">
-                      {[p.firstName, p.lastName].filter(Boolean).join(" ") || p.email}
+                    <Link href={`/israel/contacts/${k.id}`} className="font-medium hover:underline">
+                      {ilFullName(k)}
                     </Link>
                   </td>
-                  <td>{parseJsonList(p.roles).join(", ")}</td>
-                  <td>{p.company && <Link href={`/israel/companies/${p.company.id}`} className="hover:underline">{p.company.name}</Link>}</td>
-                  <td>{p.phone}</td>
-                  <td className="text-xs">{p.email}</td>
-                  <td className="text-right">{p.budgetMaxNis ? `${p.budgetMinNis ? `${nisShort(p.budgetMinNis)} to ` : "up to "}${nisShort(p.budgetMaxNis)}` : ""}</td>
-                  <td className="text-xs text-muted">{[p.wantsCities, p.wantsRooms ? `${p.wantsRooms} rooms` : null].filter(Boolean).join(" · ")}</td>
+                  <td className="text-muted">{k.email}</td>
+                  <td>{k.company ? <Link href={`/israel/companies/${k.company.id}`} className="hover:underline">{k.company.name}</Link> : <span className="text-muted">—</span>}</td>
+                  <td>
+                    <div className="flex flex-wrap gap-1">
+                      {parseJsonList(k.roles).map((r) => (
+                        <span key={r} className="chip bg-cream text-[11px]">
+                          {r}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap">{k.phone}</td>
+                  <td>{k.language}</td>
+                  <td className="whitespace-nowrap text-right tabular-nums">{k.budgetMaxNis ? `${k.budgetMinNis ? `${nisShort(k.budgetMinNis)} to ` : "up to "}${nisShort(k.budgetMaxNis)}` : ""}</td>
+                  <td className="max-w-[220px] truncate text-xs text-muted">{[k.wantsCities, k.wantsRooms ? `${k.wantsRooms} rooms` : null].filter(Boolean).join(" · ")}</td>
+                  <td className="whitespace-nowrap text-muted">{fmtDate(k.createdAt)}</td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-muted">
-                    No contacts yet.
+                  <td colSpan={9} className="py-10 text-center text-muted">
+                    No contacts match.
                   </td>
                 </tr>
               )}
@@ -69,6 +106,7 @@ export default async function IlContactsPage({ searchParams }: { searchParams: P
           </table>
         </div>
       </div>
+      <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
     </>
   );
 }

@@ -1,79 +1,109 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { PageHeader } from "@/components/ui";
-import { IL_STAGES, apartmentLine, nisShort, pricePerSqm, stageToneIl } from "@/lib/israel";
+import { PageHeader, Pager, SearchForm } from "@/components/ui";
+import { str } from "@/lib/format";
+import { IL_CITIES, nis, pricePerMeter } from "@/lib/israel";
 
 export const metadata = { title: "Apartments" };
 export const dynamic = "force-dynamic";
+const PAGE = 50;
 
-/** Apartments board: one column per stage, like the deals board. Click a card to open the apartment. */
+/** Apartments: the list, in the same window as the RJL Capital Advisors company list. Click a row to open the ticket. */
 export default async function ApartmentsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
-  const only = typeof sp.stage === "string" ? sp.stage : null;
-  const apartments = await prisma.ilApartment.findMany({ orderBy: { updatedAt: "desc" }, include: { developer: { select: { name: true } } } });
-  const stages = only ? IL_STAGES.filter((s) => s === only) : IL_STAGES.filter((s) => s !== "Closed" && s !== "Lost");
-  const closed = apartments.filter((a) => a.stage === "Closed" || a.stage === "Lost");
+  const q = str(sp.q).trim();
+  const city = str(sp.city);
+  const page = Math.max(1, Number(str(sp.page)) || 1);
+  const where: Prisma.IlApartmentWhereInput = {
+    AND: [
+      q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { street: { contains: q, mode: "insensitive" } }, { neighborhood: { contains: q, mode: "insensitive" } }, { developer: { name: { contains: q, mode: "insensitive" } } }] } : {},
+      city ? { city } : {},
+    ],
+  };
+  const [total, rows] = await Promise.all([
+    prisma.ilApartment.count({ where }),
+    prisma.ilApartment.findMany({ where, orderBy: { updatedAt: "desc" }, skip: (page - 1) * PAGE, take: PAGE, include: { developer: { select: { id: true, name: true } } } }),
+  ]);
+  const makeHref = (p: number) => {
+    const u = new URLSearchParams();
+    if (q) u.set("q", q);
+    if (city) u.set("city", city);
+    u.set("page", String(p));
+    return `/israel/apartments?${u}`;
+  };
   return (
     <>
       <PageHeader
-        compact
         title="Apartments"
-        subtitle={`${apartments.length - closed.length} in play · ${closed.length} closed or lost`}
+        subtitle={`${total.toLocaleString()} apartments`}
         actions={
-          <>
-            {only && (
-              <Link href="/israel/apartments" className="btn-secondary">
-                All stages
-              </Link>
-            )}
-            <Link href="/israel/apartments/new" className="btn-primary">
-              New apartment
-            </Link>
-          </>
+          <Link href="/israel/apartments/new" className="btn-primary">
+            New apartment
+          </Link>
         }
       />
-      <div className="overflow-x-auto px-6 py-5">
-        <div className="flex min-w-max gap-3">
-          {stages.map((st) => {
-            const cards = apartments.filter((a) => a.stage === st);
-            return (
-              <div key={st} className="w-72 shrink-0">
-                <div className={`mb-2 flex items-center justify-between rounded-md px-3 py-1.5 text-xs font-semibold ${stageToneIl[st] ?? "bg-cream"}`}>
-                  <span>{st}</span>
-                  <span>{cards.length}</span>
-                </div>
-                <div className="space-y-2">
-                  {cards.map((a) => (
-                    <Link key={a.id} href={`/israel/apartments/${a.id}`} className="card block p-3 text-sm hover:border-sky-600">
-                      {a.developer && <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-sky-600">{a.developer.name}</div>}
-                      <div className="mt-0.5 font-medium leading-snug">{a.name}</div>
-                      <div className="mt-1 text-xs text-muted">{apartmentLine(a)}</div>
-                      <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-muted">
-                        {a.apartmentType && <span className="chip bg-cream">{a.apartmentType}</span>}
-                        {a.priceNis && <span className="chip bg-sky-50">{nisShort(a.priceNis)}</span>}
-                        {pricePerSqm(a.priceNis, a.internalSqm) && <span className="chip bg-cream">₪{pricePerSqm(a.priceNis, a.internalSqm)!.toLocaleString("en-US")}/m²</span>}
-                      </div>
-                    </Link>
-                  ))}
-                  {cards.length === 0 && <div className="rounded-md border border-dashed border-line px-3 py-4 text-center text-xs text-muted">Empty</div>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {!only && closed.length > 0 && (
-          <div className="mt-6 text-xs text-muted">
-            Closed or lost: {closed.length}.{" "}
-            <Link href="/israel/apartments?stage=Closed" className="hover:underline">
-              Closed
-            </Link>{" "}
-            ·{" "}
-            <Link href="/israel/apartments?stage=Lost" className="hover:underline">
-              Lost
-            </Link>
-          </div>
-        )}
+      <div className="px-8 py-4">
+        <SearchForm action="/israel/apartments" q={q} placeholder="Search name, address, neighborhood, or developer">
+          <select name="city" defaultValue={city} className="input w-44">
+            <option value="">Any city</option>
+            {IL_CITIES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </SearchForm>
       </div>
+      <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="table dense w-full min-w-[1100px]">
+            <thead>
+              <tr>
+                <th>Apartment</th>
+                <th>Developer</th>
+                <th>City</th>
+                <th className="text-right">Rooms</th>
+                <th className="text-right">Internal m²</th>
+                <th className="text-right">Mirpeset m²</th>
+                <th className="text-right">Floor</th>
+                <th>Parking</th>
+                <th className="text-right">Asking price</th>
+                <th className="text-right">₪ / m²</th>
+                <th>Built / delivery</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((a) => (
+                <tr key={a.id}>
+                  <td>
+                    <Link href={`/israel/apartments/${a.id}`} className="font-medium hover:underline">
+                      {a.name}
+                    </Link>
+                    {a.street && <div className="text-xs text-muted">{a.street}</div>}
+                  </td>
+                  <td>{a.developer ? <Link href={`/israel/companies/${a.developer.id}`} className="hover:underline">{a.developer.name}</Link> : <span className="text-muted">—</span>}</td>
+                  <td className="whitespace-nowrap">{[a.neighborhood, a.city].filter(Boolean).join(", ") || <span className="text-muted">—</span>}</td>
+                  <td className="text-right tabular-nums">{a.rooms ?? ""}</td>
+                  <td className="text-right tabular-nums">{a.internalSqm ?? ""}</td>
+                  <td className="text-right tabular-nums">{a.mirpesetSqm ?? ""}</td>
+                  <td className="text-right tabular-nums">{a.floor != null ? `${a.floor}${a.totalFloors ? ` / ${a.totalFloors}` : ""}` : ""}</td>
+                  <td className="whitespace-nowrap">{a.parkingSpots ?? <span className="text-muted">—</span>}</td>
+                  <td className="whitespace-nowrap text-right tabular-nums">{nis(a.priceNis)}</td>
+                  <td className="whitespace-nowrap text-right tabular-nums">{nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))}</td>
+                  <td className="whitespace-nowrap">{a.completionDate ?? <span className="text-muted">—</span>}</td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={11} className="py-10 text-center text-muted">
+                    No apartments match.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
     </>
   );
 }

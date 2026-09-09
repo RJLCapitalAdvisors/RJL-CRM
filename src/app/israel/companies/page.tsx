@@ -1,39 +1,68 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { PageHeader } from "@/components/ui";
+import { PageHeader, Pager, SearchForm } from "@/components/ui";
+import { fmtDate, str } from "@/lib/format";
+import { IL_COMPANY_KINDS } from "@/lib/israel";
 
 export const metadata = { title: "Companies" };
 export const dynamic = "force-dynamic";
+const PAGE = 50;
 
+/** Companies: developers, agencies and the firms around a purchase. Same window as the RJL Capital Advisors list. */
 export default async function IlCompaniesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
-  const q = typeof sp.q === "string" ? sp.q.trim() : "";
-  const kind = typeof sp.kind === "string" ? sp.kind : "";
-  const rows = await prisma.ilCompany.findMany({ where: { ...(q ? { name: { contains: q, mode: "insensitive" } } : {}), ...(kind ? { kind } : {}) }, orderBy: { name: "asc" }, include: { _count: { select: { contacts: true, apartments: true } } } });
-  const kinds = [...new Set((await prisma.ilCompany.findMany({ select: { kind: true } })).map((c) => c.kind).filter(Boolean))] as string[];
+  const q = str(sp.q).trim();
+  const kind = str(sp.kind);
+  const page = Math.max(1, Number(str(sp.page)) || 1);
+  const where: Prisma.IlCompanyWhereInput = {
+    AND: [q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { contacts: { some: { email: { contains: q, mode: "insensitive" } } } }] } : {}, kind ? { kind } : {}],
+  };
+  const [total, rows] = await Promise.all([
+    prisma.ilCompany.count({ where }),
+    prisma.ilCompany.findMany({ where, orderBy: { name: "asc" }, skip: (page - 1) * PAGE, take: PAGE, include: { _count: { select: { contacts: true, apartments: true } } } }),
+  ]);
+  const makeHref = (p: number) => {
+    const u = new URLSearchParams();
+    if (q) u.set("q", q);
+    if (kind) u.set("kind", kind);
+    u.set("page", String(p));
+    return `/israel/companies?${u}`;
+  };
   return (
     <>
-      <PageHeader compact title="Companies" subtitle={`${rows.length} developers, agencies, law firms and others`} actions={<Link href="/israel/companies/new" className="btn-primary">New company</Link>} />
-      <div className="px-6 py-5">
-        <form method="get" className="mb-3 flex flex-wrap gap-2 text-sm">
-          <input name="q" defaultValue={q} placeholder="Search" className="input w-64" />
-          <select name="kind" defaultValue={kind} className="input w-48">
+      <PageHeader
+        title="Companies"
+        subtitle={`${total.toLocaleString()} companies`}
+        actions={
+          <Link href="/israel/companies/new" className="btn-primary">
+            New company
+          </Link>
+        }
+      />
+      <div className="px-8 py-4">
+        <SearchForm action="/israel/companies" q={q} placeholder="Search name, city, or contact email">
+          <select name="kind" defaultValue={kind} className="input w-44">
             <option value="">Any kind</option>
-            {kinds.map((k) => <option key={k}>{k}</option>)}
+            {IL_COMPANY_KINDS.map((k) => (
+              <option key={k}>{k}</option>
+            ))}
           </select>
-          <button className="btn-secondary" type="submit">
-            Filter
-          </button>
-        </form>
-        <div className="card overflow-hidden">
-          <table className="table w-full text-sm">
+        </SearchForm>
+      </div>
+      <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="table dense w-full min-w-[900px]">
             <thead>
               <tr>
-                <th>Name</th>
+                <th>Company</th>
                 <th>Kind</th>
-                <th>City</th>
                 <th className="text-right">Contacts</th>
                 <th className="text-right">Apartments</th>
+                <th>Phone</th>
+                <th>Website</th>
+                <th>Location</th>
+                <th>Added</th>
               </tr>
             </thead>
             <tbody>
@@ -44,16 +73,19 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
                       {c.name}
                     </Link>
                   </td>
-                  <td>{c.kind}</td>
-                  <td>{c.city}</td>
+                  <td>{c.kind ? <span className="chip bg-cream text-[11px]">{c.kind}</span> : <span className="text-muted">—</span>}</td>
                   <td className="text-right">{c._count.contacts}</td>
                   <td className="text-right">{c._count.apartments}</td>
+                  <td className="whitespace-nowrap">{c.phone ?? <span className="text-muted">—</span>}</td>
+                  <td className="max-w-[220px] truncate text-muted">{c.website?.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? "—"}</td>
+                  <td className="whitespace-nowrap">{c.city ?? <span className="text-muted">—</span>}</td>
+                  <td className="whitespace-nowrap text-muted">{fmtDate(c.createdAt)}</td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-muted">
-                    No companies yet.
+                  <td colSpan={8} className="py-10 text-center text-muted">
+                    No companies match.
                   </td>
                 </tr>
               )}
@@ -61,6 +93,7 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
           </table>
         </div>
       </div>
+      <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
     </>
   );
 }

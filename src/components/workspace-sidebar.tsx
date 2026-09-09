@@ -27,7 +27,6 @@ const IL_NAV = [
   { href: "/israel/apartments", label: "Apartments", icon: KanbanSquare },
   { href: "/israel/companies", label: "Companies", icon: Building2 },
   { href: "/israel/contacts", label: "Contacts", icon: Users },
-  { href: "/israel/search", label: "Apartment search", icon: Search },
 ];
 
 
@@ -59,7 +58,7 @@ export function WorkspaceSidebar({ user }: { user: { name: string } | null }) {
           href="/israel"
           aria-current={israel ? "page" : undefined}
           title="RJL Israel"
-          className={`block rounded-lg border bg-[#0c0e11] px-4 transition ${israel ? "border-[#3a4250] py-3 shadow-sm" : "border-transparent py-2 opacity-70 hover:opacity-100"}`}
+          className={`block rounded-lg border bg-white px-4 transition ${israel ? "border-line py-3 shadow-sm" : "border-transparent py-2 opacity-70 hover:opacity-100"}`}
         >
           <Image src="/israel-logo.png" alt="RJL Israel" width={180} height={64} priority className={`h-auto ${israel ? "w-44" : "w-32"}`} />
         </Link>

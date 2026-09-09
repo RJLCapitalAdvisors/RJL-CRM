@@ -1,137 +1,135 @@
-import { Field } from "@/components/record-layout";
-import { IL_APARTMENT_TYPES, IL_CITIES, IL_CONDITIONS, IL_DIRECTIONS, parseJsonList } from "@/lib/israel";
+"use client";
 
-type Apt = Partial<{
-  name: string; apartmentType: string | null; city: string | null; neighborhood: string | null; street: string | null; projectName: string | null; rooms: number | null; floor: number | null; totalFloors: number | null;
-  internalSqm: number | null; mirpesetSqm: number | null; gardenSqm: number | null; direction: string | null; parking: number | null; storage: boolean; elevator: boolean; mamad: boolean; priceNis: number | null;
-  builtYear: number | null; completionDate: string | null; condition: string | null; description: string | null; developerId: string | null; agentContactId: string | null; sellerContactId: string | null; source: string | null;
+import { useState } from "react";
+import { AutoSaveForm } from "@/components/autosave-form";
+import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
+import { NumberInput } from "@/components/number-input";
+import { IL_CITIES, IL_DIRECTIONS, IL_MACHSAN_LOCATIONS, IL_PARKING, PRICE_PER_METER_NOTE, feet, nis, parseJsonList, pricePerMeter, sqft, usdFmt } from "@/lib/israel";
+import type { FxRate } from "@/lib/fx";
+
+export type IlApartmentForm = Partial<{
+  name: string; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
+  internalSqm: number | null; mirpesetSqm: number | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean;
+  priceNis: number | null; description: string | null;
 }>;
 
-/** The apartment ticket's fields: what a buyer asks first, in the order they ask it. */
-export function ApartmentForm({ a = {}, developers, agents, sellers, action, submitLabel = "Save" }: { a?: Apt; developers: { id: string; name: string }[]; agents: { id: string; name: string }[]; sellers: { id: string; name: string }[]; action: (fd: FormData) => Promise<void>; submitLabel?: string }) {
+/** The apartment ticket, laid out like a deal ticket: one straight column of fields with the conversions computed beside them. */
+export function ApartmentForm({ a = {}, fx, action, autosave = false, submitLabel = "Create apartment" }: { a?: IlApartmentForm; fx: FxRate | null; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
+  const [internal, setInternal] = useState<number | null>(a.internalSqm ?? null);
+  const [mirpeset, setMirpeset] = useState<number | null>(a.mirpesetSqm ?? null);
+  const [ceiling, setCeiling] = useState<number | null>(a.ceilingCm ?? null);
+  const [machsan, setMachsan] = useState<number | null>(a.machsanSqm ?? null);
+  const [price, setPrice] = useState<number | null>(a.priceNis ?? null);
+  const ppm = pricePerMeter(price, internal, mirpeset);
+  const usd = (v: number | null) => (v != null && fx ? usdFmt(v / fx.ilsPerUsd) : null);
+  const fxNote = fx ? `at ₪${fx.ilsPerUsd.toFixed(3)} per $ (ECB, ${fx.date})` : "exchange rate unavailable right now";
+  const dash = "—";
   const dirs = parseJsonList(a.direction);
-  const v = (x: number | null | undefined) => (x == null ? "" : String(x));
-  return (
-    <form action={action} className="space-y-3">
-      <Field label="Name (project or address)" htmlFor="name">
-        <input id="name" name="name" defaultValue={a.name ?? ""} className="input" placeholder="e.g. Rehavia Gardens, apt 12" />
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Type" htmlFor="apartmentType">
-          <select id="apartmentType" name="apartmentType" defaultValue={a.apartmentType ?? ""} className="input">
-            <option value="">Not set</option>
-            {IL_APARTMENT_TYPES.map((t) => <option key={t}>{t}</option>)}
-          </select>
-        </Field>
-        <Field label="Condition" htmlFor="condition">
-          <select id="condition" name="condition" defaultValue={a.condition ?? ""} className="input">
-            <option value="">Not set</option>
-            {IL_CONDITIONS.map((t) => <option key={t}>{t}</option>)}
-          </select>
-        </Field>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="City" htmlFor="city">
-          <input id="city" name="city" defaultValue={a.city ?? ""} className="input" list="il-cities" />
+  const mDirs = parseJsonList(a.mirpesetDirection);
+
+  const body = (
+    <>
+      <Group title="Apartment">
+        <Row label="Name">
+          <Text name="name" value={a.name} placeholder="Rehavia Gardens, Apt 12" />
+        </Row>
+        <Row label="Building address">
+          <Text name="street" value={a.street} placeholder="Ramban 12" />
+        </Row>
+        <Row label="City">
+          <input name="city" defaultValue={a.city ?? ""} className="input" list="il-cities" />
           <datalist id="il-cities">{IL_CITIES.map((c) => <option key={c} value={c} />)}</datalist>
-        </Field>
-        <Field label="Neighborhood" htmlFor="neighborhood">
-          <input id="neighborhood" name="neighborhood" defaultValue={a.neighborhood ?? ""} className="input" />
-        </Field>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Street and number" htmlFor="street">
-          <input id="street" name="street" defaultValue={a.street ?? ""} className="input" />
-        </Field>
-        <Field label="Project / building" htmlFor="projectName">
-          <input id="projectName" name="projectName" defaultValue={a.projectName ?? ""} className="input" />
-        </Field>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="Rooms" htmlFor="rooms">
-          <input id="rooms" name="rooms" type="number" step="0.5" defaultValue={v(a.rooms)} className="input" />
-        </Field>
-        <Field label="Floor" htmlFor="floor">
-          <input id="floor" name="floor" type="number" defaultValue={v(a.floor)} className="input" />
-        </Field>
-        <Field label="Of floors" htmlFor="totalFloors">
-          <input id="totalFloors" name="totalFloors" type="number" defaultValue={v(a.totalFloors)} className="input" />
-        </Field>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="Internal m²" htmlFor="internalSqm">
-          <input id="internalSqm" name="internalSqm" type="number" step="0.5" defaultValue={v(a.internalSqm)} className="input" />
-        </Field>
-        <Field label="Mirpeset m²" htmlFor="mirpesetSqm">
-          <input id="mirpesetSqm" name="mirpesetSqm" type="number" step="0.5" defaultValue={v(a.mirpesetSqm)} className="input" />
-        </Field>
-        <Field label="Garden m²" htmlFor="gardenSqm">
-          <input id="gardenSqm" name="gardenSqm" type="number" step="0.5" defaultValue={v(a.gardenSqm)} className="input" />
-        </Field>
-      </div>
-      <Field label="Direction (air directions)">
-        <div className="flex flex-wrap gap-3 pt-1 text-sm">
-          {IL_DIRECTIONS.map((d) => (
-            <label key={d} className="flex items-center gap-1.5">
-              <input type="checkbox" name="direction" value={d} defaultChecked={dirs.includes(d)} className="accent-ink" /> {d}
-            </label>
-          ))}
-        </div>
-      </Field>
-      <div className="grid grid-cols-4 gap-3">
-        <Field label="Parking spaces" htmlFor="parking">
-          <input id="parking" name="parking" type="number" defaultValue={v(a.parking)} className="input" />
-        </Field>
-        <label className="flex items-end gap-1.5 pb-2 text-sm">
-          <input type="checkbox" name="storage" defaultChecked={Boolean(a.storage)} className="accent-ink" /> Storage
-        </label>
-        <label className="flex items-end gap-1.5 pb-2 text-sm">
-          <input type="checkbox" name="elevator" defaultChecked={Boolean(a.elevator)} className="accent-ink" /> Elevator
-        </label>
-        <label className="flex items-end gap-1.5 pb-2 text-sm">
-          <input type="checkbox" name="mamad" defaultChecked={Boolean(a.mamad)} className="accent-ink" /> Mamad
-        </label>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="Asking price (₪)" htmlFor="priceNis">
-          <input id="priceNis" name="priceNis" type="number" step="1000" defaultValue={v(a.priceNis)} className="input" />
-        </Field>
-        <Field label="Year built" htmlFor="builtYear">
-          <input id="builtYear" name="builtYear" type="number" defaultValue={v(a.builtYear)} className="input" />
-        </Field>
-        <Field label="Estimated completion" htmlFor="completionDate">
-          <input id="completionDate" name="completionDate" defaultValue={a.completionDate ?? ""} className="input" placeholder="e.g. Q2 2028" />
-        </Field>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="Developer" htmlFor="developerId">
-          <select id="developerId" name="developerId" defaultValue={a.developerId ?? ""} className="input">
-            <option value="">None</option>
-            {developers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Agent" htmlFor="agentContactId">
-          <select id="agentContactId" name="agentContactId" defaultValue={a.agentContactId ?? ""} className="input">
-            <option value="">None</option>
-            {agents.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Seller" htmlFor="sellerContactId">
-          <select id="sellerContactId" name="sellerContactId" defaultValue={a.sellerContactId ?? ""} className="input">
-            <option value="">None</option>
-            {sellers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </Field>
-      </div>
-      <Field label="Where it came from" htmlFor="source">
-        <input id="source" name="source" defaultValue={a.source ?? ""} className="input" placeholder="agent, developer, Yad2, friend…" />
-      </Field>
-      <Field label="Description" htmlFor="description">
-        <textarea id="description" name="description" rows={4} defaultValue={a.description ?? ""} className="input" />
-      </Field>
-      <button type="submit" className="btn-primary">
+        </Row>
+        <Row label="Neighborhood">
+          <Text name="neighborhood" value={a.neighborhood} />
+        </Row>
+        <Row label="Rooms">
+          <NumberInput name="rooms" defaultValue={a.rooms} />
+        </Row>
+        <Row label="Year of construction / expected date of delivery" hint="Month and year for a new build, e.g. 06/2027. Year alone for an existing building.">
+          <Text name="completionDate" value={a.completionDate} placeholder="06/2027" />
+        </Row>
+        <Row label="Apartment floor">
+          <NumberInput name="floor" defaultValue={a.floor} decimals={false} />
+        </Row>
+        <Row label="Building stories">
+          <NumberInput name="totalFloors" defaultValue={a.totalFloors} decimals={false} />
+        </Row>
+        <Row label="Total building units">
+          <NumberInput name="buildingUnits" defaultValue={a.buildingUnits} decimals={false} />
+        </Row>
+        <Row label="Apartment direction">
+          <Directions name="direction" chosen={dirs} />
+        </Row>
+        <Row label="Mirpeset direction">
+          <Directions name="mirpesetDirection" chosen={mDirs} />
+        </Row>
+        <Row label="Mamad">
+          <Select name="mamad" value={a.mamad == null ? "" : a.mamad ? "Yes" : "No"} options={["Yes", "No"]} />
+        </Row>
+      </Group>
+
+      <Group title="Size">
+        <Row label="Internal m²">
+          <NumberInput name="internalSqm" defaultValue={a.internalSqm} onValue={setInternal} />
+        </Row>
+        <Calc label="Internal square feet" value={internal != null ? sqft(internal) : dash} />
+        <Row label="Mirpeset m²">
+          <NumberInput name="mirpesetSqm" defaultValue={a.mirpesetSqm} onValue={setMirpeset} />
+        </Row>
+        <Calc label="Mirpeset square feet" value={mirpeset != null ? sqft(mirpeset) : dash} />
+        <Row label="Ceiling height (cm)">
+          <NumberInput name="ceilingCm" defaultValue={a.ceilingCm} onValue={setCeiling} />
+        </Row>
+        <Calc label="Ceiling height in feet" value={ceiling != null ? feet(ceiling) : dash} />
+        <Row label="Parking spots">
+          <Select name="parkingSpots" value={a.parkingSpots ?? ""} options={IL_PARKING} />
+        </Row>
+        <Row label="Machsan size (m²)">
+          <NumberInput name="machsanSqm" defaultValue={a.machsanSqm} onValue={setMachsan} />
+        </Row>
+        <Calc label="Machsan square feet" value={machsan != null ? sqft(machsan) : dash} />
+        <Row label="Machsan location">
+          <Select name="machsanLocation" value={a.machsanLocation ?? ""} options={IL_MACHSAN_LOCATIONS} />
+        </Row>
+      </Group>
+
+      <Group title="Pricing">
+        <Row label="Asking price">
+          <NumberInput name="priceNis" defaultValue={a.priceNis} decimals={false} onValue={setPrice} prefix="₪" />
+        </Row>
+        <Calc label="Asking price in dollars" value={usd(price) ?? dash} hint={fxNote} />
+        <Calc label="Price per meter" value={ppm != null ? nis(ppm) : dash} hint={PRICE_PER_METER_NOTE} />
+        <Calc label="Price per meter in dollars" value={usd(ppm) ?? dash} hint={fxNote} />
+      </Group>
+
+      <Group title="Notes">
+        <Row label="Description">
+          <textarea name="description" rows={4} defaultValue={a.description ?? ""} className="input" />
+        </Row>
+      </Group>
+    </>
+  );
+
+  if (autosave) return <AutoSaveForm action={action}>{body}</AutoSaveForm>;
+  return (
+    <form action={action}>
+      {body}
+      <button type="submit" className="btn-primary mt-4">
         {submitLabel}
       </button>
     </form>
+  );
+}
+
+function Directions({ name, chosen }: { name: string; chosen: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-3 py-1 text-sm">
+      {IL_DIRECTIONS.map((d) => (
+        <label key={d} className="flex items-center gap-1.5">
+          <input type="checkbox" name={name} value={d} defaultChecked={chosen.includes(d)} className="accent-sky-600" /> {d}
+        </label>
+      ))}
+    </div>
   );
 }

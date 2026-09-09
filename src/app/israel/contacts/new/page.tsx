@@ -11,10 +11,10 @@ export default async function NewIlContactPage({ searchParams }: { searchParams:
   const companies = await prisma.ilCompany.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } });
   return (
     <>
-      <PageHeader compact title="New contact" />
-      <div className="mx-auto max-w-2xl px-6 py-5">
+      <PageHeader title="New contact" />
+      <div className="mx-auto max-w-2xl px-8 py-5">
         <div className="card p-5">
-          <IlContactForm c={{ companyId: typeof sp.companyId === "string" ? sp.companyId : null }} companies={companies} action={createIlContact} submitLabel="Create contact" />
+          <IlContactForm c={{ companyId: typeof sp.companyId === "string" ? sp.companyId : null, roles: typeof sp.companyId === "string" ? '["Sales agent"]' : "[]" }} companies={companies} action={createIlContact} />
         </div>
       </div>
     </>
