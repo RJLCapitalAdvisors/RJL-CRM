@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { IL_DEAL_STAGES } from "@/lib/israel";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -74,13 +75,14 @@ export async function deleteApartment(id: string) {
   redirect("/israel/apartments");
 }
 
-export async function addIlNote(target: { apartmentId?: string; contactId?: string; companyId?: string }, fd: FormData) {
+export async function addIlNote(target: { apartmentId?: string; contactId?: string; companyId?: string; dealId?: string }, fd: FormData) {
   const body = s(fd, "body");
   if (!body) return;
   await prisma.ilNote.create({ data: { ...target, body } });
   if (target.apartmentId) revalidatePath(`/israel/apartments/${target.apartmentId}`);
   if (target.contactId) revalidatePath(`/israel/contacts/${target.contactId}`);
   if (target.companyId) revalidatePath(`/israel/companies/${target.companyId}`);
+  if (target.dealId) revalidatePath(`/israel/deals/${target.dealId}`);
 }
 
 function companyData(fd: FormData) {
@@ -122,4 +124,46 @@ export async function updateIlContact(id: string, fd: FormData) {
   await prisma.ilContact.update({ where: { id }, data: contactData(fd) });
   revalidatePath(`/israel/contacts/${id}`);
   revalidatePath("/israel/contacts");
+}
+
+// ---------- deals: the funnel ----------
+function dealData(fd: FormData) {
+  return {
+    name: s(fd, "name") ?? "Deal",
+    apartmentId: s(fd, "apartmentId"),
+    buyerContactId: s(fd, "buyerContactId"),
+    agentContactId: s(fd, "agentContactId"),
+    offerNis: n(fd, "offerNis"),
+    agreedPriceNis: n(fd, "agreedPriceNis"),
+    expectedClose: s(fd, "expectedClose"),
+    lostReason: s(fd, "lostReason"),
+    description: s(fd, "description"),
+  };
+}
+export async function createIlDeal(fd: FormData) {
+  const data = dealData(fd);
+  if (!s(fd, "name")) {
+    const [apt, buyer] = await Promise.all([data.apartmentId ? prisma.ilApartment.findUnique({ where: { id: data.apartmentId }, select: { name: true } }) : null, data.buyerContactId ? prisma.ilContact.findUnique({ where: { id: data.buyerContactId }, select: { firstName: true, lastName: true } }) : null]);
+    data.name = [buyer ? [buyer.firstName, buyer.lastName].filter(Boolean).join(" ") : null, apt?.name].filter(Boolean).join(" · ") || "Deal";
+  }
+  const d = await prisma.ilDeal.create({ data: { ...data, stage: s(fd, "stage") ?? "Lead" } });
+  revalidatePath("/israel/deals");
+  redirect(`/israel/deals/${d.id}`);
+}
+export async function updateIlDeal(id: string, fd: FormData) {
+  await prisma.ilDeal.update({ where: { id }, data: dealData(fd) });
+  revalidatePath(`/israel/deals/${id}`);
+  revalidatePath("/israel/deals");
+}
+export async function moveIlDeal(id: string, stage: string) {
+  if (!(IL_DEAL_STAGES as readonly string[]).includes(stage)) return;
+  await prisma.ilDeal.update({ where: { id }, data: { stage, closedAt: stage === "Closed" || stage === "Lost" ? new Date() : null } });
+  await prisma.ilNote.create({ data: { dealId: id, body: `Stage: ${stage}` } });
+  revalidatePath("/israel/deals");
+  revalidatePath(`/israel/deals/${id}`);
+}
+export async function deleteIlDeal(id: string) {
+  await prisma.ilDeal.delete({ where: { id } });
+  revalidatePath("/israel/deals");
+  redirect("/israel/deals");
 }

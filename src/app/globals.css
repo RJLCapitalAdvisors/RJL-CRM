@@ -111,11 +111,17 @@ body {
 .range-single { pointer-events: auto; }
 
 
-/* RJL Israel: the RJL Capital Advisors scheme exactly, with royal blue where RJL CA uses light blue. */
+/* RJL Israel: the RJL Capital Advisors scheme, with royal blue wherever RJL CA uses its light blue. */
 .israel {
-  --color-sky: #3b6fd8;
-  --color-sky-600: #1f3f99;
-  --color-sky-50: #e8eefb;
+  --color-sky: #2b4fd8;
+  --color-sky-600: #1d3aa8;
+  --color-sky-50: #e6ecfb;
+  --color-cream: #e6ecfb;
+  --color-cream-50: #f0f4fd;
+  --color-line: #c9d4f0;
+}
+body.israel {
+  background: #f0f4fd;
 }
 .israel .bg-sky {
   color: #ffffff;

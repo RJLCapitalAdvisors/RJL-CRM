@@ -554,6 +554,7 @@ model IlApartment {
   sellerContactId String?
   seller         IlContact? @relation("IlSeller", fields: [sellerContactId], references: [id])
   notes          IlNote[]
+  deals          IlDeal[]
   closedAt       DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -594,6 +595,8 @@ model IlContact {
   company      IlCompany?    @relation(fields: [companyId], references: [id])
   agentOf      IlApartment[] @relation("IlAgent")
   sellerOf     IlApartment[] @relation("IlSeller")
+  buyerDeals   IlDeal[]      @relation("IlDealBuyer")
+  agentDeals   IlDeal[]      @relation("IlDealAgent")
   ilNotes      IlNote[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -610,7 +613,33 @@ model IlNote {
   contact     IlContact?   @relation(fields: [contactId], references: [id], onDelete: Cascade)
   companyId   String?
   company     IlCompany?   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  dealId      String?
+  deal        IlDeal?      @relation(fields: [dealId], references: [id], onDelete: Cascade)
   createdAt   DateTime     @default(now())
 
   @@index([apartmentId, createdAt])
+}
+
+// RJL Israel pipeline: a buyer pursuing an apartment, moving through the funnel
+model IlDeal {
+  id             String       @id @default(cuid())
+  name           String
+  stage          String       @default("Lead")
+  apartmentId    String?
+  apartment      IlApartment? @relation(fields: [apartmentId], references: [id])
+  buyerContactId String?
+  buyer          IlContact?   @relation("IlDealBuyer", fields: [buyerContactId], references: [id])
+  agentContactId String?
+  agent          IlContact?   @relation("IlDealAgent", fields: [agentContactId], references: [id])
+  offerNis       Float?
+  agreedPriceNis Float?
+  expectedClose  String?
+  lostReason     String?
+  description    String?
+  notes          IlNote[]
+  closedAt       DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([stage, updatedAt])
 }

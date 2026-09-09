@@ -35,7 +35,18 @@ async function main() {
     if (found) await prisma.ilApartment.update({ where: { id: found.id }, data: a });
     else await prisma.ilApartment.create({ data: a });
   }
-  console.log("seeded", { companies: await prisma.ilCompany.count(), contacts: await prisma.ilContact.count(), apartments: await prisma.ilApartment.count() });
+  const sarah = await prisma.ilContact.findFirst({ where: { firstName: "Sarah", lastName: "Goldberg" } });
+  const rehavia = await prisma.ilApartment.findFirst({ where: { name: "Rehavia Gardens, Apt 12" } });
+  const arlozorov = await prisma.ilApartment.findFirst({ where: { name: "Arlozorov 45, Apt 8" } });
+  const deals = [
+    { name: "Sarah Goldberg · Rehavia Gardens, Apt 12", stage: "Viewing Scheduled", apartmentId: rehavia?.id, buyerContactId: sarah?.id, agentContactId: noa.id, expectedClose: "Q1 2027", description: "Viewing set for next week. Sarah wants a south-facing mirpeset and two parking spots." },
+    { name: "Sarah Goldberg · Arlozorov 45, Apt 8", stage: "Lead", apartmentId: arlozorov?.id, buyerContactId: sarah?.id, agentContactId: yael.id, description: "Sent as a second option in Tel Aviv." },
+  ];
+  for (const d of deals) {
+    const found = await prisma.ilDeal.findFirst({ where: { name: d.name } });
+    if (!found) await prisma.ilDeal.create({ data: d });
+  }
+  console.log("seeded", { deals: await prisma.ilDeal.count(), companies: await prisma.ilCompany.count(), contacts: await prisma.ilContact.count(), apartments: await prisma.ilApartment.count() });
 }
 
 main().finally(() => prisma.$disconnect());

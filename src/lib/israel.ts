@@ -52,3 +52,20 @@ export function apartmentLine(a: IlApartmentLike) {
 }
 
 export const ilFullName = (c: { firstName: string | null; lastName: string | null; email: string | null }) => [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "(no name)";
+
+export const IL_DEAL_STAGES = ["Lead", "Viewing Scheduled", "Offer Made", "Negotiation", "Under Contract", "Closed", "Lost"] as const;
+export function ilStageTone(stage: string): string {
+  switch (stage) {
+    case "Closed":
+      return "bg-emerald-100 text-emerald-900 border-emerald-200";
+    case "Lost":
+      return "bg-stone-100 text-stone-600 border-stone-200";
+    case "Under Contract":
+    case "Negotiation":
+      return "bg-sky text-white border-sky";
+    case "Offer Made":
+      return "bg-sky-50 text-ink border-sky";
+    default:
+      return "bg-cream text-ink border-line";
+  }
+}

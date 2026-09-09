@@ -27,6 +27,7 @@ const IL_NAV = [
   { href: "/israel/apartments", label: "Apartments", icon: KanbanSquare },
   { href: "/israel/companies", label: "Companies", icon: Building2 },
   { href: "/israel/contacts", label: "Contacts", icon: Users },
+  { href: "/israel/deals", label: "Deals", icon: KanbanSquare },
 ];
 
 
@@ -60,7 +61,7 @@ export function WorkspaceSidebar({ user }: { user: { name: string } | null }) {
           title="RJL Israel"
           className={`block rounded-lg border bg-white px-4 transition ${israel ? "border-line py-3 shadow-sm" : "border-transparent py-2 opacity-70 hover:opacity-100"}`}
         >
-          <Image src="/israel-logo.png" alt="RJL Israel" width={180} height={64} priority className={`h-auto ${israel ? "w-44" : "w-32"}`} />
+          <Image src="/israel-logo.png?v=3" alt="RJL Israel" width={180} height={64} priority className={`h-auto ${israel ? "w-44" : "w-32"}`} />
         </Link>
         {israel && <Nav items={IL_NAV} />}
       </div>
