@@ -82,13 +82,21 @@ export function AskClient({ userName, initialThreads, initialThreadId, initialMe
       }, 0);
       return () => clearTimeout(t);
     }
-    setLoading(true);
-    loadThread(urlThread)
-      .then((m) => {
-        setThreadId(urlThread);
-        setTurns(m);
-      })
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    const t = setTimeout(() => {
+      setLoading(true);
+      loadThread(urlThread)
+        .then((m) => {
+          if (cancelled) return;
+          setThreadId(urlThread);
+          setTurns(m);
+        })
+        .finally(() => !cancelled && setLoading(false));
+    }, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlThread]);
 
