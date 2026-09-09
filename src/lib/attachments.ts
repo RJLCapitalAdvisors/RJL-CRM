@@ -40,8 +40,13 @@ export async function attachmentToText(name: string, contentType: string | null,
 }
 
 /** Keep the extractor input within reason: the email first, then attachments, biggest ones trimmed. */
-export function assembleDealText(body: string, attachments: { name: string; text: string }[], cap = 180_000): string {
-  let out = body.trim();
+const isModelFile = (n: string) => /\.(xlsx|xlsm|xls|csv)$/i.test(n);
+
+export function assembleDealText(body: string, attachmentsIn: { name: string; text: string }[], cap = 180_000): string {
+  // Excel models first: they are the current numbers; the OM / deck is narrative and comes after
+  const attachments = [...attachmentsIn].sort((x, y) => Number(isModelFile(y.name)) - Number(isModelFile(x.name)));
+  const modelsFirst = attachments.some((x) => isModelFile(x.name));
+  let out = body.trim() + (modelsFirst ? "\n\n[An Excel underwriting model is attached. Every number comes from the model; the PDF / OM is for the narrative and physical description. Where they disagree, the model wins and the difference is noted.]" : "");
   const remaining = () => cap - out.length;
   // each file gets an equal share of what is left, so the third model is read as well as the first
   const share = attachments.length ? Math.max(15_000, Math.floor((cap - out.length - 400 * attachments.length) / attachments.length)) : 0;

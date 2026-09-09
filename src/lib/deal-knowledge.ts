@@ -130,7 +130,7 @@ export async function extractDealFacts(dealId: string, text: string, source: str
 }
 
 /** Fill blanks on the ticket from a follow-up: checklist items and core fields the extractor can see. */
-export async function mergeIntoDeal(dealId: string, rawText: string, subject: string) {
+export async function mergeIntoDeal(dealId: string, rawText: string, subject: string, opts: { modelAttached?: boolean } = {}) {
   const { extractWithClaude } = await import("@/lib/intake");
   const deal = await prisma.deal.findUnique({ where: { id: dealId } });
   if (!deal) return 0;
@@ -150,7 +150,14 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
     }
   }
   const core: Record<string, unknown> = {};
+  // numbers from a freshly attached Excel model replace what an OM or deck said earlier; everything else only fills blanks
+  const NUMERIC_FROM_MODEL = new Set(["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "totalEquity", "ltv", "ltc", "irr", "equityMultiple", "yieldOnCost", "capRateT12", "capRateY1", "cashOnCash", "units", "squareFeet", "occupancy"]);
   const maybe = (k: keyof typeof deal, v: unknown) => {
+    if (opts.modelAttached && NUMERIC_FROM_MODEL.has(k as string) && v != null && v !== "" && deal[k] !== v) {
+      core[k as string] = v;
+      filled++;
+      return;
+    }
     if (v != null && v !== "" && (deal[k] == null || deal[k] === "")) {
       core[k as string] = v;
       filled++;

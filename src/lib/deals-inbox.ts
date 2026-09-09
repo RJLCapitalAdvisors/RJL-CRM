@@ -122,7 +122,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     await recordDealEmail(existingId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "FOLLOWUP" });
     const files = (msg.hasAttachments ? await recordDealFiles(existingId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0) : 0) + (await recordPulled(existingId, ext));
     const facts = await extractDealFacts(existingId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, { mayEnterFaq: true }).catch(() => 0);
-    const filled = await mergeIntoDeal(existingId, rawText, cleanSubject).catch(() => 0);
+    const filled = await mergeIntoDeal(existingId, rawText, cleanSubject, { modelAttached: names.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)) }).catch(() => 0);
     if (!external) await applyForwarderInstructions(existingId, bodyText).catch(() => null);
     let deal = await prisma.deal.findUniqueOrThrow({ where: { id: existingId } });
     const wasMentioned = deal.stage === "Deal Mentioned";
@@ -160,7 +160,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
           await recordDealFiles(same.id, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received, all.value.filter((x) => part.attachments.some((n) => n.toLowerCase() === x.name.toLowerCase())) as never).catch(() => 0);
         }
         await recordPulled(same.id, key, part.attachments);
-        await mergeIntoDeal(same.id, text, `${cleanSubject} - ${part.name}`).catch(() => 0);
+        await mergeIntoDeal(same.id, text, `${cleanSubject} - ${part.name}`, { modelAttached: part.attachments.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)) }).catch(() => 0);
         await extractDealFacts(same.id, text, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, { mayEnterFaq: true }).catch(() => 0);
         if (before.stage === "Deal Mentioned") await prisma.deal.update({ where: { id: same.id }, data: { stage: "Deal Received" } });
         await prisma.dealIntake.create({ data: { source: "WEBHOOK", fromEmail: external ? fromAddr : fwd.email, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, toEmail: MAILBOX(), subject: `${cleanSubject} - ${part.name}`, rawText: text.slice(0, 200_000), attachments: JSON.stringify(part.attachments), extracted: "{}", missing: "[]", notes: `Follow-up on existing deal ${same.id}`, status: "CONVERTED", messageId: key } }).catch(() => null);
