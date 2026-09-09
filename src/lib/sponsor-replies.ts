@@ -36,7 +36,13 @@ async function fullBody(mailbox: string, internetMessageId: string): Promise<str
   }
 }
 
-const ownWords = (text: string) => text.split(/\bFrom:\s/)[0].slice(0, 6000);
+/** The sponsor's words: what they wrote on top, plus the first quoted email when they answered inline ("see below in blue"). */
+const ownWords = (text: string) => {
+  const parts = text.split(/\bFrom:\s/);
+  const top = parts[0];
+  const inline = /below|inline|in (?:blue|red|bold|caps)|my answers|answers? (?:are|below)|see (?:my )?(?:comments|responses|notes)/i.test(top) && parts[1];
+  return (inline ? `${top}\n\n[Inline answers follow inside the quoted email; the sponsor's answers sit next to the questions.]\nFrom: ${parts[1]}` : top).slice(0, 12000);
+};
 
 /** Read new sponsor replies on active deals. Returns how many were processed and how many letters were confirmed. */
 export async function processSponsorReplies(): Promise<{ read: number; confirmed: number; facts: number }> {
