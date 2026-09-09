@@ -76,9 +76,11 @@ export function AskClient({ userName, initialThreads, initialThreadId, initialMe
   useEffect(() => {
     if ((urlThread ?? null) === threadId) return;
     if (!urlThread) {
-      setThreadId(null);
-      setTurns([]);
-      return;
+      const t = setTimeout(() => {
+        setThreadId(null);
+        setTurns([]);
+      }, 0);
+      return () => clearTimeout(t);
     }
     setLoading(true);
     loadThread(urlThread)
