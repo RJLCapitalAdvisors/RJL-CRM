@@ -9,6 +9,7 @@ import { AWAITING_RESPONSE, TRACKER_STATUSES, fmtReportDate } from "@/lib/tracke
 import { AutoSaveForm } from "@/components/autosave-form";
 import { str } from "@/lib/format";
 import { loadReport } from "@/lib/tracker-report";
+import { syncSendDrafts } from "@/lib/send-deal";
 import { signContactToken, signFileToken } from "@/lib/tokens";
 import { missingFor, itemLabel } from "@/lib/checklist";
 import { createFollowUpCampaign, regenerateTrackerSummary, removeTrackerRow, saveTrackerMeta , refreshResponsesAction } from "./actions";
@@ -26,6 +27,7 @@ export const dynamic = "force-dynamic";
 
 export default async function TrackerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
+  await syncSendDrafts().catch(() => 0); // a deal email sent from Outlook (Send deal, Send to one person) shows as Deal Sent here right away
   const sp = await searchParams;
   const statusFilter = Number(str(sp.status)) || 0;
   const [report, followUpTemplates] = await Promise.all([

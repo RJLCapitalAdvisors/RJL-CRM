@@ -23,6 +23,7 @@ const CA_NAV = [
 ];
 
 const IL_NAV = [
+  { href: "/israel/ask", label: "Ask the CRM", icon: MessageSquare },
   { href: "/israel", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/israel/projects", label: "Projects", icon: Building2 },
   { href: "/israel/apartments", label: "Apartments", icon: Building2 },

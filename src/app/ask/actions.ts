@@ -13,9 +13,11 @@ const who = async () => {
 };
 
 /** Every conversation this person has had, newest first. */
-export async function listThreads(): Promise<ThreadSummary[]> {
+export type Workspace = "CA" | "IL";
+
+export async function listThreads(workspace: Workspace = "CA"): Promise<ThreadSummary[]> {
   const { key } = await who();
-  const rows = await prisma.chatThread.findMany({ where: { userId: key }, orderBy: { updatedAt: "desc" }, take: 100, select: { id: true, title: true, updatedAt: true } });
+  const rows = await prisma.chatThread.findMany({ where: { userId: key, workspace }, orderBy: { updatedAt: "desc" }, take: 100, select: { id: true, title: true, updatedAt: true } });
   return rows.map((r) => ({ id: r.id, title: r.title, updatedAt: r.updatedAt.toISOString() }));
 }
 
@@ -27,16 +29,16 @@ export async function loadThread(threadId: string): Promise<StoredMessage[]> {
 }
 
 /** Ask, inside an existing conversation or a new one. The question and the answer are both kept. */
-export async function askAction(threadId: string | null, question: string): Promise<{ threadId: string; answer: string; lookups: string[] }> {
+export async function askAction(threadId: string | null, question: string, workspace: Workspace = "CA"): Promise<{ threadId: string; answer: string; lookups: string[] }> {
   const { key, name } = await who();
   const text = question.trim();
   let thread = threadId ? await prisma.chatThread.findFirst({ where: { id: threadId, userId: key }, include: { messages: { orderBy: { createdAt: "asc" }, take: 40 } } }) : null;
-  if (!thread) thread = await prisma.chatThread.create({ data: { userId: key, title: text.replace(/\s+/g, " ").slice(0, 80) }, include: { messages: true } });
+  if (!thread) thread = await prisma.chatThread.create({ data: { userId: key, workspace, title: text.replace(/\s+/g, " ").slice(0, 80) }, include: { messages: true } });
   const history: ChatMessage[] = [...thread.messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })), { role: "user", content: text }];
   await prisma.chatMessage.create({ data: { threadId: thread.id, role: "user", content: text } });
   let r: { answer: string; lookups: string[] };
   try {
-    r = await askCrm(history, name);
+    r = await askCrm(history, name, workspace);
   } catch (e) {
     r = { answer: `Something went wrong: ${String(e instanceof Error ? e.message : e).slice(0, 200)}`, lookups: [] };
   }

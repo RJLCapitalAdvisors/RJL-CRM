@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
+import { IL_SYSTEM, IL_TOOLS, runIl } from "@/lib/ask-israel";
 import { ACTIVE_STAGES, parseList } from "@/lib/taxonomy";
 import { investorLabel, statusOf } from "@/lib/tracker";
 import { missingFor, itemLabel } from "@/lib/checklist";
@@ -215,14 +216,18 @@ Answer questions from the CRM's data using the lookups. Always look things up be
 Write for Jonathan and his team: plain, direct, short. Lead with the answer. Use short bullet lists for several items. Link every deal, company or contact you mention the first time as a markdown link using the "link" paths returned by the lookups, e.g. [Everett Mall Plaza](/deals/abc). Quote notes and email previews briefly when they carry the answer. Dates as "Sep 3". Money as $11MM or $92.45MM. No dashes as punctuation (no em dashes, no " - " between clauses); write plain sentences. No headings unless the answer has several distinct parts.
 If the data does not hold the answer, say so plainly and say where it would be found. You cannot change anything: roles and investor criteria are Jonathan's to set, and edits by others become Data updates for him to approve; if asked to change or send something, explain which page does it. Never invent facts.`;
 
-export async function askCrm(history: ChatMessage[], userName: string): Promise<AskResult> {
+export async function askCrm(history: ChatMessage[], userName: string, workspace: "CA" | "IL" = "CA"): Promise<AskResult> {
+  const israel = workspace === "IL";
+  const tools = israel ? IL_TOOLS : TOOLS;
+  const system = israel ? IL_SYSTEM : SYSTEM;
+  const exec = israel ? runIl : run;
   if (!process.env.ANTHROPIC_API_KEY) return { answer: "Claude is not configured on this server.", lookups: [] };
   const client = new Anthropic();
   const messages: Anthropic.MessageParam[] = history.slice(-12).map((m) => ({ role: m.role, content: m.content }));
   const lookups: string[] = [];
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    const res = await client.messages.create({ model: "claude-opus-5", max_tokens: 3000, system: `${SYSTEM}\nToday is ${today}. You are talking with ${userName}.`, tools: TOOLS, messages });
+    const res = await client.messages.create({ model: "claude-opus-5", max_tokens: 3000, system: `${system}\nToday is ${today}. You are talking with ${userName}.`, tools, messages });
     const toolUses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (res.stop_reason !== "tool_use" || !toolUses.length) {
       const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
@@ -235,7 +240,7 @@ export async function askCrm(history: ChatMessage[], userName: string): Promise<
       lookups.push(`${tu.name}(${Object.entries(input).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(", ")})`);
       let out: unknown;
       try {
-        out = await run(tu.name, input);
+        out = await exec(tu.name, input);
       } catch (e) {
         out = { error: String(e instanceof Error ? e.message : e).slice(0, 300) };
       }

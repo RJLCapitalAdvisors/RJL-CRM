@@ -56,7 +56,7 @@ const when = (iso: string) => {
  * Ask the CRM. Conversations are kept per person on the server (left column), so leaving the page and coming
  * back, or opening a link from an answer, never loses a chat. ?t=<thread> in the URL points at the open one.
  */
-export function AskClient({ userName, initialThreads, initialThreadId, initialMessages }: { userName: string; initialThreads: ThreadSummary[]; initialThreadId: string | null; initialMessages: StoredMessage[] }) {
+export function AskClient({ userName, initialThreads, initialThreadId, initialMessages, basePath = "/ask", workspace = "CA" }: { userName: string; initialThreads: ThreadSummary[]; initialThreadId: string | null; initialMessages: StoredMessage[]; basePath?: string; workspace?: "CA" | "IL" }) {
   const router = useRouter();
   const params = useSearchParams();
   const [threads, setThreads] = useState<ThreadSummary[]>(initialThreads);
@@ -100,7 +100,7 @@ export function AskClient({ userName, initialThreads, initialThreadId, initialMe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlThread]);
 
-  const open = (id: string | null) => router.push(id ? `/ask?t=${id}` : "/ask");
+  const open = (id: string | null) => router.push(id ? `${basePath}?t=${id}` : basePath);
 
   const send = (q: string) => {
     const text = q.trim();
@@ -108,13 +108,13 @@ export function AskClient({ userName, initialThreads, initialThreadId, initialMe
     setTurns((t) => [...t, { role: "user", content: text }]);
     setDraft("");
     start(async () => {
-      const r = await askAction(threadId, text);
+      const r = await askAction(threadId, text, workspace);
       setTurns((t) => [...t, { role: "assistant", content: r.answer, lookups: r.lookups }]);
       if (r.threadId !== threadId) {
         setThreadId(r.threadId);
-        window.history.replaceState(null, "", `/ask?t=${r.threadId}`);
+        window.history.replaceState(null, "", `${basePath}?t=${r.threadId}`);
       }
-      setThreads(await listThreads());
+      setThreads(await listThreads(workspace));
     });
   };
 
@@ -122,7 +122,7 @@ export function AskClient({ userName, initialThreads, initialThreadId, initialMe
     if (!window.confirm("Delete this conversation?")) return;
     start(async () => {
       await deleteThread(id);
-      setThreads(await listThreads());
+      setThreads(await listThreads(workspace));
       if (id === threadId) open(null);
     });
   };

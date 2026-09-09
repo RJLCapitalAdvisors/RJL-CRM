@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { processDealsInbox } from "@/lib/deals-inbox";
+import { processIsraelInbox } from "@/lib/israel-intake";
 
 export const maxDuration = 300;
 
@@ -15,6 +16,7 @@ export async function POST(req: Request) {
   after(async () => {
     try {
       await processDealsInbox();
+      await processIsraelInbox().catch((e) => console.error("israel inbox", e));
     } catch (e) {
       console.error("deals inbox processing failed", e);
     }

@@ -491,12 +491,13 @@ model DealFact {
 model ChatThread {
   id        String        @id @default(cuid())
   userId    String
+  workspace String        @default("CA") // CA (RJL Capital Advisors) | IL (RJL Israel)
   title     String
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   messages  ChatMessage[]
 
-  @@index([userId, updatedAt])
+  @@index([userId, workspace, updatedAt])
 }
 
 model ChatMessage {
@@ -540,6 +541,7 @@ model IlApartment {
   floorplan      Bytes?
   floorplanType  String?
   floorplanName  String?
+  sourceMessageId String?  // the email to deals@rjlisrael this ticket came from
   storage        Boolean   @default(false)
   elevator       Boolean   @default(false)
   mamad          Boolean   @default(false)
@@ -669,4 +671,15 @@ model IlProject {
   updatedAt      DateTime      @updatedAt
 
   @@index([city])
+}
+
+// Emails handled from the RJL Israel deals mailbox, each once
+model IlInbound {
+  id        String   @id @default(cuid())
+  messageId String   @unique
+  mailbox   String
+  subject   String?
+  fromEmail String?
+  result    String
+  createdAt DateTime @default(now())
 }
