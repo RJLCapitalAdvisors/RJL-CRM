@@ -99,10 +99,13 @@ export async function createReplyAllDraft(mailbox: string, messageId: string): P
   return graph<GraphMessage>(`/users/${q(mailbox)}/messages/${q(messageId)}/createReplyAll`, { method: "POST", body: JSON.stringify({}) });
 }
 
+/** Hidden characters (zero-width spaces left by an old template) are a spam-filter tell; subjects go out clean. */
+export const cleanSubject = (s: string) => s.replace(/[​-‍﻿⁠]/g, "").replace(/s{2,}/g, " ").trim();
+
 export async function createDraft(mailbox: string, msg: { subject: string; toRecipients: string[]; ccRecipients?: string[]; bodyHtml: string }): Promise<GraphMessage> {
   return graph<GraphMessage>(`/users/${q(mailbox)}/messages`, {
     method: "POST",
-    body: JSON.stringify({ subject: msg.subject, body: { contentType: "html", content: msg.bodyHtml }, toRecipients: msg.toRecipients.map((address) => ({ emailAddress: { address } })), ...(msg.ccRecipients?.length ? { ccRecipients: msg.ccRecipients.map((address) => ({ emailAddress: { address } })) } : {}) }),
+    body: JSON.stringify({ subject: cleanSubject(msg.subject), body: { contentType: "html", content: msg.bodyHtml }, toRecipients: msg.toRecipients.map((address) => ({ emailAddress: { address } })), ...(msg.ccRecipients?.length ? { ccRecipients: msg.ccRecipients.map((address) => ({ emailAddress: { address } })) } : {}) }),
   });
 }
 

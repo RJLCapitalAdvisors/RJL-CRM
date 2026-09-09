@@ -13,6 +13,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 }
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300; // a launch paces itself: one email at a time, a second or two apart
 
 /** Send deal: pick who at each agreed firm gets it, personalize the first line, review, then drafts land in your Outlook to fire one by one. */
 export default async function SendDealPage({ params }: { params: Promise<{ id: string }> }) {

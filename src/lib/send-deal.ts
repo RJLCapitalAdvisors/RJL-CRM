@@ -275,11 +275,16 @@ async function sendMessage(mailbox: string, to: string[], subject: string, html:
 }
 
 /** LAUNCH: every firm gets its own edited email, all sent now. Rows flip to Deal Sent; the deal goes to market. */
+const PACE_MS = 1500; // a human sends one email at a time; a burst of thirty identical emails in two seconds looks like bulk mail
+
 export async function launchDealEmails(dealId: string, items: LaunchItem[], mailbox: string, fileKeys?: string[]): Promise<LaunchResult[]> {
   if (!graphConfigured()) return items.map((i) => ({ rowId: i.rowId, firm: "", to: [], ok: false, error: "Microsoft 365 is not connected" }));
   const src = await chosenFiles(dealId, fileKeys);
   const out: LaunchResult[] = [];
+  let sentSoFar = 0;
   for (const item of items) {
+    if (sentSoFar > 0) await new Promise((r) => setTimeout(r, PACE_MS + Math.floor(Math.random() * 700)));
+    sentSoFar++;
     const row = await prisma.dealInvestor.findUnique({ where: { id: item.rowId }, include: { contact: { include: { company: true } } } });
     if (!row) continue;
     const firm = row.contact.company?.name ?? "";
