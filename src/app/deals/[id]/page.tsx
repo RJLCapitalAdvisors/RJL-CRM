@@ -12,7 +12,6 @@ import { AttachmentList } from "@/components/attachment-list";
 import { signFileToken } from "@/lib/tokens";
 import { faqFileName } from "@/lib/faq-pdf";
 import { EngagementCard } from "./engagement-card";
-import { SendToOne } from "./send-to-one";
 import { engagementGroups } from "@/lib/send-deal";
 import { EmailLog } from "@/components/email-log";
 import { dealEmailRows } from "@/lib/deal-emails";
@@ -72,7 +71,6 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                 <Link href={`/deals/${deal.id}/tracker`} className="btn-secondary">
                   Progress report
                 </Link>
-                <SendToOne dealId={deal.id} />
                 <Link href={`/investors?dealId=${deal.id}`} className="btn-secondary">
                   Find investors
                 </Link>

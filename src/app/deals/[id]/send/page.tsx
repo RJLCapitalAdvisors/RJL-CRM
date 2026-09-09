@@ -5,6 +5,7 @@ import { currentUser } from "@/lib/current-user";
 import { PageHeader } from "@/components/ui";
 import { dealFiles, syncSendDrafts, usualRecipients } from "@/lib/send-deal";
 import { SendClient, type Firm, type SendState } from "./send-client";
+import { SendToOne } from "../send-to-one";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -63,9 +64,12 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
         title={`Send ${name}`}
         subtitle={`${firms.filter((f) => f.status <= 1).length} firms to send · ${firms.filter((f) => f.status >= 2).length} already sent`}
         actions={
-          <Link href={`/deals/${deal.id}`} className="btn-secondary">
-            Back to deal
-          </Link>
+          <>
+            <SendToOne dealId={deal.id} />
+            <Link href={`/deals/${deal.id}`} className="btn-secondary">
+              Back to deal
+            </Link>
+          </>
         }
       />
       <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size }))} saved={sendState} team={team} />
