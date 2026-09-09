@@ -1,84 +1,20 @@
 import type { Metadata } from "next";
-import Image from "next/image";
-import Link from "next/link";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, ArrowLeftRight } from "lucide-react";
-import { currentUser } from "@/lib/current-user";
 import { headers } from "next/headers";
+import { currentUser } from "@/lib/current-user";
 import "./globals.css";
-import { NavLink } from "@/components/nav-link";
-import { DealContextNav } from "@/components/deal-context-nav";
-import { Suspense } from "react";
+import { WorkspaceSidebar, isIsraelPath } from "@/components/workspace-sidebar";
 
 export const metadata: Metadata = {
   title: { default: "RJL CRM", template: "%s · RJL CRM" },
   description: "RJL Capital Advisors CRM",
 };
 
-const nav = [
-  { href: "/ask", label: "Ask the CRM", icon: MessageSquare },
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/deals", label: "Deals", icon: KanbanSquare },
-  { href: "/companies", label: "Companies", icon: Building2 },
-  { href: "/contacts", label: "Contacts", icon: Users },
-  { href: "/investors", label: "Investor search", icon: Search },
-  { href: "/reports", label: "Active progress reports", icon: ClipboardList },
-  { href: "/campaigns", label: "Email blasts", icon: Mail },
-  { href: "/templates", label: "Templates", icon: FileText },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
-
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const pathname = (await headers()).get("x-pathname") ?? "";
-  if (pathname.startsWith("/israel") || pathname === "/start") {
-    return (
-      <html lang="en">
-        <body className="min-h-screen">{children}</body>
-      </html>
-    );
-  }
-  const user = await currentUser().catch(() => null);
+  const [user, pathname] = await Promise.all([currentUser().catch(() => null), headers().then((h) => h.get("x-pathname") ?? "")]);
   return (
     <html lang="en">
-      <body className="flex min-h-screen">
-        <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-line bg-cream">
-          <Link href="/" className="flex items-center px-5 pb-4 pt-6">
-            <Image src="/logo.png" alt="RJL Capital Advisors" width={180} height={64} priority className="h-auto w-44" />
-          </Link>
-          <nav className="flex flex-1 flex-col gap-1 px-3">
-            {nav.map((n) => (
-              <div key={n.href}>
-                <NavLink href={n.href}>
-                  <n.icon className="h-4 w-4" />
-                  {n.label}
-                </NavLink>
-                {n.href === "/deals" && (
-                  <Suspense fallback={null}>
-                    <DealContextNav />
-                  </Suspense>
-                )}
-              </div>
-            ))}
-          </nav>
-          <div className="px-3 pb-1">
-            <Link href="/start" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted hover:bg-sky/40 hover:text-ink">
-              <ArrowLeftRight className="h-4 w-4" /> Switch to RJL Israel
-            </Link>
-          </div>
-          <div className="px-5 py-4 text-xs text-muted">
-            {user ? (
-              <>
-                <div className="font-medium text-ink">{user.name}</div>
-                <a href="/api/auth/logout" className="hover:underline">
-                  Sign out
-                </a>
-              </>
-            ) : (
-              <a href="/login" className="hover:underline">
-                Sign in with Microsoft
-              </a>
-            )}
-          </div>
-        </aside>
+      <body className={`flex min-h-screen ${isIsraelPath(pathname) ? "israel" : ""}`}>
+        <WorkspaceSidebar user={user ? { name: user.name } : null} />
         <main className="min-w-0 flex-1">{children}</main>
       </body>
     </html>

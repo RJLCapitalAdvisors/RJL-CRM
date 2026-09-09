@@ -156,3 +156,6 @@ body {
 .israel option {
   background: #14171b;
 }
+body.israel {
+  background: #0c0e11;
+}
