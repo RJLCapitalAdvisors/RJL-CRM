@@ -105,7 +105,7 @@ const ClaudeOutput = z.object({
   summary: str("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), the value-add opportunity, notable physical attributes. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
   details: z.object(Object.fromEntries(CHECKLIST.filter((it) => !it.core).map((it) => [it.key, str(`${it.label}. ${it.question}${it.kind === "doc" ? " Answer Received only if the document is attached or explicitly provided." : ""}`)]))),
   units: str("Number of units, keys (hotel) or beds (student housing), digits only."),
-  squareFeet: str("Building or GLA square feet, digits only."),
+  squareFeet: str("Net rentable square feet (NRSF / rentable area / GLA for retail), digits only. Never gross building area, gross SF, land or site area, or lot size; if only a gross figure is given, leave this blank and say so in confidenceNotes."),
   yearBuilt: str("Year built or vintage range."),
   unitMix: z.enum([...UNIT_MIXES, ""]).describe("Which bedroom types the property has, snapped to the closest option (counts and sizes do NOT go here). Empty if not stated."),
   totalCapitalization: str("Total capitalization / total project cost in US dollars, digits only."),
@@ -176,6 +176,7 @@ const SYSTEM = `You extract commercial real estate deal details from emails forw
 Read the email (including quoted/forwarded content) and fill the schema. Rules:
 - The subject line can be stale (a reply on an old thread, a forward under an old subject). Name and describe the deal from the attachments and the body; when they describe a different property than the subject, the attachments win.
 - When an Excel model is attached it is the source of truth for every number (price, capitalization, debt, equity, returns, yield on cost, cap rates, unit count, square feet, occupancy): models are updated after OMs and decks are printed. Take narrative, tenants and physical description from the OM. Where the OM and the model disagree, use the model and state the difference in confidenceNotes.
+- Square footage is always net rentable (NRSF, rentable area, GLA for retail); never gross building area, land or site area. Models usually show both; take the rentable figure.
 - Use an empty string for anything not stated. Never invent numbers or facts. No placeholders: never write "TBD", "N/A", "unknown" or a guess; leave it blank and mention it in confidenceNotes.
 - Enum-like fields (seller profile, lender type, deal sourcing, lender, closing time frame): fill them only when the source documents state them explicitly. Never infer the closest match; if you are tempted to, leave it blank and say so in confidenceNotes.
 - Pad sale / outparcel rule: when the deal has scheduled pad or outparcel sales during the hold that pay down basis, yield on cost at stabilization must net those proceeds out of the denominator: (Stabilized NOI excluding pad income) / (Total Capitalization minus total pad sale net proceeds). Never divide by full total cap in that case; say in confidenceNotes that the pad sale rule was applied.
