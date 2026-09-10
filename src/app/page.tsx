@@ -6,7 +6,7 @@ import { ACTIVE_STAGES } from "@/lib/taxonomy";
 import { investorLabel } from "@/lib/tracker";
 import { syncFollowUpDrafts } from "@/lib/followup";
 import { EXTRA_FIELD_LABELS, PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
-import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft } from "./todo-actions";
+import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps } from "./todo-actions";
 import { DraftButton } from "./draft-button";
 import { listMomentum } from "@/lib/momentum";
 import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
@@ -36,7 +36,7 @@ async function quietInvestors() {
   const nyMidnight = Date.UTC(nyWall.getFullYear(), nyWall.getMonth(), nyWall.getDate()) + offset; // the instant today began in New York
   const cutoff = new Date(nyMidnight - (QUIET_AFTER_DAYS - 1) * DAY);
   const rows = await prisma.dealInvestor.findMany({
-    where: { status: { in: [2, 3] }, updatedAt: { lt: cutoff, gte: HOME_SINCE }, deal: { stage: { in: [...ACTIVE_STAGES] } } },
+    where: { status: { in: [2, 3] }, followUpDismissedAt: null, updatedAt: { lt: cutoff, gte: HOME_SINCE }, deal: { stage: { in: [...ACTIVE_STAGES] } } },
     include: { contact: { include: { company: { select: { name: true } } } }, deal: { select: { id: true, name: true, propertyName: true } } },
     orderBy: { updatedAt: "asc" },
   });
@@ -90,9 +90,16 @@ export default async function Dashboard() {
           <ul className="divide-y divide-line">
             {quiet.map((g) => (
               <li key={g.deal.id} className="px-3 py-2.5">
-                <Link href={`/deals/${g.deal.id}/tracker`} className="font-semibold hover:underline">
-                  {g.deal.propertyName ?? g.deal.name}
-                </Link>
+                <div className="flex items-center justify-between gap-2">
+                  <Link href={`/deals/${g.deal.id}/tracker`} className="font-semibold hover:underline">
+                    {g.deal.propertyName ?? g.deal.name}
+                  </Link>
+                  <form action={dismissFollowUps.bind(null, g.rows.map((r) => r.id))}>
+                    <button type="submit" className="text-[11px] text-muted hover:text-ink hover:underline" title="Take every quiet LP on this deal off the list (they stay on the progress report)">
+                      Dismiss all
+                    </button>
+                  </form>
+                </div>
                 <ul className="mt-1.5 space-y-1.5">
                   {g.rows.map((r) => (
                     <li key={r.id} className="flex items-center justify-between gap-2">
@@ -103,7 +110,14 @@ export default async function Dashboard() {
                           {r.followUpDraftId ? " · draft in Outlook" : ""}
                         </div>
                       </div>
-                      <DraftButton label={r.followUpDraftId ? "Open" : "Handle"} action={openFollowUp.bind(null, r.id)} disabled={!r.contact.email || r.contact.unsubscribed} title="Reply-all to the deal email with the attachments, your signature" />
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <form action={dismissFollowUps.bind(null, [r.id])}>
+                          <button type="submit" className="text-[11px] text-muted hover:text-ink" title="Take this LP off the list (they stay on the progress report)">
+                            ✕
+                          </button>
+                        </form>
+                        <DraftButton label={r.followUpDraftId ? "Open" : "Handle"} action={openFollowUp.bind(null, r.id)} disabled={!r.contact.email || r.contact.unsubscribed} title="Reply-all to the deal email with the attachments, your signature" />
+                      </div>
                     </li>
                   ))}
                 </ul>

@@ -204,3 +204,10 @@ export async function dismissIntro(id: string) {
   await prisma.intro.update({ where: { id }, data: { status: "DISMISSED" } });
   revalidatePath("/");
 }
+
+/** Take quiet LPs off the LP follow-ups window. They stay on the progress report at their status; only the nudge goes away. */
+export async function dismissFollowUps(rowIds: string[]) {
+  if (!rowIds.length) return;
+  await prisma.dealInvestor.updateMany({ where: { id: { in: rowIds } }, data: { followUpDismissedAt: new Date() } });
+  revalidatePath("/");
+}

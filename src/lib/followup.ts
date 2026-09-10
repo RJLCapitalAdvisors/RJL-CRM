@@ -166,12 +166,12 @@ export async function syncFollowUpDrafts(): Promise<number> {
           const since = (await prisma.dealInvestor.findUnique({ where: { id: r.id }, select: { followUpDraftAt: true } }))?.followUpDraftAt;
           const local = since ? await prisma.activity.findFirst({ where: { contactId: r.contactId, type: "EMAIL", direction: "OUTBOUND", occurredAt: { gt: since } }, orderBy: { occurredAt: "desc" } }) : null;
           if (!local) return;
-          await prisma.dealInvestor.update({ where: { id: r.id }, data: { status: Math.max(r.status, 3), followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null, updatedAt: local.occurredAt } });
+          await prisma.dealInvestor.update({ where: { id: r.id }, data: { status: Math.max(r.status, 3), followUpDismissedAt: null, followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null, updatedAt: local.occurredAt } });
           await graph(`/users/${encodeURIComponent(r.followUpMailbox!)}/messages/${encodeURIComponent(r.followUpDraftId!)}`, { method: "DELETE" }).catch(() => {}); // the unused server draft
           sent++;
           return;
         }
-        await prisma.dealInvestor.update({ where: { id: r.id }, data: { status: Math.max(r.status, 3), followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null, updatedAt: m.sentDateTime ? new Date(m.sentDateTime) : new Date() } });
+        await prisma.dealInvestor.update({ where: { id: r.id }, data: { status: Math.max(r.status, 3), followUpDismissedAt: null, followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null, updatedAt: m.sentDateTime ? new Date(m.sentDateTime) : new Date() } });
         const { logActivity } = await import("@/lib/activity");
         await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: m.subject ?? "Follow-up", body: "Follow-up sent from Outlook (Handle)", contactId: r.contactId, dealId: r.dealId, occurredAt: m.sentDateTime ? new Date(m.sentDateTime) : new Date() });
         sent++;
