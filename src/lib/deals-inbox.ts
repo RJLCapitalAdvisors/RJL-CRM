@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { fmtMoney } from "@/lib/format";
-import { graph, graphConfigured } from "@/lib/graph";
+import { addAttachment, copyAttachment, graph, graphConfigured, listAttachments, type GraphAttachment } from "@/lib/graph";
 import { assembleDealText, attachmentToText, emailHtmlToText } from "@/lib/attachments";
 import { missingFor, itemLabel } from "@/lib/checklist";
 import { intro, metricsHtml, subjectLine } from "@/lib/deal-copy";
@@ -71,10 +71,32 @@ ${linkNotes.length ? `<p><b>Links I could not open</b></p><ul style="margin:0 0 
 </div>`;
 }
 
-async function replyOnThread(msg: Msg, html: string) {
+/**
+ * The summary goes back on the same thread with the deal files on it: whatever was attached to the forward, plus
+ * the documents pulled from Dropbox / Drive / OneDrive links (stashed on a "CRM Files" message), so the reply is
+ * the one email that carries the parsed deal and its documents together.
+ */
+async function replyOnThread(msg: Msg, html: string, fileSources: { mailbox: string; messageId: string }[] = []) {
   const draft = await graph<{ id: string }>(`/users/${q(MAILBOX())}/messages/${q(msg.id)}/createReply`, { method: "POST", body: JSON.stringify({}) });
   const to = msg.from?.emailAddress.address ? [{ emailAddress: { address: msg.from.emailAddress.address } }] : [];
   await graph(`/users/${q(MAILBOX())}/messages/${q(draft.id)}`, { method: "PATCH", body: JSON.stringify({ body: { contentType: "html", content: html }, toRecipients: to }) });
+  const seen = new Set<string>();
+  for (const src of [{ mailbox: MAILBOX(), messageId: msg.id }, ...fileSources]) {
+    const atts = await listAttachments(src.mailbox, src.messageId).catch(() => [] as GraphAttachment[]);
+    for (const a of atts) {
+      if (a.isInline || a["@odata.type"] !== "#microsoft.graph.fileAttachment" || /.(png|jpe?g|gif|bmp)$/i.test(a.name) || seen.has(a.name.toLowerCase())) continue;
+      seen.add(a.name.toLowerCase());
+      try {
+        if (src.mailbox.toLowerCase() === MAILBOX().toLowerCase()) await copyAttachment(src.mailbox, src.messageId, a, draft.id);
+        else {
+          const bytes = new Uint8Array(await graph<ArrayBuffer>(`/users/${q(src.mailbox)}/messages/${q(src.messageId)}/attachments/${q(a.id)}/$value`, { raw: true }));
+          await addAttachment(MAILBOX(), draft.id, { name: a.name, contentType: a.contentType ?? "application/octet-stream", bytes });
+        }
+      } catch (e) {
+        console.error("deals@ reply attachment failed", a.name, e);
+      }
+    }
+  }
   await graph(`/users/${q(MAILBOX())}/messages/${q(draft.id)}/send`, { method: "POST" });
 }
 
@@ -104,6 +126,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   // keep the pulled documents on a message in deals@ ("CRM Files"), so they serve and send like any attachment
   const { stashFiles } = await import("@/lib/file-store");
   const stashes = cloud.files.length ? await stashFiles(cloud.files, cleanSubject || "deal files").catch((e) => { console.error("stash failed", e); return []; }) : [];
+  const fileSources = stashes.map((st) => ({ mailbox: st.mailbox, messageId: st.graphId }));
   const recordPulled = async (dealId: string, messageKey: string, only?: string[]) => {
     const keep = (n: string) => !only || only.some((x) => x.toLowerCase() === n.toLowerCase());
     if (stashes.length) {
@@ -133,7 +156,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     const still = missingFor(deal).map((it) => itemLabel(it, deal.strategy));
     let replied = false;
     try {
-      await replyOnThread(msg, wasMentioned ? replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes) : followUpReplyHtml(deal.propertyName ?? deal.name, `${base}/deals/${deal.id}`, files, facts, filled, still, cloud.notes, merged));
+      await replyOnThread(msg, wasMentioned ? replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes) : followUpReplyHtml(deal.propertyName ?? deal.name, `${base}/deals/${deal.id}`, files, facts, filled, still, cloud.notes, merged), fileSources);
       replied = true;
     } catch (e) {
       console.error("deals@ follow-up reply failed", e);
@@ -195,7 +218,7 @@ ${text.slice(0, 2000)}` });
         const dl = await prisma.deal.findUniqueOrThrow({ where: { id: c.id } });
         sections.push(replyHtml(dl as unknown as Record<string, unknown>, `${base}/deals/${dl.id}`, sections.length === 0 ? cloud.notes : []));
       }
-      await replyOnThread(msg, `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p style="margin:0 0 12pt 0;">This email carried ${created.length} deals; a ticket was created for each.</p>${sections.join('<hr style="border:0;border-top:1px solid #ddd;margin:16pt 0;">')}</div>`);
+      await replyOnThread(msg, `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p style="margin:0 0 12pt 0;">This email carried ${created.length} deals; a ticket was created for each.</p>${sections.join('<hr style="border:0;border-top:1px solid #ddd;margin:16pt 0;">')}</div>`, fileSources);
       replied = true;
     } catch (e) {
       console.error("deals@ multi reply failed", e);
@@ -230,7 +253,7 @@ ${text.slice(0, 2000)}` });
   const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
   let replied = false;
   try {
-    await replyOnThread(msg, replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes));
+    await replyOnThread(msg, replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes), fileSources);
     replied = true;
   } catch (e) {
     console.error("deals@ reply failed", e);
@@ -278,7 +301,9 @@ export async function sendDealsReply(dealId: string): Promise<boolean> {
   const msg = found.value[0];
   if (!msg) return false;
   const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
-  await replyOnThread(msg, replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`));
+  // every file the ticket knows (the forward itself, later follow-ups, pulled cloud files) rides on the re-sent summary
+  const fileMsgs = await prisma.dealFile.findMany({ where: { dealId }, select: { mailbox: true, graphId: true }, distinct: ["mailbox", "graphId"] });
+  await replyOnThread(msg, replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`), fileMsgs.filter((f) => f.graphId !== msg.id).map((f) => ({ mailbox: f.mailbox, messageId: f.graphId })));
   return true;
 }
 
