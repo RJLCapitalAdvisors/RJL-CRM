@@ -204,3 +204,7 @@ Jonathan (RJL Capital Advisors, real estate capital advisory) is replacing HubSp
 
 - LAUNCH on Send deal queues one email per firm (`DealLaunch`, `src/lib/launch-queue.ts`) and sends one every 30 seconds from the sender's mailbox (`LAUNCH_GAP_MS`), so each lands as an individually sent email rather than a burst. The first goes out on the click; the page polls every 5 seconds (`pumpLaunchAction`) and shows sent / queued / failed per firm with "next in Ns". Page loads elsewhere and the cron also pump (`pumpAllLaunches` from `kickMailSync`), so a closed tab does not strand a launch, though it goes faster with the page open. A row is claimed before it is sent, so two pumps never double-send. Rows flip to Deal Sent as each email goes; the deal advances to Deal Taken To Market on the first.
 - Email blasts in the sidebar opens straight onto New email blast; the history is behind "Past blasts" (`/campaigns?list=1`).
+
+## 2026-09-10: intro timing
+
+- Intros to reconsider: quiet threshold 30 days (QUIET_INTRO_DAYS), first nudge after 3 days with no reply (UNANSWERED_INTRO_DAYS), and an intro stays in rotation for 12 months from its last touch (INTRO_WINDOW_DAYS = 365 on lastActivityAt, no longer 120 days from the intro date). Independent of the deal board: Deal Lost does not affect intros.

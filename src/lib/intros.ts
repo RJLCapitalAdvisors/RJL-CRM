@@ -9,7 +9,7 @@ import { graph, graphConfigured } from "@/lib/graph";
 
 const DAY = 86_400_000;
 const LOOKBACK_DAYS = 365;
-export const QUIET_INTRO_DAYS = 14;
+export const QUIET_INTRO_DAYS = 30;
 /** An intro nobody has answered at all is flagged much sooner. */
 export const UNANSWERED_INTRO_DAYS = 3;
 const q = (s: string) => encodeURIComponent(s);
@@ -91,17 +91,19 @@ export async function scanAllIntros(): Promise<Record<string, { found: number; u
 }
 
 /** Recent intros only, so the window is a working list rather than an archive. */
-export const INTRO_WINDOW_DAYS = 120;
+/** An intro stops coming back once nothing has happened on it for this long, counted from the last touch, not from the day it was made. */
+export const INTRO_WINDOW_DAYS = 365;
 
 /**
- * Intros that went quiet: nothing on the thread for QUIET_INTRO_DAYS, introduced in the last INTRO_WINDOW_DAYS.
+ * Intros that went quiet: nothing on the thread for QUIET_INTRO_DAYS, last touched within INTRO_WINDOW_DAYS (a year).
+ * They keep coming back every QUIET_INTRO_DAYS of silence until someone replies or the year runs out.
  * The same intro often exists in two mailboxes (sender + cc'd teammate) or was sent twice; one entry per subject,
  * keeping whichever copy saw the latest activity.
  */
 export async function quietIntros(since = new Date(Date.now() - INTRO_WINDOW_DAYS * DAY)) {
   const cutoff = new Date(Date.now() - QUIET_INTRO_DAYS * DAY);
   const unanswered = new Date(Date.now() - UNANSWERED_INTRO_DAYS * DAY);
-  const rows = await prisma.intro.findMany({ where: { status: "OPEN", introducedAt: { gte: since }, OR: [{ lastActivityAt: { lt: cutoff } }, { replies: 0, introducedAt: { lt: unanswered } }] }, orderBy: { lastActivityAt: "desc" } });
+  const rows = await prisma.intro.findMany({ where: { status: "OPEN", lastActivityAt: { gte: since }, OR: [{ lastActivityAt: { lt: cutoff } }, { replies: 0, introducedAt: { lt: unanswered } }] }, orderBy: { lastActivityAt: "desc" } });
   const seen = new Map<string, (typeof rows)[number]>();
   for (const r of rows) {
     if (r.handledAt) {
