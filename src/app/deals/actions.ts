@@ -164,3 +164,10 @@ export async function sendDealToOneAction(dealId: string, contactId: string) {
   revalidatePath(`/deals/${dealId}/tracker`);
   return r;
 }
+
+/** Companies on file matching a few typed letters, for the sponsor picker on the deal ticket. */
+export async function searchCompaniesAction(q: string) {
+  const t = q.trim();
+  if (t.length < 2) return [];
+  return prisma.company.findMany({ where: { name: { contains: t, mode: "insensitive" } }, select: { id: true, name: true, city: true, state: true, roles: true }, orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { name: "asc" }], take: 8 });
+}

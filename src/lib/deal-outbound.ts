@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { isSponsorSide } from "@/lib/report-guard";
 import { graph } from "@/lib/graph";
 import { STAGE_ORDER } from "@/lib/taxonomy";
 import { emailHtmlToText } from "@/lib/attachments";
@@ -34,7 +35,7 @@ export async function noteDealSent(opts: { dealId: string; contactId: string | n
     ids.delete(firmRow.contactId);
     await prisma.dealInvestor.update({ where: { id: firmRow.id }, data: { extraContactIds: JSON.stringify([...ids]), status: Math.max(firmRow.status, 2), ...(firmRow.status < 2 ? { sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: opts.when } : {}) } });
   } else if (!existing) {
-    await prisma.dealInvestor.create({ data: { dealId: deal.id, contactId: contact.id, status: 2, extraContactIds: extra.length ? JSON.stringify(extra.map((x) => x.id)) : null, updatedAt: opts.when } });
+    if (!(await isSponsorSide(deal.id, contact.id))) await prisma.dealInvestor.create({ data: { dealId: deal.id, contactId: contact.id, status: 2, extraContactIds: extra.length ? JSON.stringify(extra.map((x) => x.id)) : null, updatedAt: opts.when } });
   } else if (existing.status < 2) {
     await prisma.dealInvestor.update({ where: { id: existing.id }, data: { status: 2, sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: opts.when } });
   }

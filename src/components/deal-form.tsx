@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AMORTIZATIONS, ASSET_CLASSES, DEAL_HOLD_PERIODS, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES, US_STATES } from "@/lib/taxonomy";
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
 import { NumberInput } from "./number-input";
+import { SponsorPicker } from "./sponsor-picker";
 import { SelectField } from "@/components/select-field";
 import { AutoSaveForm } from "./autosave-form";
 import { isPref, prefMetrics } from "@/lib/pref";
@@ -14,6 +15,7 @@ type DealLike = {
   name: string;
   stage: string;
   sponsorName: string | null;
+  sponsorCompanyId?: string | null;
   propertyName: string | null;
   propertyAddress: string | null;
   city: string | null;
@@ -146,8 +148,8 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
       <input type="hidden" name="stage" value={d?.stage ?? "Deal Received"} />
 
       <Group title="Deal">
-        <Row label="Sponsor">
-          <Text name="sponsorName" value={d?.sponsorName} placeholder="Citivest Commercial" />
+        <Row label="Sponsor" hint="A company on file: type and pick, so the ticket links to the firm and its people.">
+          <SponsorPicker name={d?.sponsorName} companyId={d?.sponsorCompanyId ?? null} />
         </Row>
         <Row label="Property / deal name">
           <Text name="propertyName" value={d?.propertyName} placeholder="Everett Mall Plaza" />

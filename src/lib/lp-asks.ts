@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { isSponsorSide } from "@/lib/report-guard";
 import { graph } from "@/lib/graph";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
 import { mergeNote } from "@/lib/tracker";
@@ -108,7 +109,7 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     let reportRows = await prisma.dealInvestor.findMany({ where: { dealId, contact: { companyId: a.companyId! } } });
     if (!reportRows.length && a.contactId) {
       // the firm answered a deal email but was never put on the report (sent by hand): add it as Deal Sent first
-      await prisma.dealInvestor.create({ data: { dealId, contactId: a.contactId, status: 2, updatedAt: a.occurredAt } }).catch(() => null);
+      if (!(await isSponsorSide(dealId, a.contactId))) await prisma.dealInvestor.create({ data: { dealId, contactId: a.contactId, status: 2, updatedAt: a.occurredAt } }).catch(() => null);
       reportRows = await prisma.dealInvestor.findMany({ where: { dealId, contactId: a.contactId } });
     }
     const newStatus = parsed.stance === "pass" ? 8 : parsed.stance === "interested" ? 5 : parsed.stance === "reviewing" ? 4 : null;

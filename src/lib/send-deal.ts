@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { isSponsorSide } from "@/lib/report-guard";
 import { addAttachment, createDraft, getMessage, graph, graphConfigured, listAttachments, outlookDesktopLink, type GraphAttachment } from "@/lib/graph";
 import { signatureFor, type FollowUpResult } from "@/lib/followup";
 import { bestContactForCompany } from "@/lib/engagement";
@@ -56,7 +57,7 @@ export async function finalizeEngagement(dealId: string, keepCompanyIds: string[
     if (!c) continue;
     const exists = await prisma.dealInvestor.findFirst({ where: { dealId, contactId: c.id } });
     if (!exists) {
-      await prisma.dealInvestor.create({ data: { dealId, contactId: c.id, status: 1 } });
+      if (!(await isSponsorSide(dealId, c.id))) await prisma.dealInvestor.create({ data: { dealId, contactId: c.id, status: 1 } });
       added++;
     }
   }
@@ -370,6 +371,7 @@ export async function draftDealToOne(dealId: string, contactId: string, mailbox:
   const [deal, contact] = await Promise.all([prisma.deal.findUniqueOrThrow({ where: { id: dealId } }), prisma.contact.findUniqueOrThrow({ where: { id: contactId }, include: { company: true } })]);
   if (!contact.email) return { ok: false, reason: `${[contact.firstName, contact.lastName].filter(Boolean).join(" ") || "This contact"} has no email address on file` };
 
+  if (await isSponsorSide(dealId, contactId)) return { ok: false, reason: "That person is at the sponsor; the deal email goes to LPs" };
   const row = await prisma.dealInvestor.upsert({ where: { dealId_contactId: { dealId, contactId } }, create: { dealId, contactId, status: 1 }, update: {} });
   if (row.sendDraftId && row.sendMailbox) {
     const d = await getMessage(row.sendMailbox, row.sendDraftId, "id,isDraft,webLink,internetMessageId").catch(() => null);

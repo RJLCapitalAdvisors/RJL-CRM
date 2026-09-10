@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { isSponsorSide } from "@/lib/report-guard";
 import { DEAL_STAGES } from "@/lib/taxonomy";
 import { bestContactForCompany } from "@/lib/engagement";
 import { logActivity } from "@/lib/activity";
@@ -52,7 +53,7 @@ export async function applyForwarderInstructions(dealId: string, bodyText: strin
     if (!c) continue;
     const exists = await prisma.dealInvestor.findFirst({ where: { dealId, contactId: c.id } });
     if (exists) await prisma.dealInvestor.update({ where: { id: exists.id }, data: { status: Math.max(exists.status, 6) } });
-    else await prisma.dealInvestor.create({ data: { dealId, contactId: c.id, status: 6, note: `Introduced before the deal came in (${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, noteDate: new Date() } });
+    else if (!(await isSponsorSide(dealId, c.id))) await prisma.dealInvestor.create({ data: { dealId, contactId: c.id, status: 6, note: `Introduced before the deal came in (${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, noteDate: new Date() } });
     introduced.push(co.name);
   }
   let stage = out.stage || undefined;

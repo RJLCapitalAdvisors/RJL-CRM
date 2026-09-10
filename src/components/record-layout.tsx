@@ -6,10 +6,10 @@ import Link from "next/link";
  */
 export function RecordLayout({ left, center, right }: { left: React.ReactNode; center: React.ReactNode; right: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[380px_1fr_340px] gap-4 px-6 py-5">
-      <div className="sticky top-4 max-h-[calc(100vh-2rem)] space-y-4 overflow-y-auto pr-1">{left}</div>
-      <div className="min-w-0 space-y-4">{center}</div>
-      <div className="sticky top-4 max-h-[calc(100vh-2rem)] space-y-4 overflow-y-auto pr-1">{right}</div>
+    <div className="grid gap-4 px-6 py-5 lg:grid-cols-[360px_1fr] xl:grid-cols-[380px_1fr_340px]">
+      <div className="space-y-4 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1">{left}</div>
+      <div className="min-w-0 space-y-4 overflow-x-hidden">{center}</div>
+      <div className="space-y-4 lg:col-span-2 xl:col-span-1 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1">{right}</div>
     </div>
   );
 }

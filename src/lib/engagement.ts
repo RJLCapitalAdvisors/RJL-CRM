@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { isSponsorSide } from "@/lib/report-guard";
 import { createDraft, getMessage, graph, graphConfigured, outlookDesktopLink } from "@/lib/graph";
 import { signatureFor, type FollowUpResult } from "@/lib/followup";
 
@@ -77,7 +78,7 @@ export async function createEngagementDraft(dealId: string, companyIds: string[]
     if (!contact) continue;
     const exists = await prisma.dealInvestor.findFirst({ where: { dealId, contactId: contact.id } });
     if (!exists) {
-      await prisma.dealInvestor.create({ data: { dealId, contactId: contact.id, status: 1 } });
+      if (!(await isSponsorSide(dealId, contact.id))) await prisma.dealInvestor.create({ data: { dealId, contactId: contact.id, status: 1 } });
       added++;
     }
   }

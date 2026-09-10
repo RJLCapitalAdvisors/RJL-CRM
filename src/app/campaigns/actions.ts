@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { isSponsorSide } from "@/lib/report-guard";
 import { logActivity } from "@/lib/activity";
 import { buildAudience } from "@/lib/audience";
 import { mailConfigured, sendEmail } from "@/lib/mailer";
@@ -129,8 +130,9 @@ async function logSent(recipientId: string, via: string, providerId?: string) {
   if (r.campaign.dealId && r.campaign.mode === "OUTREACH") {
     const target = r.campaign.followUp ? STATUS_FOLLOWED_UP : STATUS_SENT;
     const row = await prisma.dealInvestor.findUnique({ where: { dealId_contactId: { dealId: r.campaign.dealId, contactId: r.contactId } } });
-    if (!row) await prisma.dealInvestor.create({ data: { dealId: r.campaign.dealId, contactId: r.contactId, status: target } });
-    else if (row.status < target) await prisma.dealInvestor.update({ where: { id: row.id }, data: { status: target } });
+    if (!row) {
+      if (!(await isSponsorSide(r.campaign.dealId, r.contactId))) await prisma.dealInvestor.create({ data: { dealId: r.campaign.dealId, contactId: r.contactId, status: target } });
+    } else if (row.status < target) await prisma.dealInvestor.update({ where: { id: row.id }, data: { status: target } });
     revalidatePath(`/deals/${r.campaign.dealId}/tracker`);
   }
   await refreshCampaignStatus(r.campaignId);

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { sponsorSideIds } from "@/lib/report-guard";
 import { logActivity } from "@/lib/activity";
 import { AWAITING_RESPONSE, statusOf } from "@/lib/tracker";
 import { generateTrackerSummary } from "@/lib/tracker-summary";
@@ -73,7 +74,9 @@ export async function removeTrackerRow(rowId: string) {
 export async function addTrackerContacts(dealId: string, contactIds: string[]) {
   const existing = new Set((await prisma.dealInvestor.findMany({ where: { dealId }, select: { contactId: true } })).map((r) => r.contactId));
   const fresh = contactIds.filter((id) => !existing.has(id));
-  if (fresh.length) await prisma.dealInvestor.createMany({ data: fresh.map((contactId) => ({ dealId, contactId, status: 1 })) });
+  const sponsorSide = await sponsorSideIds(dealId, fresh);
+  const ok = fresh.filter((id) => !sponsorSide.has(id));
+  if (ok.length) await prisma.dealInvestor.createMany({ data: ok.map((contactId) => ({ dealId, contactId, status: 1 })) });
   touch(dealId);
   return fresh.length;
 }

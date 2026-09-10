@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/ui";
 import { dealFiles, syncSendDrafts, usualRecipients } from "@/lib/send-deal";
 import { SendClient, type Firm, type SendState } from "./send-client";
 import { SendToOne } from "../send-to-one";
+import { after } from "next/server";
+import { launchStatus, pumpLaunches } from "@/lib/launch-queue";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,6 +32,9 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
 
   const files = await dealFiles(deal.id).catch(() => []);
   const me = await currentUser();
+  // a launch still going (or left behind when the tab closed): the page resumes pacing it and pumps in the background
+  const launch = await launchStatus(deal.id).catch(() => null);
+  if (launch && launch.queued > 0 && me) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
   const team = (await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { name: true, email: true }, orderBy: { name: "asc" } })).filter((u) => u.email && u.email.toLowerCase() !== me?.email?.toLowerCase()).map((u) => ({ name: u.name, email: u.email! }));
   const sendState = ((): SendState | null => {
     try {
@@ -72,7 +77,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
           </>
         }
       />
-      <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size }))} saved={sendState} team={team} />
+      <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size }))} saved={sendState} team={team} initialLaunch={launch && launch.queued > 0 ? launch : null} />
     </>
   );
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/current-user";
 import { createSendDrafts, finalizeEngagement, renderDealEmail, renderGeneralDealEmail, reviseDealEmail, sendPreviewToSelf, type LaunchItem, type SendItem } from "@/lib/send-deal";
@@ -45,6 +46,8 @@ export async function launchAction(dealId: string, items: LaunchItem[], fileKeys
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the emails go from your own mailbox." };
   await queueDealEmails(dealId, items, me.email, fileKeys);
   await pumpLaunches(me.email, 5_000);
+  // keep sending one every 30 seconds after this response goes back, so the launch finishes even if the tab is closed
+  after(() => pumpLaunches(me.email, 270_000).catch(() => null));
   revalidatePath(`/deals/${dealId}`);
   revalidatePath(`/deals/${dealId}/tracker`);
   revalidatePath(`/deals/${dealId}/send`);
@@ -57,6 +60,8 @@ export async function pumpLaunchAction(dealId: string): Promise<LaunchStatus> {
   const me = await currentUser();
   if (me) await pumpLaunches(me.email, 4_000).catch(() => null);
   const st = await launchStatus(dealId);
+  // a long pump in the background only when nobody is pacing this mailbox right now (no send in the last gap)
+  if (me && st.queued > 0 && st.nextInMs === 0) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
   if (st.queued === 0) {
     revalidatePath(`/deals/${dealId}`);
     revalidatePath(`/deals/${dealId}/tracker`);

@@ -25,7 +25,7 @@ const GENERAL = "general";
  * Everything you do here saves itself to the deal a second after you do it, so you can leave and come back.
  * Bottom: "Send preview email to me" (the General one goes with a blank greeting) and LAUNCH (each firm gets its own email).
  */
-export function SendClient({ dealId, firms, templates, defaultTemplateId, files, saved, team = [] }: { dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[] }) {
+export function SendClient({ dealId, firms, templates, defaultTemplateId, files, saved, team = [], initialLaunch = null }: { dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[]; initialLaunch?: LaunchStatus | null }) {
   const [chosenFiles, setChosenFiles] = useState<Set<string>>(new Set(saved?.chosenFiles?.filter((k) => files.some((f) => f.key === k)) ?? files.slice(0, 6).map((f) => f.key))); // the FAQ, OM and model first; a whole data room is not the default
   const [templateId, setTemplateId] = useState(saved?.templateId && templates.some((t) => t.id === saved.templateId) ? saved.templateId : defaultTemplateId);
   const [include, setInclude] = useState<Set<string>>(new Set(saved?.include?.filter((id) => firms.some((f) => f.rowId === id && f.status <= 1)) ?? firms.filter((f) => f.status <= 1).map((f) => f.rowId)));
@@ -37,7 +37,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   const [current, setCurrent] = useState<string>(GENERAL);
   const [picker, setPicker] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean }>>({});
-  const [launching, setLaunching] = useState(false);
+  const [launching, setLaunching] = useState(Boolean(initialLaunch && initialLaunch.queued > 0)); // a launch still running resumes when the page opens
   const [note, setNote] = useState<string | null>(null);
   const [ask, setAsk] = useState("");
   const [pending, start] = useTransition();
@@ -172,7 +172,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   /** The launch as it stands: which firms are sent, queued or failed, and when the next one goes. */
   const applyStatus = (st: LaunchStatus) => {
     setResults(Object.fromEntries(st.rows.map((x) => [x.rowId, { ok: x.status === "SENT", error: x.status === "FAILED" ? x.error ?? "failed" : undefined, pending: x.status === "QUEUED" || x.status === "SENDING" }])));
-    setNote(st.queued > 0 ? `${st.sent} of ${st.total} sent · ${st.queued} to go, next in ${Math.max(1, Math.ceil(st.nextInMs / 1000))}s. One email every 30 seconds so each lands as an individually sent email; keep this page open.` : `${st.sent} of ${st.total} sent${st.failed ? `, ${st.failed} failed` : ""}. Rows are now Deal Sent on the progress report.`);
+    setNote(st.queued > 0 ? `${st.sent} of ${st.total} sent · ${st.queued} to go, next in ${Math.max(1, Math.ceil(st.nextInMs / 1000))}s. One email every 30 seconds so each lands as an individually sent email. It keeps going if you leave; this page shows progress.` : `${st.sent} of ${st.total} sent${st.failed ? `, ${st.failed} failed` : ""}. Rows are now Deal Sent on the progress report.`);
   };
   useEffect(() => {
     if (!launching) return;
