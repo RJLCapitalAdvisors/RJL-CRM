@@ -139,6 +139,7 @@ model Deal {
   name      String
   stage     String  @default("Deal Received")
   position  Int     @default(0)
+  staleCheckedAt DateTime? // Jonathan chose Keep on the Data updates culling list; the deal hides there for a few more quiet days
 
   sponsorName      String?
   sponsorCompanyId String?

@@ -211,3 +211,22 @@ export async function dismissFollowUps(rowIds: string[]) {
   await prisma.dealInvestor.updateMany({ where: { id: { in: rowIds } }, data: { followUpDismissedAt: new Date() } });
   revalidatePath("/");
 }
+
+// ---------- culling quiet deals (Data updates) ----------
+/** Jonathan approves: the deal goes to Deal Lost, which takes it off Deal momentum and LP follow-ups. */
+export async function markDealLostAction(dealId: string) {
+  await requireCriteriaAdmin();
+  const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { stage: true } });
+  if (!d) return;
+  await prisma.deal.update({ where: { id: dealId }, data: { stage: "Deal Lost", closedLostReason: `No activity; marked lost from the dashboard (was ${d.stage})` } });
+  await prisma.activity.create({ data: { type: "NOTE", body: `Marked Deal Lost from Data updates after going quiet (was ${d.stage}).`, dealId, occurredAt: new Date() } }).catch(() => null);
+  revalidatePath("/");
+  revalidatePath("/deals");
+  revalidatePath(`/deals/${dealId}`);
+}
+/** Not dead yet: hide it from the culling list until it has been quiet for another stretch. */
+export async function keepDealAction(dealId: string) {
+  await requireCriteriaAdmin();
+  await prisma.deal.update({ where: { id: dealId }, data: { staleCheckedAt: new Date(), updatedAt: new Date() } });
+  revalidatePath("/");
+}
