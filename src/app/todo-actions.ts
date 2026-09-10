@@ -75,7 +75,7 @@ export async function openMomentumDraft(momentumId: string) {
   try {
     // LP request: reply-all on my latest thread with the sponsor about this deal, the asks written on top
     if (m.kind === "LP_ASK") {
-      const { createDraft, createReplyAllDraft, getMessage, outlookDesktopLink, sentMessagesTo, sentMessagesToDomain, updateDraftBody } = await import("@/lib/graph");
+      const { createDraft, createReplyAllDraft, getMessage, outlookDesktopLink, updateDraftBody } = await import("@/lib/graph");
       const { sponsorContactsFor } = await import("@/lib/engagement");
       const deal = await prisma.deal.findUnique({ where: { id: m.dealId }, include: { sponsorCompany: { select: { domain: true } } } });
       if (!deal) return { ok: false as const, reason: "Deal not found." };
@@ -114,20 +114,11 @@ export async function openMomentumDraft(momentumId: string) {
         }
         return n;
       };
-      // the thread: my latest email to the sponsor team about this deal, with nobody else on it. Never an intro
-      // or a thread that has a third party (an LP, another sponsor) on copy: those are not the place to ask.
-      const { subjectMatchesDeal } = await import("@/lib/deal-match");
-      const myDomain = me.email.split("@")[1]?.toLowerCase();
-      const sponsorDomain = deal.sponsorCompany?.domain?.toLowerCase();
-      const sponsorEmails = new Set(to.map((x) => x.toLowerCase()));
-      const parties = (x: { toRecipients?: { emailAddress: { address: string } }[]; ccRecipients?: { emailAddress: { address: string } }[] }) => [...(x.toRecipients ?? []), ...(x.ccRecipients ?? [])].map((r) => r.emailAddress.address.toLowerCase());
-      const sponsorOnly = (x: Parameters<typeof parties>[0]) => parties(x).every((addr) => addr.endsWith(`@${myDomain}`) || (sponsorDomain && addr.endsWith(`@${sponsorDomain}`)) || sponsorEmails.has(addr));
-      const notIntro = (x: { subject?: string | null }) => !/^\s*((re|fw|fwd)\s*:\s*)*intro\b/i.test(x.subject ?? "");
-      const toPerson = await sentMessagesTo(me.email, to[0], 15).catch(() => []);
-      const toFirm = deal.sponsorCompany?.domain ? await sentMessagesToDomain(me.email, deal.sponsorCompany.domain, 25).catch(() => []) : [];
-      const pool = [...toPerson, ...toFirm].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i).sort((x, y) => (y.sentDateTime ?? "").localeCompare(x.sentDateTime ?? ""));
-      const { houseSubjectMatches } = await import("@/lib/deal-match");
-      const original = pool.find((x) => sponsorOnly(x) && notIntro(x) && (subjectMatchesDeal(x.subject, deal) || houseSubjectMatches(x.subject, deal)));
+      // the conversation to build on: the ongoing sponsor-only thread about this deal (by its words, not its subject),
+      // else the ongoing sponsor-only conversation that is not about another deal. Never an intro, never a third party.
+      const { sponsorThreadFor } = await import("@/lib/sponsor-thread");
+      const thread = await sponsorThreadFor(me.email, { id: deal.id, name: deal.name, propertyName: deal.propertyName, city: deal.city, state: deal.state, sponsorCompanyId: deal.sponsorCompanyId, requestedAmount: deal.requestedAmount }, { emails: to, domain: deal.sponsorCompany?.domain ?? null }).catch(() => null);
+      const original = thread ? { id: thread.messageId } : null;
       if (original) {
         const draft = await createReplyAllDraft(me.email, original.id);
         const body = draft.body?.content ?? "";
