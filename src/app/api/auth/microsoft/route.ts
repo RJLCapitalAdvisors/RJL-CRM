@@ -18,5 +18,5 @@ export async function GET(req: NextRequest) {
     state,
     prompt: "select_account",
   });
-  return NextResponse.redirect(`https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}/oauth2/v2.0/authorize?${params}`);
+  return NextResponse.redirect(`https://login.microsoftonline.com/${process.env.AZURE_LOGIN_TENANT ?? process.env.AZURE_TENANT_ID}/oauth2/v2.0/authorize?${params}`);
 }

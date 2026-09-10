@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
 import { apartmentLine, apartmentMissing, nis } from "@/lib/israel";
 import { approveApartment } from "./actions";
+import { kickIsraelMailSync } from "@/lib/israel-mail";
 
 export const metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
  * blank until Jonathan defines it.
  */
 export default async function IsraelDashboard() {
+  kickIsraelMailSync(); // emails from the RJL Israel mailboxes land on contacts and companies in the background
   const pending = await prisma.ilApartment.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } });
   return (
     <>

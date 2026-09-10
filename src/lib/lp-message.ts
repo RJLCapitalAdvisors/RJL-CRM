@@ -6,8 +6,9 @@ export type MessageCopy = { box: string; id: string; body: string; hasAttachment
 
 export async function findMessageCopy(internetMessageId: string, preferMailbox: string): Promise<MessageCopy | null> {
   if (!graphConfigured()) return null;
-  const users = await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { email: true } });
-  const boxes = [preferMailbox, ...users.map((u) => u.email!), process.env.DEALS_MAILBOX ?? "deals@rjlcapadvisors.com"].filter((b, i, arr) => arr.findIndex((x) => x.toLowerCase() === b.toLowerCase()) === i);
+  const users = await prisma.user.findMany({ where: { active: true }, select: { email: true, israelEmail: true } });
+  // the mailbox the email was logged from first, then the RJL Capital Advisors mailboxes, then the RJL Israel ones
+  const boxes = [preferMailbox, ...users.map((u) => u.email).filter((e): e is string => Boolean(e)), process.env.DEALS_MAILBOX ?? "deals@rjlcapadvisors.com", ...users.map((u) => u.israelEmail).filter((e): e is string => Boolean(e)), process.env.ISRAEL_DEALS_MAILBOX ?? "deals@rjlisrael.com"].filter((b, i, arr) => b && arr.findIndex((x) => x.toLowerCase() === b.toLowerCase()) === i);
   for (const box of boxes) {
     try {
       const r = await graph<{ value: { id: string; body?: { content: string }; hasAttachments?: boolean; receivedDateTime?: string; from?: MessageCopy["from"] }[] }>(`/users/${encodeURIComponent(box)}/messages?$filter=internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'&$select=id,body,hasAttachments,receivedDateTime,from`);

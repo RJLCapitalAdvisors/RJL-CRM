@@ -6,6 +6,7 @@ import { fmtDate } from "@/lib/format";
 import { apartmentLine, ilFullName, nis, parseJsonList } from "@/lib/israel";
 import { addIlNote, updateIlCompany } from "../../actions";
 import { IlCompanyForm } from "../company-form";
+import { IlActivityLog } from "@/components/il-activity";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function IlCompanyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const c = await prisma.ilCompany.findUnique({ where: { id }, include: { contacts: { orderBy: [{ lastName: "asc" }, { firstName: "asc" }] }, apartments: { orderBy: { updatedAt: "desc" } }, ilNotes: { orderBy: { createdAt: "desc" } } } });
+  const c = await prisma.ilCompany.findUnique({ where: { id }, include: { contacts: { orderBy: [{ lastName: "asc" }, { firstName: "asc" }] }, apartments: { orderBy: { updatedAt: "desc" } }, ilNotes: { orderBy: { createdAt: "desc" } }, activities: { orderBy: { occurredAt: "desc" }, take: 200, include: { contact: { select: { id: true, firstName: true, lastName: true } } } } } });
   if (!c) notFound();
   const site = c.website?.replace(/^https?:\/\//, "").replace(/\/$/, "");
   return (
@@ -56,24 +57,19 @@ export default async function IlCompanyPage({ params }: { params: Promise<{ id: 
         </>
       }
       center={
-        <div className="card">
-          <div className="border-b border-line px-4 py-3 text-sm font-semibold">Activity</div>
-          <form action={addIlNote.bind(null, { companyId: c.id })} className="flex gap-2 border-b border-line p-3">
-            <input name="body" placeholder="Log a note…" className="input" />
-            <button className="btn-secondary" type="submit">
-              Add
-            </button>
-          </form>
-          <ul className="divide-y divide-line">
-            {c.ilNotes.map((nt) => (
-              <li key={nt.id} className="px-4 py-3 text-sm">
-                <div className="text-xs text-muted">{fmtDate(nt.createdAt)}</div>
-                <div className="whitespace-pre-wrap">{nt.body}</div>
-              </li>
-            ))}
-            {c.ilNotes.length === 0 && <li className="px-4 py-8 text-center text-sm text-muted">No notes with this company yet.</li>}
-          </ul>
-        </div>
+        <IlActivityLog
+          activities={c.activities}
+          notes={c.ilNotes}
+          empty="No activity with this company yet. Emails with its people from the RJL Israel mailboxes will appear here."
+          form={
+            <form action={addIlNote.bind(null, { companyId: c.id })} className="flex gap-2 border-b border-line p-3">
+              <input name="body" placeholder="Log a note…" className="input" />
+              <button className="btn-secondary" type="submit">
+                Add
+              </button>
+            </form>
+          }
+        />
       }
       right={
         <>

@@ -6,7 +6,7 @@
 export const SESSION_COOKIE = "rjl_user";
 export const SESSION_DAYS = 30;
 
-export type Session = { u: string; e: string; n: string; x: number };
+export type Session = { u: string; e: string; n: string; x: number; w?: string[] };
 
 const enc = new TextEncoder();
 const b64url = (s: string) => Buffer.from(s, "utf8").toString("base64url");

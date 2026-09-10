@@ -11,7 +11,7 @@ export type EmailLinks = { ok: true; webLink: string; outlookLink: string | null
 export async function openEmailAction(externalId: string, mailbox: string | null): Promise<EmailLinks> {
   if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
   const me = await currentUser();
-  const copy = await findMessageCopy(externalId, me?.email ?? mailbox ?? "").catch(() => null);
+  const copy = await findMessageCopy(externalId, mailbox ?? me?.email ?? "").catch(() => null);
   if (!copy) return { ok: false, reason: "That email is not in any team mailbox anymore." };
   const m = await getMessage(copy.box, copy.id, "id,webLink").catch(() => null);
   return { ok: true, webLink: m?.webLink ?? "", outlookLink: await outlookDesktopLink(copy.box, copy.id), messageId: externalId };
@@ -21,7 +21,7 @@ export async function openEmailAction(externalId: string, mailbox: string | null
 export async function emailBodyAction(externalId: string, mailbox: string | null): Promise<{ own: string; rest: string } | null> {
   if (!graphConfigured()) return null;
   const me = await currentUser();
-  const copy = await findMessageCopy(externalId, me?.email ?? mailbox ?? "").catch(() => null);
+  const copy = await findMessageCopy(externalId, mailbox ?? me?.email ?? "").catch(() => null);
   if (!copy) return null;
   const own = lpOwnWords(copy.body);
   const full = emailHtmlToText(copy.body).trim();

@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
+import { homeFor, workspacesByDomain, type Workspace } from "@/lib/access";
+import { isIsraelPath } from "@/lib/workspace";
 
 /**
  * Sign-in gate for the hosted CRM. Preferred: Microsoft sign-in (signed rjl_user cookie, one person).
@@ -28,7 +30,15 @@ export async function proxy(req: NextRequest) {
   };
   if (!gated) return withPath();
   if (PUBLIC.some((re) => re.test(pathname))) return withPath();
-  if (await verifySession(req.cookies.get(SESSION_COOKIE)?.value)) return withPath();
+  const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
+  if (session) {
+    // which business this person may open; sessions from before the split fall back to what their email domain allows
+    const w = session.w?.length ? session.w : workspacesByDomain(session.e);
+    const israel = isIsraelPath(pathname);
+    if (israel && !w.includes("IL")) return NextResponse.redirect(new URL(homeFor(w as Workspace[]), req.url));
+    if (!israel && pathname !== "/start" && !pathname.startsWith("/api/") && !w.includes("CA")) return NextResponse.redirect(new URL(homeFor(w as Workspace[]), req.url));
+    return withPath();
+  }
   if (password) {
     const expected = await sessionToken(password, process.env.APP_SECRET ?? "dev-secret");
     if (req.cookies.get(COOKIE)?.value === expected) return withPath();

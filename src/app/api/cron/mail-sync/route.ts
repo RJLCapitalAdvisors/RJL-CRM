@@ -1,6 +1,7 @@
 import { linkStrayEmails, syncAllMailboxes } from "@/lib/mail-sync";
 import { ensureDealsSubscription, processDealsInbox } from "@/lib/deals-inbox";
 import { ensureIsraelSubscription, processIsraelInbox } from "@/lib/israel-intake";
+import { syncIsraelMailboxes } from "@/lib/israel-mail";
 import { refreshMomentum } from "@/lib/momentum";
 import { scanAllIntros } from "@/lib/intros";
 
@@ -17,6 +18,7 @@ export async function GET(req: Request) {
   const momentum = await refreshMomentum().catch((e) => String(e));
   const intros = await scanAllIntros().catch((e) => String(e));
   const israel = await processIsraelInbox().catch((e) => String(e));
+  const israelMail = await syncIsraelMailboxes().catch((e) => String(e));
   const israelSubscription = await ensureIsraelSubscription().catch((e) => String(e));
-  return Response.json({ ok: true, result, deals, subscription, stray, momentum, intros, israel, israelSubscription });
+  return Response.json({ ok: true, result, deals, subscription, stray, momentum, intros, israel, israelMail, israelSubscription });
 }

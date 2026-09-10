@@ -4,22 +4,35 @@
  * so a draft keeps its id after it is sent and moves to Sent Items.
  */
 
-let cached: { token: string; exp: number } | null = null;
+/**
+ * Two tenants: RJL Capital Advisors (AZURE_*) and, once Jonathan connects it, RJL Israel (ISRAEL_AZURE_*). A call
+ * that names an @rjlisrael.com mailbox goes to the Israel tenant when its credentials exist; everything else, and
+ * the Israel mailbox before then, goes to the main tenant.
+ */
+export type Realm = "CA" | "IL";
+const cache: Record<Realm, { token: string; exp: number } | null> = { CA: null, IL: null };
+const creds = (realm: Realm) => (realm === "IL" && process.env.ISRAEL_AZURE_TENANT_ID ? { tenant: process.env.ISRAEL_AZURE_TENANT_ID, id: process.env.ISRAEL_AZURE_CLIENT_ID!, secret: process.env.ISRAEL_AZURE_CLIENT_SECRET! } : { tenant: process.env.AZURE_TENANT_ID!, id: process.env.AZURE_CLIENT_ID!, secret: process.env.AZURE_CLIENT_SECRET! });
 
 export const graphConfigured = () => Boolean(process.env.AZURE_TENANT_ID && process.env.AZURE_CLIENT_ID && process.env.AZURE_CLIENT_SECRET);
+export const israelGraphConfigured = () => Boolean(process.env.ISRAEL_AZURE_TENANT_ID && process.env.ISRAEL_AZURE_CLIENT_ID && process.env.ISRAEL_AZURE_CLIENT_SECRET);
+const ISRAEL_DOMAIN = (process.env.ISRAEL_DEALS_MAILBOX?.split("@")[1] ?? "rjlisrael.com").toLowerCase();
+/** The realm a Graph path belongs to: /users/<mailbox> on the Israel domain is the Israel tenant. */
+export const realmFor = (path: string): Realm => (israelGraphConfigured() && new RegExp(`/users/[^/]*(?:@|%40)${ISRAEL_DOMAIN.replace(/\./g, "\\.")}(?:/|\\?|$)`, "i").test(path) ? "IL" : "CA");
 
-export async function graphToken(): Promise<string> {
-  if (cached && cached.exp > Date.now() + 60_000) return cached.token;
-  const body = new URLSearchParams({ client_id: process.env.AZURE_CLIENT_ID!, client_secret: process.env.AZURE_CLIENT_SECRET!, grant_type: "client_credentials", scope: "https://graph.microsoft.com/.default" });
-  const res = await fetch(`https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}/oauth2/v2.0/token`, { method: "POST", body });
+export async function graphToken(realm: Realm = "CA"): Promise<string> {
+  const c = cache[realm];
+  if (c && c.exp > Date.now() + 60_000) return c.token;
+  const { tenant, id, secret } = creds(realm);
+  const body = new URLSearchParams({ client_id: id, client_secret: secret, grant_type: "client_credentials", scope: "https://graph.microsoft.com/.default" });
+  const res = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, { method: "POST", body });
   const j = (await res.json()) as { access_token?: string; expires_in?: number; error_description?: string };
-  if (!j.access_token) throw new Error(`Graph token failed: ${j.error_description ?? res.status}`);
-  cached = { token: j.access_token, exp: Date.now() + (j.expires_in ?? 3600) * 1000 };
-  return cached.token;
+  if (!j.access_token) throw new Error(`Graph token failed (${realm}): ${j.error_description ?? res.status}`);
+  cache[realm] = { token: j.access_token, exp: Date.now() + (j.expires_in ?? 3600) * 1000 };
+  return j.access_token;
 }
 
-export async function graph<T = unknown>(path: string, init: RequestInit & { raw?: boolean } = {}): Promise<T> {
-  const token = await graphToken();
+export async function graph<T = unknown>(path: string, init: RequestInit & { raw?: boolean; realm?: Realm } = {}): Promise<T> {
+  const token = await graphToken(init.realm ?? realmFor(path));
   const url = path.startsWith("http") ? path : `https://graph.microsoft.com/v1.0${path}`;
   const res = await fetch(url, {
     ...init,

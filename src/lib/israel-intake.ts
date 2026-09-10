@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { graph, graphConfigured } from "@/lib/graph";
+import { graph, graphConfigured, realmFor } from "@/lib/graph";
 import { attachmentToText, emailHtmlToText } from "@/lib/attachments";
 import { IL_MACHSAN_LOCATIONS, IL_PARKING, nis, pricePerMeter, sqm } from "@/lib/israel";
 import { stripDashes } from "@/lib/style";
@@ -306,13 +306,14 @@ export async function ensureIsraelSubscription(): Promise<string> {
   const resource = `/users/${ISRAEL_MAILBOX()}/mailFolders/inbox/messages`;
   const notificationUrl = `${process.env.APP_URL.replace(/\/$/, "")}/api/graph/notify`;
   if (!notificationUrl.startsWith("https://")) return "skipped: Graph only notifies https URLs";
-  const subs = await graph<{ value: { id: string; resource: string; notificationUrl: string }[] }>("/subscriptions");
+  const realm = realmFor(`/users/${ISRAEL_MAILBOX()}/`);
+  const subs = await graph<{ value: { id: string; resource: string; notificationUrl: string }[] }>("/subscriptions", { realm });
   const mine = subs.value.find((s) => s.resource.toLowerCase() === resource.toLowerCase() && s.notificationUrl === notificationUrl);
   const expiration = new Date(Date.now() + 4000 * 60_000).toISOString();
   if (mine) {
-    await graph(`/subscriptions/${mine.id}`, { method: "PATCH", body: JSON.stringify({ expirationDateTime: expiration }) });
+    await graph(`/subscriptions/${mine.id}`, { method: "PATCH", body: JSON.stringify({ expirationDateTime: expiration }), realm });
     return `renewed ${mine.id}`;
   }
-  const created = await graph<{ id: string }>("/subscriptions", { method: "POST", body: JSON.stringify({ changeType: "created", notificationUrl, resource, expirationDateTime: expiration, clientState: process.env.CRON_SECRET }) });
+  const created = await graph<{ id: string }>("/subscriptions", { method: "POST", body: JSON.stringify({ changeType: "created", notificationUrl, resource, expirationDateTime: expiration, clientState: process.env.CRON_SECRET }), realm });
   return `created ${created.id}`;
 }

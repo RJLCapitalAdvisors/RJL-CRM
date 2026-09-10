@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, SESSION_DAYS, signSession } from "@/lib/session";
+import { homeFor, parseWorkspaces, workspacesByDomain } from "@/lib/access";
+import { isIsraelPath } from "@/lib/workspace";
 
 /** Step 2 of Microsoft sign-in: exchange the code, confirm who it is, match to a CRM user, set the session. */
 export async function GET(req: NextRequest) {
@@ -19,7 +21,7 @@ export async function GET(req: NextRequest) {
   if (state !== expected) return fail("Sign-in did not match. Try again.");
 
   const body = new URLSearchParams({ client_id: process.env.AZURE_CLIENT_ID!, client_secret: process.env.AZURE_CLIENT_SECRET!, grant_type: "authorization_code", code, redirect_uri: `${base}/api/auth/callback`, scope: "openid profile email User.Read" });
-  const tok = (await fetch(`https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}/oauth2/v2.0/token`, { method: "POST", body }).then((r) => r.json())) as { access_token?: string; error_description?: string };
+  const tok = (await fetch(`https://login.microsoftonline.com/${process.env.AZURE_LOGIN_TENANT ?? process.env.AZURE_TENANT_ID}/oauth2/v2.0/token`, { method: "POST", body }).then((r) => r.json())) as { access_token?: string; error_description?: string };
   if (!tok.access_token) return fail(tok.error_description?.split(".")[0] ?? "Microsoft did not return a token");
 
   // Ask Microsoft who this is (validates the token for us) rather than trusting the id_token blindly.
@@ -27,11 +29,17 @@ export async function GET(req: NextRequest) {
   const email = (me.mail ?? me.userPrincipalName ?? "").toLowerCase();
   if (!email) return fail("Could not read your Microsoft account");
 
-  let user = await prisma.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
-  if (!user && email.endsWith("@rjlcapadvisors.com")) user = await prisma.user.create({ data: { name: me.displayName ?? email, email, active: true } });
+  // the sign-in email, or a person's registered RJL Israel mailbox, finds the CRM user
+  let user = await prisma.user.findFirst({ where: { OR: [{ email: { equals: email, mode: "insensitive" } }, { israelEmail: { equals: email, mode: "insensitive" } }] } });
+  const byDomain = workspacesByDomain(email);
+  if (!user && byDomain.length) user = await prisma.user.create({ data: { name: me.displayName ?? email, email, active: true, workspaces: JSON.stringify(byDomain), israelEmail: byDomain.includes("IL") ? email : null } });
   if (!user || !user.active) return fail(`${email} is not a CRM user. Ask Jonathan to add you.`);
+  const w = parseWorkspaces(user.workspaces, user.email ?? email);
+  if (!w.length) return fail(`${email} has no CRM access yet. Ask Jonathan to open RJL Capital Advisors or RJL Israel for you.`);
 
-  const value = await signSession({ u: user.id, e: email, n: user.name, x: Date.now() + SESSION_DAYS * 86_400_000 });
+  const value = await signSession({ u: user.id, e: email, n: user.name, x: Date.now() + SESSION_DAYS * 86_400_000, w });
   jar.set(SESSION_COOKIE, value, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: SESSION_DAYS * 86_400 });
-  return NextResponse.redirect(`${base}${next && next.startsWith("/") ? next : "/"}`);
+  const wanted = next && next.startsWith("/") ? next : homeFor(w);
+  const ok = isIsraelPath(wanted) ? w.includes("IL") : wanted === "/start" || w.includes("CA");
+  return NextResponse.redirect(`${base}${ok ? wanted : homeFor(w)}`);
 }

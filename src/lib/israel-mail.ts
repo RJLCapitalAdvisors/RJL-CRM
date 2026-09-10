@@ -1,0 +1,177 @@
+import { prisma } from "@/lib/db";
+import { graph, graphConfigured, israelGraphConfigured, type GraphMessage } from "@/lib/graph";
+import { FREE_MAIL, nameFromDomain } from "@/lib/domains";
+import { ISRAEL_MAILBOX } from "@/lib/israel-intake";
+
+/**
+ * RJL Israel email log. The same job the RJL Capital Advisors sync does, for the other business: every RJL Israel
+ * mailbox (each person's @rjlisrael.com address from Settings, plus deals@) is read through Graph, and each email
+ * with someone outside the company becomes an IlActivity on that person's contact record and their company.
+ * Unlike the US side, people are not pre-imported here, so a new correspondent is created as a contact on the
+ * spot, and a company is created from their email domain (never from Gmail, Walla and the like). Internal-only
+ * mail, mailers and bounces are skipped. Runs from the daily cron, from RJL Israel page loads (throttled) and
+ * from the Graph notification for deals@.
+ */
+
+const INTERNAL = new Set(["rjlisrael.com", "rjlcapadvisors.com", "rjlequities.com", (process.env.ISRAEL_DEALS_MAILBOX ?? "").split("@")[1]?.toLowerCase() ?? "rjlisrael.com"]);
+const IL_FREE_MAIL = new Set([...FREE_MAIL, "walla.co.il", "walla.com", "bezeqint.net", "012.net.il", "013.net", "013net.net", "netvision.net.il", "smile.net.il", "zahav.net.il", "017.net.il", "nana.co.il", "nana10.co.il", "hotmail.co.il", "yahoo.co.il", "outlook.co.il", "live.co.il"]);
+const MAILER = /^(no-?reply|noreply|donotreply|do-not-reply|notifications?|mailer-daemon|postmaster|bounce|newsletter|marketing|info@|support@|alerts?@|calendar-notification)/i;
+const FIRST_SYNC_DAYS = 120;
+const PAGE = 50;
+const q = (s: string) => encodeURIComponent(s);
+
+type Party = { name?: string; address: string };
+type Msg = GraphMessage & { bodyPreview?: string; ccRecipients?: { emailAddress: Party }[] };
+
+const domainOf = (a: string) => a.toLowerCase().split("@")[1] ?? "";
+const isInternal = (a: string) => INTERNAL.has(domainOf(a));
+const isMailer = (a: string) => MAILER.test(a.toLowerCase());
+
+/** The mailboxes that belong to RJL Israel: each person's registered Israel address and the deals mailbox. */
+export async function israelMailboxes(): Promise<string[]> {
+  const users = await prisma.user.findMany({ where: { active: true, israelEmail: { not: null } }, select: { israelEmail: true } });
+  const boxes = [...users.map((u) => u.israelEmail!.toLowerCase()), ISRAEL_MAILBOX().toLowerCase()];
+  return boxes.filter((b, i) => boxes.indexOf(b) === i);
+}
+
+/** Whether the Israel mailboxes can be read at all: the Israel tenant's app, or the main tenant when it hosts rjlisrael.com. */
+export const israelMailConfigured = () => israelGraphConfigured() || graphConfigured();
+
+async function pageThrough(mailbox: string, folder: "sentitems" | "inbox", since: Date): Promise<Msg[]> {
+  const out: Msg[] = [];
+  let url: string | null = `/users/${q(mailbox)}/mailFolders/${folder}/messages?$filter=receivedDateTime ge ${since.toISOString()}&$orderby=receivedDateTime desc&$top=${PAGE}&$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,sentDateTime,from,toRecipients,ccRecipients,hasAttachments,isDraft`;
+  while (url && out.length < 2000) {
+    const r: { value: Msg[]; "@odata.nextLink"?: string } = await graph(url);
+    out.push(...r.value.filter((m) => !m.isDraft));
+    url = r["@odata.nextLink"] ?? null;
+  }
+  return out;
+}
+
+const splitName = (display: string | undefined, address: string): { firstName: string | null; lastName: string | null } => {
+  let n = (display ?? "").replace(/^["']|["']$/g, "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+  if (!n || n.includes("@")) {
+    // "yael.tzur" or "yael_tzur" from the address; a bare handle stays the first name
+    n = address.split("@")[0].split(/[._-]/).map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : "")).join(" ").trim();
+  }
+  if (n.includes(",")) {
+    const [l, f] = n.split(",").map((x) => x.trim());
+    n = `${f} ${l}`;
+  }
+  const parts = n.split(/\s+/).filter(Boolean);
+  return { firstName: parts[0] ?? null, lastName: parts.slice(1).join(" ") || null };
+};
+
+/** The company behind an email domain, created on first sight and named after the domain. Free-mail addresses have none. */
+async function companyForDomain(domain: string): Promise<string | null> {
+  if (!domain || IL_FREE_MAIL.has(domain)) return null;
+  const existing = (await prisma.ilCompany.findFirst({ where: { domain }, select: { id: true } })) ?? (await prisma.ilCompany.findFirst({ where: { website: { contains: domain, mode: "insensitive" } }, select: { id: true } }));
+  if (existing) {
+    await prisma.ilCompany.updateMany({ where: { id: existing.id, domain: null }, data: { domain } });
+    return existing.id;
+  }
+  const co = await prisma.ilCompany.create({ data: { name: nameFromDomain(domain), domain, website: `https://${domain}` }, select: { id: true } });
+  return co.id;
+}
+
+/** The contact for an outside correspondent, created from the email when unknown. */
+async function contactFor(p: Party): Promise<{ id: string; companyId: string | null }> {
+  const email = p.address.toLowerCase();
+  const found = await prisma.ilContact.findFirst({ where: { email: { equals: email, mode: "insensitive" } }, select: { id: true, companyId: true, firstName: true, lastName: true } });
+  const companyId = await companyForDomain(domainOf(email));
+  if (found) {
+    const data: { companyId?: string; firstName?: string | null; lastName?: string | null } = {};
+    if (!found.companyId && companyId) data.companyId = companyId;
+    if (!found.firstName && !found.lastName && p.name && !p.name.includes("@")) Object.assign(data, splitName(p.name, email));
+    if (Object.keys(data).length) await prisma.ilContact.update({ where: { id: found.id }, data }).catch(() => null);
+    return { id: found.id, companyId: found.companyId ?? companyId };
+  }
+  const c = await prisma.ilContact.create({ data: { ...splitName(p.name, email), email, companyId, roles: "[]" }, select: { id: true } });
+  return { id: c.id, companyId };
+}
+
+/** The one live deal this person is on, if there is exactly one, so the email lands on the deal too. */
+async function dealFor(contactId: string): Promise<string | null> {
+  const deals = await prisma.ilDeal.findMany({ where: { closedAt: null, OR: [{ buyerContactId: contactId }, { agentContactId: contactId }] }, select: { id: true }, take: 2 });
+  return deals.length === 1 ? deals[0].id : null;
+}
+
+export async function syncIsraelMailbox(mailbox: string): Promise<{ scanned: number; logged: number }> {
+  const user = await prisma.user.findFirst({ where: { israelEmail: { equals: mailbox, mode: "insensitive" } } });
+  const OVERLAP_MS = 90 * 60_000;
+  const last = user ? user.israelMailSyncedAt : (await prisma.ilSyncState.findUnique({ where: { mailbox: mailbox.toLowerCase() } }))?.syncedAt ?? null;
+  const since = last ? new Date(last.getTime() - OVERLAP_MS) : new Date(Date.now() - FIRST_SYNC_DAYS * 86_400_000);
+  const startedAt = new Date();
+  const [sent, inbox] = await Promise.all([pageThrough(mailbox, "sentitems", since), pageThrough(mailbox, "inbox", since)]);
+  const messages = [...sent, ...inbox];
+
+  let logged = 0;
+  for (const m of messages) {
+    const ext = m.internetMessageId ?? m.id;
+    if (await prisma.ilActivity.findUnique({ where: { externalId: ext }, select: { id: true } })) continue;
+    const from = m.from?.emailAddress;
+    const to = (m.toRecipients ?? []).map((r) => r.emailAddress);
+    const cc = (m.ccRecipients ?? []).map((r) => r.emailAddress);
+    const everyone = [from, ...to, ...cc].filter((p): p is Party => Boolean(p?.address));
+    const external = everyone.filter((p) => !isInternal(p.address) && !isMailer(p.address));
+    if (!external.length) continue; // internal chatter, or a mailer
+    const outbound = from ? isInternal(from.address) : false;
+    if (!outbound && from && isMailer(from.address)) continue; // notifications and bounces are not people
+
+    // the person this email is about: the sender when it came in, the first outside recipient when we wrote it
+    const ordered = outbound ? external : [from!, ...external.filter((p) => p.address !== from!.address)];
+    const person = ordered[0];
+    const { id: contactId, companyId } = await contactFor(person);
+    const when = new Date(m.sentDateTime ?? m.receivedDateTime ?? Date.now());
+    await prisma.ilActivity.create({
+      data: {
+        type: "EMAIL",
+        direction: outbound ? "OUTBOUND" : "INBOUND",
+        subject: m.subject ?? "(no subject)",
+        body: m.bodyPreview ?? null,
+        occurredAt: when,
+        externalId: ext,
+        contactId,
+        companyId,
+        dealId: await dealFor(contactId),
+        meta: JSON.stringify({ from, to, cc, mailbox, hasAttachments: m.hasAttachments ?? false }),
+      },
+    }).catch(() => null);
+    await Promise.all([
+      prisma.ilContact.updateMany({ where: { id: contactId, OR: [{ lastActivityAt: null }, { lastActivityAt: { lt: when } }] }, data: { lastActivityAt: when } }),
+      companyId ? prisma.ilCompany.updateMany({ where: { id: companyId, OR: [{ lastActivityAt: null }, { lastActivityAt: { lt: when } }] }, data: { lastActivityAt: when } }) : null,
+    ]);
+    logged++;
+  }
+  if (user) await prisma.user.update({ where: { id: user.id }, data: { israelMailSyncedAt: startedAt } });
+  else await prisma.ilSyncState.upsert({ where: { mailbox: mailbox.toLowerCase() }, create: { mailbox: mailbox.toLowerCase(), syncedAt: startedAt }, update: { syncedAt: startedAt } });
+  return { scanned: messages.length, logged };
+}
+
+export async function syncIsraelMailboxes(): Promise<Record<string, { scanned: number; logged: number } | string>> {
+  if (!israelMailConfigured()) return {};
+  const out: Record<string, { scanned: number; logged: number } | string> = {};
+  for (const box of await israelMailboxes()) {
+    try {
+      out[box] = await syncIsraelMailbox(box);
+    } catch (e) {
+      out[box] = String(e instanceof Error ? e.message : e).slice(0, 160);
+    }
+  }
+  return out;
+}
+
+/** Called from RJL Israel page loads: refresh the log in the background if it has been a while. */
+let lastKick = 0;
+export function kickIsraelMailSync(minMinutes = 3) {
+  if (!israelMailConfigured() || Date.now() - lastKick < minMinutes * 60_000) return;
+  lastKick = Date.now();
+  const run = async () => {
+    await syncIsraelMailboxes().catch(() => ({}));
+    const { processIsraelInbox } = await import("@/lib/israel-intake");
+    await processIsraelInbox().catch(() => ({}));
+  };
+  import("next/server")
+    .then(({ after }) => after(run))
+    .catch(() => void run());
+}
