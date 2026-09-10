@@ -10,7 +10,7 @@ const who = (p?: Party) => p?.name?.trim() || p?.address || "";
 const list = (ps?: Party[]) => (ps ?? []).map(who).filter(Boolean);
 const ICON = { EMAIL: Mail, NOTE: MessageSquare, CALL: Phone, MEETING: Users } as const;
 
-/** Activity feed, HubSpot style: emails (expandable, with who/when/preview) and anything else logged. */
+/** Activity feed, HubSpot style: emails open with their preview showing, in a window that scrolls; click a header to fold one. */
 export function EmailLog({ rows, title = "Activity", empty, aside, toolbar }: { rows: EmailRow[]; title?: string; empty: string; aside?: React.ReactNode; toolbar?: React.ReactNode }) {
   return (
     <div className="card">
@@ -22,7 +22,7 @@ export function EmailLog({ rows, title = "Activity", empty, aside, toolbar }: { 
       {rows.length === 0 ? (
         <div className="px-4 py-8 text-center text-sm text-muted">{empty}</div>
       ) : (
-        <ul className="divide-y divide-line">
+        <ul className="max-h-[calc(100vh-230px)] min-h-[320px] divide-y divide-line overflow-y-auto">
           {rows.map((r) => {
             const m: Meta = r.meta ? JSON.parse(r.meta) : {};
             const Icon = ICON[r.type as keyof typeof ICON] ?? MessageSquare;
@@ -32,7 +32,7 @@ export function EmailLog({ rows, title = "Activity", empty, aside, toolbar }: { 
             const person = r.contact ? [r.contact.firstName, r.contact.lastName].filter(Boolean).join(" ") : "";
             return (
               <li key={r.id} className="px-4 py-3 text-sm">
-                <details>
+                <details open>
                   <summary className="flex cursor-pointer items-start gap-3">
                     <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${inbound ? "text-sky-600" : "text-muted"}`} />
                     <div className="min-w-0 flex-1">
