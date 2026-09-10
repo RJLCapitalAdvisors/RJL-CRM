@@ -37,7 +37,9 @@ export async function sponsorThreadFor(mailbox: string, deal: DealLike, sponsor:
   const convs = [...new Map(pool.map((m) => [m.conversationId ?? m.id, m])).values()].slice(0, 8);
   if (!convs.length) return null;
 
-  const others = (await prisma.deal.findMany({ where: { id: { not: deal.id }, sponsorCompanyId: deal.sponsorCompanyId ?? "none", stage: { notIn: ["Deal Lost", "Deal Closed"] } }, select: { name: true, propertyName: true } })).map((d) => d.propertyName ?? d.name);
+  // every other live deal, anyone's: a thread that talks about one of them is that deal's thread, not a general conversation
+  const otherDeals = await prisma.deal.findMany({ where: { id: { not: deal.id }, stage: { notIn: ["Deal Lost", "Deal Closed"] } }, select: { name: true, propertyName: true, city: true, state: true, requestedAmount: true } });
+  const others = otherDeals.map((d) => d.propertyName ?? d.name);
   const dealName = deal.propertyName ?? deal.name;
 
   let general: SponsorThread | null = null;
@@ -56,7 +58,7 @@ export async function sponsorThreadFor(mailbox: string, deal: DealLike, sponsor:
     const text = msgs.slice(0, 6).map((m) => `${m.subject ?? ""} ${strip(m.body?.content ?? "")}`).join(" ");
     const aboutThis = subjectMatchesDeal(latest.subject ?? "", deal) || houseSubjectMatches(latest.subject ?? "", deal) || mentions(text, dealName) || (deal.city ? text.includes(deal.city.toLowerCase()) && text.includes("deal") : false);
     if (aboutThis) return { messageId: latest.id, conversationId: seed.conversationId ?? null, subject: latest.subject ?? null, aboutDeal: true };
-    const aboutAnother = others.some((n) => mentions(text, n));
+    const aboutAnother = others.some((n) => mentions(text, n)) || otherDeals.some((d) => subjectMatchesDeal(latest.subject ?? "", d) || houseSubjectMatches(latest.subject ?? "", d)) || /opportunity in .+\|/i.test(latest.subject ?? "");
     if (!aboutAnother && !general) general = { messageId: latest.id, conversationId: seed.conversationId ?? null, subject: latest.subject ?? null, aboutDeal: false };
   }
   // no thread names this deal, but there is an ongoing conversation with the sponsor that is not about another deal: build on it

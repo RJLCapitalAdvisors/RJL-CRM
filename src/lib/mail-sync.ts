@@ -5,7 +5,7 @@ import { DEPARTURE_SUBJECT, HUMAN_DEPARTURE, noteDepartureIfAny } from "@/lib/de
 import { emailHtmlToText } from "@/lib/attachments";
 import { graph, graphConfigured, type GraphMessage } from "@/lib/graph";
 import { domainOf } from "@/lib/domains";
-import { ACTIVE_STAGES } from "@/lib/taxonomy";
+import { ACTIVE_STAGES, isLegacyIntroTicket } from "@/lib/taxonomy";
 
 /**
  * Email log: read every team member's Sent Items and Inbox through Graph and record each email that
@@ -67,7 +67,8 @@ async function fillContactName(contactId: string, displayName: string | undefine
 }
 
 export async function dealResolver() {
-  const activeDeals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, investors: { select: { contactId: true } } } });
+  // legacy HubSpot intro records are not tickets: an email is never filed on one
+  const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, investors: { select: { contactId: true } } } })).filter((d) => !isLegacyIntroTicket(d));
   const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null) =>
     activeDeals.find((d) => subjectMatchesDeal(subject, d))?.id ??
     activeDeals.find((d) => houseSubjectMatches(subject, d))?.id ??

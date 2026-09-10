@@ -324,3 +324,9 @@ export const LENDER_TYPES = ["Agency (Fannie Mae)", "Agency (Freddie Mac)", "Age
 
 /** Pipeline order, for "has this deal reached stage X yet" checks. */
 export const STAGE_ORDER = ["Deal Mentioned", "Deal Received", "Deal Underwritten", "Engagement Letter Sent", "Engagement Letter Signed", "Deal Taken To Market", "Intro To Capital Made", "Term Sheet Issued", "Term Sheet Signed", "Deal Closed"];
+
+/**
+ * HubSpot brought over "X | Indicap" intro records as deals at Intro To Capital Made, with the LP's name in the
+ * sponsor slot. They are history, not tickets: emails, LP requests and Handles must never land on them.
+ */
+export const isLegacyIntroTicket = (d: { hubspotId?: string | null; stage: string }) => Boolean(d.hubspotId) && d.stage === "Intro To Capital Made";

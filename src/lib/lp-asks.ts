@@ -50,7 +50,8 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const legacy = new Set((await prisma.deal.findMany({ where: { id: { in: candidatesAll.map((x) => x.id) }, stage: "Intro To Capital Made", hubspotId: { not: null } }, select: { id: true } })).map((x) => x.id));
     const candidates = candidatesAll.filter((x) => !legacyIntro(x));
     if (a.dealId && !candidates.some((x) => x.id === a.dealId)) {
-      const linked = await prisma.deal.findFirst({ where: { id: a.dealId, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true } });
+      // the deal the email log pinned, unless it is a legacy intro record (those are never tickets)
+      const linked = await prisma.deal.findFirst({ where: { id: a.dealId, stage: { in: [...ACTIVE_STAGES] }, NOT: { AND: [{ hubspotId: { not: null } }, { stage: "Intro To Capital Made" }] } }, select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true } });
       if (linked) candidates.unshift(linked);
     }
     let dealId: string | null = a.dealId && candidates.some((x) => x.id === a.dealId) ? a.dealId : null;
