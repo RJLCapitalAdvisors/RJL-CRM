@@ -10,7 +10,7 @@ import { houseSubjectMatches, subjectMatchesDeal, words } from "@/lib/deal-match
  * no such conversation exists does a fresh email make sense.
  */
 type Party = { emailAddress: { address: string; name?: string } };
-type Msg = GraphMessage & { conversationId?: string; receivedDateTime?: string; from?: Party; toRecipients?: Party[]; ccRecipients?: Party[]; body?: { content: string } };
+type Msg = GraphMessage & { conversationId?: string; receivedDateTime?: string; isDraft?: boolean; from?: Party; toRecipients?: Party[]; ccRecipients?: Party[]; body?: { content: string } };
 type DealLike = { id: string; name: string; propertyName: string | null; city: string | null; state: string | null; sponsorCompanyId: string | null; requestedAmount?: number | null };
 
 const q = (s: string) => encodeURIComponent(s);
@@ -45,8 +45,10 @@ export async function sponsorThreadFor(mailbox: string, deal: DealLike, sponsor:
     // the whole conversation as it stands in my mailbox, newest first; a third party joining later disqualifies it
     let msgs: Msg[] = [seed];
     if (seed.conversationId) {
-      const r = await graph<{ value: Msg[] }>(`/users/${q(mailbox)}/messages?$filter=conversationId eq '${seed.conversationId.replace(/'/g, "''")}'&$top=12&$select=id,subject,conversationId,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,body`).catch(() => ({ value: [seed] }));
-      msgs = r.value.length ? r.value : [seed];
+      const r = await graph<{ value: Msg[] }>(`/users/${q(mailbox)}/messages?$filter=conversationId eq '${seed.conversationId.replace(/'/g, "''")}'&$top=12&$select=id,subject,conversationId,sentDateTime,receivedDateTime,isDraft,from,toRecipients,ccRecipients,body`).catch(() => ({ value: [seed] }));
+      // an unsent draft of ours sitting on the thread (an earlier Handle click) cannot be replied to: leave drafts out
+      const real = r.value.filter((m) => !m.isDraft);
+      msgs = real.length ? real : [seed];
     }
     msgs.sort((a, b) => (b.receivedDateTime ?? b.sentDateTime ?? "").localeCompare(a.receivedDateTime ?? a.sentDateTime ?? ""));
     const latest = msgs[0];

@@ -119,8 +119,9 @@ export async function openMomentumDraft(momentumId: string) {
       const { sponsorThreadFor } = await import("@/lib/sponsor-thread");
       const thread = await sponsorThreadFor(me.email, { id: deal.id, name: deal.name, propertyName: deal.propertyName, city: deal.city, state: deal.state, sponsorCompanyId: deal.sponsorCompanyId, requestedAmount: deal.requestedAmount }, { emails: to, domain: deal.sponsorCompany?.domain ?? null }).catch(() => null);
       const original = thread ? { id: thread.messageId } : null;
-      if (original) {
-        const draft = await createReplyAllDraft(me.email, original.id);
+      const replyDraft = original ? await createReplyAllDraft(me.email, original.id).catch(() => null) : null; // a message Outlook will not reply to (a draft, a deleted item) falls through to a fresh email
+      if (original && replyDraft) {
+        const draft = replyDraft;
         const body = draft.body?.content ?? "";
         const at = body.search(/<body[^>]*>/i);
         const html = at >= 0 ? body.replace(/(<body[^>]*>)/i, `$1${block}${await signatureFor(me.email)}<br></div>`) : `${block}${await signatureFor(me.email)}</div>${body}`;

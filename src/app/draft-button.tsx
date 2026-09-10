@@ -64,7 +64,7 @@ export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", 
       >
         {pending ? "Preparing draft…" : label}
       </button>
-      {error && <span className="max-w-[220px] text-right text-xs text-red-700">{error}</span>}
+      {error && <span className="max-w-[220px] break-words text-right text-xs text-red-700">{error}</span>}
     </div>
   );
 }
