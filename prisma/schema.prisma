@@ -546,6 +546,8 @@ model IlApartment {
   elevator       Boolean   @default(false)
   mamad          Boolean   @default(false)
   priceNis       Float?
+  sellerType     String?   // Yad Rishona (developer), Second hand, never occupied, Second hand, occupied
+  renovationYear Int?
   builtYear      Int?
   completionDate String?
   condition      String?

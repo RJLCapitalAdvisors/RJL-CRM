@@ -56,7 +56,7 @@ export async function runIl(name: string, input: Record<string, unknown>): Promi
       if (!a) return { error: "not found" };
       return {
         ...aptRow(a),
-        specs: { rooms: a.rooms, floor: a.floor, buildingStories: a.totalFloors, buildingUnits: a.buildingUnits, internalSqm: a.internalSqm, mirpesetSqm: a.mirpesetSqm, ceilingCm: a.ceilingCm, machsanSqm: a.machsanSqm, machsanLocation: a.machsanLocation, direction: parseJsonList(a.direction), mirpesetDirection: parseJsonList(a.mirpesetDirection), mamad: a.mamad, condition: a.condition },
+        specs: { rooms: a.rooms, floor: a.floor, buildingStories: a.totalFloors, buildingUnits: a.buildingUnits, internalSqm: a.internalSqm, mirpesetSqm: a.mirpesetSqm, ceilingCm: a.ceilingCm, machsanSqm: a.machsanSqm, machsanLocation: a.machsanLocation, direction: parseJsonList(a.direction), mirpesetDirection: parseJsonList(a.mirpesetDirection), mamad: a.mamad, condition: a.condition, sellerType: a.sellerType, renovationYear: a.renovationYear },
         description: a.description,
         floorplan: a.floorplanName ? "on file" : "missing",
         agent: a.agent ? { name: ilFullName(a.agent), company: a.agent.company?.name, phone: a.agent.phone, email: a.agent.email, link: `/israel/contacts/${a.agent.id}` } : null,

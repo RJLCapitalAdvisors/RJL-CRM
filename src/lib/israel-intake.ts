@@ -41,6 +41,8 @@ const Apartment = z.object({
   mirpesetDirection: z.array(z.enum(["North", "South", "East", "West"])),
   mamad: z.boolean().nullable(),
   priceNis: z.number().nullable().describe("Asking price in shekels. Convert only if the document states a currency and an amount; never guess."),
+  sellerType: z.enum(["Yad Rishona (developer)", "Second hand, never occupied", "Second hand, occupied"]).nullable().describe("Yad rishona means bought from the developer; second hand is a resale, occupied or never lived in"),
+  renovationYear: z.number().nullable().describe("Year of the last renovation, second hand only"),
   description: z.string().nullable().describe("Two to four plain sentences about the apartment from the documents. No prices or numbers already captured in fields."),
 });
 const Output = z.object({
@@ -83,6 +85,7 @@ const REQUIRED: { key: keyof Extracted["apartments"][number] | "developer"; labe
   { key: "internalSqm", label: "Internal m²" },
   { key: "mirpesetSqm", label: "Mirpeset size (m²)" },
   { key: "priceNis", label: "Asking price" },
+  { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
   { key: "ceilingCm", label: "Ceiling height (cm)" },
   { key: "parkingSpots", label: "Parking spots" },
   { key: "machsanSqm", label: "Machsan size (m²)" },
@@ -208,6 +211,8 @@ export async function processIsraelMessage(messageId: string): Promise<{ apartme
         mirpesetDirection: JSON.stringify(a.mirpesetDirection),
         mamad: a.mamad ?? false,
         priceNis: a.priceNis,
+        sellerType: a.sellerType,
+        renovationYear: a.sellerType?.startsWith("Second hand") ? a.renovationYear : null,
         description: a.description ? stripDashes(a.description) : null,
         source: `Email from ${msg.from?.emailAddress.name ?? from}`,
         sourceMessageId: key,

@@ -9,6 +9,14 @@ export const IL_COMPANY_KINDS = ["Developer", "Agency", "Law firm", "Mortgage", 
 export const IL_DIRECTIONS = ["North", "South", "East", "West"] as const;
 export const IL_PARKING = ["None", "1", "2 - back to back", "2 side by side", "3"] as const;
 export const IL_MACHSAN_LOCATIONS = ["Attached to apartment", "In basement"] as const;
+export const IL_SELLER_TYPES = ["Yad Rishona (developer)", "Second hand, never occupied", "Second hand, occupied"] as const;
+export const isSecondHand = (t: string | null | undefined) => Boolean(t && t.startsWith("Second hand"));
+/** Dollars per square foot on the same area basis as price per meter (internal plus one third of the mirpeset). */
+export const usdPerSqft = (priceNis: number | null | undefined, internal: number | null | undefined, mirpeset: number | null | undefined, ilsPerUsd: number | null | undefined) => {
+  if (!priceNis || !internal || !ilsPerUsd) return null;
+  const areaSqft = (internal + (mirpeset ?? 0) / 3) * SQFT_PER_SQM;
+  return areaSqft > 0 ? Math.round(priceNis / ilsPerUsd / areaSqft) : null;
+};
 export const IL_CITIES = ["Jerusalem", "Tel Aviv", "Herzliya", "Ra'anana", "Netanya", "Modi'in", "Beit Shemesh", "Ramat Gan", "Givatayim", "Haifa", "Ashdod", "Ashkelon", "Petah Tikva", "Rehovot", "Efrat", "Ma'ale Adumim"] as const;
 
 export const SQFT_PER_SQM = 10.7639;

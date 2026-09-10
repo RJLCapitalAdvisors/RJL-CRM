@@ -5,13 +5,13 @@ import { AutoSaveForm } from "@/components/autosave-form";
 import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
 import { SelectField } from "@/components/select-field";
-import { IL_CITIES, IL_DIRECTIONS, IL_MACHSAN_LOCATIONS, IL_PARKING, PRICE_PER_METER_NOTE, feet, nis, parseJsonList, pricePerMeter, sqft, usdFmt } from "@/lib/israel";
+import { IL_CITIES, IL_DIRECTIONS, IL_MACHSAN_LOCATIONS, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, pricePerMeter, sqft, usdFmt, usdPerSqft } from "@/lib/israel";
 import type { FxRate } from "@/lib/fx";
 
 export type IlApartmentForm = Partial<{
   name: string; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
   internalSqm: number | null; mirpesetSqm: number | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean;
-  priceNis: number | null; description: string | null;
+  priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null;
 }>;
 
 /** The apartment ticket, laid out like a deal ticket: one straight column of fields with the conversions computed beside them. */
@@ -21,6 +21,8 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
   const [ceiling, setCeiling] = useState<number | null>(a.ceilingCm ?? null);
   const [machsan, setMachsan] = useState<number | null>(a.machsanSqm ?? null);
   const [price, setPrice] = useState<number | null>(a.priceNis ?? null);
+  const [sellerType, setSellerType] = useState(a.sellerType ?? "");
+  const perSqft = usdPerSqft(price, internal, mirpeset, fx?.ilsPerUsd);
   const ppm = pricePerMeter(price, internal, mirpeset);
   const usd = (v: number | null) => (v != null && fx ? usdFmt(v / fx.ilsPerUsd) : null);
   const fxNote = fx ? `at ₪${fx.ilsPerUsd.toFixed(3)} per $ (ECB, ${fx.date})` : "exchange rate unavailable right now";
@@ -79,6 +81,14 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         <Row label="Mamad">
           <Select name="mamad" value={a.mamad == null ? "" : a.mamad ? "Yes" : "No"} options={["Yes", "No"]} />
         </Row>
+        <Row label="Seller type">
+          <Select name="sellerType" value={sellerType} options={IL_SELLER_TYPES} onChange={setSellerType} />
+        </Row>
+        {isSecondHand(sellerType) && (
+          <Row label="Year of renovation" hint="Leave blank if never renovated.">
+            <NumberInput name="renovationYear" defaultValue={a.renovationYear} decimals={false} />
+          </Row>
+        )}
       </Group>
 
       <Group title="Size">
@@ -112,7 +122,7 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         </Row>
         <Calc label="Asking price in dollars" value={usd(price) ?? dash} hint={fxNote} />
         <Calc label="Price per meter" value={ppm != null ? nis(ppm) : dash} hint={PRICE_PER_METER_NOTE} />
-        <Calc label="Price per meter in dollars" value={usd(ppm) ?? dash} hint={fxNote} />
+        <Calc label="Dollars per square foot" value={perSqft != null ? `$${perSqft.toLocaleString("en-US")}` : dash} hint={`asking price in dollars ÷ square feet (internal + ⅓ of the mirpeset), ${fxNote}`} />
       </Group>
 
       <Group title="Notes">

@@ -44,6 +44,8 @@ function apartmentData(fd: FormData) {
     mirpesetDirection: list(fd, "mirpesetDirection"),
     mamad: yesNo(fd, "mamad") ?? false,
     priceNis: n(fd, "priceNis"),
+    sellerType: s(fd, "sellerType"),
+    renovationYear: s(fd, "sellerType")?.startsWith("Second hand") ? i(fd, "renovationYear") : null,
     description: s(fd, "description"),
   };
 }
