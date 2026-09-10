@@ -170,6 +170,10 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   const parts = splitFirst;
   if (parts.length > 1) {
     const created: { id: string; name: string }[] = [];
+    // "take these out together as a portfolio": the forwarder's own words above the forwarded email decide
+    const forwarderNote = external ? "" : bodyText.split(/\n\s*(?:From:|-----Original Message-----|On .{5,80} wrote:)/i)[0];
+    const wantsPortfolio = /\b(portfolio|together|as (?:one|a single) (?:deal|ticket|raise)|one ticket|one deal|combine[d]?)\b/i.test(forwarderNote);
+    const portfolioName = forwarderNote.match(/(?:call it|name it|named?|portfolio name[:\s]+|the)\s+["“]([^"”\n]{3,80})["”]/i)?.[1] ?? null;
     const { findSameDeal } = await import("@/lib/deal-knowledge");
     for (const [i, part] of parts.entries()) {
       const own = texts.filter((t) => part.attachments.some((n) => n.toLowerCase() === t.name.toLowerCase()));
@@ -212,16 +216,41 @@ ${text.slice(0, 2000)}` });
     }
     const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
     let replied = false;
-    try {
-      const sections: string[] = [];
-      for (const c of created) {
-        const dl = await prisma.deal.findUniqueOrThrow({ where: { id: c.id } });
-        sections.push(replyHtml(dl as unknown as Record<string, unknown>, `${base}/deals/${dl.id}`, sections.length === 0 ? cloud.notes : []));
+    // the forwarder asked for a portfolio: the property tickets become components of one portfolio deal
+    let portfolio: { id: string; name: string } | null = null;
+    if (wantsPortfolio && created.length >= 2) {
+      const { combineIntoPortfolio, withChildren } = await import("@/lib/portfolio");
+      try {
+        const already = await prisma.deal.findFirst({ where: { children: { some: { id: { in: created.map((c) => c.id) } } } }, select: { id: true, name: true, propertyName: true } });
+        portfolio = already ? { id: already.id, name: already.propertyName ?? already.name } : await combineIntoPortfolio(created.map((c) => c.id), portfolioName);
+        const parent = await withChildren(await prisma.deal.findUniqueOrThrow({ where: { id: portfolio.id } }));
+        const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
+        const perProperty: string[] = [];
+        for (const c of created) {
+          const dl = await prisma.deal.findUniqueOrThrow({ where: { id: c.id } });
+          const still = missingFor(dl).map((it) => itemLabel(it, dl.strategy));
+          perProperty.push(`<p style="margin:8pt 0 2pt 0;${F}"><b><a href="${base}/deals/${dl.id}">${dl.propertyName ?? dl.name}</a></b></p>${still.length ? `<ol style="margin:0 0 6pt 18pt;${F}">${still.map((x) => `<li>${x}</li>`).join("")}</ol>` : `<p style="margin:0 0 6pt 0;${F}">Checklist complete.</p>`}`);
+        }
+        const head = `<p style="margin:0 0 12pt 0;${F}">This email carried ${created.length} properties, taken out together as one portfolio: <a href="${base}/deals/${portfolio.id}"><b>${portfolio.name}</b></a>. Each property keeps its own ticket underneath for its data and files; the portfolio is the deal that gets sent and tracked.</p>`;
+        const body = replyHtml(parent as unknown as Record<string, unknown>, `${base}/deals/${portfolio.id}`, cloud.notes).replace(/<p><b>Still missing[\s\S]*$/, `<p><b>Still missing, by property</b></p>${perProperty.join("")}<p style="color:#6b716e;font-size:9pt;">Reply to the sponsor for the missing items; answers that come back to this mailbox update the property tickets and the portfolio. Edit anything on the tickets in the CRM.</p></div>`);
+        await replyOnThread(msg, `<div style="${F}">${head}${body}`, fileSources);
+        replied = true;
+      } catch (e) {
+        console.error("deals@ portfolio reply failed", e);
       }
-      await replyOnThread(msg, `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p style="margin:0 0 12pt 0;">This email carried ${created.length} deals; a ticket was created for each.</p>${sections.join('<hr style="border:0;border-top:1px solid #ddd;margin:16pt 0;">')}</div>`, fileSources);
-      replied = true;
-    } catch (e) {
-      console.error("deals@ multi reply failed", e);
+    }
+    if (!portfolio) {
+      try {
+        const sections: string[] = [];
+        for (const c of created) {
+          const dl = await prisma.deal.findUniqueOrThrow({ where: { id: c.id } });
+          sections.push(replyHtml(dl as unknown as Record<string, unknown>, `${base}/deals/${dl.id}`, sections.length === 0 ? cloud.notes : []));
+        }
+        await replyOnThread(msg, `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p style="margin:0 0 12pt 0;">This email carried ${created.length} deals; a ticket was created for each.</p>${sections.join('<hr style="border:0;border-top:1px solid #ddd;margin:16pt 0;">')}</div>`, fileSources);
+        replied = true;
+      } catch (e) {
+        console.error("deals@ multi reply failed", e);
+      }
     }
     await graph(`/users/${q(MAILBOX())}/messages/${q(msg.id)}`, { method: "PATCH", body: JSON.stringify({ isRead: true }) }).catch(() => {});
     return { dealId: created[0].id, replied };
