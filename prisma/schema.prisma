@@ -546,6 +546,7 @@ model IlApartment {
   elevator       Boolean   @default(false)
   mamad          Boolean   @default(false)
   priceNis       Float?
+  pendingApproval Boolean  @default(false) // came in by email with data missing; waits on the dashboard until approved
   sellerType     String?   // Yad Rishona (developer), Second hand, never occupied, Second hand, occupied
   renovationYear Int?
   builtYear      Int?

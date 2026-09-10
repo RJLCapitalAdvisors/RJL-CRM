@@ -1,34 +1,101 @@
 import Link from "next/link";
-import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { PageHeader, Pager, SearchForm } from "@/components/ui";
+import { PageHeader, Pager } from "@/components/ui";
 import { str } from "@/lib/format";
-import { IL_CITIES, nis, pricePerMeter } from "@/lib/israel";
+import { nis, parseJsonList, pricePerMeter, yearOf } from "@/lib/israel";
+import { ApartmentFilters, type AptFilters } from "./filters";
 
 export const metadata = { title: "Apartments" };
 export const dynamic = "force-dynamic";
 const PAGE = 50;
+const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);
+const num = (v: string | string[] | undefined) => {
+  const s = str(v);
+  if (!s) return null;
+  const n = Number(s);
+  return isNaN(n) ? null : n;
+};
 
-/** Apartments: the list, in the same window as the RJL Capital Advisors company list. Click a row to open the ticket. */
+/**
+ * Apartments: the list, filtered by every field except asking price (city, neighborhood, sizes as ranges, rooms,
+ * floor, built or delivery year, parking, seller type, direction, mamad, machsan) and sortable by price per meter.
+ * Tickets still waiting for approval on the dashboard are not in this list.
+ */
 export default async function ApartmentsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
-  const q = str(sp.q).trim();
-  const city = str(sp.city);
-  const page = Math.max(1, Number(str(sp.page)) || 1);
-  const where: Prisma.IlApartmentWhereInput = {
-    AND: [
-      q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { street: { contains: q, mode: "insensitive" } }, { neighborhood: { contains: q, mode: "insensitive" } }, { developer: { name: { contains: q, mode: "insensitive" } } }] } : {},
-      city ? { city } : {},
-    ],
+  const f: AptFilters = {
+    q: str(sp.q).trim(),
+    cities: list(sp.city),
+    neighborhoods: list(sp.neighborhood),
+    sqmMin: num(sp.sqmMin),
+    sqmMax: num(sp.sqmMax),
+    mirpesetMin: num(sp.mirpesetMin),
+    mirpesetMax: num(sp.mirpesetMax),
+    roomsMin: num(sp.roomsMin),
+    roomsMax: num(sp.roomsMax),
+    floorMin: num(sp.floorMin),
+    floorMax: num(sp.floorMax),
+    yearMin: num(sp.yearMin),
+    yearMax: num(sp.yearMax),
+    parking: list(sp.parking),
+    sellerTypes: list(sp.sellerType),
+    directions: list(sp.direction),
+    mamad: str(sp.mamad),
+    machsan: str(sp.machsan),
+    sort: str(sp.sort) || "updated",
   };
-  const [total, rows] = await Promise.all([
-    prisma.ilApartment.count({ where }),
-    prisma.ilApartment.findMany({ where, orderBy: { updatedAt: "desc" }, skip: (page - 1) * PAGE, take: PAGE, include: { developer: { select: { id: true, name: true } } } }),
-  ]);
+  const page = Math.max(1, Number(str(sp.page)) || 1);
+
+  const all = await prisma.ilApartment.findMany({ where: { pendingApproval: false }, orderBy: { updatedAt: "desc" }, include: { developer: { select: { id: true, name: true } }, project: { select: { name: true } } } });
+  const cities = [...new Set(all.map((a) => a.city).filter((c): c is string => Boolean(c)))].sort();
+  const neighborhoods = [...new Set(all.map((a) => a.neighborhood).filter((c): c is string => Boolean(c)))].sort();
+
+  // open-ended tops: the last stop of each slider means "and up"
+  const inRange = (v: number | null, lo: number | null, hi: number | null, top: number) => (lo == null && hi == null ? true : v == null ? false : v >= (lo ?? -Infinity) && (hi == null || hi >= top || v <= hi));
+  const q = f.q.toLowerCase();
+  const rows = all.filter((a) => {
+    if (q && !`${a.name} ${a.street ?? ""} ${a.neighborhood ?? ""} ${a.city ?? ""} ${a.project?.name ?? ""} ${a.developer?.name ?? ""}`.toLowerCase().includes(q)) return false;
+    if (f.cities.length && !f.cities.includes(a.city ?? "")) return false;
+    if (f.neighborhoods.length && !f.neighborhoods.includes(a.neighborhood ?? "")) return false;
+    if (!inRange(a.internalSqm, f.sqmMin, f.sqmMax, 300)) return false;
+    if (!inRange(a.mirpesetSqm ?? 0, f.mirpesetMin, f.mirpesetMax, 100)) return false;
+    if (!inRange(a.rooms, f.roomsMin, f.roomsMax, 8)) return false;
+    if (!inRange(a.floor, f.floorMin, f.floorMax, 40)) return false;
+    if (!inRange(yearOf(a.completionDate), f.yearMin, f.yearMax, 2035)) return false;
+    if (f.parking.length && !f.parking.includes(a.parkingSpots ?? "")) return false;
+    if (f.sellerTypes.length && !f.sellerTypes.includes(a.sellerType ?? "")) return false;
+    if (f.directions.length && !parseJsonList(a.direction).some((d) => f.directions.includes(d))) return false;
+    if (f.mamad === "yes" && !a.mamad) return false;
+    if (f.mamad === "no" && a.mamad) return false;
+    if (f.machsan === "yes" && !(a.machsanSqm && a.machsanSqm > 0)) return false;
+    if (f.machsan === "no" && a.machsanSqm && a.machsanSqm > 0) return false;
+    return true;
+  });
+  const ppm = (a: (typeof all)[number]) => pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm);
+  const by = <T,>(get: (a: (typeof all)[number]) => T | null, dir: 1 | -1) => (x: (typeof all)[number], y: (typeof all)[number]) => {
+    const a = get(x), b = get(y);
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return a < b ? -dir : a > b ? dir : 0;
+  };
+  const sorters: Record<string, (x: (typeof all)[number], y: (typeof all)[number]) => number> = {
+    "ppm-asc": by(ppm, 1),
+    "ppm-desc": by(ppm, -1),
+    "price-asc": by((a) => a.priceNis, 1),
+    "price-desc": by((a) => a.priceNis, -1),
+    "sqm-desc": by((a) => a.internalSqm, -1),
+    "sqm-asc": by((a) => a.internalSqm, 1),
+    "year-desc": by((a) => yearOf(a.completionDate), -1),
+    "year-asc": by((a) => yearOf(a.completionDate), 1),
+    name: by((a) => a.name.toLowerCase(), 1),
+  };
+  if (sorters[f.sort]) rows.sort(sorters[f.sort]);
+  const total = rows.length;
+  const pageRows = rows.slice((page - 1) * PAGE, page * PAGE);
   const makeHref = (p: number) => {
     const u = new URLSearchParams();
-    if (q) u.set("q", q);
-    if (city) u.set("city", city);
+    for (const [k, v] of Object.entries(sp)) for (const x of list(v)) if (k !== "page") u.append(k, x);
     u.set("page", String(p));
     return `/israel/apartments?${u}`;
   };
@@ -36,74 +103,71 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
     <>
       <PageHeader
         title="Apartments"
-        subtitle={`${total.toLocaleString()} apartments`}
+        subtitle={`${total.toLocaleString()} of ${all.length.toLocaleString()} apartments`}
         actions={
           <Link href="/israel/apartments/new" className="btn-primary">
             New apartment
           </Link>
         }
       />
-      <div className="px-8 py-4">
-        <SearchForm action="/israel/apartments" q={q} placeholder="Search name, address, neighborhood, or developer">
-          <select name="city" defaultValue={city} className="input w-44">
-            <option value="">Any city</option>
-            {IL_CITIES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-        </SearchForm>
-      </div>
-      <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="table dense w-full min-w-[1100px]">
-            <thead>
-              <tr>
-                <th>Apartment</th>
-                <th>Developer</th>
-                <th>City</th>
-                <th className="text-right">Rooms</th>
-                <th className="text-right">Internal m²</th>
-                <th className="text-right">Mirpeset m²</th>
-                <th className="text-right">Floor</th>
-                <th>Parking</th>
-                <th className="text-right">Asking price</th>
-                <th className="text-right">₪ / m²</th>
-                <th>Built / delivery</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((a) => (
-                <tr key={a.id}>
-                  <td>
-                    <Link href={`/israel/apartments/${a.id}`} className="font-medium hover:underline">
-                      {a.name}
-                    </Link>
-                    {a.street && <div className="text-xs text-muted">{a.street}</div>}
-                  </td>
-                  <td>{a.developer ? <Link href={`/israel/companies/${a.developer.id}`} className="hover:underline">{a.developer.name}</Link> : <span className="text-muted">—</span>}</td>
-                  <td className="whitespace-nowrap">{[a.neighborhood, a.city].filter(Boolean).join(", ") || <span className="text-muted">—</span>}</td>
-                  <td className="text-right tabular-nums">{a.rooms ?? ""}</td>
-                  <td className="text-right tabular-nums">{a.internalSqm ?? ""}</td>
-                  <td className="text-right tabular-nums">{a.mirpesetSqm ?? ""}</td>
-                  <td className="text-right tabular-nums">{a.floor != null ? `${a.floor}${a.totalFloors ? ` / ${a.totalFloors}` : ""}` : ""}</td>
-                  <td className="whitespace-nowrap">{a.parkingSpots ?? <span className="text-muted">—</span>}</td>
-                  <td className="whitespace-nowrap text-right tabular-nums">{nis(a.priceNis)}</td>
-                  <td className="whitespace-nowrap text-right tabular-nums">{nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))}</td>
-                  <td className="whitespace-nowrap">{a.completionDate ?? <span className="text-muted">—</span>}</td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={11} className="py-10 text-center text-muted">
-                    No apartments match.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      <div className="grid gap-4 px-8 py-4 xl:grid-cols-[300px_1fr]">
+        <ApartmentFilters f={f} cities={cities} neighborhoods={neighborhoods} total={total} />
+        <div className="min-w-0">
+          <div className="flex h-[calc(100vh-220px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+            <div className="min-h-0 flex-1 overflow-auto">
+              <table className="table dense w-full min-w-[1200px]">
+                <thead>
+                  <tr>
+                    <th>Apartment</th>
+                    <th>Developer</th>
+                    <th>City</th>
+                    <th className="text-right">Rooms</th>
+                    <th className="text-right">Internal m²</th>
+                    <th className="text-right">Mirpeset m²</th>
+                    <th className="text-right">Floor</th>
+                    <th>Parking</th>
+                    <th>Seller</th>
+                    <th className="text-right">Asking price</th>
+                    <th className="text-right">₪ / m²</th>
+                    <th>Built / delivery</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((a) => (
+                    <tr key={a.id}>
+                      <td>
+                        <Link href={`/israel/apartments/${a.id}`} className="font-medium hover:underline">
+                          {a.name}
+                        </Link>
+                        {a.street && <div className="text-xs text-muted">{a.street}</div>}
+                      </td>
+                      <td>{a.developer ? <Link href={`/israel/companies/${a.developer.id}`} className="hover:underline">{a.developer.name}</Link> : <span className="text-muted">—</span>}</td>
+                      <td className="whitespace-nowrap">{[a.neighborhood, a.city].filter(Boolean).join(", ") || <span className="text-muted">—</span>}</td>
+                      <td className="text-right tabular-nums">{a.rooms ?? ""}</td>
+                      <td className="text-right tabular-nums">{a.internalSqm ?? ""}</td>
+                      <td className="text-right tabular-nums">{a.mirpesetSqm ?? ""}</td>
+                      <td className="text-right tabular-nums">{a.floor != null ? `${a.floor}${a.totalFloors ? ` / ${a.totalFloors}` : ""}` : ""}</td>
+                      <td className="whitespace-nowrap">{a.parkingSpots ?? <span className="text-muted">—</span>}</td>
+                      <td className="whitespace-nowrap text-xs">{a.sellerType ? a.sellerType.replace("Yad Rishona (developer)", "Yad rishona").replace("Second hand, ", "2nd hand, ") : <span className="text-muted">—</span>}</td>
+                      <td className="whitespace-nowrap text-right tabular-nums">{nis(a.priceNis)}</td>
+                      <td className="whitespace-nowrap text-right tabular-nums">{nis(ppm(a))}</td>
+                      <td className="whitespace-nowrap">{a.completionDate ?? <span className="text-muted">—</span>}</td>
+                    </tr>
+                  ))}
+                  {pageRows.length === 0 && (
+                    <tr>
+                      <td colSpan={12} className="py-10 text-center text-muted">
+                        No apartments match these filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
         </div>
       </div>
-      <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
     </>
   );
 }

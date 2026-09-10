@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { usdIls } from "@/lib/fx";
-import { ilFullName, nis, parseJsonList, pricePerMeter, sqm, usdFmt } from "@/lib/israel";
-import { addIlNote, deleteApartment, linkApartment, updateApartment } from "../../actions";
+import { apartmentMissing, ilFullName, nis, parseJsonList, pricePerMeter, sqm, usdFmt } from "@/lib/israel";
+import { addIlNote, approveApartment, deleteApartment, linkApartment, updateApartment } from "../../actions";
 import { ApartmentForm } from "../apartment-form";
 import { FloorplanWindow } from "./floorplan";
 import { SelectField } from "@/components/select-field";
@@ -25,7 +25,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
       where: { id },
       select: {
         id: true, name: true, street: true, city: true, neighborhood: true, rooms: true, completionDate: true, floor: true, totalFloors: true, buildingUnits: true, internalSqm: true, mirpesetSqm: true, ceilingCm: true, machsanSqm: true, machsanLocation: true,
-        parkingSpots: true, direction: true, projectId: true, project: { select: { id: true, name: true, totalUnits: true, stories: true, completionDate: true } }, mirpesetDirection: true, mamad: true, priceNis: true, description: true, floorplanType: true, floorplanName: true, updatedAt: true, developerId: true, agentContactId: true, sellerContactId: true,
+        parkingSpots: true, direction: true, sellerType: true, renovationYear: true, pendingApproval: true, projectId: true, project: { select: { id: true, name: true, totalUnits: true, stories: true, completionDate: true } }, mirpesetDirection: true, mamad: true, priceNis: true, description: true, floorplanType: true, floorplanName: true, updatedAt: true, developerId: true, agentContactId: true, sellerContactId: true,
         developer: { select: { id: true, name: true, kind: true, city: true, website: true, phone: true } },
         agent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } },
         seller: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
@@ -40,6 +40,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
   if (!a) notFound();
   const hasPlan = Boolean(a.floorplanType);
   const ppm = pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm);
+  const missing = apartmentMissing(a as unknown as Record<string, unknown>);
   const agents = people.filter((p) => parseJsonList(p.roles).includes("Sales agent"));
   const sellers = people.filter((p) => parseJsonList(p.roles).includes("Seller"));
   const label = (p: (typeof people)[number]) => `${ilFullName(p)}${p.company ? ` (${p.company.name})` : ""}`;
@@ -73,6 +74,19 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
               </form>
             }
           />
+          {a.pendingApproval && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="font-semibold">Waiting for approval</div>
+              {missing.length ? <div className="mt-0.5">This ticket came in by email and is not in the Apartments list yet. Still needed: {missing.join(", ")}.</div> : <div className="mt-0.5">The data is complete. Approve it to add it to the Apartments list.</div>}
+              {missing.length === 0 && (
+                <form action={approveApartment.bind(null, a.id)} className="mt-2">
+                  <button type="submit" className="btn-primary px-3 py-1.5 text-xs">
+                    Approve
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
           <AboutCard title="About this apartment">
             <ApartmentForm a={a} fx={fx} projects={projects} action={updateApartment.bind(null, a.id)} autosave />
           </AboutCard>

@@ -202,3 +202,17 @@ export async function deleteIlProject(id: string) {
   revalidatePath("/israel/projects");
   redirect("/israel/projects");
 }
+
+/** Approve a ticket that came in by email: it leaves Deals to be approved and joins the Apartments list. Only when the data is complete. */
+export async function approveApartment(id: string) {
+  const { apartmentMissing } = await import("@/lib/israel");
+  const a = await prisma.ilApartment.findUnique({ where: { id } });
+  if (!a) return;
+  const missing = apartmentMissing(a as unknown as Record<string, unknown>);
+  if (missing.length) return;
+  await prisma.ilApartment.update({ where: { id }, data: { pendingApproval: false } });
+  await prisma.ilNote.create({ data: { apartmentId: id, body: "Approved: data complete, added to Apartments." } });
+  revalidatePath("/israel");
+  revalidatePath("/israel/apartments");
+  revalidatePath(`/israel/apartments/${id}`);
+}

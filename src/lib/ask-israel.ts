@@ -39,6 +39,7 @@ export async function runIl(name: string, input: Record<string, unknown>): Promi
       const rows = await prisma.ilApartment.findMany({
         where: {
           AND: [
+            { pendingApproval: false },
             q ? { OR: [{ name: { contains: q, mode: ci } }, { street: { contains: q, mode: ci } }, { neighborhood: { contains: q, mode: ci } }, { city: { contains: q, mode: ci } }, { developer: { name: { contains: q, mode: ci } } }, { project: { name: { contains: q, mode: ci } } }] } : {},
             typeof input.city === "string" && input.city ? { city: { contains: input.city, mode: ci } } : {},
             typeof input.minRooms === "number" ? { rooms: { gte: input.minRooms } } : {},

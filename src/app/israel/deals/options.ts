@@ -4,7 +4,7 @@ import { ilFullName, parseJsonList } from "@/lib/israel";
 /** Dropdown choices for a deal: apartments in the list, contacts marked Buyer, contacts marked Sales agent. */
 export async function dealOptions() {
   const [apartments, people] = await Promise.all([
-    prisma.ilApartment.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, city: true } }),
+    prisma.ilApartment.findMany({ where: { pendingApproval: false }, orderBy: { name: "asc" }, select: { id: true, name: true, city: true } }),
     prisma.ilContact.findMany({ orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { id: true, firstName: true, lastName: true, email: true, roles: true, company: { select: { name: true } } } }),
   ]);
   const label = (p: (typeof people)[number]) => `${ilFullName(p)}${p.company ? ` (${p.company.name})` : ""}`;

@@ -131,7 +131,7 @@ ${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still missing:</div><ol sty
     )
     .join("");
   return `<div style="${font}">
-<p>${rows.length === 1 ? "Apartment ticket created" : `${rows.length} apartment tickets created`} in RJL Israel.</p>
+<p>${rows.length === 1 ? "Apartment ticket created" : `${rows.length} apartment tickets created`} in RJL Israel. ${rows.some((r) => r.missing.length) ? "Tickets with data missing wait under Deals to be approved on the dashboard until the data is in and Jonathan approves them." : ""}</p>
 ${blocks}
 ${note ? `<p style="color:#6b716e;">${note}</p>` : ""}
 <p style="color:#6b716e;font-size:9pt;">Reply to the agent for the missing items and forward their answer here; edit anything on the ticket in the CRM. A floorplan attached to the email is saved on the ticket.</p>
@@ -216,6 +216,7 @@ export async function processIsraelMessage(messageId: string): Promise<{ apartme
         description: a.description ? stripDashes(a.description) : null,
         source: `Email from ${msg.from?.emailAddress.name ?? from}`,
         sourceMessageId: key,
+        pendingApproval: true,
       },
     });
     await prisma.ilNote.create({ data: { apartmentId: created.id, body: `Created from an email to ${ISRAEL_MAILBOX()}${msg.subject ? `: "${msg.subject}"` : ""}${atts.names.length ? ` with ${atts.names.join(", ")}` : ""}` } });

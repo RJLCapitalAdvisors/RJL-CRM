@@ -77,3 +77,44 @@ export function ilStageTone(stage: string): string {
       return "bg-cream text-ink border-line";
   }
 }
+
+// ---------- completeness and approval ----------
+/**
+ * What a ticket needs before it counts as complete. An apartment that arrives by email with any of these blank
+ * waits under "Deals to be approved" on the dashboard until the data is chased down and Jonathan approves it.
+ * Edit this list to change the rule.
+ */
+export const IL_COMPLETE_FIELDS: { key: string; label: string }[] = [
+  { key: "developerId", label: "Developer" },
+  { key: "street", label: "Building address" },
+  { key: "city", label: "City" },
+  { key: "completionDate", label: "Year of construction or expected delivery" },
+  { key: "internalSqm", label: "Internal m²" },
+  { key: "mirpesetSqm", label: "Mirpeset size" },
+  { key: "priceNis", label: "Asking price" },
+  { key: "sellerType", label: "Seller type" },
+  { key: "ceilingCm", label: "Ceiling height" },
+  { key: "parkingSpots", label: "Parking spots" },
+  { key: "machsanSqm", label: "Machsan size" },
+  { key: "machsanLocation", label: "Machsan location" },
+  { key: "direction", label: "Apartment direction" },
+  { key: "mirpesetDirection", label: "Mirpeset direction" },
+  { key: "totalFloors", label: "Building stories" },
+  { key: "buildingUnits", label: "Total building units" },
+  { key: "floor", label: "Apartment floor" },
+];
+/** Labels of the complete-ticket fields still blank on an apartment. Empty means complete. */
+export function apartmentMissing(a: Record<string, unknown>): string[] {
+  return IL_COMPLETE_FIELDS.filter(({ key }) => {
+    const v = a[key];
+    if (v == null || v === "") return true;
+    if (typeof v === "string" && (key === "direction" || key === "mirpesetDirection")) return parseJsonList(v).length === 0;
+    return false;
+  }).map((f) => f.label);
+}
+
+/** The year in "2016" or "06/2027" or "Q2 2028"; null when there is none. */
+export const yearOf = (s: string | null | undefined): number | null => {
+  const m = s?.match(/(19|20)\d{2}/);
+  return m ? Number(m[0]) : null;
+};
