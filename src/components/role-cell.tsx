@@ -5,32 +5,39 @@ import { ROLES } from "@/lib/taxonomy";
 import { RoleChips } from "./ui";
 import { setCompanyRoles } from "@/app/companies/actions";
 
-/** Roles in a list row: click to tick roles; saves as you tick (or queues a proposal for Jonathan if you are not him). */
+/** Roles in a list row: click to tick, saves once when the list closes (or queues a proposal for Jonathan if you are not him). */
 export function RoleCell({ companyId, roles }: { companyId: string; roles: string }) {
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<string[]>(() => JSON.parse(roles || "[]"));
+  const saved = useRef<string[]>(JSON.parse(roles || "[]"));
   const [note, setNote] = useState<string | null>(null);
   const [, start] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
 
-  const toggle = (r: string) => {
-    const next = sel.includes(r) ? sel.filter((x) => x !== r) : [...sel, r];
-    setSel(next);
+  const close = () => {
+    setOpen(false);
+    const changed = sel.length !== saved.current.length || sel.some((x) => !saved.current.includes(x));
+    if (!changed) return;
+    saved.current = sel;
     start(async () => {
-      const res = await setCompanyRoles(companyId, next);
-      setNote(res.proposed ? "sent to Jonathan" : null);
+      const res = await setCompanyRoles(companyId, sel);
+      setNote(res.proposed ? "sent to Jonathan" : "saved");
+      setTimeout(() => setNote(null), 2000);
     });
   };
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && close();
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, sel]);
+
+  const toggle = (r: string) => setSel((s) => (s.includes(r) ? s.filter((x) => x !== r) : [...s, r]));
 
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="flex min-h-[22px] items-center gap-1 rounded px-1 text-left hover:bg-cream" title="Click to change roles">
+      <button type="button" onClick={() => (open ? close() : setOpen(true))} className="flex min-h-[22px] items-center gap-1 rounded px-1 text-left hover:bg-cream" title="Click to change roles">
         {sel.length ? <RoleChips roles={JSON.stringify(sel)} /> : <span className="text-muted">—</span>}
         {note && <span className="ml-1 text-[10px] text-muted">{note}</span>}
       </button>
@@ -42,6 +49,9 @@ export function RoleCell({ companyId, roles }: { companyId: string; roles: strin
               {r}
             </label>
           ))}
+          <button type="button" className="mt-1 w-full rounded bg-ink px-2 py-1 text-xs text-white" onClick={close}>
+            Done
+          </button>
         </div>
       )}
     </div>
