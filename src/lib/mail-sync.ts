@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db";
 import { houseSubjectMatches, subjectLooselyMatchesDeal, subjectMatchesDeal } from "@/lib/deal-match";
 import { noteDealSent } from "@/lib/deal-outbound";
-import { DEPARTURE_SUBJECT, noteDepartureIfAny } from "@/lib/departures";
+import { DEPARTURE_SUBJECT, HUMAN_DEPARTURE, noteDepartureIfAny } from "@/lib/departures";
+import { emailHtmlToText } from "@/lib/attachments";
 import { graph, graphConfigured, type GraphMessage } from "@/lib/graph";
 import { domainOf } from "@/lib/domains";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
@@ -19,6 +20,21 @@ const PAGE = 50;
 
 type Party = { name?: string; address: string };
 type Msg = GraphMessage & { internetMessageId?: string; bodyPreview?: string; ccRecipients?: { emailAddress: Party }[]; hasAttachments?: boolean };
+
+/** Worth a departure check: an auto-reply or bounce subject, or a preview that reads like "no longer with the firm" (a colleague answering a blast). */
+const departureHint = (m: Msg) => DEPARTURE_SUBJECT.test((m.subject ?? "").trim()) || HUMAN_DEPARTURE.test(m.bodyPreview ?? "");
+/** The whole message, not the 255-character preview: the replacement's name and email are usually a line or two down. */
+async function departureText(mailbox: string, m: Msg): Promise<string> {
+  try {
+    const full = await graph<{ body?: { contentType: string; content: string } }>(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(m.id)}?$select=body`);
+    const c = full.body?.content ?? "";
+    const text = full.body?.contentType?.toLowerCase() === "html" ? emailHtmlToText(c) : c;
+    // the quoted original below the reply would name the very people we wrote to; keep what the replier wrote
+    return (text.split(/\n\s*(?:From:|-----Original Message-----|On .{5,80} wrote:)/i)[0] || text).slice(0, 6000) || m.bodyPreview || "";
+  } catch {
+    return m.bodyPreview ?? "";
+  }
+}
 
 const q = (s: string) => encodeURIComponent(s);
 const isInternal = (addr: string) => INTERNAL.has(addr.toLowerCase().split("@")[1] ?? "");
@@ -106,10 +122,10 @@ export async function syncMailbox(mailbox: string): Promise<{ scanned: number; l
     }
     if (!contactId && !companyId) {
       // a bounce or auto-reply from a mail system about someone we know: "so-and-so is no longer with the firm"
-      if (!outbound && DEPARTURE_SUBJECT.test((m.subject ?? "").trim())) await noteDepartureIfAny({ subject: m.subject ?? null, text: m.bodyPreview ?? null, fromAddress: from?.address ?? null, contactId: null, messageId: m.internetMessageId ?? null }).catch(() => 0);
+      if (!outbound && departureHint(m)) await noteDepartureIfAny({ subject: m.subject ?? null, text: await departureText(mailbox, m), fromAddress: from?.address ?? null, contactId: null, messageId: m.internetMessageId ?? null }).catch(() => 0);
       continue; // nobody we track
     }
-    if (!outbound && DEPARTURE_SUBJECT.test((m.subject ?? "").trim())) await noteDepartureIfAny({ subject: m.subject ?? null, text: m.bodyPreview ?? null, fromAddress: from?.address ?? null, contactId, messageId: m.internetMessageId ?? null }).catch(() => 0);
+    if (!outbound && departureHint(m)) await noteDepartureIfAny({ subject: m.subject ?? null, text: await departureText(mailbox, m), fromAddress: from?.address ?? null, contactId, messageId: m.internetMessageId ?? null }).catch(() => 0);
 
     const when = new Date(m.sentDateTime ?? m.receivedDateTime ?? Date.now());
     const sentDeal = dealFor(m.subject ?? "", contactId, companyId);

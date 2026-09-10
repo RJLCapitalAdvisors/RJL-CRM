@@ -48,7 +48,7 @@ export async function POST(req: Request) {
   const raw = await req.text();
   if (!verifySvix(raw, req.headers, secret)) return new Response("Bad signature", { status: 401 });
 
-  const event = JSON.parse(raw) as { type: string; data: { email_id: string; from: string; to: string[]; subject: string; attachments?: { filename?: string }[] } };
+  const event = JSON.parse(raw) as { type: string; data: { email_id: string; from: string; to: string[]; subject: string; attachments?: { filename?: string }[]; bounce?: { message?: string } } };
   // delivery events on blasts: opened / bounced / complained, matched by the provider id we stored when sending
   if (event.type !== "email.received") {
     const { prisma } = await import("@/lib/db");
@@ -60,6 +60,8 @@ export async function POST(req: Request) {
       else if (event.type === "email.bounced") {
         await prisma.campaignRecipient.update({ where: { id: rec.id }, data: { status: "BOUNCED", nextFollowUpAt: null, error: "bounced" } });
         await prisma.contact.update({ where: { id: rec.contactId }, data: { bounceReason: "hard bounce (Resend)" } }).catch(() => null);
+        const { proposeContactRemoval } = await import("@/lib/departures");
+        await proposeContactRemoval(rec.contactId, `Email blast bounced: ${String(event.data?.bounce?.message ?? event.data?.to ?? "address rejected")}`, rid ?? null).catch(() => null);
       } else if (event.type === "email.complained") {
         await prisma.campaignRecipient.update({ where: { id: rec.id }, data: { status: "UNSUBSCRIBED", nextFollowUpAt: null } });
         await prisma.contact.update({ where: { id: rec.contactId }, data: { unsubscribed: true } }).catch(() => null);
