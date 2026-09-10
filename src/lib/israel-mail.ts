@@ -15,17 +15,30 @@ import { ISRAEL_MAILBOX } from "@/lib/israel-intake";
 
 const INTERNAL = new Set(["rjlisrael.com", "rjlcapadvisors.com", "rjlequities.com", (process.env.ISRAEL_DEALS_MAILBOX ?? "").split("@")[1]?.toLowerCase() ?? "rjlisrael.com"]);
 const IL_FREE_MAIL = new Set([...FREE_MAIL, "walla.co.il", "walla.com", "bezeqint.net", "012.net.il", "013.net", "013net.net", "netvision.net.il", "smile.net.il", "zahav.net.il", "017.net.il", "nana.co.il", "nana10.co.il", "hotmail.co.il", "yahoo.co.il", "outlook.co.il", "live.co.il"]);
-const MAILER = /^(no-?reply|noreply|donotreply|do-not-reply|notifications?|mailer-daemon|postmaster|bounce|newsletter|marketing|info@|support@|alerts?@|calendar-notification)/i;
+// senders that are systems, not people: notifications, newsletters, receipts, marketing
+const MAILER = /^(no-?reply|noreply|donotreply|do-not-reply|notifications?|notify|mailer-daemon|postmaster|bounces?|newsletters?|marketing|news|updates?|digest|hello|team|community|alerts?|calendar-notification|invitations?|receipts?|billing|security|account|welcome|feedback|survey|promo|offers?|unsubscribe|reply)[@._+-]/i;
+// domains that only ever send automated mail
+const BULK_LIST = ["instagram.com", "facebookmail.com", "facebook.com", "linkedin.com", "twitter.com", "x.com", "tiktok.com", "youtube.com", "google.com", "googlemail.com", "microsoft.com", "microsoftonline.com", "office.com", "office365.com", "apple.com", "amazon.com", "amazonses.com", "paypal.com", "stripe.com", "zoom.us", "calendly.com", "docusign.net", "docusign.com", "dropbox.com", "dropboxmail.com", "hubspot.com", "hubspotemail.net", "mailchimp.com", "mailchimpapp.net", "mcsv.net", "sendgrid.net", "constantcontact.com", "substack.com", "beehiiv.com", "medium.com", "wix.com", "godaddy.com", "whatsapp.com", "waze.com", "uber.com", "yad2.co.il", "madlan.co.il", "homeless.co.il", "gov.il", "bezeq.co.il", "cellcom.co.il", "partner.co.il", "hot.net.il", "leumi.co.il", "bankhapoalim.co.il", "discountbank.co.il", "mizrahi-tefahot.co.il", "isracard.co.il", "cal-online.co.il", "max.co.il", "pango.co.il", "10bis.co.il", "wolt.com", "shufersal.co.il", "elal.co.il", "elal.com", "booking.com", "airbnb.com", "expedia.com", "fireflies.ai", "otter.ai", "notion.so", "slack.com", "atlassian.com", "github.com", "vercel.com", "anthropic.com", "openai.com"];
+const isBulkDomain = (d: string) => BULK_LIST.some((b) => d === b || d.endsWith("." + b));
 const FIRST_SYNC_DAYS = 120;
 const PAGE = 50;
 const q = (s: string) => encodeURIComponent(s);
 
 type Party = { name?: string; address: string };
-type Msg = GraphMessage & { bodyPreview?: string; ccRecipients?: { emailAddress: Party }[] };
+type Msg = GraphMessage & { bodyPreview?: string; ccRecipients?: { emailAddress: Party }[]; inferenceClassification?: "focused" | "other"; replyTo?: { emailAddress: Party }[] };
+/** Bulk mail by its shape: Outlook filed it under Other, or it carries a marketing subject, or the sender's display name is a brand line. */
+const BULK_WORDS = /\b(unsubscribe|newsletter|weekly (highlights|update|digest)|performance update|webinar|you're invited|% off|sale ends|limited time|new listings? (this|for you)|your (order|receipt|invoice|statement|password|verification code)|verify your|confirm your|sign[- ]?in attempt|security alert)\b/i;
+const looksBulk = (m: Msg) => m.inferenceClassification === "other" || BULK_WORDS.test(`${m.subject ?? ""} ${m.bodyPreview ?? ""}`);
 
 const domainOf = (a: string) => a.toLowerCase().split("@")[1] ?? "";
 const isInternal = (a: string) => INTERNAL.has(domainOf(a));
-const isMailer = (a: string) => MAILER.test(a.toLowerCase());
+const isMailer = (a: string) => MAILER.test(a.toLowerCase()) || isBulkDomain(domainOf(a));
+/** "mail.instagram.com" -> "instagram.com"; "x.co.il" keeps its three labels. */
+const rootDomain = (d: string) => {
+  const parts = d.split(".");
+  const two = /^(co|org|net|ac|gov|muni|k12)$/.test(parts[parts.length - 2] ?? "") && parts.length > 2 ? 3 : 2;
+  return parts.slice(-two).join(".");
+};
 
 /** The mailboxes that belong to RJL Israel: each person's registered Israel address and the deals mailbox. */
 export async function israelMailboxes(): Promise<string[]> {
@@ -39,7 +52,7 @@ export const israelMailConfigured = () => israelGraphConfigured() || graphConfig
 
 async function pageThrough(mailbox: string, folder: "sentitems" | "inbox", since: Date): Promise<Msg[]> {
   const out: Msg[] = [];
-  let url: string | null = `/users/${q(mailbox)}/mailFolders/${folder}/messages?$filter=receivedDateTime ge ${since.toISOString()}&$orderby=receivedDateTime desc&$top=${PAGE}&$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,sentDateTime,from,toRecipients,ccRecipients,hasAttachments,isDraft`;
+  let url: string | null = `/users/${q(mailbox)}/mailFolders/${folder}/messages?$filter=receivedDateTime ge ${since.toISOString()}&$orderby=receivedDateTime desc&$top=${PAGE}&$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,sentDateTime,from,toRecipients,ccRecipients,hasAttachments,isDraft,inferenceClassification`;
   while (url && out.length < 2000) {
     const r: { value: Msg[]; "@odata.nextLink"?: string } = await graph(url);
     out.push(...r.value.filter((m) => !m.isDraft));
@@ -65,6 +78,8 @@ const splitName = (display: string | undefined, address: string): { firstName: s
 /** The company behind an email domain, created on first sight and named after the domain. Free-mail addresses have none. */
 async function companyForDomain(domain: string): Promise<string | null> {
   if (!domain || IL_FREE_MAIL.has(domain)) return null;
+  domain = rootDomain(domain);
+  if (IL_FREE_MAIL.has(domain)) return null;
   const existing = (await prisma.ilCompany.findFirst({ where: { domain }, select: { id: true } })) ?? (await prisma.ilCompany.findFirst({ where: { website: { contains: domain, mode: "insensitive" } }, select: { id: true } }));
   if (existing) {
     await prisma.ilCompany.updateMany({ where: { id: existing.id, domain: null }, data: { domain } });
@@ -103,6 +118,9 @@ export async function syncIsraelMailbox(mailbox: string): Promise<{ scanned: num
   const since = last ? new Date(last.getTime() - OVERLAP_MS) : new Date(Date.now() - FIRST_SYNC_DAYS * 86_400_000);
   const startedAt = new Date();
   const [sent, inbox] = await Promise.all([pageThrough(mailbox, "sentitems", since), pageThrough(mailbox, "inbox", since)]);
+  // Sent Items first: the people we write to are the ones who become contacts. An inbound email from someone we
+  // never wrote to is logged only when it is a reply to us; a first email from a stranger (marketing, listings
+  // blasts, event invitations) waits until we answer it.
   const messages = [...sent, ...inbox];
 
   let logged = 0;
@@ -117,10 +135,19 @@ export async function syncIsraelMailbox(mailbox: string): Promise<{ scanned: num
     if (!external.length) continue; // internal chatter, or a mailer
     const outbound = from ? isInternal(from.address) : false;
     if (!outbound && from && isMailer(from.address)) continue; // notifications and bounces are not people
+    if (!outbound && looksBulk(m)) continue; // newsletters and marketing are not conversations
+    // an inbound email that was not addressed to this mailbox (a list, a bcc blast) is not a conversation either
+    if (!outbound && ![...to, ...cc].some((p) => p.address.toLowerCase() === mailbox.toLowerCase() || isInternal(p.address))) continue;
 
     // the person this email is about: the sender when it came in, the first outside recipient when we wrote it
     const ordered = outbound ? external : [from!, ...external.filter((p) => p.address !== from!.address)];
     const person = ordered[0];
+    if (!outbound) {
+      if (external.length > 6) continue; // a blast to a list
+      const known = await prisma.ilContact.findFirst({ where: { email: { equals: person.address, mode: "insensitive" } }, select: { id: true } });
+      const isReply = /^\s*(re|fwd?|fw|תגובה|השב|הועבר)\s*:/i.test(m.subject ?? "");
+      if (!known && !isReply) continue; // a stranger's first email: wait until we answer
+    }
     const { id: contactId, companyId } = await contactFor(person);
     const when = new Date(m.sentDateTime ?? m.receivedDateTime ?? Date.now());
     await prisma.ilActivity.create({
