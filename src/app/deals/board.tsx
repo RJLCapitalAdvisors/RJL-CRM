@@ -50,6 +50,13 @@ export function Board({ deals: initial, counts, preview }: { deals: BoardDeal[];
     });
   }
 
+  // "Move to Deal Lost" on a card: same as dragging it to the Deal Lost column, one click
+  const markLost = (id: string) => {
+    setDeals((ds) => ds.map((d) => (d.id === id ? { ...d, stage: "Deal Lost", updatedAt: new Date().toISOString() } : d)));
+    startTransition(() => {
+      moveDeal(id, "Deal Lost").catch(() => setDeals(initial));
+    });
+  };
   const active = activeId ? deals.find((d) => d.id === activeId) : null;
 
   return (
@@ -58,7 +65,7 @@ export function Board({ deals: initial, counts, preview }: { deals: BoardDeal[];
         {BOARD_ORDER.map((stage) => {
           const items = deals.filter((d) => d.stage === stage);
           const total = counts[stage] ?? items.length;
-          return <Column key={stage} stage={stage} deals={items} total={total} truncated={total > items.length} preview={preview} />;
+          return <Column key={stage} stage={stage} deals={items} total={total} truncated={total > items.length} preview={preview} onLost={markLost} />;
         })}
       </div>
       <DragOverlay>{active ? <Card deal={active} overlay /> : null}</DragOverlay>
@@ -66,7 +73,7 @@ export function Board({ deals: initial, counts, preview }: { deals: BoardDeal[];
   );
 }
 
-function Column({ stage, deals, total, truncated, preview }: { stage: string; deals: BoardDeal[]; total: number; truncated: boolean; preview: number }) {
+function Column({ stage, deals, total, truncated, preview, onLost }: { stage: string; deals: BoardDeal[]; total: number; truncated: boolean; preview: number; onLost: (id: string) => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const terminal = stage === "Deal Closed" || stage === "Deal Lost";
   const sum = deals.reduce((n, d) => n + (d.requestedAmount ?? 0), 0);
@@ -84,7 +91,7 @@ function Column({ stage, deals, total, truncated, preview }: { stage: string; de
       </div>
       <div className="flex-1 space-y-2 overflow-y-auto px-2 pb-2">
         {deals.map((d) => (
-          <Card key={d.id} deal={d} />
+          <Card key={d.id} deal={d} onLost={onLost} />
         ))}
         {deals.length === 0 && <div className="rounded-md border border-dashed border-line px-3 py-6 text-center text-xs text-muted">Drop a deal here</div>}
         {truncated && (
@@ -97,7 +104,7 @@ function Column({ stage, deals, total, truncated, preview }: { stage: string; de
   );
 }
 
-function Card({ deal, overlay = false }: { deal: BoardDeal; overlay?: boolean }) {
+function Card({ deal, overlay = false, onLost }: { deal: BoardDeal; overlay?: boolean; onLost?: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal.id, disabled: overlay });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
   const router = useRouter();
@@ -141,6 +148,20 @@ function Card({ deal, overlay = false }: { deal: BoardDeal; overlay?: boolean })
         <span className="truncate">{deal.ownerName ?? "Unassigned"}</span>
         <span>{deal.closeDate ? fmtDate(deal.closeDate) : fmtDate(deal.updatedAt)}</span>
       </div>
+      {onLost && deal.stage !== "Deal Lost" && deal.stage !== "Deal Closed" && (
+        <button
+          type="button"
+          className="mt-2 w-full rounded-md border border-line px-2 py-1 text-[11px] text-muted hover:border-stone-300 hover:bg-stone-100 hover:text-ink"
+          title="Move this deal to Deal Lost; it leaves Deal momentum and LP follow-ups"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (window.confirm(`Move "${title}" to Deal Lost?`)) onLost(deal.id);
+          }}
+        >
+          Move to Deal Lost
+        </button>
+      )}
     </div>
   );
 }
