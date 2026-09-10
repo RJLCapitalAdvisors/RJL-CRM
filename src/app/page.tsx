@@ -19,7 +19,7 @@ export const metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
 
 const DAY = 86_400_000;
-/** An LP gets this long to respond to a deal (or a follow-up) before they show up as quiet. */
+/** An LP gets this many calendar days to respond to a deal (or a follow-up) before they show up as quiet: sent Monday, quiet from Wednesday morning. */
 const QUIET_AFTER_DAYS = 2;
 /** The dashboard starts the clock here: anything that began before this date stays off (the old backlog lives on the report and deal pages). */
 const HOME_SINCE = new Date("2026-08-31T00:00:00Z");
@@ -29,7 +29,12 @@ const KIND: Record<string, string> = { LP_ASK: "LP request for the sponsor", ENG
 /** LPs who were sent a deal (or followed up with) and have said nothing for QUIET_AFTER_DAYS, grouped by deal. */
 async function quietInvestors() {
   await syncFollowUpDrafts().catch(() => 0);
-  const cutoff = new Date(Date.now() - QUIET_AFTER_DAYS * DAY);
+  // calendar days in New York, not 48 hours: a deal sent Monday afternoon shows its quiet LPs Wednesday morning
+  const now = new Date();
+  const nyWall = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" })); // New York wall clock, read as if it were UTC
+  const offset = now.getTime() - nyWall.getTime() + (nyWall.getTime() - Date.UTC(nyWall.getFullYear(), nyWall.getMonth(), nyWall.getDate(), nyWall.getHours(), nyWall.getMinutes(), nyWall.getSeconds()));
+  const nyMidnight = Date.UTC(nyWall.getFullYear(), nyWall.getMonth(), nyWall.getDate()) + offset; // the instant today began in New York
+  const cutoff = new Date(nyMidnight - (QUIET_AFTER_DAYS - 1) * DAY);
   const rows = await prisma.dealInvestor.findMany({
     where: { status: { in: [2, 3] }, updatedAt: { lt: cutoff, gte: HOME_SINCE }, deal: { stage: { in: [...ACTIVE_STAGES] } } },
     include: { contact: { include: { company: { select: { name: true } } } }, deal: { select: { id: true, name: true, propertyName: true } } },
