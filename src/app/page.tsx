@@ -9,7 +9,8 @@ import { syncFollowUpDrafts } from "@/lib/followup";
 import { EXTRA_FIELD_LABELS, PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
 import { STALE_DAYS, staleDeals } from "@/lib/stale-deals";
 import { possibleDuplicates } from "@/lib/deal-dedupe";
-import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction , handleStaleDeal } from "./todo-actions";
+import { reportsDue, type ReportDue } from "@/lib/report-due";
+import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction , handleStaleDeal , openReportDraftAction, markReportSentAction } from "./todo-actions";
 import { DraftButton } from "./draft-button";
 import { listMomentum } from "@/lib/momentum";
 import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
@@ -79,7 +80,7 @@ export default async function Dashboard() {
     });
   }
   const showCriteria = Boolean(me?.canEditCriteria);
-  const [proposals, quiet, momentum, intros, readyDeals, stale, dupes] = await Promise.all([
+  const [proposals, quiet, momentum, intros, readyDeals, stale, dupes, reports] = await Promise.all([
     showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING", createdAt: { gte: HOME_SINCE } }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]),
     quietInvestors(),
     listMomentum(HOME_SINCE),
@@ -87,6 +88,7 @@ export default async function Dashboard() {
     prisma.deal.findMany({ where: { stage: "Engagement Letter Signed" }, include: { owner: { select: { name: true } }, _count: { select: { investors: true } } }, orderBy: { updatedAt: "desc" } }),
     showCriteria ? staleDeals() : Promise.resolve([]),
     showCriteria ? possibleDuplicates() : Promise.resolve([]),
+    reportsDue().catch(() => [] as ReportDue[]),
   ]);
 
   const companies = new Map((await prisma.company.findMany({ where: { id: { in: proposals.map((p) => p.companyId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
@@ -97,7 +99,7 @@ export default async function Dashboard() {
 
   return (
     <>
-      <PageHeader compact title="Dashboard" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP follow-ups · ${momentum.length} momentum · ${intros.length} intros to reconsider · ${readyDeals.length} ready to launch${showCriteria ? ` · ${proposals.length + stale.length + dupes.length} data updates` : ""}`} />
+      <PageHeader compact title="Dashboard" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP follow-ups · ${momentum.length} momentum · ${intros.length} intros to reconsider · ${readyDeals.length + reports.length} ready for launch${showCriteria ? ` · ${proposals.length + stale.length + dupes.length} data updates` : ""}`} />
       <div className={`grid gap-3 px-5 py-4 md:grid-cols-2 xl:grid-cols-3 ${cols}`}>
         <Window title="LP follow-ups" count={quietCount} empty={`Everyone you have sent a deal to has responded, or got it less than ${QUIET_AFTER_DAYS} days ago.`}>
           <ul className="divide-y divide-line">
@@ -193,7 +195,36 @@ export default async function Dashboard() {
           </ul>
         </Window>
 
-        <Window title="Deals ready for launch" count={readyDeals.length} empty="A deal shows up here the moment its engagement letter is marked signed, whoever owns it.">
+        <Window title="Ready for launch" count={readyDeals.length + reports.length} empty="A deal shows up here the moment its engagement letter is marked signed, and a live deal whose progress report changed shows up when its report is due (every other day, and Thursdays at 4:30).">
+          {reports.length > 0 && (
+            <div className="border-b border-line bg-cream-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+              Progress reports due ({reports.length}) · every other day and Thursdays 4:30, only when the report changed
+            </div>
+          )}
+          <ul className="divide-y divide-line">
+            {reports.map((r) => (
+              <li key={`report-${r.id}`} className="px-3 py-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <Link href={`/deals/${r.id}/tracker`} className="font-semibold hover:underline">
+                      {r.name}
+                    </Link>
+                    <div className="truncate text-xs text-muted">
+                      {r.sponsorName ?? "Sponsor"} · {r.changedSince} of {r.groups} groups changed · {r.reason}
+                      {r.lastSentAt ? ` · last sent ${r.lastSentAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+                    </div>
+                  </div>
+                  <DraftButton label="Handle" action={openReportDraftAction.bind(null, r.id)} title="Reply all on your latest exchange with the sponsor, the fresh progress report attached" />
+                </div>
+                <form action={markReportSentAction.bind(null, r.id)} className="mt-1">
+                  <button type="submit" className="text-[11px] text-muted hover:underline" title="You already sent it another way; restart the clock">
+                    Sent already
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+          {readyDeals.length > 0 && reports.length > 0 && <div className="border-b border-t border-line bg-cream-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Engagement letter signed, ready to send</div>}
           <ul className="divide-y divide-line">
             {readyDeals.map((d) => (
               <li key={d.id} className="flex items-center justify-between gap-2 px-3 py-2.5">

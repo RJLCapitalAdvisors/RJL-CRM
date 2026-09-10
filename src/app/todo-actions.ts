@@ -327,3 +327,18 @@ export async function handleStaleDeal(dealId: string) {
     return { ok: false as const, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
   }
 }
+
+// ---------- progress reports due (Ready for launch) ----------
+export async function openReportDraftAction(dealId: string) {
+  const me = await currentUser();
+  if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
+  const { openReportDraft } = await import("@/lib/report-due");
+  const r = await openReportDraft(dealId, me.email).catch((e) => ({ ok: false as const, reason: String(e instanceof Error ? e.message : e).slice(0, 200) }));
+  revalidatePath("/");
+  return r;
+}
+/** Sent by hand already: restart the clock without a draft. */
+export async function markReportSentAction(dealId: string) {
+  await prisma.deal.update({ where: { id: dealId }, data: { reportSentAt: new Date(), reportDraftId: null, reportDraftMailbox: null, reportDraftAt: null } });
+  revalidatePath("/");
+}

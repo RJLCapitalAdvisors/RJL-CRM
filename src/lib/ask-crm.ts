@@ -71,7 +71,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "dashboard",
-    description: "What the Dashboard shows right now: quiet LP follow-ups, deal momentum items (sponsor items, LP requests, engagement letters), intros to reconsider, deals ready for launch, pending data updates.",
+    description: "What the Dashboard shows right now: quiet LP follow-ups, deal momentum items (sponsor items, LP requests, engagement letters), intros to reconsider, ready for launch (signed deals and progress reports due), pending data updates.",
     input_schema: { type: "object", properties: {} },
   },
   {
