@@ -155,7 +155,7 @@ export async function syncFollowUpDrafts(): Promise<number> {
   if (!graphConfigured()) return 0;
   import("@/lib/engagement").then((m) => m.syncEngagementDrafts().catch(() => 0)).catch(() => 0);
   import("@/lib/send-deal").then((m) => m.syncSendDrafts().catch(() => 0)).catch(() => 0);
-  const rows = await prisma.dealInvestor.findMany({ where: { followUpDraftId: { not: null } }, select: { id: true, status: true, followUpDraftId: true, followUpMailbox: true, contactId: true, dealId: true } });
+  const rows = await prisma.dealInvestor.findMany({ where: { followUpDraftId: { not: null } }, select: { id: true, status: true, followUpDraftId: true, followUpDraftAt: true, followUpMailbox: true, contactId: true, dealId: true, contact: { select: { email: true } } } });
   let sent = 0;
   await Promise.all(
     rows.map(async (r) => {
@@ -163,10 +163,16 @@ export async function syncFollowUpDrafts(): Promise<number> {
         const m = await getMessage(r.followUpMailbox!, r.followUpDraftId!, "id,isDraft,sentDateTime,subject");
         if (m.isDraft) {
           // replied from Outlook directly (local reply-all): any outbound email to this LP since the click counts
-          const since = (await prisma.dealInvestor.findUnique({ where: { id: r.id }, select: { followUpDraftAt: true } }))?.followUpDraftAt;
-          const local = since ? await prisma.activity.findFirst({ where: { contactId: r.contactId, type: "EMAIL", direction: "OUTBOUND", occurredAt: { gt: since } }, orderBy: { occurredAt: "desc" } }) : null;
-          if (!local) return;
-          await prisma.dealInvestor.update({ where: { id: r.id }, data: { status: Math.max(r.status, 3), followUpDismissedAt: null, followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null, updatedAt: local.occurredAt } });
+          const since = r.followUpDraftAt;
+          let sentAt: Date | null = since ? (await prisma.activity.findFirst({ where: { contactId: r.contactId, type: "EMAIL", direction: "OUTBOUND", occurredAt: { gt: since } }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } }))?.occurredAt ?? null : null;
+          // the email log may not have caught up yet: ask Sent Items itself for anything to this person since the click
+          if (!sentAt && since && r.contact.email) {
+            const sent = await sentMessagesTo(r.followUpMailbox!, r.contact.email, 5).catch(() => [] as { sentDateTime?: string }[]);
+            const hit = sent.find((x) => x.sentDateTime && new Date(x.sentDateTime) > since);
+            if (hit?.sentDateTime) sentAt = new Date(hit.sentDateTime);
+          }
+          if (!sentAt) return;
+          await prisma.dealInvestor.update({ where: { id: r.id }, data: { status: Math.max(r.status, 3), followUpDismissedAt: null, followUpDraftId: null, followUpDraftAt: null, followUpMailbox: null, updatedAt: sentAt } });
           await graph(`/users/${encodeURIComponent(r.followUpMailbox!)}/messages/${encodeURIComponent(r.followUpDraftId!)}`, { method: "DELETE" }).catch(() => {}); // the unused server draft
           sent++;
           return;

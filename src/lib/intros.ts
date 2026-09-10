@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { graph, graphConfigured } from "@/lib/graph";
+import { graph, graphConfigured, sentMessagesTo } from "@/lib/graph";
 
 /**
  * Intros to reconsider. Every "Intro - Company A | Company B" email any of us sent is an introduction we
@@ -106,15 +106,55 @@ export async function quietIntros(since = new Date(Date.now() - INTRO_WINDOW_DAY
   const rows = await prisma.intro.findMany({ where: { status: "OPEN", lastActivityAt: { gte: since }, OR: [{ lastActivityAt: { lt: cutoff } }, { replies: 0, introducedAt: { lt: unanswered } }] }, orderBy: { lastActivityAt: "desc" } });
   const seen = new Map<string, (typeof rows)[number]>();
   for (const r of rows) {
+    const recips = (JSON.parse(r.recipients || "[]") as string[]).map((x) => x.toLowerCase());
+    // traction: the two sides of the intro are now on a live deal together (sponsor and an LP taking a look or further). Retired for good.
+    if (await introHasTraction(recips)) {
+      await prisma.intro.update({ where: { id: r.id }, data: { status: "DONE" } }).catch(() => null);
+      continue;
+    }
     if (r.handledAt) {
-      const recips = (JSON.parse(r.recipients || "[]") as string[]).map((x) => x.toLowerCase());
-      const replied = recips.length
-        ? await prisma.activity.findFirst({ where: { type: "EMAIL", direction: "OUTBOUND", occurredAt: { gt: r.handledAt }, contact: { email: { in: recips } } }, select: { id: true } })
+      const logged = recips.length
+        ? await prisma.activity.findFirst({ where: { type: "EMAIL", direction: "OUTBOUND", occurredAt: { gt: r.handledAt }, contact: { email: { in: recips } } }, select: { occurredAt: true } })
         : null;
-      if (replied) continue; // gone once the reply is in Sent Items; until then it stays, marked handled
+      let sentAt: Date | null = logged?.occurredAt ?? null;
+      if (!sentAt && graphConfigured()) {
+        // Sent Items itself, so the item goes the moment the email is sent, not when the log catches up
+        for (const to of recips.slice(0, 3)) {
+          const sent = await sentMessagesTo(r.mailbox, to, 5).catch(() => [] as { sentDateTime?: string }[]);
+          const hit = sent.find((x) => x.sentDateTime && new Date(x.sentDateTime) > r.handledAt!);
+          if (hit?.sentDateTime) {
+            sentAt = new Date(hit.sentDateTime);
+            break;
+          }
+        }
+      }
+      if (sentAt) {
+        // the thread moved: quiet clock restarts from the reply, and the intro comes back only after QUIET_INTRO_DAYS of silence
+        await prisma.intro.update({ where: { id: r.id }, data: { lastActivityAt: sentAt, replies: { increment: 1 }, handledAt: null } }).catch(() => null);
+        continue;
+      }
     }
     const key = r.subject.toLowerCase().replace(/^s*intros*[-:–—]?s*/, "").replace(/s+/g, " ").trim();
     if (!seen.has(key)) seen.set(key, r);
   }
   return [...seen.values()];
+}
+
+
+/**
+ * An intro has traction when the people on it are now on a live deal together: one recipient's firm sponsors an
+ * active deal and someone at another recipient's firm sits on that deal's progress report at Taking a look or
+ * better. Such an intro never comes back to the dashboard.
+ */
+async function introHasTraction(recipients: string[]): Promise<boolean> {
+  const domains = [...new Set(recipients.map((e) => e.split("@")[1]).filter((d): d is string => Boolean(d) && !/rjlcapadvisors|rjlequities/i.test(d)))];
+  if (domains.length < 2) return false;
+  const companies = await prisma.company.findMany({ where: { domain: { in: domains } }, select: { id: true, domain: true } });
+  if (companies.length < 2) return false;
+  const ids = companies.map((c) => c.id);
+  const hit = await prisma.dealInvestor.findFirst({
+    where: { status: { gte: 4 }, deal: { stage: { notIn: ["Deal Lost", "Deal Closed"] }, sponsorCompanyId: { in: ids } }, contact: { companyId: { in: ids } } },
+    select: { id: true, deal: { select: { sponsorCompanyId: true } }, contact: { select: { companyId: true } } },
+  });
+  return Boolean(hit && hit.deal.sponsorCompanyId !== hit.contact.companyId);
 }

@@ -32,6 +32,7 @@ const KIND: Record<string, string> = { LP_ASK: "LP request for the sponsor", ENG
 
 /** LPs who were sent a deal (or followed up with) and have said nothing for QUIET_AFTER_DAYS, grouped by deal. */
 async function quietInvestors() {
+  await syncFollowUpDrafts().catch(() => 0); // a follow-up sent from Outlook drops off here at once
   // calendar days in New York, not 48 hours: a deal sent Monday afternoon shows its quiet LPs Wednesday morning
   const now = new Date();
   const nyWall = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" })); // New York wall clock, read as if it were UTC
@@ -75,7 +76,6 @@ export default async function Dashboard() {
     lastSync = Date.now();
     after(async () => {
       await syncRecentSent(me.email).catch(() => 0);
-      await syncFollowUpDrafts().catch(() => 0);
     });
   }
   const showCriteria = Boolean(me?.canEditCriteria);
