@@ -7,6 +7,7 @@ import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/r
 import { fmtDate, fullName } from "@/lib/format";
 import { statusOf } from "@/lib/tracker";
 import { addContactNote, updateContact } from "../actions";
+import { EmailLog } from "@/components/email-log";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -68,41 +69,19 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
         </>
       }
       center={
-        <div className="card">
-          <div className="border-b border-line px-4 py-3 text-sm font-semibold">Activity</div>
-          <form action={addNote} className="flex gap-2 border-b border-line p-3">
-            <input name="body" placeholder="Log a note…" className="input" />
-            <button className="btn-secondary" type="submit">
-              Add
-            </button>
-          </form>
-          <ul className="divide-y divide-line">
-            {contact.activities.map((a) => (
-              <li key={a.id} className="px-4 py-3 text-sm">
-                <div className="flex items-center justify-between text-xs text-muted">
-                  <span className="font-semibold uppercase tracking-wide">
-                    {a.type}
-                    {a.direction ? ` · ${a.direction.toLowerCase()}` : ""}
-                  </span>
-                  <span>{fmtDate(a.occurredAt)}</span>
-                </div>
-                {a.subject && <div className="mt-0.5 font-medium">{a.subject}</div>}
-                {a.body && <div className="mt-0.5 whitespace-pre-wrap text-ink-soft">{a.body}</div>}
-                {a.deal && (
-                  <Link href={`/deals/${a.deal.id}`} className="mt-1 block text-xs text-sky-600 hover:underline">
-                    {a.deal.propertyName ?? a.deal.name}
-                  </Link>
-                )}
-              </li>
-            ))}
-            {contact.activities.length === 0 && (
-              <li className="px-4 py-8 text-center text-sm text-muted">
-                No activity logged yet. Created {fmtDate(contact.createdAt)}
-                {contact.lastActivityAt && <> · last HubSpot activity {fmtDate(contact.lastActivityAt)}</>}. Emails you send appear here once Outlook is connected.
-              </li>
-            )}
-          </ul>
-        </div>
+        <EmailLog
+          rows={contact.activities}
+          title="Activity"
+          empty={`No activity logged yet. Created ${fmtDate(contact.createdAt)}. Emails any of the team sends or receives with this person show up here.`}
+          toolbar={
+            <form action={addNote} className="flex gap-2 border-b border-line p-3">
+              <input name="body" placeholder="Log a note…" className="input" />
+              <button className="btn-secondary" type="submit">
+                Add
+              </button>
+            </form>
+          }
+        />
       }
       right={
         <>

@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { houseText } from "@/lib/style";
+import { houseText, cleanBusinessPlan } from "@/lib/style";
 
 /**
  * Fireflies call transcripts. Before a deal's sponsor bio and business plan are final, look for calls with
@@ -82,7 +82,7 @@ export async function enrichFromCalls(dealId: string): Promise<{ calls: number; 
   if (!out) return { calls: calls.length, changed: false, facts: 0 };
   const data: { summary?: string | null; sponsorExperience?: string | null } = {};
   if (out.changed) {
-    const s = houseText(out.summary), b = houseText(out.sponsorExperience);
+    const s = cleanBusinessPlan(out.summary), b = houseText(out.sponsorExperience);
     if (s && s !== deal.summary) data.summary = s;
     if (b && b !== deal.sponsorExperience) data.sponsorExperience = b;
   }

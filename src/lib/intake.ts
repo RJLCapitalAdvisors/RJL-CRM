@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { houseText } from "@/lib/style";
+import { houseText, cleanBusinessPlan } from "@/lib/style";
 import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
 import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LOAN_TERMS, UNIT_MIXES } from "@/lib/taxonomy";
 import { CHECKLIST, missingFor, type DealLikeForChecklist } from "@/lib/checklist";
@@ -139,7 +139,7 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     state: t(o.state)?.toUpperCase() ?? null, assetClass: t(o.assetClass), strategy: (t(o.strategy) as ExtractedDeal["strategy"]) ?? null,
     requestType: (t(o.requestType) as ExtractedDeal["requestType"]) ?? null, requestedAmount: n(o.requestedAmount), purchasePrice: n(o.purchasePrice),
     totalEquity: n(o.totalEquity), ltv: n(o.ltv), loanTerm: t(o.loanTerm), equityMultiple: n(o.equityMultiple), occupancy: n(o.occupancy),
-    onMarket: o.onMarket === "on" ? true : o.onMarket === "off" ? false : null, sponsorExperience: t(o.sponsorExperience), summary: t(o.summary),
+    onMarket: o.onMarket === "on" ? true : o.onMarket === "off" ? false : null, sponsorExperience: t(o.sponsorExperience), summary: cleanBusinessPlan(t(o.summary)),
     details, contactName: t(o.contactName), contactEmail: t(o.contactEmail), confidenceNotes: t(o.confidenceNotes),
     units: n(o.units), squareFeet: n(o.squareFeet), yearBuilt: t(o.yearBuilt), unitMix: t(o.unitMix), totalCapitalization: n(o.totalCapitalization),
     totalDebt: n(o.totalDebt), executionType: t(o.executionType), interestRate: t(o.interestRate), lenderType: t(o.lenderType), irr: n(o.irr),
@@ -177,6 +177,12 @@ Read the email (including quoted/forwarded content) and fill the schema. Rules:
 - The subject line can be stale (a reply on an old thread, a forward under an old subject). Name and describe the deal from the attachments and the body; when they describe a different property than the subject, the attachments win.
 - When an Excel model is attached it is the source of truth for every number (price, capitalization, debt, equity, returns, yield on cost, cap rates, unit count, square feet, occupancy): models are updated after OMs and decks are printed. Take narrative, tenants and physical description from the OM. Where the OM and the model disagree, use the model and state the difference in confidenceNotes.
 - Square footage is always net rentable (NRSF, rentable area, GLA for retail); never gross building area, land or site area. Models usually show both; take the rentable figure.
+- Data source priority: every number is calculated from the Excel model directly, never from the OM, deck or sponsor talking points. One exception: a figure the sponsor states in the email body itself overrides the model; use it and flag it in confidenceNotes as a sponsor override.
+- LTC and LTV are almost always different numbers. Read both from the model explicitly (loan / total cost, loan / value); never assume they are equal or derive one from the other. If the model shows only one, leave the other blank and say so.
+- IRR and equity multiple are deal-level: the total equity cash flow before any LP/GP split. If the model only shows split-level (LP or GP) returns, compute deal-level from the total equity line and flag it in confidenceNotes, noting the LP-level figures separately there in case an investor asks.
+- Amortization comes from the model's cash flow sheet (the debt service rows); never assume it or carry it from another deal.
+- Stabilized year: do not default to Year 3 for yield on cost or cash-on-cash. Read the occupancy and cash-on-cash rows by year and use the first year the asset is at or near stabilization (Year 4 or 5 on lease-up heavy deals); say which year you used in confidenceNotes.
+- Model verification: when a model has several similarly labeled outputs (two different "stabilized" figures, two "total cost" cells), work out from the surrounding rows what each one divides or sums before trusting the label; when it stays ambiguous, leave the field blank and describe the ambiguity in confidenceNotes.
 - Use an empty string for anything not stated. Never invent numbers or facts. No placeholders: never write "TBD", "N/A", "unknown" or a guess; leave it blank and mention it in confidenceNotes.
 - Enum-like fields (seller profile, lender type, deal sourcing, lender, closing time frame): fill them only when the source documents state them explicitly. Never infer the closest match; if you are tempted to, leave it blank and say so in confidenceNotes.
 - Pad sale / outparcel rule: when the deal has scheduled pad or outparcel sales during the hold that pay down basis, yield on cost at stabilization must net those proceeds out of the denominator: (Stabilized NOI excluding pad income) / (Total Capitalization minus total pad sale net proceeds). Never divide by full total cap in that case; say in confidenceNotes that the pad sale rule was applied.

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { isSponsorSide } from "@/lib/report-guard";
 import { graph } from "@/lib/graph";
-import { ACTIVE_STAGES } from "@/lib/taxonomy";
+import { ACTIVE_STAGES, isLegacyIntroTicket } from "@/lib/taxonomy";
 import { mergeNote } from "@/lib/tracker";
 import { stripDashes } from "@/lib/style";
 import { houseSubjectMatches, subjectMatchesDeal } from "@/lib/deal-match";
@@ -33,7 +33,8 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
   const since = new Date(Date.now() - LOOKBACK_DAYS * DAY);
   const inbound = await prisma.activity.findMany({
-    where: { type: "EMAIL", direction: "INBOUND", occurredAt: { gte: since }, externalId: { not: null }, contactId: { not: null }, companyId: { not: null } },
+    // recent replies, plus any older reply already tied to a live deal that has never been read (Refresh responses ties them)
+    where: { type: "EMAIL", direction: "INBOUND", externalId: { not: null }, contactId: { not: null }, companyId: { not: null }, OR: [{ occurredAt: { gte: since } }, { dealId: { not: null }, occurredAt: { gte: new Date(Date.now() - 180 * DAY) } }] },
     include: { contact: { select: { id: true, companyId: true, firstName: true, lastName: true } }, company: { select: { id: true, name: true, domain: true } } },
     orderBy: { occurredAt: "desc" },
   });
@@ -47,12 +48,12 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const rows = await prisma.dealInvestor.findMany({ where: { contact: { companyId: a.companyId! }, deal: { stage: { in: [...ACTIVE_STAGES] } }, status: { gte: 2 } }, include: { deal: { select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true } } }, orderBy: { updatedAt: "desc" } });
     const legacyIntro = (x: { id: string }) => legacy.has(x.id);
     const candidatesAll = rows.map((r) => r.deal).filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
-    const legacy = new Set((await prisma.deal.findMany({ where: { id: { in: candidatesAll.map((x) => x.id) }, stage: "Intro To Capital Made", hubspotId: { not: null } }, select: { id: true } })).map((x) => x.id));
+    const legacy = new Set((await prisma.deal.findMany({ where: { id: { in: candidatesAll.map((x) => x.id) }, stage: "Intro To Capital Made", hubspotId: { not: null } }, select: { id: true, hubspotId: true, stage: true, sponsorCompany: { select: { roles: true } }, _count: { select: { investors: true } } } })).filter((x) => isLegacyIntroTicket({ ...x, sponsorRoles: x.sponsorCompany?.roles ?? null, investorCount: x._count.investors })).map((x) => x.id));
     const candidates = candidatesAll.filter((x) => !legacyIntro(x));
     if (a.dealId && !candidates.some((x) => x.id === a.dealId)) {
       // the deal the email log pinned, unless it is a legacy intro record (those are never tickets)
-      const linked = await prisma.deal.findFirst({ where: { id: a.dealId, stage: { in: [...ACTIVE_STAGES] }, NOT: { AND: [{ hubspotId: { not: null } }, { stage: "Intro To Capital Made" }] } }, select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true } });
-      if (linked) candidates.unshift(linked);
+      const linked = await prisma.deal.findFirst({ where: { id: a.dealId, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true, hubspotId: true, stage: true, sponsorCompany: { select: { roles: true } }, _count: { select: { investors: true } } } });
+      if (linked && !isLegacyIntroTicket({ ...linked, sponsorRoles: linked.sponsorCompany?.roles ?? null, investorCount: linked._count.investors })) candidates.unshift(linked);
     }
     let dealId: string | null = a.dealId && candidates.some((x) => x.id === a.dealId) ? a.dealId : null;
     if (!dealId) dealId = candidates.find((x) => subjectMatchesDeal(a.subject, x) || houseSubjectMatches(a.subject, x))?.id ?? null;

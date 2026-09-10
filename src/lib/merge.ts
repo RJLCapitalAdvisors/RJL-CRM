@@ -1,4 +1,5 @@
 import { US_STATES } from "@/lib/taxonomy";
+import { cleanBusinessPlan } from "@/lib/style";
 import { CHECKLIST, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
 import { intro, metricsHtml, subjectLine, usd } from "@/lib/deal-copy";
 import { prefMetrics } from "@/lib/pref";
@@ -76,6 +77,7 @@ export type MergeContext = {
 };
 
 function fmt(key: string, v: unknown): string {
+  if (key === "deal.summary" && typeof v === "string") return cleanBusinessPlan(v) ?? ""; // the business plan never carries fielded facts, however old the ticket
   if (v == null || v === "") return "";
   if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization"].includes(key)) return usd(Number(v));
   if (["deal.ltv", "deal.ltc", "deal.occupancy", "deal.irr", "deal.yieldOnCost", "deal.capRateY1", "deal.capRateT12", "deal.cashOnCash"].includes(key)) return `${v}%`;

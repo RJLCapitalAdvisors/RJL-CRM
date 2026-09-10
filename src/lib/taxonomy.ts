@@ -329,4 +329,9 @@ export const STAGE_ORDER = ["Deal Mentioned", "Deal Received", "Deal Underwritte
  * HubSpot brought over "X | Indicap" intro records as deals at Intro To Capital Made, with the LP's name in the
  * sponsor slot. They are history, not tickets: emails, LP requests and Handles must never land on them.
  */
-export const isLegacyIntroTicket = (d: { hubspotId?: string | null; stage: string }) => Boolean(d.hubspotId) && d.stage === "Intro To Capital Made";
+export const isLegacyIntroTicket = (d: { hubspotId?: string | null; stage: string; sponsorRoles?: string | null; investorCount?: number }) => {
+  if (!d.hubspotId || d.stage !== "Intro To Capital Made") return false;
+  // the tell: the "sponsor" is a capital source (Nelnet, Clairmont), not a sponsor; failing that, no report at all
+  if (d.sponsorRoles) return /Investor|Lender/i.test(d.sponsorRoles) && !/Sponsor/i.test(d.sponsorRoles);
+  return (d.investorCount ?? 0) === 0;
+};

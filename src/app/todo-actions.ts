@@ -234,10 +234,23 @@ export async function dismissFollowUps(rowIds: string[]) {
 /** Jonathan approves: the deal goes to Deal Lost, which takes it off Deal momentum and LP follow-ups. */
 export async function markDealLostAction(dealId: string) {
   await requireCriteriaAdmin();
+  await markLost(dealId, "Marked Deal Lost from Data updates after going quiet");
+}
+/** From Ready for launch: anyone on the team can call a deal. Same effect as dragging it to Deal Lost on the board. */
+export async function markDealLostFromLaunchAction(dealId: string) {
+  await markLost(dealId, "Marked Deal Lost from Ready for launch");
+}
+/**
+ * Deal Lost clears the deal from the pipeline and the dashboard: off the live board columns, LP follow-ups,
+ * Deal momentum (its open items close), Ready for launch and the culling list. Intros to reconsider are untouched:
+ * an intro made along the way keeps its own life.
+ */
+async function markLost(dealId: string, why: string) {
   const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { stage: true } });
-  if (!d) return;
-  await prisma.deal.update({ where: { id: dealId }, data: { stage: "Deal Lost", closedLostReason: `No activity; marked lost from the dashboard (was ${d.stage})` } });
-  await prisma.activity.create({ data: { type: "NOTE", body: `Marked Deal Lost from Data updates after going quiet (was ${d.stage}).`, dealId, occurredAt: new Date() } }).catch(() => null);
+  if (!d || d.stage === "Deal Lost") return;
+  await prisma.deal.update({ where: { id: dealId }, data: { stage: "Deal Lost", closedLostReason: `${why} (was ${d.stage})`, reportDraftId: null, reportDraftMailbox: null, reportDraftAt: null } });
+  await prisma.momentum.updateMany({ where: { dealId, status: "OPEN" }, data: { status: "DONE" } });
+  await prisma.activity.create({ data: { type: "NOTE", body: `${why} (was ${d.stage}).`, dealId, occurredAt: new Date() } }).catch(() => null);
   revalidatePath("/");
   revalidatePath("/deals");
   revalidatePath(`/deals/${dealId}`);
@@ -273,7 +286,7 @@ export async function notDuplicateAction(aId: string, bId: string) {
 export async function handleStaleDeal(dealId: string) {
   const me = await currentUser();
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
-  const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { sponsorCompany: { select: { id: true, name: true, domain: true } } } });
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { sponsorCompany: { select: { id: true, name: true, domain: true, roles: true } }, _count: { select: { investors: true } } } });
   if (!deal) return { ok: false as const, reason: "Deal not found." };
   const dealName = deal.propertyName ?? deal.name;
   const { createThreadReplyDraft, replyViaTeammateCopy, replyToLatestWith, signatureFor } = await import("@/lib/followup");
@@ -288,6 +301,39 @@ export async function handleStaleDeal(dealId: string) {
     /* no details */
   }
   try {
+    // 0) a legacy HubSpot intro record ("Matador | Boos Development"): the deal IS the intro. Reply on the intro
+    //    email that connected the two, never on some other thread with the firm in the sponsor slot.
+    const { isLegacyIntroTicket } = await import("@/lib/taxonomy");
+    if (isLegacyIntroTicket({ ...deal, sponsorRoles: deal.sponsorCompany?.roles ?? null, investorCount: deal._count.investors })) {
+      const partyA = (deal.sponsorName ?? "").split(/[|(]/)[0].trim();
+      const partyB = (deal.propertyName ?? "").split(/[|(]/)[0].trim();
+      const introGreeting = "Hi all - checking in on this intro. Did you manage to connect, and is there anything I can help move along?";
+      const intro = partyA && partyB ? await prisma.intro.findFirst({ where: { AND: [{ subject: { contains: partyA, mode: "insensitive" } }, { subject: { contains: partyB, mode: "insensitive" } }] }, orderBy: { lastActivityAt: "desc" } }) : null;
+      if (intro) {
+        for (const mid of [intro.lastMessageId, intro.messageId].filter((x): x is string => Boolean(x))) {
+          const r = await createThreadReplyDraft(me.email, mid, introGreeting);
+          if (r.ok) return r;
+          const t = await replyViaTeammateCopy(me.email, mid);
+          if (t?.ok) return t;
+        }
+      }
+      // no scanned intro: my Sent Items, an "Intro" subject naming both firms
+      const { graph: g, createReplyAllDraft, getMessage, outlookDesktopLink, updateDraftBody } = await import("@/lib/graph");
+      const sent = (await g<{ value: { id: string; subject: string | null; sentDateTime?: string }[] }>(`/users/${encodeURIComponent(me.email)}/mailFolders/sentitems/messages?$search=${encodeURIComponent('"subject:Intro"')}&$top=60&$select=id,subject,sentDateTime`).catch(() => ({ value: [] }))).value.sort((x, y) => (y.sentDateTime ?? "").localeCompare(x.sentDateTime ?? ""));
+      const hit = sent.find((m) => /^\s*((re|fw|fwd)\s*:\s*)*intro\b/i.test(m.subject ?? "") && partyA && partyB && (m.subject ?? "").toLowerCase().includes(partyA.toLowerCase()) && (m.subject ?? "").toLowerCase().includes(partyB.toLowerCase()));
+      if (hit) {
+        const draft = await createReplyAllDraft(me.email, hit.id).catch(() => null);
+        if (draft) {
+          const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
+          const body = draft.body?.content ?? "";
+          const block = `<div style="${F}"><p style="margin:0 0 12pt 0;${F}">${introGreeting}</p>${await signatureFor(me.email)}<br></div>`;
+          await updateDraftBody(me.email, draft.id, body.search(/<body[^>]*>/i) >= 0 ? body.replace(/(<body[^>]*>)/i, `$1${block}`) : `${block}${body}`);
+          const fresh = await getMessage(me.email, draft.id, "id,webLink,internetMessageId");
+          return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "replyAll" as const, attachments: 0 };
+        }
+      }
+      return { ok: false as const, reason: `Could not find the intro email between ${partyA || "the firm"} and ${partyB || "the sponsor"} in your mailbox. Open it in Outlook and reply there, or mark the record Deal Lost.` };
+    }
     // 1) the email the deal was mentioned in (for a deal we only heard about, usually the intro or the sponsor's note)
     let sourceId: string | null = details.mentionedMessageId ?? null;
     if (!sourceId && details.mentionedIn && deal.sponsorCompanyId) {

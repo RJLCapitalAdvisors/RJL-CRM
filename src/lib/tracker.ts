@@ -48,16 +48,33 @@ export function sameNote(a: string, b: string): boolean {
   for (const w of A) if (B.has(w)) hit++;
   return hit / Math.min(A.size, B.size) >= 0.6;
 }
-/** Append a note to a report row unless an equivalent one is already there; segments are joined with " | ". */
-export function mergeNote(existing: string | null | undefined, note: string): string {
-  const parts = (existing ?? "").split(" | ").map((x) => x.trim()).filter(Boolean);
-  if (parts.some((p) => sameNote(p, note))) return parts.join(" | ");
-  return [...parts, note.trim()].join(" | ");
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+/** The "(Sep 4)" tag at the end of a segment, as a sortable day number; segments without a tag sort last, in the order written. */
+function noteDay(seg: string): number {
+  const m = seg.match(/\((\w{3}) (\d{1,2})\)\s*$/);
+  if (!m) return Number.MAX_SAFE_INTEGER;
+  const month = MONTHS.indexOf(m[1].toLowerCase());
+  if (month < 0) return Number.MAX_SAFE_INTEGER;
+  const now = new Date();
+  let year = now.getFullYear();
+  if (month > now.getMonth() + 1) year -= 1; // a month well ahead of today belongs to last year
+  return Date.UTC(year, month, Number(m[2]));
 }
-/** Collapse duplicate segments already sitting in a note. */
-export function dedupeNote(existing: string | null | undefined): string | null {
-  const parts = (existing ?? "").split(" | ").map((x) => x.trim()).filter(Boolean);
+/**
+ * One entry per response, oldest first. Exact repeats and near repeats (same date, most words shared) collapse
+ * to the first one seen, so a refresh that reads the same email again never adds a second line.
+ */
+export function normalizeNote(segments: string[]): string | null {
   const out: string[] = [];
-  for (const p of parts) if (!out.some((o) => sameNote(o, p))) out.push(p);
+  for (const seg of segments.map((x) => x.trim()).filter(Boolean)) if (!out.some((o) => sameNote(o, seg))) out.push(seg);
+  out.sort((a, b) => noteDay(a) - noteDay(b));
   return out.length ? out.join(" | ") : null;
+}
+/** Append a note to a report row unless an equivalent one is already there; segments are joined with " | " in date order. */
+export function mergeNote(existing: string | null | undefined, note: string): string {
+  return normalizeNote([...(existing ?? "").split(" | "), note]) ?? "";
+}
+/** Collapse duplicate segments already sitting in a note and put them in date order. */
+export function dedupeNote(existing: string | null | undefined): string | null {
+  return normalizeNote((existing ?? "").split(" | "));
 }

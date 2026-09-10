@@ -13,11 +13,11 @@ export async function refreshResponses(dealId: string): Promise<{ synced: number
   if (!deal) return { synced: 0, linked: 0, rescanned: 0, asks: 0 };
   const synced = Object.values(await syncAllMailboxes().catch(() => ({}))).reduce((n, v) => n + (typeof v === "object" ? v.logged : 0), 0);
 
-  // every email with the firms on this report from the last 60 days that is not yet tied to a deal
+  // every email with the firms on this report, or about the deal by name, from the last 180 days that is not yet tied to a deal
   const contactIds = deal.investors.map((r) => r.contactId);
   const companyIds = [...new Set(deal.investors.map((r) => r.contact.companyId).filter((x): x is string => Boolean(x)))];
-  const since = new Date(Date.now() - 60 * 86_400_000);
-  const acts = await prisma.activity.findMany({ where: { type: "EMAIL", dealId: null, occurredAt: { gte: since }, OR: [{ contactId: { in: contactIds } }, { companyId: { in: companyIds } }, { subject: { contains: deal.city ?? deal.propertyName ?? deal.name, mode: "insensitive" } }] }, orderBy: { occurredAt: "asc" } });
+  const since = new Date(Date.now() - 180 * 86_400_000);
+  const acts = await prisma.activity.findMany({ where: { type: "EMAIL", dealId: null, occurredAt: { gte: since }, OR: [{ contactId: { in: contactIds } }, { companyId: { in: companyIds } }, ...[deal.city, deal.propertyName].filter((x): x is string => Boolean(x)).map((x) => ({ subject: { contains: x, mode: "insensitive" as const } }))] }, orderBy: { occurredAt: "asc" } });
   const dealFor = await dealResolver();
   let linked = 0;
   for (const a of acts) {

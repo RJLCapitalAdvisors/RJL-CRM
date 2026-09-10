@@ -68,7 +68,7 @@ async function fillContactName(contactId: string, displayName: string | undefine
 
 export async function dealResolver() {
   // legacy HubSpot intro records are not tickets: an email is never filed on one
-  const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, investors: { select: { contactId: true } } } })).filter((d) => !isLegacyIntroTicket(d));
+  const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, sponsorCompany: { select: { roles: true } }, investors: { select: { contactId: true } } } })).filter((d) => !isLegacyIntroTicket({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, investorCount: d.investors.length }));
   const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null) =>
     activeDeals.find((d) => subjectMatchesDeal(subject, d))?.id ??
     activeDeals.find((d) => houseSubjectMatches(subject, d))?.id ??
@@ -78,7 +78,10 @@ export async function dealResolver() {
 
 export async function syncMailbox(mailbox: string): Promise<{ scanned: number; logged: number }> {
   const user = await prisma.user.findFirst({ where: { email: { equals: mailbox, mode: "insensitive" } } });
-  const since = user?.mailSyncedAt ?? new Date(Date.now() - FIRST_SYNC_DAYS * 86_400_000);
+  // Sent Items show up in Graph a little after the send. A window that starts exactly where the last pass ended
+  // misses an email sent during that pass, forever. Overlap the window; the Message-ID check keeps it from logging twice.
+  const OVERLAP_MS = 90 * 60_000;
+  const since = user?.mailSyncedAt ? new Date(user.mailSyncedAt.getTime() - OVERLAP_MS) : new Date(Date.now() - FIRST_SYNC_DAYS * 86_400_000);
   const startedAt = new Date();
   const [sent, inbox] = await Promise.all([pageThrough(mailbox, "sentitems", since), pageThrough(mailbox, "inbox", since)]);
   const messages = [...sent, ...inbox];
@@ -223,4 +226,25 @@ export function kickMailSync(minMinutes = 3) {
   import("next/server")
     .then(({ after }) => after(run))
     .catch(() => void run());
+}
+
+
+/**
+ * Emails logged without a deal (imported history, or mail that arrived before the ticket existed) are tied to
+ * the deal their subject names. Runs from the cron; cheap because each email is looked at once (it gains a dealId
+ * or keeps failing the match).
+ */
+export async function linkStrayEmails(days = 90): Promise<number> {
+  const since = new Date(Date.now() - days * 86_400_000);
+  const acts = await prisma.activity.findMany({ where: { type: "EMAIL", dealId: null, occurredAt: { gte: since }, subject: { not: null } }, select: { id: true, subject: true, contactId: true, companyId: true }, take: 2000 });
+  if (!acts.length) return 0;
+  const dealFor = await dealResolver();
+  let linked = 0;
+  for (const a of acts) {
+    const id = dealFor(a.subject ?? "", a.contactId, a.companyId);
+    if (!id) continue;
+    await prisma.activity.update({ where: { id: a.id }, data: { dealId: id } });
+    linked++;
+  }
+  return linked;
 }

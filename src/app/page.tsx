@@ -10,7 +10,7 @@ import { EXTRA_FIELD_LABELS, PROPOSAL_FIELDS, type Change } from "@/lib/criteria
 import { STALE_DAYS, staleDeals } from "@/lib/stale-deals";
 import { possibleDuplicates } from "@/lib/deal-dedupe";
 import { reportsDue, type ReportDue } from "@/lib/report-due";
-import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction , handleStaleDeal , openReportDraftAction, markReportSentAction } from "./todo-actions";
+import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction , handleStaleDeal , openReportDraftAction, markReportSentAction , markDealLostFromLaunchAction } from "./todo-actions";
 import { DraftButton } from "./draft-button";
 import { listMomentum } from "@/lib/momentum";
 import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
@@ -216,11 +216,18 @@ export default async function Dashboard() {
                   </div>
                   <DraftButton label="Handle" action={openReportDraftAction.bind(null, r.id)} title="Reply all on your latest exchange with the sponsor, the fresh progress report attached" />
                 </div>
-                <form action={markReportSentAction.bind(null, r.id)} className="mt-1">
-                  <button type="submit" className="text-[11px] text-muted hover:underline" title="You already sent it another way; restart the clock">
-                    Sent already
-                  </button>
-                </form>
+                <div className="mt-1 flex gap-3">
+                  <form action={markReportSentAction.bind(null, r.id)}>
+                    <button type="submit" className="text-[11px] text-muted hover:underline" title="You already sent it another way; restart the clock">
+                      Sent already
+                    </button>
+                  </form>
+                  <form action={markDealLostFromLaunchAction.bind(null, r.id)}>
+                    <button type="submit" className="text-[11px] text-muted hover:text-ink hover:underline" title="Clears the deal from the pipeline and the dashboard (intros to reconsider stay)">
+                      Mark as deal lost
+                    </button>
+                  </form>
+                </div>
               </li>
             ))}
           </ul>
@@ -236,9 +243,16 @@ export default async function Dashboard() {
                     {d.sponsorName ?? "Sponsor"} · {d._count.investors} groups{d.owner ? ` · ${d.owner.name}` : ""}
                   </div>
                 </div>
-                <Link href={`/deals/${d.id}/send`} className="btn-soft shrink-0 px-2.5 py-1 text-xs">
-                  Send deal
-                </Link>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Link href={`/deals/${d.id}/send`} className="btn-soft px-2.5 py-1 text-xs">
+                    Send deal
+                  </Link>
+                  <form action={markDealLostFromLaunchAction.bind(null, d.id)}>
+                    <button type="submit" className="text-[11px] text-muted hover:text-ink hover:underline" title="Clears the deal from the pipeline and the dashboard (intros to reconsider stay)">
+                      Mark as deal lost
+                    </button>
+                  </form>
+                </div>
               </li>
             ))}
           </ul>
@@ -299,10 +313,9 @@ export default async function Dashboard() {
                   <div className="text-xs text-muted">
                     {[d.sponsorName, d.stage, d.investors ? `${d.investors} on the report` : null].filter(Boolean).join(" · ")}
                   </div>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <DraftButton label="Handle" action={handleStaleDeal.bind(null, d.id)} title="Open a check-in email on the thread this deal came through" />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
                     <form action={markDealLostAction.bind(null, d.id)}>
-                      <button className="btn-soft px-2.5 py-1 text-xs" type="submit" title="Move to Deal Lost; it leaves Deal momentum and LP follow-ups">
+                      <button className="btn-soft whitespace-nowrap px-2.5 py-1 text-xs" type="submit" title="Move to Deal Lost; it leaves Deal momentum and LP follow-ups">
                         Mark Deal Lost
                       </button>
                     </form>
@@ -311,6 +324,9 @@ export default async function Dashboard() {
                         Keep
                       </button>
                     </form>
+                    <div className="basis-full">
+                      <DraftButton label="Handle" action={handleStaleDeal.bind(null, d.id)} title="Open a check-in email on the thread this deal came through" />
+                    </div>
                   </div>
                 </li>
               ))}
