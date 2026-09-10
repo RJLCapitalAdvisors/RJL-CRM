@@ -177,10 +177,36 @@ export async function listMomentum(since?: Date) {
   // a deal that is lost or closed takes its items off the board with it
   const deals = new Map((await prisma.deal.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.dealId))] }, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true } })).map((d) => [d.id, d]));
   // LP requests first (newest on top), then everything else oldest-waiting first
-  return rows
-    .map((r) => ({ ...r, deal: deals.get(r.dealId)! }))
-    .filter((r) => r.deal)
-    .sort((a, b) => (a.kind === "LP_ASK") === (b.kind === "LP_ASK") ? (a.kind === "LP_ASK" ? b.waitingSince.getTime() - a.waitingSince.getTime() : a.waitingSince.getTime() - b.waitingSince.getTime()) : a.kind === "LP_ASK" ? -1 : 1);
+  const live = rows.map((r) => ({ ...r, deal: deals.get(r.dealId)! })).filter((r) => r.deal);
+  // One matter, one item. The same party can surface several ways (an LP request, a sponsor item, an intro, a
+  // "mentioned, never sent"): keep the most actionable one when they are about the same deal, or when one item
+  // talks about the deal of the other (Sierra asking Marble to see Core & Main, and the Core & Main mention).
+  const RANK: Record<string, number> = { LP_ASK: 0, SPONSOR_ITEMS: 1, ENGAGEMENT: 1, INTRO: 2, ACTION: 3, MENTIONED: 4 };
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\b(the|llc|group|capital|partners|club|inc)\b/g, " ").replace(/\s+/g, " ").trim();
+  const dealWords = (d: { name: string; propertyName: string | null }) => norm(d.propertyName ?? d.name).split(" ").filter((w) => w.length > 3);
+  const sameMatter = (x: (typeof live)[number], y: (typeof live)[number]) => {
+    if (x.dealId === y.dealId) return true;
+    const xw = dealWords(x.deal), yw = dealWords(y.deal);
+    const xs = norm(`${x.summary} ${x.deal.propertyName ?? x.deal.name}`), ys = norm(`${y.summary} ${y.deal.propertyName ?? y.deal.name}`);
+    if ((yw.length > 0 && yw.filter((w) => xs.includes(w)).length >= Math.ceil(yw.length * 0.6)) || (xw.length > 0 && xw.filter((w) => ys.includes(w)).length >= Math.ceil(xw.length * 0.6))) return true;
+    // the two summaries tell the same story (same party, same dates, same ask): an intro item and a sponsor item written about one exchange
+    const dates = (t: string) => new Set((t.toLowerCase().match(/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/g) ?? []).map((d) => d.replace(/[a-z]+/, (m) => m.slice(0, 3)).replace(/\.\s+/, " ").replace(/\s+/g, " ")));
+    const dx = dates(x.summary), dy = dates(y.summary);
+    if (dx.size && [...dx].some((d) => dy.has(d))) return true;
+    const A = new Set(norm(x.summary).split(" ").filter((w) => w.length > 3)), B = new Set(norm(y.summary).split(" ").filter((w) => w.length > 3));
+    let hit = 0;
+    for (const w of A) if (B.has(w)) hit++;
+    return A.size > 4 && B.size > 4 && hit / Math.min(A.size, B.size) >= 0.5;
+  };
+  const kept: typeof live = [];
+  for (const r of [...live].sort((a, b) => (RANK[a.kind] ?? 9) - (RANK[b.kind] ?? 9) || a.waitingSince.getTime() - b.waitingSince.getTime())) {
+    // a "mentioned, never sent" item is redundant once anything else is open on that deal, whoever the party
+    if (r.kind === "MENTIONED" && live.some((o) => o.dealId === r.dealId && o.kind !== "MENTIONED")) continue;
+    if (kept.some((k) => norm(k.party) === norm(r.party) && sameMatter(k, r))) continue;
+    kept.push(r);
+  }
+  // LP requests first (newest on top), then everything else oldest-waiting first
+  return kept.sort((a, b) => (a.kind === "LP_ASK") === (b.kind === "LP_ASK") ? (a.kind === "LP_ASK" ? b.waitingSince.getTime() - a.waitingSince.getTime() : a.waitingSince.getTime() - b.waitingSince.getTime()) : a.kind === "LP_ASK" ? -1 : 1);
 }
 
 export const isInternal = (addr: string) => INTERNAL.test(addr);
