@@ -22,7 +22,7 @@ export { STAGE_ORDER };
 const FONT = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
 const DEALS_MAILBOX = () => process.env.DEALS_MAILBOX ?? "deals@rjlcapadvisors.com";
 
-async function advance(dealId: string, to: string) {
+export async function advance(dealId: string, to: string) {
   const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { stage: true } });
   if (d && STAGE_ORDER.indexOf(d.stage) < STAGE_ORDER.indexOf(to)) await prisma.deal.update({ where: { id: dealId }, data: { stage: to } });
 }
@@ -240,7 +240,7 @@ export async function syncSendDrafts(): Promise<number> {
 
 export type LaunchItem = { rowId: string; toContactIds: string[]; subject: string; html: string; cc?: string[] };
 type Src = Awaited<ReturnType<typeof dealAttachments>>;
-async function chosenFiles(dealId: string, keys: string[] | undefined): Promise<Src> {
+export async function chosenFiles(dealId: string, keys: string[] | undefined): Promise<Src> {
   if (!keys) return dealAttachments(dealId).catch(() => null); // no choice made: everything the sponsor sent
   const files = (await dealFiles(dealId)).filter((f) => keys.includes(f.key));
   if (!files.length) return null;
@@ -266,7 +266,7 @@ async function chosenFiles(dealId: string, keys: string[] | undefined): Promise<
 export type LaunchResult = { rowId: string; firm: string; to: string[]; ok: boolean; error?: string };
 
 /** Build a message in the sender's mailbox with the deal's attachments and send it. */
-async function sendMessage(mailbox: string, to: string[], subject: string, html: string, src: Src, cc: string[] = []) {
+export async function sendMessage(mailbox: string, to: string[], subject: string, html: string, src: Src, cc: string[] = []) {
   const draft = await createDraft(mailbox, { subject, toRecipients: to, ccRecipients: cc.filter((c) => c && !to.some((t) => t.toLowerCase() === c.toLowerCase())), bodyHtml: `<html><body>${html}</body></html>` });
   if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
   const fresh = await getMessage(mailbox, draft.id, "id,internetMessageId");

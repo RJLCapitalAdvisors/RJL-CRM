@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { PenLine } from "lucide-react";
 import { CompanyLogo } from "@/components/company-logo";
 import { hasMarker, withFirstName, withoutName } from "@/lib/first-name-marker";
-import { launchAction, previewGeneralEmail, previewToMeAction, reviseGeneralEmailAction, saveSendStateAction } from "./actions";
+import { launchAction, previewGeneralEmail, previewToMeAction, pumpLaunchAction, reviseGeneralEmailAction, saveSendStateAction } from "./actions";
+import type { LaunchStatus } from "@/lib/launch-queue";
 
 export type Person = { id: string; name: string; email: string; title: string | null };
 export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean };
@@ -35,7 +36,8 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   const [drafts, setDrafts] = useState<Record<string, Draft>>(saved?.drafts ?? {}); // only firms whose email was edited on its own
   const [current, setCurrent] = useState<string>(GENERAL);
   const [picker, setPicker] = useState<string | null>(null);
-  const [results, setResults] = useState<Record<string, { ok: boolean; error?: string }>>({});
+  const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean }>>({});
+  const [launching, setLaunching] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [ask, setAsk] = useState("");
   const [pending, start] = useTransition();
@@ -161,12 +163,36 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
     start(async () => {
       const r = await launchAction(dealId, items, [...chosenFiles]);
       if (!r.ok) return setNote(r.reason);
-      setResults(Object.fromEntries(r.results.map((x) => [x.rowId, { ok: x.ok, error: x.error }])));
-      const sent = r.results.filter((x) => x.ok).length;
-      setNote(`${sent} of ${r.results.length} sent. Rows are now Deal Sent on the progress report.`);
-      router.refresh();
+      applyStatus(r.status);
+      if (r.status.queued > 0) setLaunching(true);
+      else router.refresh();
     });
   };
+
+  /** The launch as it stands: which firms are sent, queued or failed, and when the next one goes. */
+  const applyStatus = (st: LaunchStatus) => {
+    setResults(Object.fromEntries(st.rows.map((x) => [x.rowId, { ok: x.status === "SENT", error: x.status === "FAILED" ? x.error ?? "failed" : undefined, pending: x.status === "QUEUED" || x.status === "SENDING" }])));
+    setNote(st.queued > 0 ? `${st.sent} of ${st.total} sent · ${st.queued} to go, next in ${Math.max(1, Math.ceil(st.nextInMs / 1000))}s. One email every 30 seconds so each lands as an individually sent email; keep this page open.` : `${st.sent} of ${st.total} sent${st.failed ? `, ${st.failed} failed` : ""}. Rows are now Deal Sent on the progress report.`);
+  };
+  useEffect(() => {
+    if (!launching) return;
+    let live = true;
+    const tick = async () => {
+      const st = await pumpLaunchAction(dealId).catch(() => null);
+      if (!live || !st) return;
+      applyStatus(st);
+      if (st.queued === 0) {
+        setLaunching(false);
+        router.refresh();
+      }
+    };
+    const t = setInterval(tick, 5000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [launching, dealId]);
 
   const previewToMe = () => {
     commitEdit();
@@ -261,7 +287,8 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
                     <span className="text-xs text-muted">{chosen.length ? chosen.map((p) => p.name.split(" ")[0]).join(", ") : "nobody picked"}</span>
                     {drafts[f.rowId] && !res && <span className="text-xs text-sky-700" title="This firm's email was edited on its own">edited</span>}
                     {res?.ok && <span className="text-xs text-emerald-700">sent</span>}
-                    {res && !res.ok && <span className="text-xs text-red-700" title={res.error}>failed</span>}
+                    {res?.pending && <span className="text-xs text-sky-700">queued</span>}
+                    {res && !res.ok && !res.pending && <span className="text-xs text-red-700" title={res.error}>failed</span>}
                     {f.status >= 2 && !res && <span className="text-xs text-muted">sent earlier</span>}
                   </button>
                   {f.status <= 1 && (
@@ -390,8 +417,8 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
           <button type="button" className="btn-secondary" disabled={pending || !shown?.html} onClick={previewToMe} title={cur ? "Emails you the exact message this firm would get" : "Emails you the General email, with no name in the greeting"}>
             Send preview email to me
           </button>
-          <button type="button" className="btn-primary px-5" disabled={pending || itemsToSend().length === 0 || !general} onClick={launch}>
-            {pending ? "Working…" : "LAUNCH"}
+          <button type="button" className="btn-primary px-5" disabled={pending || launching || itemsToSend().length === 0 || !general} onClick={launch}>
+            {pending ? "Working…" : launching ? "Sending…" : "LAUNCH"}
           </button>
         </div>
       </div>

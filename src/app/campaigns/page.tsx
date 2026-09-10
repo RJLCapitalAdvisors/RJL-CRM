@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader, Empty } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
@@ -17,7 +18,10 @@ const tone: Record<string, string> = {
   PARTIAL: "bg-amber-100 text-amber-900 border-amber-200",
 };
 
-export default async function CampaignsPage() {
+export default async function CampaignsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  // Email blasts in the sidebar opens straight onto a new blast; the history lives at ?list=1 ("Past blasts" on that page)
+  const sp = await searchParams;
+  if (sp.list === undefined) redirect("/campaigns/new");
   kickBlasts();
   const campaigns = await prisma.campaign.findMany({
     orderBy: { createdAt: "desc" },

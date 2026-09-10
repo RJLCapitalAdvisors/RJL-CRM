@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ASSET_CLASSES } from "@/lib/taxonomy";
 import { PageHeader } from "@/components/ui";
@@ -15,7 +16,15 @@ export default async function NewCampaignPage() {
   const from = process.env.MAIL_FROM ?? "RJL Capital Advisors";
   return (
     <>
-      <PageHeader title="New email blast" subtitle="Write the email, pick who gets it and when. Deal emails to LPs go through Send deal on the deal ticket." />
+      <PageHeader
+        title="New email blast"
+        subtitle="Write the email, pick who gets it and when. Deal emails to LPs go through Send deal on the deal ticket."
+        actions={
+          <Link href="/campaigns?list=1" className="btn-secondary">
+            Past blasts
+          </Link>
+        }
+      />
       <div className="px-8 py-6">
         {templates.length === 0 ? (
           <div className="card p-6 text-sm text-muted">No blast templates yet. Add one under Templates with kind &quot;blast&quot;.</div>

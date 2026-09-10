@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/current-user";
-import { createSendDrafts, finalizeEngagement, launchDealEmails, renderDealEmail, renderGeneralDealEmail, reviseDealEmail, sendPreviewToSelf, type LaunchItem, type SendItem } from "@/lib/send-deal";
+import { createSendDrafts, finalizeEngagement, renderDealEmail, renderGeneralDealEmail, reviseDealEmail, sendPreviewToSelf, type LaunchItem, type SendItem } from "@/lib/send-deal";
+import { launchStatus, pumpLaunches, queueDealEmails, type LaunchStatus } from "@/lib/launch-queue";
 
 export async function finalizeEngagementAction(dealId: string, keepCompanyIds: string[], addCompanyIds: string[]) {
   const r = await finalizeEngagement(dealId, keepCompanyIds, addCompanyIds);
@@ -38,15 +39,29 @@ export async function createSendDraftsAction(dealId: string, templateId: string,
   return { ok: true as const, results };
 }
 
+/** LAUNCH: queue one email per firm, send the first now, the rest one every 30 seconds while the page keeps pumping. */
 export async function launchAction(dealId: string, items: LaunchItem[], fileKeys?: string[]) {
   const me = await currentUser();
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the emails go from your own mailbox." };
-  const results = await launchDealEmails(dealId, items, me.email, fileKeys);
+  await queueDealEmails(dealId, items, me.email, fileKeys);
+  await pumpLaunches(me.email, 5_000);
   revalidatePath(`/deals/${dealId}`);
   revalidatePath(`/deals/${dealId}/tracker`);
   revalidatePath(`/deals/${dealId}/send`);
   revalidatePath("/");
-  return { ok: true as const, results };
+  return { ok: true as const, status: await launchStatus(dealId) };
+}
+
+/** Called by the Send deal page every few seconds while a launch is running: send the next email if 30 seconds have passed. */
+export async function pumpLaunchAction(dealId: string): Promise<LaunchStatus> {
+  const me = await currentUser();
+  if (me) await pumpLaunches(me.email, 4_000).catch(() => null);
+  const st = await launchStatus(dealId);
+  if (st.queued === 0) {
+    revalidatePath(`/deals/${dealId}`);
+    revalidatePath(`/deals/${dealId}/tracker`);
+  }
+  return st;
 }
 
 export async function previewToMeAction(dealId: string, item: LaunchItem, fileKeys?: string[]) {

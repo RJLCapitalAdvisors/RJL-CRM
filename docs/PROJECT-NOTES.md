@@ -199,3 +199,8 @@ Jonathan (RJL Capital Advisors, real estate capital advisory) is replacing HubSp
 ## 2026-09-10: culling quiet deals (Data updates)
 
 - A deal between Deal Mentioned and Intro To Capital Made with nothing for 3 days (no email, note, report change or edit; `src/lib/stale-deals.ts`, `STALE_DAYS`) appears at the top of the Data updates window as "Deals gone quiet", most recently quiet first. Jonathan only. "Mark Deal Lost" moves it to Deal Lost (with a note and a lost reason), which takes it off Deal momentum and LP follow-ups. "Keep" (`Deal.staleCheckedAt`) hides it for another 3 quiet days. Any activity on the deal resets its clock. On day one this listed 78 deals, mostly old Deal Mentioned and Intro To Capital Made tickets.
+
+## 2026-09-10: LAUNCH pacing (30 seconds) and the blasts menu
+
+- LAUNCH on Send deal queues one email per firm (`DealLaunch`, `src/lib/launch-queue.ts`) and sends one every 30 seconds from the sender's mailbox (`LAUNCH_GAP_MS`), so each lands as an individually sent email rather than a burst. The first goes out on the click; the page polls every 5 seconds (`pumpLaunchAction`) and shows sent / queued / failed per firm with "next in Ns". Page loads elsewhere and the cron also pump (`pumpAllLaunches` from `kickMailSync`), so a closed tab does not strand a launch, though it goes faster with the page open. A row is claimed before it is sent, so two pumps never double-send. Rows flip to Deal Sent as each email goes; the deal advances to Deal Taken To Market on the first.
+- Email blasts in the sidebar opens straight onto New email blast; the history is behind "Past blasts" (`/campaigns?list=1`).

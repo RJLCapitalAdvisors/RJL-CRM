@@ -688,3 +688,24 @@ model IlInbound {
   result    String
   createdAt DateTime @default(now())
 }
+
+// LAUNCH queue: one deal email per firm, sent one every 30 seconds from the sender mailbox (src/lib/launch-queue.ts)
+model DealLaunch {
+  id           String    @id @default(cuid())
+  dealId       String
+  rowId        String
+  mailbox      String
+  toContactIds String    // JSON contact ids
+  cc           String    // JSON emails
+  subject      String
+  html         String
+  fileKeys     String?   // JSON keys of the chosen attachments; null = everything the sponsor sent
+  status       String    @default("QUEUED") // QUEUED | SENDING | SENT | FAILED
+  error        String?
+  claimedAt    DateTime?
+  sentAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([mailbox, status])
+  @@index([dealId, createdAt])
+}

@@ -198,6 +198,8 @@ export function kickMailSync(minMinutes = 3) {
     await syncEngagementDrafts().catch(() => 0);
     const { syncSendDrafts } = await import("@/lib/send-deal");
     await syncSendDrafts().catch(() => 0);
+    const { pumpAllLaunches } = await import("@/lib/launch-queue");
+    await pumpAllLaunches().catch(() => 0); // a launch left running when the Send deal page was closed
     const { scanAllIntros } = await import("@/lib/intros");
     await scanAllIntros().catch(() => ({}));
   };

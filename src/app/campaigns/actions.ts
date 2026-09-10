@@ -74,7 +74,7 @@ export async function deleteCampaign(id: string) {
   if (sent > 0) throw new Error("This send already went out and cannot be deleted");
   await prisma.campaign.delete({ where: { id } });
   revalidatePath("/campaigns");
-  redirect("/campaigns");
+  redirect("/campaigns?list=1");
 }
 
 // ---------- one-at-a-time deal outreach ----------
