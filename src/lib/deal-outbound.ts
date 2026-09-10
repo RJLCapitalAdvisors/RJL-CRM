@@ -33,11 +33,15 @@ export async function noteDealSent(opts: { dealId: string; contactId: string | n
     ids.add(contact.id);
     for (const x of extra) ids.add(x.id);
     ids.delete(firmRow.contactId);
-    await prisma.dealInvestor.update({ where: { id: firmRow.id }, data: { extraContactIds: JSON.stringify([...ids]), status: Math.max(firmRow.status, 2), ...(firmRow.status < 2 ? { sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: opts.when } : {}) } });
+    const followedUp = firmRow.status === 2 && opts.when.getTime() - firmRow.updatedAt.getTime() > 60 * 60_000;
+    await prisma.dealInvestor.update({ where: { id: firmRow.id }, data: { extraContactIds: JSON.stringify([...ids]), status: followedUp ? 3 : Math.max(firmRow.status, 2), ...(firmRow.status < 2 || followedUp ? { sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: opts.when } : {}) } });
   } else if (!existing) {
     if (!(await isSponsorSide(deal.id, contact.id))) await prisma.dealInvestor.create({ data: { dealId: deal.id, contactId: contact.id, status: 2, extraContactIds: extra.length ? JSON.stringify(extra.map((x) => x.id)) : null, updatedAt: opts.when } });
   } else if (existing.status < 2) {
     await prisma.dealInvestor.update({ where: { id: existing.id }, data: { status: 2, sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: opts.when } });
+  } else if (existing.status === 2 && opts.when.getTime() - existing.updatedAt.getTime() > 60 * 60_000) {
+    // a second email from us to a firm that has not answered, an hour or more after the send: we followed up
+    await prisma.dealInvestor.update({ where: { id: existing.id }, data: { status: 3, followUpDismissedAt: null, updatedAt: opts.when } });
   }
 
   // the deal is on the market

@@ -154,7 +154,7 @@ export async function createFollowUpCampaign(dealId: string, fd: FormData) {
 export async function saveTrackerMeta(dealId: string, fd: FormData) {
   await prisma.deal.update({
     where: { id: dealId },
-    data: { trackerPreparedFor: s(fd, "trackerPreparedFor"), trackerThemes: s(fd, "trackerThemes"), trackerItemsNote: s(fd, "trackerItemsNote") },
+    data: { trackerPreparedFor: s(fd, "trackerPreparedFor"), trackerThemes: s(fd, "trackerThemes"), trackerItemsNote: s(fd, "trackerItemsNote"), trackerSummaryAt: new Date() },
   });
   touch(dealId);
   revalidatePath(`/share/tracker`);

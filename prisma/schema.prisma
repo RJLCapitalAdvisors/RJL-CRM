@@ -196,6 +196,7 @@ model Deal {
   trackerPreparedFor  String? // e.g. sponsor contact the report is for
   trackerThemes       String? // notable feedback themes across investor responses
   trackerItemsNote    String? // extra "items needed from sponsor" beyond the checklist
+  trackerSummaryAt    DateTime? // themes/items last written; a newer note on any row means they are stale
 
   closeDate DateTime?
   ownerId   String?

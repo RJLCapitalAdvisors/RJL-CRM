@@ -5,6 +5,8 @@ import { fmtReportDate, investorLabel } from "@/lib/tracker";
 
 /** Everything the progress report needs, shared by the in-app tracker, the sponsor view, and the export. */
 export async function loadReport(dealId: string) {
+  const { ensureTrackerSummary } = await import("@/lib/tracker-summary");
+  await ensureTrackerSummary(dealId).catch(() => null);
   const deal = await prisma.deal.findUnique({
     where: { id: dealId },
     include: {

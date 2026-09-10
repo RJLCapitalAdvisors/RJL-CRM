@@ -34,7 +34,7 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
   const since = new Date(Date.now() - LOOKBACK_DAYS * DAY);
   const inbound = await prisma.activity.findMany({
     where: { type: "EMAIL", direction: "INBOUND", occurredAt: { gte: since }, externalId: { not: null }, contactId: { not: null }, companyId: { not: null } },
-    include: { contact: { select: { id: true, companyId: true, firstName: true, lastName: true } }, company: { select: { id: true, name: true } } },
+    include: { contact: { select: { id: true, companyId: true, firstName: true, lastName: true } }, company: { select: { id: true, name: true, domain: true } } },
     orderBy: { occurredAt: "desc" },
   });
   const out: LpAsk[] = [];
@@ -67,7 +67,7 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     }
     // full body from the mailbox that has it
     let body = a.body ?? "";
-    const meta = a.meta ? (JSON.parse(a.meta) as { mailbox?: string }) : {};
+    const meta = a.meta ? (JSON.parse(a.meta) as { mailbox?: string; to?: { address: string; name?: string }[]; cc?: { address: string; name?: string }[] }) : {};
     if (meta.mailbox) {
       try {
         const r = await graph<{ value: { body: { content: string } }[] }>(`/users/${q(meta.mailbox)}/messages?$filter=internetMessageId eq '${a.externalId!.replace(/'/g, "''")}'&$select=body`);
@@ -112,11 +112,17 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
       if (!(await isSponsorSide(dealId, a.contactId))) await prisma.dealInvestor.create({ data: { dealId, contactId: a.contactId, status: 2, updatedAt: a.occurredAt } }).catch(() => null);
       reportRows = await prisma.dealInvestor.findMany({ where: { dealId, contactId: a.contactId } });
     }
-    const newStatus = parsed.stance === "pass" ? 8 : parsed.stance === "interested" ? 5 : parsed.stance === "reviewing" ? 4 : null;
+    // Rule: a real reply from an LP means they are looking at it. Confirming receipt is Taking a look, not Sent awaiting
+    // response. Only an auto-reply or out-of-office leaves the status alone.
+    const autoReply = /^(?:\s*(?:re|fw|fwd)\s*:\s*)*(automatic reply|auto-?reply|autoreply|out of (?:the )?office)/i.test(a.subject ?? "") || /^\s*(i am|i'm) (currently )?out of (the )?office/i.test(body);
+    const newStatus = parsed.stance === "pass" ? 8 : parsed.stance === "interested" ? 5 : autoReply ? null : 4;
+    // "looping in Sarah": colleagues at the LP's firm on the reply join the row (and the CRM), so the next email reaches them too
+    const loopedIn = await loopInColleagues(a.companyId!, a.company?.domain ?? null, a.contactId, [...(meta.to ?? []), ...(meta.cc ?? [])]).catch(() => [] as string[]);
     for (const r of reportRows) {
       const cleaned = stripDashes(parsed.note ?? "").trim();
       const note = cleaned && !/^(confirmed receipt|acknowledged|received|thanks?)\b/i.test(cleaned) ? `${cleaned} (${dateTag})` : null;
-      await prisma.dealInvestor.update({ where: { id: r.id }, data: { ...(note ? { note: mergeNote(r.note, note), noteDate: a.occurredAt } : {}), ...(newStatus && newStatus > r.status && r.status < 6 ? { status: newStatus } : {}), updatedAt: a.occurredAt } });
+      const extras = new Set<string>([...(r.extraContactIds ? (JSON.parse(r.extraContactIds) as string[]) : []), ...loopedIn.filter((id) => id !== r.contactId)]);
+      await prisma.dealInvestor.update({ where: { id: r.id }, data: { ...(note ? { note: mergeNote(r.note, note), noteDate: a.occurredAt } : {}), ...(newStatus && newStatus > r.status && r.status < 6 ? { status: newStatus } : {}), ...(loopedIn.length ? { extraContactIds: JSON.stringify([...extras]) } : {}), updatedAt: a.occurredAt } });
     }
     if (parsed.asks.length) {
       // anything the sponsor already told us (Questions answered on the ticket) gets surfaced with the ask
@@ -128,6 +134,29 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
       }
       out.push({ dealId, lpCompanyId: a.companyId!, lpName: a.company!.name, asks: parsed.asks, answered, note: parsed.note, stance: parsed.stance, messageId: a.externalId!, contactId: a.contactId, at: a.occurredAt });
     }
+  }
+  return out;
+}
+
+
+/** People at the LP's firm on the reply who are not the sender: known ones are returned, new ones are created under the firm. */
+async function loopInColleagues(companyId: string, domain: string | null, senderContactId: string | null, parties: { address: string; name?: string }[]): Promise<string[]> {
+  const out: string[] = [];
+  const dom = domain?.toLowerCase() ?? null;
+  for (const p of parties) {
+    const email = p.address?.toLowerCase();
+    if (!email || /@(rjlcapadvisors|rjlequities)\.com$/i.test(email)) continue;
+    if (dom && !email.endsWith(`@${dom}`)) continue;
+    if (!dom) continue;
+    const existing = await prisma.contact.findUnique({ where: { email }, select: { id: true, companyId: true } });
+    if (existing) {
+      if (existing.id !== senderContactId) out.push(existing.id);
+      if (!existing.companyId) await prisma.contact.update({ where: { id: existing.id }, data: { companyId } }).catch(() => null);
+      continue;
+    }
+    const parts = (p.name ?? "").replace(/["']/g, "").split(/\s+/).filter(Boolean);
+    const created = await prisma.contact.create({ data: { email, firstName: parts[0] ?? null, lastName: parts.slice(1).join(" ") || null, companyId } }).catch(() => null);
+    if (created) out.push(created.id);
   }
   return out;
 }
