@@ -719,3 +719,20 @@ model DealNotDuplicate {
 
   @@unique([aId, bId])
 }
+
+// WhatsApp messages to the RJL Israel number, one row per message; a burst from one sender is handled as one listing
+model WaInbound {
+  id         String    @id @default(cuid())
+  messageId  String    @unique
+  waId       String
+  senderName String?
+  number     String
+  type       String
+  payload    String
+  receivedAt DateTime
+  handledAt  DateTime?
+  result     String?
+  createdAt  DateTime  @default(now())
+
+  @@index([waId, handledAt])
+}
