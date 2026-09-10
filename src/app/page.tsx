@@ -9,7 +9,7 @@ import { syncFollowUpDrafts } from "@/lib/followup";
 import { EXTRA_FIELD_LABELS, PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
 import { STALE_DAYS, staleDeals } from "@/lib/stale-deals";
 import { possibleDuplicates } from "@/lib/deal-dedupe";
-import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction } from "./todo-actions";
+import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction , handleStaleDeal } from "./todo-actions";
 import { DraftButton } from "./draft-button";
 import { listMomentum } from "@/lib/momentum";
 import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
@@ -268,7 +268,8 @@ export default async function Dashboard() {
                   <div className="text-xs text-muted">
                     {[d.sponsorName, d.stage, d.investors ? `${d.investors} on the report` : null].filter(Boolean).join(" · ")}
                   </div>
-                  <div className="mt-1.5 flex gap-2">
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <DraftButton label="Handle" action={handleStaleDeal.bind(null, d.id)} title="Open a check-in email on the thread this deal came through" />
                     <form action={markDealLostAction.bind(null, d.id)}>
                       <button className="btn-soft px-2.5 py-1 text-xs" type="submit" title="Move to Deal Lost; it leaves Deal momentum and LP follow-ups">
                         Mark Deal Lost

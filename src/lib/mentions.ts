@@ -107,7 +107,7 @@ export async function detectMentionedDeals(): Promise<{ threads: number; created
           city: city || null,
           state: state && state.length === 2 ? state.toUpperCase() : null,
           summary: d.whatWasSaid,
-          details: JSON.stringify({ mentionedIn: newest.subject, mentionedOn: newest.occurredAt.toISOString(), promised: d.promised }),
+          details: JSON.stringify({ mentionedIn: newest.subject, mentionedOn: newest.occurredAt.toISOString(), mentionedMessageId: newest.externalId, promised: d.promised }),
           updatedAt: newest.occurredAt,
         },
       });

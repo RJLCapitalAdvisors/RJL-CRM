@@ -264,3 +264,66 @@ export async function notDuplicateAction(aId: string, bId: string) {
   await markNotDuplicate(aId, bId);
   revalidatePath("/");
 }
+
+/**
+ * Handle on a deal gone quiet (Data updates): open a check-in to whoever the deal came through, on the thread it
+ * lives on. A mentioned deal replies on the email that mentioned it (often the intro); otherwise the ongoing
+ * sponsor-only conversation about the deal; otherwise the latest thread with the sponsor contact; otherwise fresh.
+ */
+export async function handleStaleDeal(dealId: string) {
+  const me = await currentUser();
+  if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { sponsorCompany: { select: { id: true, name: true, domain: true } } } });
+  if (!deal) return { ok: false as const, reason: "Deal not found." };
+  const dealName = deal.propertyName ?? deal.name;
+  const { createThreadReplyDraft, replyViaTeammateCopy, replyToLatestWith, signatureFor } = await import("@/lib/followup");
+  const { sponsorContactsFor, bestContactForCompany } = await import("@/lib/engagement");
+  const people = await sponsorContactsFor(dealId).catch(() => [] as { email: string; firstName: string | null }[]);
+  const first = people[0]?.firstName?.trim();
+  const greeting = `Hi${first ? ` ${first}` : ""} - checking in on ${dealName}. Any update on your end?`;
+  let details: { mentionedIn?: string; mentionedMessageId?: string } = {};
+  try {
+    details = JSON.parse(deal.details || "{}");
+  } catch {
+    /* no details */
+  }
+  try {
+    // 1) the email the deal was mentioned in (for a deal we only heard about, usually the intro or the sponsor's note)
+    let sourceId: string | null = details.mentionedMessageId ?? null;
+    if (!sourceId && details.mentionedIn && deal.sponsorCompanyId) {
+      const norm = (t: string) => t.replace(/^\s*((re|fw|fwd)\s*:\s*)+/i, "").trim().toLowerCase();
+      const acts = await prisma.activity.findMany({ where: { type: "EMAIL", externalId: { not: null }, OR: [{ companyId: deal.sponsorCompanyId }, { contact: { companyId: deal.sponsorCompanyId } }] }, orderBy: { occurredAt: "desc" }, take: 60, select: { subject: true, externalId: true } });
+      sourceId = acts.find((a) => norm(a.subject ?? "") === norm(details.mentionedIn!))?.externalId ?? null;
+    }
+    if (sourceId) {
+      const r = await createThreadReplyDraft(me.email, sourceId, greeting);
+      if (r.ok) return r;
+      const t = await replyViaTeammateCopy(me.email, sourceId);
+      if (t?.ok) return t;
+    }
+    // 2) the ongoing sponsor-only conversation about this deal
+    if (people.length) {
+      const { sponsorThreadFor } = await import("@/lib/sponsor-thread");
+      const thread = await sponsorThreadFor(me.email, { id: deal.id, name: deal.name, propertyName: deal.propertyName, city: deal.city, state: deal.state, sponsorCompanyId: deal.sponsorCompanyId, requestedAmount: deal.requestedAmount }, { emails: people.map((p) => p.email), domain: deal.sponsorCompany?.domain ?? null }).catch(() => null);
+      if (thread) {
+        const { createReplyAllDraft, getMessage, outlookDesktopLink, updateDraftBody } = await import("@/lib/graph");
+        const draft = await createReplyAllDraft(me.email, thread.messageId).catch(() => null);
+        if (draft) {
+          const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
+          const body = draft.body?.content ?? "";
+          const block = `<div style="${F}"><p style="margin:0 0 12pt 0;${F}">${greeting}</p>${await signatureFor(me.email)}<br></div>`;
+          await updateDraftBody(me.email, draft.id, body.search(/<body[^>]*>/i) >= 0 ? body.replace(/(<body[^>]*>)/i, `$1${block}`) : `${block}${body}`);
+          const fresh = await getMessage(me.email, draft.id, "id,webLink,internetMessageId");
+          return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "replyAll" as const, attachments: 0 };
+        }
+      }
+    }
+    // 3) the latest thread with the sponsor's usual person about the deal, else a fresh email
+    const contact = people[0] ?? (deal.sponsorCompanyId ? await bestContactForCompany(deal.sponsorCompanyId) : null);
+    if (!contact?.email) return { ok: false as const, reason: `No sponsor contact with an email on ${dealName}. Link the sponsor company on the ticket.` };
+    const words = dealName.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+    return await replyToLatestWith(me.email, contact.email, `RE: ${dealName}`, words);
+  } catch (e) {
+    return { ok: false as const, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+}
