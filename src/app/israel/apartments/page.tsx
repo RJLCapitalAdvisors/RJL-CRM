@@ -4,6 +4,7 @@ import { PageHeader, Pager } from "@/components/ui";
 import { str } from "@/lib/format";
 import { nis, parseJsonList, pricePerMeter, yearOf } from "@/lib/israel";
 import { ApartmentFilters, type AptFilters } from "./filters";
+import { CompareCheck, CompareProvider } from "./compare-select";
 
 export const metadata = { title: "Apartments" };
 export const dynamic = "force-dynamic";
@@ -45,6 +46,7 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
     sort: str(sp.sort) || "updated",
   };
   const page = Math.max(1, Number(str(sp.page)) || 1);
+  const compare = str(sp.compare) === "1";
 
   const all = await prisma.ilApartment.findMany({ where: { pendingApproval: false }, orderBy: { updatedAt: "desc" }, include: { developer: { select: { id: true, name: true } }, project: { select: { name: true } } } });
   const cities = [...new Set(all.map((a) => a.city).filter((c): c is string => Boolean(c)))].sort();
@@ -105,19 +107,26 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
         title="Apartments"
         subtitle={`${total.toLocaleString()} of ${all.length.toLocaleString()} apartments`}
         actions={
-          <Link href="/israel/apartments/new" className="btn-primary">
-            New apartment
-          </Link>
+          <>
+            <Link href={(() => { const u = new URLSearchParams(); for (const [k, v] of Object.entries(sp)) for (const x of list(v)) if (k !== "compare") u.append(k, x); if (!compare) u.set("compare", "1"); const qs = u.toString(); return `/israel/apartments${qs ? `?${qs}` : ""}`; })()} className={compare ? "btn-secondary" : "btn-secondary"} title={compare ? "Leave compare mode" : "Tick up to five apartments and see them side by side"}>
+              {compare ? "Done comparing" : "Compare units"}
+            </Link>
+            <Link href="/israel/apartments/new" className="btn-primary">
+              New apartment
+            </Link>
+          </>
         }
       />
       <div className="grid gap-4 px-8 py-4 xl:grid-cols-[300px_1fr]">
         <ApartmentFilters f={f} cities={cities} neighborhoods={neighborhoods} total={total} />
         <div className="min-w-0">
+          <Body compare={compare}>
           <div className="flex h-[calc(100vh-220px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
             <div className="min-h-0 flex-1 overflow-auto">
               <table className="table dense w-full min-w-[1200px]">
                 <thead>
                   <tr>
+                    {compare && <th className="w-8"></th>}
                     <th>Apartment</th>
                     <th>Developer</th>
                     <th>City</th>
@@ -135,6 +144,11 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
                 <tbody>
                   {pageRows.map((a) => (
                     <tr key={a.id}>
+                      {compare && (
+                        <td className="w-8">
+                          <CompareCheck id={a.id} name={a.name} />
+                        </td>
+                      )}
                       <td>
                         <Link href={`/israel/apartments/${a.id}`} className="font-medium hover:underline">
                           {a.name}
@@ -156,7 +170,7 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
                   ))}
                   {pageRows.length === 0 && (
                     <tr>
-                      <td colSpan={12} className="py-10 text-center text-muted">
+                      <td colSpan={compare ? 13 : 12} className="py-10 text-center text-muted">
                         No apartments match these filters.
                       </td>
                     </tr>
@@ -166,8 +180,14 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
             </div>
           </div>
           <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
+          </Body>
         </div>
       </div>
     </>
   );
+}
+
+/** In compare mode the table sits inside the selection provider (tick boxes + the Compare bar); otherwise it renders as is. */
+function Body({ compare, children }: { compare: boolean; children: React.ReactNode }) {
+  return compare ? <CompareProvider>{children}</CompareProvider> : <>{children}</>;
 }

@@ -100,6 +100,9 @@ export function metrics(d: D): string[] {
   const price = n(d.purchasePrice);
   if (price && !dev) out.push(`Purchase Price: ${usd(price)}${perBits(price)}`);
   if (price && dev) out.push(`Land Price: ${usd(price)}${perBits(price)}`);
+  // an operating asset always shows where it stands today; the deals@ checklist chases the number when it is missing
+  const occ = n((d as { occupancy?: number | null }).occupancy);
+  if (!dev && occ != null) out.push(`Current Occupancy: ${pct(occ)}`);
   const debt = n(d.totalDebt);
   const ltc = n(d.ltc);
   const ltv = n(d.ltv);

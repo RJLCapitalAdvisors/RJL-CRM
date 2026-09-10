@@ -7,6 +7,7 @@ import { Suspense, useEffect } from "react";
 import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare } from "lucide-react";
 import { NavLink } from "@/components/nav-link";
 import { DealContextNav } from "@/components/deal-context-nav";
+import { ApartmentContextNav } from "@/components/apartment-context-nav";
 import { isIsraelPath } from "@/lib/workspace";
 
 const CA_NAV = [
@@ -56,7 +57,7 @@ export function WorkspaceSidebar({ user }: { user: { name: string } | null }) {
           <img src="/israel-logo.svg" alt="RJL Israel" className="h-auto w-full" />
         </Link>
       </div>
-      <div className="px-3 pt-3">{israel ? <Nav items={IL_NAV} /> : <Nav items={CA_NAV} dealSteps />}</div>
+      <div className="px-3 pt-3">{israel ? <Nav items={IL_NAV} apartmentSteps /> : <Nav items={CA_NAV} dealSteps />}</div>
       <div className="flex-1" />
       <div className="px-5 py-4 text-xs text-muted">
         {user ? (
@@ -76,7 +77,7 @@ export function WorkspaceSidebar({ user }: { user: { name: string } | null }) {
   );
 }
 
-function Nav({ items, dealSteps = false }: { items: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; exact?: boolean }[]; dealSteps?: boolean }) {
+function Nav({ items, dealSteps = false, apartmentSteps = false }: { items: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; exact?: boolean }[]; dealSteps?: boolean; apartmentSteps?: boolean }) {
   return (
     <nav className="flex flex-col gap-1 pb-2">
       {items.map((n) => (
@@ -88,6 +89,11 @@ function Nav({ items, dealSteps = false }: { items: { href: string; label: strin
           {dealSteps && n.href === "/deals" && (
             <Suspense fallback={null}>
               <DealContextNav />
+            </Suspense>
+          )}
+          {apartmentSteps && n.href === "/israel/apartments" && (
+            <Suspense fallback={null}>
+              <ApartmentContextNav />
             </Suspense>
           )}
         </div>
