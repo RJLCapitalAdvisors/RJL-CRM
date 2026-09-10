@@ -153,7 +153,8 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
       const text = assembleDealText(`THIS EMAIL CONTAINS ${parts.length} DEALS. Extract ONLY the deal "${part.name}" (${part.hint}). Ignore the others.\n\n${bodyText}`, own.length ? own : []);
       const key = i === 0 ? ext : `${ext}#${i + 1}`;
       // a part that is already a ticket (often one we only heard about) gets this email as its follow-up
-      const same = await findSameDeal(part.name);
+      const same = await findSameDeal(part.name, undefined, { sponsorName: fwd.name, text: `${part.hint}
+${text.slice(0, 2000)}` });
       if (same) {
         const before = await prisma.deal.findUniqueOrThrow({ where: { id: same.id } });
         await recordDealEmail(same.id, { messageId: key, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "FOLLOWUP" }).catch(() => null);

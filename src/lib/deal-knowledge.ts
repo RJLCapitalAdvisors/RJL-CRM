@@ -22,7 +22,7 @@ import { stripDashes } from "@/lib/style";
 const SameDeal = z.object({ sameDeal: z.boolean().describe("True only if the email is about this exact deal (same property / same capital raise), not merely a similar deal or the same sponsor."), why: z.string().describe("One short line.") });
 
 /** A word-overlap candidate is only a match once Claude agrees the email is about that very deal. */
-async function confirmSameDeal(deal: { name: string; propertyName: string | null; sponsorName: string | null; city: string | null; state: string | null; summary: string | null }, subject: string, senderEmail: string | null | undefined, bodyText: string, attachments: { names: string[]; text: string }): Promise<boolean> {
+export async function confirmSameDeal(deal: { name: string; propertyName: string | null; sponsorName: string | null; city: string | null; state: string | null; summary: string | null }, subject: string, senderEmail: string | null | undefined, bodyText: string, attachments: { names: string[]; text: string }): Promise<boolean> {
   if (!process.env.ANTHROPIC_API_KEY) return false;
   try {
     const client = new Anthropic();
@@ -233,12 +233,5 @@ export async function detectMultipleDeals(bodyText: string, attachmentNames: str
   return res.parsed_output?.deals ?? [];
 }
 
-const normName = (s: string) => s.toLowerCase().replace(/(.*?)/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/(the|apartments|apartment|portfolio|deal|llc)/g, "").replace(/s+/g, " ").trim();
-
-/** Rule: one deal, one ticket. An active deal with the same (normalized) name is the same deal. */
-export async function findSameDeal(propertyName: string | null | undefined, excludeId?: string): Promise<{ id: string; name: string } | null> {
-  const key = normName(propertyName ?? "");
-  if (key.length < 4) return null;
-  const deals = await prisma.deal.findMany({ where: { stage: { notIn: ["Deal Lost", "Deal Closed"] }, ...(excludeId ? { id: { not: excludeId } } : {}) }, select: { id: true, name: true, propertyName: true } });
-  return deals.find((d) => normName(d.propertyName ?? d.name) === key) ?? null;
-}
+/** Rule: one deal, one ticket. Same name, same address, or same sponsor and city confirmed by Claude (src/lib/deal-dedupe.ts). */
+export { findSameDeal } from "@/lib/deal-dedupe";

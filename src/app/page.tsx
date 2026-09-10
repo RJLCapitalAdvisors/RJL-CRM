@@ -7,7 +7,8 @@ import { investorLabel } from "@/lib/tracker";
 import { syncFollowUpDrafts } from "@/lib/followup";
 import { EXTRA_FIELD_LABELS, PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
 import { STALE_DAYS, staleDeals } from "@/lib/stale-deals";
-import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction } from "./todo-actions";
+import { possibleDuplicates } from "@/lib/deal-dedupe";
+import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction } from "./todo-actions";
 import { DraftButton } from "./draft-button";
 import { listMomentum } from "@/lib/momentum";
 import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
@@ -69,13 +70,14 @@ export default async function Dashboard() {
   const me = await currentUser();
   if (me) await syncRecentSent(me.email).catch(() => 0); // what you just sent counts right away
   const showCriteria = Boolean(me?.canEditCriteria);
-  const [proposals, quiet, momentum, intros, readyDeals, stale] = await Promise.all([
+  const [proposals, quiet, momentum, intros, readyDeals, stale, dupes] = await Promise.all([
     showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING", createdAt: { gte: HOME_SINCE } }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]),
     quietInvestors(),
     listMomentum(HOME_SINCE),
     quietIntros(),
     prisma.deal.findMany({ where: { stage: "Engagement Letter Signed" }, include: { owner: { select: { name: true } }, _count: { select: { investors: true } } }, orderBy: { updatedAt: "desc" } }),
     showCriteria ? staleDeals() : Promise.resolve([]),
+    showCriteria ? possibleDuplicates() : Promise.resolve([]),
   ]);
 
   const companies = new Map((await prisma.company.findMany({ where: { id: { in: proposals.map((p) => p.companyId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
@@ -86,7 +88,7 @@ export default async function Dashboard() {
 
   return (
     <>
-      <PageHeader compact title="Dashboard" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP follow-ups · ${momentum.length} momentum · ${intros.length} intros to reconsider · ${readyDeals.length} ready to launch${showCriteria ? ` · ${proposals.length + stale.length} data updates` : ""}`} />
+      <PageHeader compact title="Dashboard" subtitle={`${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${quietCount} LP follow-ups · ${momentum.length} momentum · ${intros.length} intros to reconsider · ${readyDeals.length} ready to launch${showCriteria ? ` · ${proposals.length + stale.length + dupes.length} data updates` : ""}`} />
       <div className={`grid gap-3 px-5 py-4 md:grid-cols-2 xl:grid-cols-3 ${cols}`}>
         <Window title="LP follow-ups" count={quietCount} empty={`Everyone you have sent a deal to has responded, or got it less than ${QUIET_AFTER_DAYS} days ago.`}>
           <ul className="divide-y divide-line">
@@ -203,7 +205,43 @@ export default async function Dashboard() {
         </Window>
 
         {showCriteria && (
-          <Window title="Data updates" count={proposals.length + stale.length} empty="Nothing to approve. Criteria corrections from investor emails, notes, calls or teammates, people who left their firm, and deals that went quiet land here.">
+          <Window title="Data updates" count={proposals.length + stale.length + dupes.length} empty="Nothing to approve. Criteria corrections from investor emails, notes, calls or teammates, people who left their firm, and deals that went quiet land here.">
+            {dupes.length > 0 && (
+              <div className="border-b border-line bg-cream-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                Possible duplicates ({dupes.length}) · one deal, one ticket
+              </div>
+            )}
+            <ul className="divide-y divide-line">
+              {dupes.map((d) => (
+                <li key={`${d.a.id}-${d.b.id}`} className="px-3 py-2.5 text-sm">
+                  <div className="text-[11px] text-muted">{d.why}</div>
+                  <div className="mt-0.5">
+                    <Link href={`/deals/${d.a.id}`} className="font-semibold hover:underline">
+                      {d.a.name}
+                    </Link>
+                    <span className="text-xs text-muted"> · {[d.a.sponsorName, d.a.stage, d.a.propertyAddress].filter(Boolean).join(" · ")}</span>
+                  </div>
+                  <div className="mt-0.5">
+                    <Link href={`/deals/${d.b.id}`} className="font-semibold hover:underline">
+                      {d.b.name}
+                    </Link>
+                    <span className="text-xs text-muted"> · {[d.b.sponsorName, d.b.stage, d.b.propertyAddress].filter(Boolean).join(" · ")}</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    <form action={mergeDealsAction.bind(null, d.b.id, d.a.id)}>
+                      <button className="btn-soft px-2.5 py-1 text-xs" type="submit" title={`Fold "${d.b.name}" into "${d.a.name}" (the ticket with more on it); emails, files, report rows and notes all move over`}>
+                        Merge into first
+                      </button>
+                    </form>
+                    <form action={notDuplicateAction.bind(null, d.a.id, d.b.id)}>
+                      <button className="text-xs text-muted hover:underline" type="submit">
+                        Not the same deal
+                      </button>
+                    </form>
+                  </div>
+                </li>
+              ))}
+            </ul>
             {stale.length > 0 && (
               <div className="border-b border-line bg-cream-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
                 Deals gone quiet ({stale.length}) · nothing for {STALE_DAYS}+ days, Deal Mentioned through Intro To Capital Made

@@ -709,3 +709,13 @@ model DealLaunch {
   @@index([mailbox, status])
   @@index([dealId, createdAt])
 }
+
+// Two tickets Jonathan said are NOT the same deal; Possible duplicates stops pairing them
+model DealNotDuplicate {
+  id        String   @id @default(cuid())
+  aId       String
+  bId       String
+  createdAt DateTime @default(now())
+
+  @@unique([aId, bId])
+}

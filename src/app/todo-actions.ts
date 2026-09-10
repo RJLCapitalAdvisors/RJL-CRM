@@ -230,3 +230,19 @@ export async function keepDealAction(dealId: string) {
   await prisma.deal.update({ where: { id: dealId }, data: { staleCheckedAt: new Date(), updatedAt: new Date() } });
   revalidatePath("/");
 }
+
+// ---------- possible duplicates (Data updates) ----------
+export async function mergeDealsAction(fromId: string, intoId: string) {
+  await requireCriteriaAdmin();
+  const { mergeDeals } = await import("@/lib/deal-dedupe");
+  await mergeDeals(fromId, intoId);
+  revalidatePath("/");
+  revalidatePath("/deals");
+  revalidatePath(`/deals/${intoId}`);
+}
+export async function notDuplicateAction(aId: string, bId: string) {
+  await requireCriteriaAdmin();
+  const { markNotDuplicate } = await import("@/lib/deal-dedupe");
+  await markNotDuplicate(aId, bId);
+  revalidatePath("/");
+}
