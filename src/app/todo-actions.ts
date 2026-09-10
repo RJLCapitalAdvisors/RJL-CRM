@@ -84,12 +84,36 @@ export async function openMomentumDraft(momentumId: string) {
       if (!to.length) return { ok: false as const, reason: "No sponsor contact found for this deal. Link the sponsor company on the deal ticket." };
       const firstName = people[0]?.firstName;
       const dealName = deal.propertyName ?? deal.name;
-      const asks = m.summary.replace(/^.*?asks:s*/, "").split(" | Already on the ticket:")[0].split(";").map((s) => s.trim()).filter(Boolean);
+      const asks = m.summary.replace(/^.*?asks:\s*/, "").split(" | Already on the ticket:")[0].split(";").map((s) => s.trim()).filter(Boolean);
       const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
-      const opening = `Hi${firstName ? ` ${firstName}` : ""} - hope you are well. ${m.party} came back on ${dealName} with a few requests:`;
+      // the LP's actual email: their words go in, their attachments come along
+      const { findMessageCopy, lpOwnWords } = await import("@/lib/lp-message");
+      const lp = m.lastMessageId ? await findMessageCopy(m.lastMessageId, me.email).catch(() => null) : null;
+      const lpText = lp ? lpOwnWords(lp.body) : "";
+      const lpWhen = lp?.receivedDateTime ? new Date(lp.receivedDateTime).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
+      const lpFrom = lp?.from?.emailAddress?.name || lp?.from?.emailAddress?.address || m.party;
+      const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const opening = `Hi${firstName ? ` ${firstName}` : ""} - please also see the below requests from ${m.party} on ${dealName}:`;
       const closing = "Could you send these over when you get a chance and I will pass them along.";
-      const block = `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">${opening}</p><ul style="margin:0 0 10pt 18pt;">${asks.map((x) => `<li style="margin:0;${F}">${x}</li>`).join("")}</ul><p style="margin:0 0 10pt 0;${F}">${closing}</p>`;
-      const plain = [opening, ...asks.map((x) => `• ${x}`), closing].join("\n");
+      const quote = lpText ? `<p style="margin:0 0 4pt 0;${F}"><i>From ${esc(lpFrom)}${lpWhen ? `, ${lpWhen}` : ""}:</i></p><div style="margin:0 0 10pt 0;padding:4pt 10pt;border-left:3px solid #b7cfe8;${F}white-space:pre-wrap;">${esc(lpText)}</div>` : "";
+      const block = `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">${opening}</p><ul style="margin:0 0 10pt 18pt;">${asks.map((x) => `<li style="margin:0;${F}">${esc(x)}</li>`).join("")}</ul>${quote}<p style="margin:0 0 10pt 0;${F}">${closing}</p>`;
+      const { addAttachment, listAttachments, graph: g } = await import("@/lib/graph");
+      const carryAttachments = async (draftId: string) => {
+        if (!lp?.hasAttachments) return 0;
+        const atts = await listAttachments(lp.box, lp.id).catch(() => []);
+        let n = 0;
+        for (const a of atts) {
+          if (a.isInline || a["@odata.type"] !== "#microsoft.graph.fileAttachment" || /\.(png|jpe?g|gif|bmp)$/i.test(a.name)) continue;
+          try {
+            const bytes = new Uint8Array(await g<ArrayBuffer>(`/users/${encodeURIComponent(lp.box)}/messages/${encodeURIComponent(lp.id)}/attachments/${encodeURIComponent(a.id)}/$value`, { raw: true }));
+            await addAttachment(me.email, draftId, { name: a.name, contentType: a.contentType ?? "application/octet-stream", bytes });
+            n++;
+          } catch {
+            /* one attachment failing does not stop the draft */
+          }
+        }
+        return n;
+      };
       // the thread: my latest email to the sponsor team about this deal, with nobody else on it. Never an intro
       // or a thread that has a third party (an LP, another sponsor) on copy: those are not the place to ask.
       const { subjectMatchesDeal } = await import("@/lib/deal-match");
@@ -110,13 +134,15 @@ export async function openMomentumDraft(momentumId: string) {
         const at = body.search(/<body[^>]*>/i);
         const html = at >= 0 ? body.replace(/(<body[^>]*>)/i, `$1${block}${await signatureFor(me.email)}<br></div>`) : `${block}${await signatureFor(me.email)}</div>${body}`;
         await updateDraftBody(me.email, draft.id, html);
+        const attachments = await carryAttachments(draft.id);
         const fresh = await getMessage(me.email, draft.id, "id,webLink,internetMessageId");
-        const orig = await getMessage(me.email, original.id, "id,internetMessageId").catch(() => null);
-        return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "replyAll" as const, attachments: 0, replyTo: orig?.internetMessageId ? { messageId: orig.internetMessageId, greeting: plain, attachments: false } : undefined };
+        // the server draft is what opens (it carries the LP's words and files); Outlook building its own reply would lose them
+        return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "replyAll" as const, attachments };
       }
       const draft = await createDraft(me.email, { subject: `${dealName} | ${m.party} follow-up items`, toRecipients: to, bodyHtml: `<html><body>${block}${await signatureFor(me.email)}</div></body></html>` });
+      const attachments = await carryAttachments(draft.id);
       const fresh = await getMessage(me.email, draft.id, "id,webLink,internetMessageId");
-      return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "new" as const, attachments: 0 };
+      return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "new" as const, attachments };
     }
     // 1) the exact thread we recorded: in my mailbox, else from a teammate's (or deals@) copy
     if (m.lastMessageId) {

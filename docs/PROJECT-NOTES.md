@@ -231,3 +231,8 @@ Jonathan (RJL Capital Advisors, real estate capital advisory) is replacing HubSp
 - The sponsor is never an LP: src/lib/report-guard.ts (`isSponsorSide`, `sponsorSideIds`, `removeSponsorRows`) checks the deal's sponsor company and email domain; every path that creates a progress-report row (LP asks, reply matching, campaigns, tracker add, engagement, launch, send to one, forwarder notes) skips sponsor-side people. Pearl on Galleria and MORVAY on Purveyor Space Coast were removed.
 - Deal ticket: the Sponsor field is a company picker (src/components/sponsor-picker.tsx): type, pick a company on file, the ticket links to it (sponsorCompanyId) so associations, contacts and email matching follow. Free text without a pick keeps the name unlinked and says so.
 - RecordLayout is responsive: three columns from xl (1280px), otherwise the right column (associations) stacks below, so it is never pushed off screen on a laptop.
+
+## 2026-09-10: smarter LP-request Handle, faster dashboard
+
+- Deal momentum, LP request Handle: the draft replies all on the latest sponsor-only thread about the deal and reads "Hi Kyle - please also see the below requests from Nelnet on Everett Mall Plaza:", the parsed asks as bullets, then the LP's own words quoted (signature and quoted thread stripped, src/lib/lp-message.ts) and every file the LP attached copied onto the draft (found in whichever team mailbox holds the LP's email). The server draft is what opens in Outlook, so the words and files are there.
+- Dashboard speed: the page no longer awaits the Sent Items sync or the follow-up draft sync on render; both run after the response, at most once a minute, so Handle/Dismiss/Approve and their refresh come back fast. The result shows on the next load.

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { after } from "next/server";
 import type { ReactNode } from "react";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
@@ -26,11 +27,11 @@ const QUIET_AFTER_DAYS = 2;
 /** The dashboard starts the clock here: anything that began before this date stays off (the old backlog lives on the report and deal pages). */
 const HOME_SINCE = new Date("2026-08-31T00:00:00Z");
 const days = (d: Date) => Math.floor((Date.now() - d.getTime()) / DAY);
+let lastSync = 0;
 const KIND: Record<string, string> = { LP_ASK: "LP request for the sponsor", ENGAGEMENT: "engagement letter unanswered", SPONSOR_ITEMS: "waiting on sponsor", INTRO: "intro not scheduled", ACTION: "open action item", MENTIONED: "mentioned, never sent" };
 
 /** LPs who were sent a deal (or followed up with) and have said nothing for QUIET_AFTER_DAYS, grouped by deal. */
 async function quietInvestors() {
-  await syncFollowUpDrafts().catch(() => 0);
   // calendar days in New York, not 48 hours: a deal sent Monday afternoon shows its quiet LPs Wednesday morning
   const now = new Date();
   const nyWall = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" })); // New York wall clock, read as if it were UTC
@@ -68,7 +69,15 @@ export default async function Dashboard() {
   kickMailSync();
   kickBlasts();
   const me = await currentUser();
-  if (me) await syncRecentSent(me.email).catch(() => 0); // what you just sent counts right away
+  // what you just sent, and drafts that went out, are picked up after the page is served (throttled), so every
+  // click and refresh on this page stays quick; the next load shows the result
+  if (me && Date.now() - lastSync > 60_000) {
+    lastSync = Date.now();
+    after(async () => {
+      await syncRecentSent(me.email).catch(() => 0);
+      await syncFollowUpDrafts().catch(() => 0);
+    });
+  }
   const showCriteria = Boolean(me?.canEditCriteria);
   const [proposals, quiet, momentum, intros, readyDeals, stale, dupes] = await Promise.all([
     showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING", createdAt: { gte: HOME_SINCE } }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]),
