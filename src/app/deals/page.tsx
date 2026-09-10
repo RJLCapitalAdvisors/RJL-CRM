@@ -32,7 +32,7 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
   } as const;
 
   const [active, closed, lost, closedCount, lostCount, users] = await Promise.all([
-    prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] }, ...ownerFilter }, orderBy: { updatedAt: "desc" }, select }),
+    prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] }, parentDealId: null, ...ownerFilter }, orderBy: { updatedAt: "desc" }, select }),
     prisma.deal.findMany({ where: { stage: "Deal Closed", ...ownerFilter }, orderBy: { updatedAt: "desc" }, take: CLOSED_PREVIEW, select }),
     prisma.deal.findMany({ where: { stage: "Deal Lost", ...ownerFilter }, orderBy: { updatedAt: "desc" }, take: CLOSED_PREVIEW, select }),
     prisma.deal.count({ where: { stage: "Deal Closed", ...ownerFilter } }),

@@ -171,3 +171,38 @@ export async function searchCompaniesAction(q: string) {
   if (t.length < 2) return [];
   return prisma.company.findMany({ where: { name: { contains: t, mode: "insensitive" } }, select: { id: true, name: true, city: true, state: true, roles: true }, orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { name: "asc" }], take: 8 });
 }
+
+// ---------- portfolios ----------
+/** Other live tickets from the same sponsor that could be taken out together with this one. */
+export async function portfolioCandidatesAction(dealId: string) {
+  const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { sponsorCompanyId: true, sponsorName: true } });
+  if (!d) return [];
+  const bySponsor = [d.sponsorCompanyId ? { sponsorCompanyId: d.sponsorCompanyId } : null, d.sponsorName ? { sponsorName: { contains: d.sponsorName.split(/[,|]/)[0].trim().split(" ")[0], mode: "insensitive" as const } } : null].filter((x): x is NonNullable<typeof x> => Boolean(x));
+  if (!bySponsor.length) return [];
+  const rows = await prisma.deal.findMany({
+    where: { id: { not: dealId }, parentDealId: null, stage: { notIn: ["Deal Lost", "Deal Closed"] }, OR: bySponsor },
+    select: { id: true, name: true, propertyName: true, city: true, state: true, stage: true, requestedAmount: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  const { fmtMoney } = await import("@/lib/format");
+  return rows.map((r) => ({ id: r.id, name: r.propertyName ?? r.name, city: [r.city, r.state].filter(Boolean).join(", ") || null, stage: r.stage, ask: r.requestedAmount ? fmtMoney(r.requestedAmount) : null }));
+}
+export async function combinePortfolioAction(dealIds: string[], name: string | null) {
+  const { combineIntoPortfolio } = await import("@/lib/portfolio");
+  let out: { id: string; name: string };
+  try {
+    out = await combineIntoPortfolio(dealIds, name);
+  } catch (e) {
+    return { error: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+  revalidatePath("/deals");
+  revalidatePath("/");
+  redirect(`/deals/${out.id}`);
+}
+export async function detachFromPortfolioAction(childId: string, parentId: string) {
+  const { detachFromPortfolio } = await import("@/lib/portfolio");
+  await detachFromPortfolio(childId);
+  revalidatePath("/deals");
+  revalidatePath(`/deals/${parentId}`);
+  revalidatePath(`/deals/${childId}`);
+}

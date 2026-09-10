@@ -26,9 +26,15 @@ function stateName(d: D) {
 }
 
 /** "Multifamily Acquisition Opportunity in Pensacola, FL | $23,000,000 of JV Equity" */
+type Child = Record<string, unknown> & { propertyName: string | null; name: string; city: string | null; state: string | null };
+const childrenOf = (d: D): Child[] => (Array.isArray(d.children) ? (d.children as Child[]) : []);
+const joinAnd = (xs: string[]) => (xs.length <= 1 ? xs[0] ?? "" : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+const portfolioLoc = (kids: Child[]) => joinAnd([...new Set(kids.map((c) => [s(c.city), s(c.state)].filter(Boolean).join(", ")).filter(Boolean))]);
+
 export function subjectLine(d: D): string {
-  const parts = [s(d.assetClass), d.strategy === "Development" ? "Development" : d.strategy === "Acquisitions" ? "Acquisition" : null, "Opportunity"].filter(Boolean).join(" ");
-  const loc = location(d);
+  const kids = childrenOf(d);
+  const parts = [s(d.assetClass), kids.length ? "Portfolio" : null, d.strategy === "Development" ? "Development" : d.strategy === "Acquisitions" ? "Acquisition" : null, "Opportunity"].filter(Boolean).join(" ");
+  const loc = kids.length ? portfolioLoc(kids) : location(d);
   const ask = n(d.requestedAmount);
   const exec = s(d.executionType) ?? (s(d.requestType) === "Debt" ? "Debt" : s(d.requestType) ? "Equity" : null);
   return `${parts}${loc ? ` in ${loc}` : ""}${ask ? ` | ${usdShort(ask)}${exec ? ` of ${exec}` : ""}` : ""}`;
@@ -36,6 +42,8 @@ export function subjectLine(d: D): string {
 
 /** The opening paragraph after the greeting. */
 export function intro(d: D): string {
+  const kids = childrenOf(d);
+  if (kids.length) return portfolioIntro(d, kids);
   const dev = d.strategy === "Development";
   const sponsor = s(d.sponsorName) ?? "the sponsor";
   const exec = s(d.executionType) ?? "capital";
@@ -75,6 +83,26 @@ export function intro(d: D): string {
   const fourth = sourcing && !dev ? `The sponsor is buying the asset ${/^(on|off)/i.test(sourcing) ? sourcing.charAt(0).toLowerCase() + sourcing.slice(1) : sourcing}${/[.!?]$/.test(sourcing) ? "" : "."}` : "";
   const fifth = ask ? `<b>They are seeking ${usdShort(ask)} of ${exec} on this opportunity.</b>` : "";
   return [first, second, third, fourth, fifth].filter(Boolean).join(" ");
+}
+
+/** The opening paragraph for a portfolio: the properties by name and market, then the totals, then the ask. */
+function portfolioIntro(d: D, kids: Child[]): string {
+  const dev = d.strategy === "Development";
+  const sponsor = s(d.sponsorName) ?? "the sponsor";
+  const exec = s(d.executionType) ?? "capital";
+  const p = assetProfile(s(d.assetClass));
+  const named = joinAnd(kids.map((c) => `${s(c.propertyName) ?? c.name}${[s(c.city), s(c.state)].filter(Boolean).length ? ` in ${[s(c.city), s(c.state)].filter(Boolean).join(", ")}` : ""}`));
+  const first = dev
+    ? `RJL Capital Advisors is pleased to be working with ${sponsor} as they source ${exec} to develop a ${kids.length} property ${s(d.assetClass) ?? ""} portfolio: ${named}.`.replace(/\s+/g, " ")
+    : `RJL Capital Advisors is pleased to be representing ${sponsor} as they raise ${exec} for the purchase of a ${kids.length} property ${s(d.assetClass) ?? ""} portfolio: ${named}.`.replace(/\s+/g, " ");
+  const count = n(d.units);
+  const sf = n(d.squareFeet);
+  const year = s(d.yearBuilt);
+  const facts = [count && p.countLabel ? `${count.toLocaleString("en-US")} ${p.countLabel.toLowerCase()}` : null, sf ? `${sf.toLocaleString("en-US")} square feet` : null].filter(Boolean) as string[];
+  const second = facts.length ? `Together the properties ${dev ? "will total" : "total"} ${joinAnd(facts)}${year ? `, ${/to/.test(year) ? "built between" : "built in"} ${year.replace(" to ", " and ")}` : ""}.` : "";
+  const ask = n(d.requestedAmount);
+  const fifth = ask ? `<b>They are seeking ${usdShort(ask)} of ${exec} across the portfolio.</b>` : "";
+  return [first, second, fifth].filter(Boolean).join(" ");
 }
 
 /** Deal Metrics bullets, one per line, only for values that exist. */
@@ -149,12 +177,24 @@ export function metrics(d: D): string[] {
 }
 
 export function metricsHtml(d: D): string {
-  const m = metrics(d);
   // heading underlined, every bullet's lead-in bold, a gap after the list before Business Plan
   const li = (x: string) => { const i = x.indexOf(": "); return i > 0 ? `<li><b>${x.slice(0, i)}:</b>${x.slice(i + 1)}</li>` : `<li>${x}</li>`; };
+  const kids = childrenOf(d);
+  if (kids.length) {
+    // a portfolio: one block per property, in order, each under its own heading
+    return kids
+      .map((c) => {
+        const m = metrics({ ...c, strategy: c.strategy ?? d.strategy, executionType: c.executionType ?? d.executionType, assetClass: c.assetClass ?? d.assetClass });
+        return m.length ? `<p><b><u>Deal Metrics: ${s(c.propertyName) ?? c.name}${[s(c.city), s(c.state)].filter(Boolean).length ? ` (${[s(c.city), s(c.state)].filter(Boolean).join(", ")})` : ""}</u></b></p><ul style="margin:0 0 12pt 18pt;">${m.map(li).join("")}</ul>` : "";
+      })
+      .join("");
+  }
+  const m = metrics(d);
   return m.length ? `<p><b><u>Deal Metrics</u></b></p><ul style="margin:0 0 12pt 18pt;">${m.map(li).join("")}</ul>` : "";
 }
 export function metricsText(d: D): string {
+  const kids = childrenOf(d);
+  if (kids.length) return kids.map((c) => { const m = metrics({ ...c, strategy: c.strategy ?? d.strategy, executionType: c.executionType ?? d.executionType, assetClass: c.assetClass ?? d.assetClass }); return m.length ? `Deal Metrics: ${s(c.propertyName) ?? c.name}\n${m.map((x) => `• ${x}`).join("\n")}` : ""; }).filter(Boolean).join("\n\n");
   const m = metrics(d);
   return m.length ? `Deal Metrics\n${m.map((x) => `• ${x}`).join("\n")}` : "";
 }

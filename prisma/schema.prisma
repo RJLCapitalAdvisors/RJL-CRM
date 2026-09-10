@@ -140,6 +140,9 @@ model Deal {
   stage     String  @default("Deal Received")
   position  Int     @default(0)
   staleCheckedAt DateTime?
+  parentDealId String?  // a component of a portfolio deal: off the board, its data and files serve the portfolio
+  parent       Deal?    @relation("Portfolio", fields: [parentDealId], references: [id])
+  children     Deal[]   @relation("Portfolio")
   reportSentAt   DateTime? // the progress report last went to the sponsor
   reportDraftId  String?   // Outlook draft of the report email, watched until it goes
   reportDraftMailbox String?

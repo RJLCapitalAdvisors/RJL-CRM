@@ -24,7 +24,8 @@ export async function searchInvestorCompanies(q: string) {
 /** Live preview of one recipient's email as it will be drafted. */
 export async function previewDealEmail(dealId: string, templateId: string, contactId: string, openingLine: string | null, bodyOverride: string | null) {
   const me = await currentUser();
-  const deal = await prisma.deal.findUniqueOrThrow({ where: { id: dealId } });
+  const { withChildren } = await import("@/lib/portfolio");
+  const deal = await withChildren(await prisma.deal.findUniqueOrThrow({ where: { id: dealId } }));
   const contact = await prisma.contact.findUniqueOrThrow({ where: { id: contactId }, include: { company: true } });
   const r = await renderDealEmail({ templateId, deal: deal as unknown as Record<string, unknown>, contact, company: contact.company, openingLine, bodyOverride, senderName: me?.name ?? "RJL Capital Advisors", mailbox: me?.email ?? "jonathan@rjlcapadvisors.com" });
   return { subject: r.subject, html: r.html };

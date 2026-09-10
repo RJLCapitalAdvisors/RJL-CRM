@@ -10,6 +10,7 @@ import { renderTemplate, toHtml, type MergeContext } from "@/lib/merge";
 import { unsubscribeUrl } from "@/lib/tokens";
 import { parseList, toJson, STAGE_ORDER } from "@/lib/taxonomy";
 import { logActivity } from "@/lib/activity";
+import { withChildren } from "@/lib/portfolio";
 
 /**
  * From "engagement letter signed" to "deal sent":
@@ -109,7 +110,8 @@ async function faqEntry(dealId: string): Promise<DealFile | null> {
 
 export async function dealFiles(dealId: string): Promise<DealFile[]> {
   const faq = await faqEntry(dealId);
-  const recorded = await prisma.dealFile.findMany({ where: { dealId }, orderBy: { receivedAt: "desc" } });
+  // a portfolio serves its components' files as its own
+  const recorded = await prisma.dealFile.findMany({ where: { OR: [{ dealId }, { deal: { parentDealId: dealId } }] }, orderBy: { receivedAt: "desc" } });
   if (recorded.length) {
     const seen = new Set<string>();
     return [...(faq ? [faq] : []), ...recorded
@@ -181,7 +183,7 @@ async function copyAcross(src: { mailbox: string; messageId: string }, att: Grap
 
 export async function createSendDrafts(dealId: string, templateId: string, items: SendItem[], mailbox: string, senderName: string): Promise<SendResult[]> {
   if (!graphConfigured()) return items.map((i) => ({ rowId: i.rowId, firm: "", to: [], result: { ok: false, reason: "Microsoft 365 is not connected" } }));
-  const deal = await prisma.deal.findUniqueOrThrow({ where: { id: dealId } });
+  const deal = await withChildren(await prisma.deal.findUniqueOrThrow({ where: { id: dealId } }));
   const src = await dealAttachments(dealId).catch(() => null);
   const out: SendResult[] = [];
   for (const item of items) {
@@ -326,7 +328,7 @@ export async function sendPreviewToSelf(dealId: string, item: LaunchItem, mailbo
 /** The deal email with no one's name in it: the starting point every firm's email derives from. */
 export async function renderGeneralDealEmail(opts: { templateId: string; dealId: string; senderName: string; mailbox: string }) {
   const { FIRST_NAME_MARKER } = await import("@/lib/first-name-marker");
-  const deal = await prisma.deal.findUniqueOrThrow({ where: { id: opts.dealId } });
+  const deal = await withChildren(await prisma.deal.findUniqueOrThrow({ where: { id: opts.dealId } }));
   return renderDealEmail({ templateId: opts.templateId, deal: deal as unknown as Record<string, unknown>, contact: { firstName: FIRST_NAME_MARKER, lastName: "", email: "", id: "" }, company: null, openingLine: "hope you are well.", bodyOverride: null, senderName: opts.senderName, mailbox: opts.mailbox });
 }
 
@@ -368,7 +370,7 @@ export async function reviseDealEmail(opts: { dealId: string; subject: string; h
  */
 export async function draftDealToOne(dealId: string, contactId: string, mailbox: string, senderName: string): Promise<FollowUpResult> {
   if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
-  const [deal, contact] = await Promise.all([prisma.deal.findUniqueOrThrow({ where: { id: dealId } }), prisma.contact.findUniqueOrThrow({ where: { id: contactId }, include: { company: true } })]);
+  const [deal, contact] = await Promise.all([prisma.deal.findUniqueOrThrow({ where: { id: dealId } }).then(withChildren), prisma.contact.findUniqueOrThrow({ where: { id: contactId }, include: { company: true } })]);
   if (!contact.email) return { ok: false, reason: `${[contact.firstName, contact.lastName].filter(Boolean).join(" ") || "This contact"} has no email address on file` };
 
   if (await isSponsorSide(dealId, contactId)) return { ok: false, reason: "That person is at the sponsor; the deal email goes to LPs" };

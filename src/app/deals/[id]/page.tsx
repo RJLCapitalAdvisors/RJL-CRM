@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { DealForm } from "@/components/deal-form";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { CompanyLogo } from "@/components/company-logo";
-import { fmtDate, fullName } from "@/lib/format";
+import { fmtDate, fmtMoney, fullName } from "@/lib/format";
 import { TRACKER_STATUSES, investorLabel, statusOf } from "@/lib/tracker";
 import { addDealNote, deleteFact, updateDeal , toggleFactFaq } from "../actions";
 import { StageSelect } from "./stage-select";
@@ -12,6 +12,8 @@ import { AttachmentList } from "@/components/attachment-list";
 import { signFileToken } from "@/lib/tokens";
 import { faqFileName } from "@/lib/faq-pdf";
 import { EngagementCard } from "./engagement-card";
+import { CombinePortfolio } from "./combine-portfolio";
+import { detachFromPortfolioAction } from "../actions";
 import { engagementGroups } from "@/lib/send-deal";
 import { EmailLog } from "@/components/email-log";
 import { dealEmailRows } from "@/lib/deal-emails";
@@ -37,6 +39,8 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
         campaigns: { select: { id: true, name: true, followUp: true, createdAt: true, recipients: { select: { status: true } } }, orderBy: { createdAt: "desc" } },
         files: { orderBy: { receivedAt: "desc" } },
         facts: { orderBy: { createdAt: "desc" } },
+        children: { orderBy: { createdAt: "asc" }, select: { id: true, name: true, propertyName: true, city: true, state: true, units: true, requestedAmount: true } },
+        parent: { select: { id: true, name: true, propertyName: true } },
       },
     }),
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
@@ -77,9 +81,40 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                 <Link href={`/investors?dealId=${deal.id}&mode=engagement`} className="btn-secondary" title="Pick the equity groups to carve out, then the letter drafts itself to the sponsor">
                   Generate engagement letter
                 </Link>
+                {!deal.parent && <CombinePortfolio dealId={deal.id} dealName={name} />}
               </>
             }
           />
+          {deal.parent && (
+            <div className="rounded-md border border-sky bg-sky-50 px-4 py-3 text-sm">
+              Part of the portfolio{" "}
+              <Link href={`/deals/${deal.parent.id}`} className="font-semibold hover:underline">
+                {deal.parent.propertyName ?? deal.parent.name}
+              </Link>
+              . The portfolio ticket is the one sent and tracked; this ticket holds the property&apos;s own data and files.
+              <form action={detachFromPortfolioAction.bind(null, deal.id, deal.parent.id)} className="mt-1">
+                <button type="submit" className="text-xs text-muted hover:underline">
+                  Take it back out of the portfolio
+                </button>
+              </form>
+            </div>
+          )}
+          {deal.children.length > 0 && (
+            <div className="card">
+              <div className="border-b border-line px-4 py-3 text-sm font-semibold">Portfolio of {deal.children.length} properties</div>
+              <ul className="divide-y divide-line text-sm">
+                {deal.children.map((c) => (
+                  <li key={c.id} className="px-4 py-2">
+                    <Link href={`/deals/${c.id}`} className="font-medium hover:underline">
+                      {c.propertyName ?? c.name}
+                    </Link>
+                    <div className="truncate text-xs text-muted">{[[c.city, c.state].filter(Boolean).join(", "), c.units ? `${c.units} units` : null, c.requestedAmount ? `${fmtMoney(c.requestedAmount)} ask` : null].filter(Boolean).join(" · ")}</div>
+                  </li>
+                ))}
+              </ul>
+              <div className="px-4 py-2 text-xs text-muted">The deal email carries one intro, a Deal Metrics block per property, one business plan and one sponsor bio. Files from every property go out together.</div>
+            </div>
+          )}
           <AboutCard title="About this deal">
             <DealForm deal={deal} users={users} action={update} autosave />
           </AboutCard>

@@ -68,11 +68,15 @@ async function fillContactName(contactId: string, displayName: string | undefine
 
 export async function dealResolver() {
   // legacy HubSpot intro records are not tickets: an email is never filed on one
-  const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, sponsorCompany: { select: { roles: true } }, investors: { select: { contactId: true } } } })).filter((d) => !isLegacyIntroTicket({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, investorCount: d.investors.length }));
+  const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, parentDealId: true, sponsorCompany: { select: { roles: true } }, investors: { select: { contactId: true } } } })).filter((d) => !isLegacyIntroTicket({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, investorCount: d.investors.length }));
+  // an email about one property of a portfolio belongs to the portfolio
+  const up = (id: string | undefined) => (id ? (activeDeals.find((d) => d.id === id)?.parentDealId ?? id) : id);
   const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null) =>
-    activeDeals.find((d) => subjectMatchesDeal(subject, d))?.id ??
-    activeDeals.find((d) => houseSubjectMatches(subject, d))?.id ??
-    activeDeals.find((d) => ((contactId && d.investors.some((r) => r.contactId === contactId)) || (companyId && d.sponsorCompanyId === companyId)) && subjectLooselyMatchesDeal(subject, d))?.id;
+    up(
+      activeDeals.find((d) => subjectMatchesDeal(subject, d))?.id ??
+        activeDeals.find((d) => houseSubjectMatches(subject, d))?.id ??
+        activeDeals.find((d) => ((contactId && d.investors.some((r) => r.contactId === contactId)) || (companyId && d.sponsorCompanyId === companyId)) && subjectLooselyMatchesDeal(subject, d))?.id,
+    );
   return dealFor;
 }
 

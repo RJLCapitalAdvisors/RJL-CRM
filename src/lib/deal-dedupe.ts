@@ -84,7 +84,7 @@ export type DupePair = { a: DealCard; b: DealCard; why: string };
 export type DealCard = { id: string; name: string; stage: string; sponsorName: string | null; city: string | null; state: string | null; propertyAddress: string | null; createdAt: Date; weight: number };
 
 export async function possibleDuplicates(): Promise<DupePair[]> {
-  const deals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { ...select, stage: true, createdAt: true, _count: { select: { investors: true, activities: true, files: true, facts: true, emails: true } } } });
+  const deals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] }, parentDealId: null }, select: { ...select, stage: true, createdAt: true, _count: { select: { investors: true, activities: true, files: true, facts: true, emails: true } } } });
   const cleared = new Set((await prisma.dealNotDuplicate.findMany()).map((x) => `${x.aId}|${x.bId}`));
   const card = (d: (typeof deals)[number]): DealCard => ({ id: d.id, name: d.propertyName ?? d.name, stage: d.stage, sponsorName: d.sponsorName, city: d.city, state: d.state, propertyAddress: d.propertyAddress, createdAt: d.createdAt, weight: d._count.investors * 5 + d._count.activities + d._count.files * 2 + d._count.facts + d._count.emails });
   const out: DupePair[] = [];

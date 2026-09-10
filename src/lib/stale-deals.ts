@@ -15,7 +15,7 @@ export type StaleDeal = { id: string; name: string; stage: string; sponsorName: 
 export async function staleDeals(): Promise<StaleDeal[]> {
   const cutoff = new Date(Date.now() - STALE_DAYS * DAY);
   const deals = await prisma.deal.findMany({
-    where: { stage: { in: STALE_STAGES }, updatedAt: { lt: cutoff }, OR: [{ staleCheckedAt: null }, { staleCheckedAt: { lt: cutoff } }] },
+    where: { stage: { in: STALE_STAGES }, parentDealId: null, updatedAt: { lt: cutoff }, OR: [{ staleCheckedAt: null }, { staleCheckedAt: { lt: cutoff } }] },
     select: { id: true, name: true, propertyName: true, stage: true, sponsorName: true, updatedAt: true, _count: { select: { investors: true } } },
   });
   if (!deals.length) return [];

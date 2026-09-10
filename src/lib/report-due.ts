@@ -32,7 +32,7 @@ export async function reportsDue(): Promise<ReportDue[]> {
   await syncReportDrafts().catch(() => 0);
   const now = new Date();
   const thursday = lastThursdaySlot(now);
-  const deals = await prisma.deal.findMany({ where: { stage: { in: LIVE_STAGES }, investors: { some: {} } }, select: { id: true, name: true, propertyName: true, sponsorName: true, reportSentAt: true, reportDraftAt: true, _count: { select: { investors: true } } } });
+  const deals = await prisma.deal.findMany({ where: { stage: { in: LIVE_STAGES }, parentDealId: null, investors: { some: {} } }, select: { id: true, name: true, propertyName: true, sponsorName: true, reportSentAt: true, reportDraftAt: true, _count: { select: { investors: true } } } });
   if (!deals.length) return [];
   const changes = await prisma.dealInvestor.groupBy({ by: ["dealId"], where: { dealId: { in: deals.map((d) => d.id) } }, _max: { updatedAt: true } });
   const lastChange = new Map(changes.map((c) => [c.dealId, c._max.updatedAt]));
