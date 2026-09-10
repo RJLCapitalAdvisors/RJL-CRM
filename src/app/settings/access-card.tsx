@@ -12,7 +12,7 @@ export function AccessCard({ users }: { users: U[] }) {
     <div id="access" className="card">
       <div className="flex items-center justify-between border-b border-line bg-cream px-5 py-3">
         <div className="font-semibold">People and access</div>
-        <div className="text-sm text-muted">An @rjlcapadvisors.com address opens RJL Capital Advisors, an @rjlisrael.com address opens RJL Israel; tick both for people with both</div>
+        <div className="text-sm text-muted">Each side opens with its own account: an @rjlcapadvisors.com sign-in for RJL Capital Advisors, an @rjlisrael.com sign-in for RJL Israel. The boxes are what a person is allowed to open</div>
       </div>
       <div className="overflow-x-auto">
         <table className="table w-full text-sm">
@@ -73,7 +73,7 @@ export function AccessCard({ users }: { users: U[] }) {
         <button type="submit" className="btn-primary">
           Add
         </button>
-        <span className="w-full text-xs text-muted">Leave both boxes empty and the sign-in email decides. Their Microsoft account must exist in a connected tenant before they can sign in.</span>
+        <span className="w-full text-xs text-muted">Leave both boxes empty and the sign-in email decides. A person with both businesses signs in twice, once with each account.</span>
       </form>
     </div>
   );

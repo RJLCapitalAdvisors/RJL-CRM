@@ -38,38 +38,40 @@ const IL_NAV = [
  * highlighted and its pages are listed underneath. The body carries the `israel` class while you are in
  * RJL Israel so the accent turns royal blue.
  */
-export function WorkspaceSidebar({ user }: { user: { name: string; workspaces?: string[] } | null }) {
-  // no session (team password) opens both; a signed-in person sees only the businesses they may open
-  const ws = user?.workspaces?.length ? user.workspaces : ["CA", "IL"];
-  const showCA = ws.includes("CA"), showIL = ws.includes("IL");
+export function WorkspaceSidebar({ user }: { user: { name: string; workspaces?: string[]; accounts?: Partial<Record<"CA" | "IL", string>> } | null }) {
+  // both logos always sit at the top. A side is faded until you sign in with the account for it (an
+  // @rjlcapadvisors.com account for RJL Capital Advisors, an @rjlisrael.com account for RJL Israel); clicking a
+  // faded tile starts that sign-in. Someone with both signs in twice. The team password opens both.
+  const ws = user ? user.workspaces ?? [] : ["CA", "IL"];
+  const openCA = ws.includes("CA"), openIL = ws.includes("IL");
   const pathname = usePathname();
   const israel = isIsraelPath(pathname);
   useEffect(() => {
     document.body.classList.toggle("israel", israel);
   }, [israel]);
 
-  const tile = (active: boolean) => `flex h-14 items-center justify-center rounded-lg border px-2 transition ${active ? "border-sky-600 shadow-sm ring-2 ring-sky/40" : "border-line opacity-60 hover:opacity-100"}`;
+  const tile = (active: boolean, open: boolean) => `flex h-14 items-center justify-center rounded-lg border px-2 transition ${!open ? "border-dashed border-line opacity-35 grayscale hover:opacity-60" : active ? "border-sky-600 shadow-sm ring-2 ring-sky/40" : "border-line opacity-60 hover:opacity-100"}`;
+  const signIn = (b: "CA" | "IL", next: string) => `/login?business=${b}&next=${encodeURIComponent(next)}`;
   return (
     <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-line bg-cream">
-      <div className={`grid gap-2 px-3 pt-4 ${showCA && showIL ? "grid-cols-2" : "grid-cols-1"}`}>
-        {showCA && (
-          <Link href="/" aria-current={!israel ? "page" : undefined} title="RJL Capital Advisors" className={`${tile(!israel || !showIL)} bg-white`}>
-            <Image src="/logo.png" alt="RJL Capital Advisors" width={180} height={64} priority className={showIL ? "h-auto w-full" : "h-auto w-40"} />
-          </Link>
-        )}
-        {showIL && (
-          <Link href="/israel" aria-current={israel ? "page" : undefined} title="RJL Israel" className={`${tile(israel || !showCA)} bg-[#161b21]`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/israel-logo.svg" alt="RJL Israel" className={showCA ? "h-auto w-full" : "h-auto w-40"} />
-          </Link>
-        )}
+      <div className="grid grid-cols-2 gap-2 px-3 pt-4">
+        <a href={openCA ? "/" : signIn("CA", "/")} aria-current={!israel && openCA ? "page" : undefined} title={openCA ? "RJL Capital Advisors" : "Sign in with your @rjlcapadvisors.com account to open RJL Capital Advisors"} className={`${tile(!israel, openCA)} bg-white`}>
+          <Image src="/logo.png" alt="RJL Capital Advisors" width={180} height={64} priority className="h-auto w-full" />
+        </a>
+        <a href={openIL ? "/israel" : signIn("IL", "/israel")} aria-current={israel && openIL ? "page" : undefined} title={openIL ? "RJL Israel" : "Sign in with your @rjlisrael.com account to open RJL Israel"} className={`${tile(israel, openIL)} bg-[#161b21]`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/israel-logo.svg" alt="RJL Israel" className="h-auto w-full" />
+        </a>
       </div>
+      {user && !(openCA && openIL) && <div className="px-4 pt-2 text-[11px] leading-snug text-muted">{openCA ? "RJL Israel is faded until you sign in with your @rjlisrael.com account. Click its logo." : "RJL Capital Advisors is faded until you sign in with your @rjlcapadvisors.com account. Click its logo."}</div>}
       <div className="px-3 pt-3">{israel ? <Nav items={IL_NAV} apartmentSteps /> : <Nav items={CA_NAV} dealSteps />}</div>
       <div className="flex-1" />
       <div className="px-5 py-4 text-xs text-muted">
         {user ? (
           <>
             <div className="font-medium text-ink">{user.name}</div>
+            {user.accounts?.CA && <div className="truncate" title={user.accounts.CA}>{user.accounts.CA}</div>}
+            {user.accounts?.IL && <div className="truncate" title={user.accounts.IL}>{user.accounts.IL}</div>}
             <a href="/api/auth/logout" className="hover:underline">
               Sign out
             </a>

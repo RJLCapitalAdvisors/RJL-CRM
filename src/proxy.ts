@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
-import { homeFor, workspacesByDomain, type Workspace } from "@/lib/access";
+import { workspacesByDomain } from "@/lib/access";
 import { isIsraelPath } from "@/lib/workspace";
 
 /**
@@ -35,8 +35,14 @@ export async function proxy(req: NextRequest) {
     // which business this person may open; sessions from before the split fall back to what their email domain allows
     const w = session.w?.length ? session.w : workspacesByDomain(session.e);
     const israel = isIsraelPath(pathname);
-    if (israel && !w.includes("IL")) return NextResponse.redirect(new URL(homeFor(w as Workspace[]), req.url));
-    if (!israel && pathname !== "/start" && !pathname.startsWith("/api/") && !w.includes("CA")) return NextResponse.redirect(new URL(homeFor(w as Workspace[]), req.url));
+    const need = israel ? "IL" : pathname.startsWith("/api/") ? null : "CA";
+    if (need && !w.includes(need)) {
+      // that side is still faded: sign in with the account for it, then come back here
+      const url = req.nextUrl.clone();
+      url.pathname = "/login";
+      url.search = `?business=${need}&next=${encodeURIComponent(pathname + req.nextUrl.search)}`;
+      return NextResponse.redirect(url);
+    }
     return withPath();
   }
   if (password) {

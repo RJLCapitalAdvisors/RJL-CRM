@@ -1,9 +1,9 @@
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, canEditCriteria, verifySession } from "@/lib/session";
-import { parseWorkspaces, type Workspace } from "@/lib/access";
+import { workspacesByDomain, type Workspace } from "@/lib/access";
 
-export type CurrentUser = { id: string; name: string; email: string; canEditCriteria: boolean; workspaces: Workspace[]; israelEmail: string | null };
+export type CurrentUser = { id: string; name: string; email: string; canEditCriteria: boolean; workspaces: Workspace[]; accounts: Partial<Record<Workspace, string>>; israelEmail: string | null };
 
 /** Who is signed in (Microsoft sign-in). Null when the browser only has the shared team password. */
 export async function currentUser(): Promise<CurrentUser | null> {
@@ -12,7 +12,9 @@ export async function currentUser(): Promise<CurrentUser | null> {
   if (!s) return null;
   const u = await prisma.user.findUnique({ where: { id: s.u } });
   if (!u || !u.active || !u.email) return null;
-  return { id: u.id, name: u.name, email: u.email, canEditCriteria: canEditCriteria(u.email), workspaces: parseWorkspaces(u.workspaces, u.email), israelEmail: u.israelEmail };
+  // unlocked in this browser: what the sign-ins so far granted (older cookies: the sign-in email's own side)
+  const unlocked = (s.w?.length ? s.w : workspacesByDomain(s.e)).filter((x): x is Workspace => x === "CA" || x === "IL");
+  return { id: u.id, name: u.name, email: u.email, canEditCriteria: canEditCriteria(u.email), workspaces: unlocked, accounts: s.a ?? {}, israelEmail: u.israelEmail };
 }
 
 export async function requireCriteriaAdmin() {
