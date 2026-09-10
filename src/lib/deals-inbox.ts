@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/db";
+import { fmtMoney } from "@/lib/format";
 import { graph, graphConfigured } from "@/lib/graph";
 import { assembleDealText, attachmentToText, emailHtmlToText } from "@/lib/attachments";
 import { missingFor, itemLabel } from "@/lib/checklist";
 import { intro, metricsHtml, subjectLine } from "@/lib/deal-copy";
 import { processIntake } from "@/app/intake/actions";
 import { applyForwarderInstructions } from "@/lib/forwarder-notes";
-import { detectMultipleDeals, extractDealFacts, matchExistingDeal, mergeIntoDeal, recordDealEmail, recordDealFiles, recordLinkFiles } from "@/lib/deal-knowledge";
+import { detectMultipleDeals, extractDealFacts, matchExistingDeal, mergeIntoDeal, recordDealEmail, recordDealFiles, recordLinkFiles, type MergeResult } from "@/lib/deal-knowledge";
 import { fetchCloudFiles, findCloudLinks } from "@/lib/cloud-links";
 import { enrichFromCalls } from "@/lib/fireflies";
 
@@ -122,7 +123,8 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     await recordDealEmail(existingId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "FOLLOWUP" });
     const files = (msg.hasAttachments ? await recordDealFiles(existingId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0) : 0) + (await recordPulled(existingId, ext));
     const facts = await extractDealFacts(existingId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, { mayEnterFaq: true }).catch(() => 0);
-    const filled = await mergeIntoDeal(existingId, rawText, cleanSubject, { modelAttached: names.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)) }).catch(() => 0);
+    const merged = await mergeIntoDeal(existingId, rawText, cleanSubject, { modelAttached: names.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: names }).catch(() => ({ filled: 0, changes: [], model: null }));
+    const filled = merged.filled;
     if (!external) await applyForwarderInstructions(existingId, bodyText).catch(() => null);
     let deal = await prisma.deal.findUniqueOrThrow({ where: { id: existingId } });
     const wasMentioned = deal.stage === "Deal Mentioned";
@@ -131,7 +133,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     const still = missingFor(deal).map((it) => itemLabel(it, deal.strategy));
     let replied = false;
     try {
-      await replyOnThread(msg, wasMentioned ? replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes) : followUpReplyHtml(deal.propertyName ?? deal.name, `${base}/deals/${deal.id}`, files, facts, filled, still, cloud.notes));
+      await replyOnThread(msg, wasMentioned ? replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes) : followUpReplyHtml(deal.propertyName ?? deal.name, `${base}/deals/${deal.id}`, files, facts, filled, still, cloud.notes, merged));
       replied = true;
     } catch (e) {
       console.error("deals@ follow-up reply failed", e);
@@ -160,7 +162,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
           await recordDealFiles(same.id, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received, all.value.filter((x) => part.attachments.some((n) => n.toLowerCase() === x.name.toLowerCase())) as never).catch(() => 0);
         }
         await recordPulled(same.id, key, part.attachments);
-        await mergeIntoDeal(same.id, text, `${cleanSubject} - ${part.name}`, { modelAttached: part.attachments.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)) }).catch(() => 0);
+        await mergeIntoDeal(same.id, text, `${cleanSubject} - ${part.name}`, { modelAttached: part.attachments.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: part.attachments }).catch(() => null);
         await extractDealFacts(same.id, text, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, { mayEnterFaq: true }).catch(() => 0);
         if (before.stage === "Deal Mentioned") await prisma.deal.update({ where: { id: same.id }, data: { stage: "Deal Received" } });
         await prisma.dealIntake.create({ data: { source: "WEBHOOK", fromEmail: external ? fromAddr : fwd.email, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, toEmail: MAILBOX(), subject: `${cleanSubject} - ${part.name}`, rawText: text.slice(0, 200_000), attachments: JSON.stringify(part.attachments), extracted: "{}", missing: "[]", notes: `Follow-up on existing deal ${same.id}`, status: "CONVERTED", messageId: key } }).catch(() => null);
@@ -280,11 +282,14 @@ export async function sendDealsReply(dealId: string): Promise<boolean> {
 }
 
 
-function followUpReplyHtml(name: string, link: string, files: number, facts: number, filled: number, still: string[], linkNotes: string[] = []) {
+function followUpReplyHtml(name: string, link: string, files: number, facts: number, filled: number, still: string[], linkNotes: string[] = [], merged?: MergeResult) {
   const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
   const li = (s: string) => `<li style="margin:0;${F}">${s}</li>`;
+  const money = (v: unknown) => (v == null || v === "" ? "blank" : typeof v === "number" && v >= 1000 ? fmtMoney(v) : String(v));
+  const reunderwritten = merged?.model && merged.changes.length ? `<p style="margin:0 0 4pt 0;${F}"><b>Re-underwritten from ${merged.model}</b> (the model is the source of truth for numbers):</p><ul style="margin:0 0 10pt 18pt;">${merged.changes.map((c) => li(`${c.label}: ${money(c.from)} to <b>${money(c.to)}</b>`)).join("")}</ul>` : merged?.model ? `<p style="margin:0 0 10pt 0;${F}">The Excel model agrees with the ticket; nothing to re-underwrite.</p>` : "";
   return `<div style="${F}">
 <p style="margin:0 0 10pt 0;${F}">Added to <a href="${link}">${name}</a>: ${files} file${files === 1 ? "" : "s"} to Attachments, ${facts} answer${facts === 1 ? "" : "s"} to Questions answered${filled ? `, ${filled} ticket field${filled === 1 ? "" : "s"} filled in` : ""}.</p>
+${reunderwritten}
 ${still.length ? `<p style="margin:0 0 4pt 0;${F}"><b>Still missing:</b></p><ul style="margin:0 0 10pt 18pt;">${still.map(li).join("")}</ul>` : `<p style="margin:0 0 10pt 0;${F}">Checklist is complete.</p>`}
 ${linkNotes.length ? `<p style="margin:0 0 4pt 0;${F}"><b>Links I could not open:</b></p><ul style="margin:0 0 10pt 18pt;">${linkNotes.map(li).join("")}</ul>` : ""}
 </div>`;

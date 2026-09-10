@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { fmtMoney } from "@/lib/format";
 import { graph, type GraphAttachment } from "@/lib/graph";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
 import { CHECKLIST, parseDetails, reconcileDocuments } from "@/lib/checklist";
@@ -130,16 +131,30 @@ export async function extractDealFacts(dealId: string, text: string, source: str
 }
 
 /** Fill blanks on the ticket from a follow-up: checklist items and core fields the extractor can see. */
-export async function mergeIntoDeal(dealId: string, rawText: string, subject: string, opts: { modelAttached?: boolean } = {}) {
+export type MergeChange = { field: string; label: string; from: unknown; to: unknown };
+export type MergeResult = { filled: number; changes: MergeChange[]; model: string | null };
+const FIELD_LABELS: Record<string, string> = { purchasePrice: "Purchase price", totalCapitalization: "Total capitalization", totalDebt: "Total debt", requestedAmount: "Equity requested", irr: "IRR", equityMultiple: "Equity multiple", yieldOnCost: "Yield on cost", capRateT12: "T12 cap rate", capRateY1: "Year 1 cap rate", cashOnCash: "Cash on cash", units: "Units", squareFeet: "Square feet (NRSF)", occupancy: "Occupancy", interestRate: "Interest rate", loanTerm: "Loan term", holdPeriod: "Hold period", expectedClose: "Expected close", unitMix: "Unit mix", yearBuilt: "Year built" };
+const showVal = (k: string, v: unknown) => (v == null || v === "" ? "blank" : ["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount"].includes(k) ? fmtMoney(Number(v)) : ["irr", "capRateT12", "capRateY1", "yieldOnCost", "cashOnCash", "occupancy", "interestRate"].includes(k) ? `${Number(v).toFixed(2)}%` : String(v));
+
+/**
+ * A later email about a deal we already have. Answers and blanks fill in. When the Excel model is attached
+ * (typically the OM came first and the model followed), the deal is re-underwritten from it: every underwriting
+ * figure on the ticket is set to what the model says, because models are updated after OMs are printed. The
+ * changes are written as a note on the deal and handed back for the reply.
+ */
+export async function mergeIntoDeal(dealId: string, rawText: string, subject: string, opts: { modelAttached?: boolean; attachments?: string[] } = {}): Promise<MergeResult> {
   const { extractWithClaude } = await import("@/lib/intake");
+  const none: MergeResult = { filled: 0, changes: [], model: null };
   const deal = await prisma.deal.findUnique({ where: { id: dealId } });
-  if (!deal) return 0;
+  if (!deal) return none;
+  const model = (opts.attachments ?? []).find((n) => /\.(xlsx|xlsm|xls)$/i.test(n)) ?? (opts.modelAttached ? "the Excel model" : null);
   let d;
   try {
-    d = await extractWithClaude(rawText, subject, []);
+    d = await extractWithClaude(rawText, subject, opts.attachments ?? []);
   } catch {
-    return 0;
+    return none;
   }
+  const changes: MergeChange[] = [];
   const details = parseDetails(deal.details);
   let filled = 0;
   for (const it of CHECKLIST) {
@@ -150,11 +165,13 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
     }
   }
   const core: Record<string, unknown> = {};
-  // numbers from a freshly attached Excel model replace what an OM or deck said earlier; everything else only fills blanks
-  const NUMERIC_FROM_MODEL = new Set(["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "totalEquity", "ltv", "ltc", "irr", "equityMultiple", "yieldOnCost", "capRateT12", "capRateY1", "cashOnCash", "units", "squareFeet", "occupancy"]);
+  // underwriting from a freshly attached Excel model replaces what an OM or deck said earlier; narrative only fills blanks
+  const FROM_MODEL = new Set(["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "irr", "equityMultiple", "yieldOnCost", "capRateT12", "capRateY1", "cashOnCash", "units", "squareFeet", "occupancy", "interestRate", "loanTerm", "holdPeriod", "expectedClose", "unitMix", "yearBuilt"]);
+  const same = (a: unknown, b: unknown) => (typeof a === "number" && typeof b === "number" ? Math.abs(a - b) < 1e-6 : String(a ?? "").trim() === String(b ?? "").trim());
   const maybe = (k: keyof typeof deal, v: unknown) => {
-    if (opts.modelAttached && NUMERIC_FROM_MODEL.has(k as string) && v != null && v !== "" && deal[k] !== v) {
+    if (model && FROM_MODEL.has(k as string) && v != null && v !== "" && !same(deal[k], v)) {
       core[k as string] = v;
+      changes.push({ field: k as string, label: FIELD_LABELS[k as string] ?? String(k), from: deal[k], to: v });
       filled++;
       return;
     }
@@ -171,7 +188,11 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   const fileNames = (await prisma.dealFile.findMany({ where: { dealId }, select: { name: true } })).map((f) => f.name);
   const reconciled = reconcileDocuments(details as Record<string, string | null | undefined>, fileNames);
   await prisma.deal.update({ where: { id: dealId }, data: { ...core, details: JSON.stringify(reconciled) } });
-  return filled;
+  if (model && changes.length) {
+    const body = `Re-underwritten from ${model}: ${changes.map((c) => `${c.label} ${showVal(c.field, c.from)} to ${showVal(c.field, c.to)}`).join("; ")}.`;
+    await prisma.activity.create({ data: { type: "NOTE", body, dealId, occurredAt: new Date() } }).catch(() => null);
+  }
+  return { filled, changes, model };
 }
 
 /** The facts most relevant to a question (simple word overlap; plenty for a handful of facts per deal). */

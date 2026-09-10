@@ -208,3 +208,8 @@ Jonathan (RJL Capital Advisors, real estate capital advisory) is replacing HubSp
 ## 2026-09-10: intro timing
 
 - Intros to reconsider: quiet threshold 30 days (QUIET_INTRO_DAYS), first nudge after 3 days with no reply (UNANSWERED_INTRO_DAYS), and an intro stays in rotation for 12 months from its last touch (INTRO_WINDOW_DAYS = 365 on lastActivityAt, no longer 120 days from the intro date). Independent of the deal board: Deal Lost does not affect intros.
+
+## 2026-09-10: re-underwrite from a later Excel model
+
+- deals@: when a follow-up email on an existing deal carries an Excel model (typically the OM came first), `mergeIntoDeal` (src/lib/deal-knowledge.ts) re-runs the extractor with the model as source of truth and sets every underwriting field on the ticket to what the model says (price, capitalization, debt, equity ask, IRR, multiple, yield on cost, cap rates, cash on cash, units, NRSF, occupancy, interest rate, loan term, hold, expected close, unit mix, year built). Narrative only fills blanks. Each change is written as a note on the deal ("Re-underwritten from <file>: Purchase price $X to $Y; ...") and the deals@ reply lists them under "Re-underwritten from <file>". Rule from Jonathan: Excel files are usually more up to date than PDFs.
+- Gap: a sponsor replying with the model directly to a team inbox (not deals@) is read for its text only; attachments there are not downloaded yet.
