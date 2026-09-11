@@ -159,7 +159,7 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
                       <td className="max-w-[220px]">
                         {a.developer ? (
                           <Link href={`/israel/companies/${a.developer.id}`} className="flex items-center gap-2 hover:underline">
-                            <CompanyLogo domain={a.developer.domain ?? a.developer.website?.replace(/^https?:///, "").split("/")[0]} name={a.developer.name} />
+                            <CompanyLogo domain={a.developer.domain ?? a.developer.website?.replace(/^https?:\/\//, "").split("/")[0]} name={a.developer.name} />
                             <span className="truncate">{a.developer.name}</span>
                           </Link>
                         ) : (
