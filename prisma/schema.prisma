@@ -590,7 +590,8 @@ model IlApartment {
 model IlCompany {
   id         String        @id @default(cuid())
   name       String
-  roles      String        @default("[]") // JSON list: Developer (Yazam), Broker, Buyer, Attorneys, Mortgage Broker, Other
+  roles      String        @default("[]") // JSON list: Sponsor (Yazam), Kablan, Broker, Buyer, Attorneys, Mortgage Broker, Other
+  sponsorFocus String?     // Development | Acquisitions | Both, when the company is a sponsor
   city       String?
   website    String?
   domain     String?       // email domain, set when the company is created or matched from an email

@@ -255,7 +255,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     return { mirpesetCount: list.length > 1 ? list.length : a.mirpesetSqm != null ? 1 : null, mirpesetSqm: a.mirpesetSqm ?? (total || null), mirpesetDirection: JSON.stringify(list.length > 1 ? [...new Set(list.flatMap((m) => m.direction))] : a.mirpesetDirection), mirpasot: JSON.stringify(list.length > 1 ? list : single.sqm != null || single.direction.length || single.sukka ? [single] : []) };
   };
   for (const a of extracted.apartments) {
-    const developer = await findOrCreateCompany(a.developerName, "Developer (Yazam)");
+    const developer = await findOrCreateCompany(a.developerName, "Sponsor (Yazam)");
     if (a.kind === "house") {
       const house = await prisma.ilHouse.create({
         data: {

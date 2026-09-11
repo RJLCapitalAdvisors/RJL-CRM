@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { AutoSaveForm } from "@/components/autosave-form";
-import { Group, Row, Text } from "@/components/form-rows";
-import { IL_CITIES, IL_COMPANY_ROLES, ilRoleColor, parseJsonList } from "@/lib/israel";
+import { Group, Row, Select, Text } from "@/components/form-rows";
+import { IL_CITIES, IL_COMPANY_ROLES, IL_SPONSOR, IL_SPONSOR_FOCUS, ilRoleColor, parseJsonList } from "@/lib/israel";
 
-type Co = Partial<{ name: string; roles: string; city: string | null; website: string | null; phone: string | null; notes: string | null }>;
+type Co = Partial<{ name: string; roles: string; sponsorFocus: string | null; city: string | null; website: string | null; phone: string | null; notes: string | null }>;
 
-/** Company fields. Roles are tokens: tick what the firm is; they flow to the firm's contacts. */
+/** Company fields. Roles are tokens: tick what the firm is; a sponsor then says whether it develops, acquires or both. Roles flow to the firm's contacts. */
 export function IlCompanyForm({ c = {}, action, autosave = false, submitLabel = "Create company" }: { c?: Co; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
   const [roles, setRoles] = useState<string[]>(() => parseJsonList(c.roles ?? "[]"));
   const toggle = (r: string) => setRoles((cur) => (cur.includes(r) ? cur.filter((x) => x !== r) : [...cur, r]));
@@ -29,6 +29,11 @@ export function IlCompanyForm({ c = {}, action, autosave = false, submitLabel = 
           })}
         </div>
       </Row>
+      {roles.includes(IL_SPONSOR) && (
+        <Row label="Development, acquisitions or both?" hint="What kind of sponsor this is.">
+          <Select name="sponsorFocus" value={c.sponsorFocus ?? ""} options={IL_SPONSOR_FOCUS} />
+        </Row>
+      )}
       <Row label="City">
         <input name="city" defaultValue={c.city ?? ""} className="input" list="il-cities-co" />
         <datalist id="il-cities-co">{IL_CITIES.map((x) => <option key={x} value={x} />)}</datalist>

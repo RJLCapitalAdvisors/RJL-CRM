@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { IL_COMPANY_ROLES, IL_DEAL_STAGES, IL_ROLES, mergeIlRoles } from "@/lib/israel";
+import { IL_COMPANY_ROLES, IL_DEAL_STAGES, IL_ROLES, IL_SPONSOR, IL_SPONSOR_FOCUS, mergeIlRoles } from "@/lib/israel";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -184,7 +184,9 @@ export async function addIlNote(target: { apartmentId?: string; houseId?: string
 }
 
 function companyData(fd: FormData) {
-  return { name: s(fd, "name") ?? "Company", roles: list(fd, "roles"), city: s(fd, "city"), website: s(fd, "website"), phone: s(fd, "phone"), notes: s(fd, "notes") };
+  const roles = list(fd, "roles");
+  const focus = s(fd, "sponsorFocus");
+  return { name: s(fd, "name") ?? "Company", roles, sponsorFocus: roles.includes(IL_SPONSOR) && focus && (IL_SPONSOR_FOCUS as readonly string[]).includes(focus) ? focus : null, city: s(fd, "city"), website: s(fd, "website"), phone: s(fd, "phone"), notes: s(fd, "notes") };
 }
 /** A company's roles flow to every contact at it (added, never removed from the person). */
 async function flowRolesToContacts(companyId: string, roles: string[]) {
@@ -200,15 +202,16 @@ export async function createIlCompany(fd: FormData) {
   redirect(`/israel/companies/${c.id}`);
 }
 /** Roles ticked on a list row or the company header; saved once when the list closes. */
-export async function setIlCompanyRoles(id: string, roles: string[]) {
+export async function setIlCompanyRoles(id: string, roles: string[], focus: string | null = null) {
   const clean = (IL_COMPANY_ROLES as readonly string[]).filter((r) => roles.includes(r));
-  await prisma.ilCompany.update({ where: { id }, data: { roles: JSON.stringify(clean) } });
+  const sponsorFocus = clean.includes(IL_SPONSOR) && focus && (IL_SPONSOR_FOCUS as readonly string[]).includes(focus) ? focus : null;
+  await prisma.ilCompany.update({ where: { id }, data: { roles: JSON.stringify(clean), sponsorFocus } });
   await flowRolesToContacts(id, clean);
   revalidatePath(`/israel/companies/${id}`);
   revalidatePath("/israel/companies");
   revalidatePath("/israel/contacts");
 }
-export async function setIlContactRoles(id: string, roles: string[]) {
+export async function setIlContactRoles(id: string, roles: string[], _focus: string | null = null) {
   const clean = (IL_ROLES as readonly string[]).filter((r) => roles.includes(r));
   await prisma.ilContact.update({ where: { id }, data: { roles: JSON.stringify(clean) } });
   revalidatePath(`/israel/contacts/${id}`);

@@ -78,7 +78,7 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
                     </Link>
                   </td>
                   <td>
-                    <IlRoleCell roles={c.roles} options={IL_COMPANY_ROLES} action={setIlCompanyRoles.bind(null, c.id)} />
+                    <IlRoleCell roles={c.roles} focus={c.sponsorFocus} options={IL_COMPANY_ROLES} action={setIlCompanyRoles.bind(null, c.id)} />
                   </td>
                   <td className="text-right">{c._count.contacts}</td>
                   <td className="text-right">{c._count.apartments}</td>

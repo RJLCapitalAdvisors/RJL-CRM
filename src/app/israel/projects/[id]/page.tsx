@@ -20,7 +20,7 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const [p, developers] = await Promise.all([
     prisma.ilProject.findUnique({ where: { id }, include: { developer: true, apartments: { orderBy: [{ floor: "desc" }, { name: "asc" }] }, notes: { orderBy: { createdAt: "desc" } } } }),
-    prisma.ilCompany.findMany({ where: { roles: { contains: "Developer" } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.ilCompany.findMany({ where: { roles: { contains: "Sponsor" } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   if (!p) notFound();
   return (

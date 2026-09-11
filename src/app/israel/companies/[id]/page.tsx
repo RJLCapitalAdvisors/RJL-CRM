@@ -49,7 +49,7 @@ export default async function IlCompanyPage({ params }: { params: Promise<{ id: 
             ].filter(Boolean)}
             actions={
               <>
-                <IlRoleCell roles={c.roles} options={IL_COMPANY_ROLES} action={setIlCompanyRoles.bind(null, c.id)} />
+                <IlRoleCell roles={c.roles} focus={c.sponsorFocus} options={IL_COMPANY_ROLES} action={setIlCompanyRoles.bind(null, c.id)} />
                 <Link href={`/israel/contacts/new?companyId=${c.id}`} className="btn-secondary">
                   Add contact
                 </Link>

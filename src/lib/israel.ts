@@ -5,12 +5,16 @@
  */
 
 /** Roles, the same word as in RJL Capital Advisors. A company's roles flow to its contacts; Seller is a person-only role. */
-export const IL_COMPANY_ROLES = ["Developer (Yazam)", "Broker", "Buyer", "Attorneys", "Mortgage Broker", "Other"] as const;
+export const IL_SPONSOR = "Sponsor (Yazam)";
+export const IL_COMPANY_ROLES = [IL_SPONSOR, "Kablan", "Broker", "Buyer", "Attorneys", "Mortgage Broker", "Other"] as const;
+export const IL_SPONSOR_FOCUS = ["Development", "Acquisitions", "Both"] as const;
 export const IL_ROLES = [...IL_COMPANY_ROLES, "Seller"] as const;
 export function ilRoleColor(role: string): string {
   switch (role) {
-    case "Developer (Yazam)":
+    case "Sponsor (Yazam)":
       return "bg-ink text-white";
+    case "Kablan":
+      return "bg-orange-200 text-ink";
     case "Broker":
       return "bg-stone-200 text-ink";
     case "Buyer":
