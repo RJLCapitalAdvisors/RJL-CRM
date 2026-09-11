@@ -29,12 +29,16 @@ const yesNo = (fd: FormData, k: string) => (fd.has(k) ? s(fd, k) === "Yes" : und
  */
 function mirpasotFrom(fd: FormData) {
   const count = i(fd, "mirpesetCount");
-  if (!count || count <= 1) return { mirpesetCount: count ?? null, mirpesetSqm: n(fd, "mirpesetSqm"), mirpesetDirection: list(fd, "mirpesetDirection"), mirpasot: "[]" };
+  if (!count || count <= 1) {
+    const single = { sqm: n(fd, "mirpesetSqm"), direction: fd.getAll("mirpesetDirection").map(String).filter(Boolean), sukka: s(fd, "sukka") };
+    return { mirpesetCount: count ?? (single.sqm != null ? 1 : null), mirpesetSqm: single.sqm, mirpesetDirection: JSON.stringify(single.direction), mirpasot: JSON.stringify(single.sqm != null || single.direction.length || single.sukka ? [single] : []) };
+  }
   const sizes = fd.getAll("mirpasotSqm").map((v) => {
     const x = Number(String(v).replace(/[^0-9.]/g, ""));
     return String(v).trim() && !isNaN(x) ? x : null;
   });
-  const items = Array.from({ length: Math.min(count, 8) }, (_, k) => ({ sqm: sizes[k] ?? null, direction: fd.getAll(`mirpasotDir_${k}`).map(String).filter(Boolean) }));
+  const sukkas = fd.getAll("mirpasotSukka").map((v) => String(v).trim() || null);
+  const items = Array.from({ length: Math.min(count, 3) }, (_, k) => ({ sqm: sizes[k] ?? null, direction: fd.getAll(`mirpasotDir_${k}`).map(String).filter(Boolean), sukka: sukkas[k] ?? null }));
   const total = items.reduce((a, m) => a + (m.sqm ?? 0), 0);
   const dirs = [...new Set(items.flatMap((m) => m.direction))];
   return { mirpesetCount: count, mirpesetSqm: items.some((m) => m.sqm != null) ? total : null, mirpesetDirection: JSON.stringify(dirs), mirpasot: JSON.stringify(items) };

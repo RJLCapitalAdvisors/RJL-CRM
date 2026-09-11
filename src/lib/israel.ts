@@ -70,12 +70,13 @@ export const pricePerMeter = (price: number | null | undefined, internal: number
 };
 export const PRICE_PER_METER_NOTE = "asking price ÷ (internal m² + ⅓ of the mirpeset m²)";
 
-export type Mirpeset = { sqm: number | null; direction: string[] };
+export const IL_SUKKA = ["Yes", "Partial", "No"] as const;
+export type Mirpeset = { sqm: number | null; direction: string[]; sukka: string | null };
 /** The mirpasot list stored on a ticket with more than one mirpeset. */
 export const parseMirpasot = (s: string | null | undefined): Mirpeset[] => {
   try {
     const v = JSON.parse(s || "[]");
-    return Array.isArray(v) ? v.map((m) => ({ sqm: typeof m?.sqm === "number" ? m.sqm : null, direction: Array.isArray(m?.direction) ? m.direction.map(String) : [] })) : [];
+    return Array.isArray(v) ? v.map((m) => ({ sqm: typeof m?.sqm === "number" ? m.sqm : null, direction: Array.isArray(m?.direction) ? m.direction.map(String) : [], sukka: typeof m?.sukka === "string" && m.sukka ? m.sukka : null })) : [];
   } catch {
     return [];
   }

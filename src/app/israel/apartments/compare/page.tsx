@@ -51,11 +51,12 @@ export default async function CompareUnitsPage({ searchParams }: { searchParams:
       label: "Mirpasot",
       cell: (a) => {
         const list = parseMirpasot(a.mirpasot);
-        if (list.length > 1) return <span className="block text-right">{list.map((m, k) => <span key={k} className="block">{k + 1}: {m.sqm != null ? sqm(m.sqm) : "—"}{m.direction.length ? ` ${m.direction.join("/")}` : ""}</span>)}</span>;
+        if (list.length > 1) return <span className="block text-right">{list.map((m, k) => <span key={k} className="block">{k + 1}: {m.sqm != null ? sqm(m.sqm) : "—"}{m.direction.length ? ` ${m.direction.join("/")}` : ""}{m.sukka ? ` · sukka ${m.sukka.toLowerCase()}` : ""}</span>)}</span>;
         return a.mirpesetCount ?? (a.mirpesetSqm ? 1 : dash);
       },
     },
     { label: "Mirpeset direction", cell: (a) => parseJsonList(a.mirpesetDirection).join(", ") || dash },
+    { label: "Sukka", cell: (a) => { const list = parseMirpasot(a.mirpasot); const v = list.length === 1 ? list[0].sukka : list.length > 1 ? (list.every((m) => m.sukka === "No") ? "No" : list.some((m) => m.sukka === "Yes") ? "Yes" : list.some((m) => m.sukka) ? "Partial" : null) : null; return v ?? dash; } },
     { label: "Mamad", cell: (a) => (a.mamad ? "Yes" : "No") },
     { label: "Internal m²", cell: (a) => (a.internalSqm != null ? <span className={mark(a.internalSqm === bestInternal)}>{sqm(a.internalSqm)} <span className="text-xs text-muted">{sqft(a.internalSqm)}</span></span> : dash) },
     { label: "Mirpeset m²", cell: (a) => (a.mirpesetSqm != null ? <span className={mark(a.mirpesetSqm === bestMirpeset)}>{sqm(a.mirpesetSqm)} <span className="text-xs text-muted">{sqft(a.mirpesetSqm)}</span></span> : dash) },

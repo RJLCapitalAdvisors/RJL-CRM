@@ -9,6 +9,10 @@ import { IL_APARTMENT_LEVELS, IL_CITIES, IL_MACHSAN_LOCATIONS, IL_PARKING, IL_SE
 import { Directions, MirpasotFields } from "@/components/mirpasot-fields";
 import type { FxRate } from "@/lib/fx";
 
+/** Floors as dropdowns: 0 is the ground floor (קומת קרקע), then 1 to 100. */
+const FLOORS = Array.from({ length: 101 }, (_, k) => String(k));
+const STORIES = Array.from({ length: 100 }, (_, k) => String(k + 1));
+
 export type IlApartmentForm = Partial<{
   name: string; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
   internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpasot: string | null; levels: number | null; ceilingCms: string | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean;
@@ -80,10 +84,10 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
           <Select name="levels" value={levels} options={IL_APARTMENT_LEVELS} blank="1" onChange={setLevels} />
         </Row>
         <Row label={levelCount > 1 ? "Lowest floor" : "Apartment floor"} hint={levelCount > 1 ? `The apartment spans this floor and the ${levelCount - 1} above it.` : undefined}>
-          <NumberInput name="floor" defaultValue={a.floor} decimals={false} />
+          <Select name="floor" value={a.floor == null ? "" : String(a.floor)} options={FLOORS} />
         </Row>
         <Row label="Building stories">
-          <NumberInput name="totalFloors" defaultValue={a.totalFloors} decimals={false} />
+          <Select name="totalFloors" value={a.totalFloors == null ? "" : String(a.totalFloors)} options={STORIES} />
         </Row>
         <Row label="Total building units">
           <NumberInput name="buildingUnits" defaultValue={a.buildingUnits} decimals={false} />
