@@ -41,6 +41,20 @@ body {
   .btn-soft {
     @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 bg-sky text-ink hover:bg-sky-600 hover:text-white;
   }
+  /* dashboard action buttons: grey for dismiss / keep / sent already, red for deal lost; same size as btn-soft */
+  .btn-grey {
+    @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 bg-stone-200 text-ink hover:bg-stone-300;
+  }
+  .btn-danger {
+    @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 bg-red-600 text-white hover:bg-red-700;
+  }
+  /* the action column on dashboard items: one width, buttons stacked and centered on the row */
+  .act {
+    @apply w-full justify-center whitespace-nowrap px-2 py-1.5 text-xs;
+  }
+  .act-col {
+    @apply flex w-[128px] shrink-0 flex-col gap-1 self-center;
+  }
   .btn-ghost {
     @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 text-ink hover:bg-cream;
   }

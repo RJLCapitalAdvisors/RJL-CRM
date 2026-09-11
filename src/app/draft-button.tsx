@@ -17,15 +17,16 @@ const desktopHref = (r: Links) => {
   return r.outlookLink ?? r.webLink;
 };
 
-export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", action, disabled, title }: { label?: string; readyLabel?: string; action: () => Promise<DraftLinks>; disabled?: boolean; title?: string }) {
+/** block: fill the action column (dashboard rows), so Handle sits flush with the grey and red buttons under it. */
+export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", action, disabled, title, block = false }: { label?: string; readyLabel?: string; action: () => Promise<DraftLinks>; disabled?: boolean; title?: string; block?: boolean }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState<Extract<DraftLinks, { ok: true }> | null>(null);
   const router = useRouter();
   if (ready) {
     return (
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <a href={desktopHref(ready)} className="btn-primary" title="Opens the draft in desktop Outlook">
+      <div className={`flex shrink-0 flex-col gap-1 ${block ? "items-stretch text-center" : "items-end"}`}>
+        <a href={desktopHref(ready)} className={`btn-primary ${block ? "act" : ""}`} title="Opens the draft in desktop Outlook">
           {readyLabel}
         </a>
         <span className="text-[11px] text-muted">If it did not pop up, click the button</span>
@@ -39,10 +40,10 @@ export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", 
     );
   }
   return (
-    <div className="flex shrink-0 flex-col items-end gap-1">
+    <div className={`flex shrink-0 flex-col gap-1 ${block ? "items-stretch" : "items-end"}`}>
       <button
         type="button"
-        className="btn-soft"
+        className={`btn-soft ${block ? "act" : ""}`}
         disabled={disabled || pending}
         title={title}
         onClick={() => {
