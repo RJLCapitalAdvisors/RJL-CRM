@@ -103,7 +103,12 @@ function Nav({ items, dealSteps = false, apartmentSteps = false }: { items: { hr
           )}
           {apartmentSteps && n.href === "/israel/apartments" && (
             <Suspense fallback={null}>
-              <ApartmentContextNav />
+              <ApartmentContextNav section="apartments" />
+            </Suspense>
+          )}
+          {apartmentSteps && n.href === "/israel/houses" && (
+            <Suspense fallback={null}>
+              <ApartmentContextNav section="houses" />
             </Suspense>
           )}
         </div>

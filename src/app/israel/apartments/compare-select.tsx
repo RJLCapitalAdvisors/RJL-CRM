@@ -10,7 +10,7 @@ import { createContext, useContext, useState } from "react";
 const Ctx = createContext<{ picked: string[]; toggle: (id: string) => void } | null>(null);
 export const MAX_COMPARE = 5;
 
-export function CompareProvider({ children }: { children: React.ReactNode }) {
+export function CompareProvider({ children, basePath = "/israel/apartments", noun = "apartments" }: { children: React.ReactNode; basePath?: string; noun?: string }) {
   const [picked, setPicked] = useState<string[]>([]);
   const toggle = (id: string) => setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.length >= MAX_COMPARE ? cur : [...cur, id]));
   return (
@@ -18,7 +18,7 @@ export function CompareProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div className="sticky bottom-0 z-10 mt-2 flex items-center justify-between gap-3 rounded-lg border border-line bg-paper px-4 py-2.5 text-sm shadow-lg">
         <span className="text-muted">
-          {picked.length === 0 ? `Tick up to ${MAX_COMPARE} apartments to compare.` : `${picked.length} of ${MAX_COMPARE} picked${picked.length >= MAX_COMPARE ? " (the most that fit side by side)" : ""}.`}
+          {picked.length === 0 ? `Tick up to ${MAX_COMPARE} ${noun} to compare.` : `${picked.length} of ${MAX_COMPARE} picked${picked.length >= MAX_COMPARE ? " (the most that fit side by side)" : ""}.`}
         </span>
         <div className="flex items-center gap-2">
           {picked.length > 0 && (
@@ -27,11 +27,11 @@ export function CompareProvider({ children }: { children: React.ReactNode }) {
             </button>
           )}
           {picked.length >= 2 ? (
-            <Link href={`/israel/apartments/compare?ids=${picked.join(",")}`} className="btn-primary px-4 py-1.5">
-              Compare {picked.length} units
+            <Link href={`${basePath}/compare?ids=${picked.join(",")}`} className="btn-primary px-4 py-1.5">
+              Compare {picked.length} {noun === "houses" ? "houses" : "units"}
             </Link>
           ) : (
-            <span className="btn-primary cursor-not-allowed px-4 py-1.5 opacity-40">Compare units</span>
+            <span className="btn-primary cursor-not-allowed px-4 py-1.5 opacity-40">Compare {noun === "houses" ? "houses" : "units"}</span>
           )}
         </div>
       </div>

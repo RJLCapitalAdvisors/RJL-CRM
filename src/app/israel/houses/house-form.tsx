@@ -4,16 +4,17 @@ import { useState } from "react";
 import { AutoSaveForm } from "@/components/autosave-form";
 import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
-import { ACRES_PER_SQM, IL_CITIES, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, pricePerMeter, sqft, usdFmt, usdPerSqft } from "@/lib/israel";
+import { MirpasotFields } from "@/components/mirpasot-fields";
+import { ACRES_PER_SQM, IL_CITIES, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, parseMirpasot, pricePerMeter, sqft, usdFmt, usdPerSqft } from "@/lib/israel";
 import type { FxRate } from "@/lib/fx";
 
 export type IlHouseForm = Partial<{
   name: string; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; floors: number | null; ceilingCms: string | null; completionDate: string | null;
-  internalSqm: number | null; mirpesetSqm: number | null; migrashSqm: number | null; parkingSpots: string | null; mamad: boolean; priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null;
+  internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpesetDirection: string | null; mirpasot: string | null; migrashSqm: number | null; parkingSpots: string | null; mamad: boolean; priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null;
 }>;
 
 const FLOOR_NAMES = ["Ground floor", "First floor", "Second floor", "Third floor", "Fourth floor", "Fifth floor", "Sixth floor", "Seventh floor"];
-const floorName = (i: number, total: number) => (i === 0 && total > 1 ? "Ground floor" : FLOOR_NAMES[i] ?? `Floor ${i + 1}`);
+const floorName = (i: number) => FLOOR_NAMES[i] ?? `Floor ${i + 1}`;
 
 /**
  * The house ticket. Same shape as the apartment ticket, with the house-only fields: how many floors (miflasim) and a
@@ -65,10 +66,10 @@ export function HouseForm({ h = {}, fx, action, autosave = false, submitLabel = 
         </Row>
         {Array.from({ length: floorCount }, (_, i) => (
           <div key={i} className="contents">
-            <Row label={`${floorName(i, floorCount)} ceiling (cm)`}>
+            <Row label={`${floorName(i)} ceiling (cm)`}>
               <NumberInput name="ceilingCm" defaultValue={ceilings[i] ?? null} onValue={(v) => setCeiling(i, v)} />
             </Row>
-            <Calc label={`${floorName(i, floorCount)} ceiling in feet`} value={ceilings[i] != null ? feet(ceilings[i]) : dash} />
+            <Calc label={`${floorName(i)} ceiling in feet`} value={ceilings[i] != null ? feet(ceilings[i]) : dash} />
           </div>
         ))}
         <Row label="Built or expected delivery" hint="Month and year for a new build, e.g. 06/2027. Year alone for an existing house.">
@@ -95,10 +96,7 @@ export function HouseForm({ h = {}, fx, action, autosave = false, submitLabel = 
           <NumberInput name="internalSqm" defaultValue={h.internalSqm} onValue={setInternal} />
         </Row>
         <Calc label="Internal square feet" value={internal != null ? sqft(internal) : dash} />
-        <Row label="Mirpeset m²">
-          <NumberInput name="mirpesetSqm" defaultValue={h.mirpesetSqm} onValue={setMirpeset} />
-        </Row>
-        <Calc label="Mirpeset square feet" value={mirpeset != null ? sqft(mirpeset) : dash} />
+        <MirpasotFields count={h.mirpesetCount} sqm={h.mirpesetSqm} directions={parseJsonList(h.mirpesetDirection)} mirpasot={parseMirpasot(h.mirpasot)} onTotal={setMirpeset} />
         <Row label="Migrash size (m²)" hint="The plot the house sits on.">
           <NumberInput name="migrashSqm" defaultValue={h.migrashSqm} onValue={setMigrash} />
         </Row>

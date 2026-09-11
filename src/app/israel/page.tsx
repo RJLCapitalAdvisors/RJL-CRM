@@ -2,8 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
-import { apartmentLine, apartmentMissing, nis } from "@/lib/israel";
-import { approveApartment } from "./actions";
+import { apartmentLine, apartmentMissing, houseLine, houseMissing, nis } from "@/lib/israel";
+import { approveApartment, approveHouse } from "./actions";
 import { kickIsraelMailSync } from "@/lib/israel-mail";
 
 export const metadata = { title: "Dashboard" };
@@ -16,7 +16,15 @@ export const dynamic = "force-dynamic";
  */
 export default async function IsraelDashboard() {
   kickIsraelMailSync(); // emails from the RJL Israel mailboxes land on contacts and companies in the background
-  const pending = await prisma.ilApartment.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } });
+  const [pendingApts, pendingHouses] = await Promise.all([
+    prisma.ilApartment.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
+    prisma.ilHouse.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
+  ]);
+  // apartments and houses in one list, newest first
+  const pending = [
+    ...pendingApts.map((a) => ({ id: a.id, kind: "apartments" as const, name: a.name, line: apartmentLine(a), developer: a.developer?.name, price: a.priceNis, createdAt: a.createdAt, agent: a.agent, source: a.source, missing: apartmentMissing(a as unknown as Record<string, unknown>) })),
+    ...pendingHouses.map((h) => ({ id: h.id, kind: "houses" as const, name: h.name, line: houseLine(h), developer: h.developer?.name, price: h.priceNis, createdAt: h.createdAt, agent: h.agent, source: h.source, missing: houseMissing(h as unknown as Record<string, unknown>) })),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   return (
     <>
       <PageHeader title="Dashboard" />
@@ -27,20 +35,21 @@ export default async function IsraelDashboard() {
             <span className="text-xs text-muted">{pending.length}</span>
           </div>
           {pending.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-muted">Nothing waiting. Apartments that arrive by email with data missing show up here until the data is complete and approved.</div>
+            <div className="px-4 py-8 text-center text-sm text-muted">Nothing waiting. Apartments and houses that arrive by email or WhatsApp with data missing show up here until the data is complete and approved.</div>
           ) : (
             <ul className="divide-y divide-line">
               {pending.map((a) => {
-                const missing = apartmentMissing(a as unknown as Record<string, unknown>);
+                const missing = a.missing;
                 return (
-                  <li key={a.id} className="px-4 py-3 text-sm">
+                  <li key={`${a.kind}-${a.id}`} className="px-4 py-3 text-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <Link href={`/israel/apartments/${a.id}`} className="font-medium hover:underline">
+                        <Link href={`/israel/${a.kind}/${a.id}`} className="font-medium hover:underline">
                           {a.name}
                         </Link>
+                        <span className="ml-2 chip bg-cream text-[10px]">{a.kind === "houses" ? "House" : "Apartment"}</span>
                         <div className="truncate text-xs text-muted">
-                          {[apartmentLine(a), a.developer?.name, nis(a.priceNis) || null].filter(Boolean).join(" · ")}
+                          {[a.line, a.developer, nis(a.price) || null].filter(Boolean).join(" · ")}
                         </div>
                         <div className="mt-1 text-xs text-muted">
                           Received {fmtDate(a.createdAt)}
@@ -49,7 +58,7 @@ export default async function IsraelDashboard() {
                         </div>
                       </div>
                       {missing.length === 0 ? (
-                        <form action={approveApartment.bind(null, a.id)}>
+                        <form action={(a.kind === "houses" ? approveHouse : approveApartment).bind(null, a.id)}>
                           <button type="submit" className="btn-primary px-3 py-1.5 text-xs">
                             Approve
                           </button>

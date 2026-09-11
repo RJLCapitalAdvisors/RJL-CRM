@@ -70,6 +70,17 @@ export const pricePerMeter = (price: number | null | undefined, internal: number
 };
 export const PRICE_PER_METER_NOTE = "asking price ÷ (internal m² + ⅓ of the mirpeset m²)";
 
+export type Mirpeset = { sqm: number | null; direction: string[] };
+/** The mirpasot list stored on a ticket with more than one mirpeset. */
+export const parseMirpasot = (s: string | null | undefined): Mirpeset[] => {
+  try {
+    const v = JSON.parse(s || "[]");
+    return Array.isArray(v) ? v.map((m) => ({ sqm: typeof m?.sqm === "number" ? m.sqm : null, direction: Array.isArray(m?.direction) ? m.direction.map(String) : [] })) : [];
+  } catch {
+    return [];
+  }
+};
+export const IL_APARTMENT_LEVELS = ["1", "2", "3"] as const;
 export const parseJsonList = (s: string | null | undefined): string[] => {
   try {
     const v = JSON.parse(s ?? "[]");
@@ -86,6 +97,10 @@ export function apartmentLine(a: IlApartmentLike) {
   return [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? `${sqm(a.internalSqm)}${a.mirpesetSqm ? ` + ${sqm(a.mirpesetSqm)} mirpeset` : ""}` : null, a.floor != null ? `floor ${a.floor}` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · ");
 }
 
+export type IlHouseLike = { name: string; city: string | null; neighborhood: string | null; street: string | null; rooms: number | null; internalSqm: number | null; migrashSqm: number | null; floors: number | null; priceNis: number | null };
+export function houseLine(h: IlHouseLike) {
+  return [h.rooms ? `${h.rooms} rooms` : null, h.internalSqm ? sqm(h.internalSqm) : null, h.migrashSqm ? `${sqm(h.migrashSqm)} migrash` : null, h.floors ? `${h.floors} floors` : null, [h.neighborhood, h.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · ");
+}
 export const ilFullName = (c: { firstName: string | null; lastName: string | null; email: string | null }) => [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "(no name)";
 
 export const IL_DEAL_STAGES = ["Lead", "Viewing Scheduled", "Offer Made", "Negotiation", "Under Contract", "Closed", "Lost"] as const;
@@ -136,6 +151,29 @@ export function apartmentMissing(a: Record<string, unknown>): string[] {
     const v = a[key];
     if (v == null || v === "") return true;
     if (typeof v === "string" && (key === "direction" || key === "mirpesetDirection")) return parseJsonList(v).length === 0;
+    return false;
+  }).map((f) => f.label);
+}
+
+/** What a complete house ticket carries; the dashboard and the reply list whichever are blank. */
+export const IL_HOUSE_COMPLETE_FIELDS: { key: string; label: string }[] = [
+  { key: "street", label: "Address" },
+  { key: "city", label: "City" },
+  { key: "completionDate", label: "Built or expected delivery" },
+  { key: "internalSqm", label: "Internal m²" },
+  { key: "mirpesetSqm", label: "Mirpeset size" },
+  { key: "floors", label: "How many floors" },
+  { key: "ceilingCms", label: "Ceiling heights" },
+  { key: "migrashSqm", label: "Migrash size" },
+  { key: "priceNis", label: "Asking price" },
+  { key: "sellerType", label: "Seller type" },
+  { key: "parkingSpots", label: "Parking" },
+];
+export function houseMissing(h: Record<string, unknown>): string[] {
+  return IL_HOUSE_COMPLETE_FIELDS.filter(({ key }) => {
+    const v = h[key];
+    if (v == null || v === "") return true;
+    if (key === "ceilingCms" && typeof v === "string") return parseJsonList(v).filter((x) => x !== "").length === 0;
     return false;
   }).map((f) => f.label);
 }

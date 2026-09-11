@@ -20,8 +20,10 @@ const q = (s: string) => encodeURIComponent(s);
 type Msg = { id: string; internetMessageId?: string; subject: string | null; receivedDateTime: string; hasAttachments?: boolean; from?: { emailAddress: { address: string; name?: string } }; body?: { contentType: string; content: string } };
 type Att = { "@odata.type": string; id: string; name: string; contentType: string | null; size: number; isInline: boolean };
 
+const Direction = z.enum(["North", "South", "East", "West"]);
 const Apartment = z.object({
-  name: z.string().describe("Short name in English: project or street plus apartment number, e.g. 'Rehavia Gardens, Apt 12'"),
+  kind: z.enum(["apartment", "house"]).describe("house: a private house on its own plot (בית פרטי, וילה, קוטג', דו משפחתי, צמוד קרקע, בית קרקע). Everything in a building, including a duplex, penthouse or garden apartment, is an apartment."),
+  name: z.string().describe("Short name in English: project or street plus apartment number, e.g. 'Rehavia Gardens, Apt 12'; for a house the street and city, e.g. 'HaPalmach 8, Jerusalem'"),
   projectName: z.string().nullable(),
   developerName: z.string().nullable(),
   street: z.string().nullable().describe("Building address, street and number"),
@@ -33,13 +35,18 @@ const Apartment = z.object({
   buildingStories: z.number().nullable(),
   buildingUnits: z.number().nullable(),
   internalSqm: z.number().nullable().describe("Internal square metres, excluding the mirpeset"),
-  mirpesetSqm: z.number().nullable(),
-  ceilingCm: z.number().nullable(),
+  mirpesetSqm: z.number().nullable().describe("Total mirpeset m²; with several mirpasot, the sum"),
+  mirpasot: z.array(z.object({ sqm: z.number().nullable(), direction: z.array(Direction) })).describe("Each mirpeset separately when the listing describes more than one; empty otherwise"),
+  ceilingCm: z.number().nullable().describe("Ceiling height; for a house or a duplex, the main level"),
+  levels: z.number().nullable().describe("Apartments only: floors inside the apartment, 1, 2 (duplex) or 3 (triplex)"),
+  floors: z.number().nullable().describe("Houses only: how many floors (miflasim)"),
+  ceilingCms: z.array(z.number()).describe("One ceiling height per floor or level, ground first, when the listing gives them; empty otherwise"),
+  migrashSqm: z.number().nullable().describe("Houses only: the plot (migrash) in m²; a dunam is 1,000 m²"),
   machsanSqm: z.number().nullable(),
   machsanLocation: z.enum(["Attached to apartment", "In basement"]).nullable(),
   parkingSpots: z.enum(["None", "1", "2 - back to back", "2 side by side", "3"]).nullable(),
-  direction: z.array(z.enum(["North", "South", "East", "West"])),
-  mirpesetDirection: z.array(z.enum(["North", "South", "East", "West"])),
+  direction: z.array(Direction),
+  mirpesetDirection: z.array(Direction),
   mamad: z.boolean().nullable(),
   priceNis: z.number().nullable().describe("Asking price in shekels. Convert only if the document states a currency and an amount; never guess."),
   sellerType: z.enum(["Yad Rishona (developer)", "Second hand, never occupied", "Second hand, occupied"]).nullable().describe("Yad rishona means bought from the developer; second hand is a resale, occupied or never lived in"),
@@ -54,7 +61,7 @@ type Extracted = z.infer<typeof Output>;
 type ExtractedApartment = Extracted["apartments"][number];
 
 const SYSTEM = `You read messages and documents about apartments for sale in Israel and fill in apartment tickets for RJL Israel.
-Rules: one entry per distinct apartment (a building with several units for sale is several apartments; a whole project description with no specific unit is one apartment named after the project with the unit fields blank). Only record what the documents state; leave a field null when it is not stated. Never use placeholders like TBD. Square metres: internal excludes the mirpeset (balcony); if only a total is given, put it in internalSqm and say so in the description. Prices in shekels; if a price is in dollars, convert only if the document gives the rate, else leave priceNis null and mention the dollar price in the description. Parking must be one of the allowed values. Direction is the apartment's air directions. Mamad is the safe room. The subject line is often stale; trust the body, the attachments and the photos. No dashes as punctuation in text you write.
+Rules: one entry per distinct apartment or house, with kind set (a private house on its own plot is a house; anything inside a building is an apartment). A building with several units for sale is several apartments; a whole project description with no specific unit is one apartment named after the project with the unit fields blank). Only record what the documents state; leave a field null when it is not stated. Never use placeholders like TBD. Square metres: internal excludes the mirpeset (balcony); if only a total is given, put it in internalSqm and say so in the description. Prices in shekels; if a price is in dollars, convert only if the document gives the rate, else leave priceNis null and mention the dollar price in the description. Parking must be one of the allowed values. Direction is the apartment's air directions. Mamad is the safe room. The subject line is often stale; trust the body, the attachments and the photos. No dashes as punctuation in text you write.
 Hebrew: most of what arrives is in Hebrew. Read it natively. Write every field value in English: cities and neighborhoods in their usual English spelling (ירושלים Jerusalem, תל אביב Tel Aviv, רעננה Ra'anana, הרצליה Herzliya, רחביה Rehavia, קטמון Katamon, בקעה Baka, ארנונה Arnona, טלביה Talbiya), streets and project names transliterated with the Hebrew in parentheses the first time. Vocabulary: חדרים rooms (3.5 חדרים is 3.5 rooms), מ"ר or מטר square metres, מרפסת mirpeset (balcony), מרפסת שמש sun balcony, גינה garden, ממ"ד mamad, מחסן machsan (storage), חניה parking (חניה כפולה two spots, בטור back to back, מקבילה side by side), קומה floor, קומת קרקע ground floor, מעלית elevator, קבלן or יזם developer, פרויקט project, יד ראשונה מקבלן yad rishona from the developer, יד שנייה second hand, לא גרו never occupied, משופצת renovated, שנת בניה year built, טופס 4 or מסירה delivery, כיווני אוויר air directions (צפון north, דרום south, מזרח east, מערב west), גובה תקרה ceiling height, מחיר or מבוקש asking price, ש"ח or ₪ shekels, מיליון million (4.2 מיליון is 4,200,000). Text pulled out of Hebrew PDFs sometimes arrives with the letters or words of a line in reverse order; read it in whichever direction makes sense. Photos of listings (Yad2, Madlan, agency flyers) carry the same fields: read the numbers off the image.`;
 
 /** One file that came with the message: text if we could read it, the bytes when it is an image or a candidate floorplan. */
@@ -69,7 +76,7 @@ export type IntakeInput = {
   sourceLabel: string; // "Email from Yael Tzur" / "WhatsApp from +972 52 300 1122"
   mailbox: string; // where it arrived (address or WhatsApp number)
 };
-export type IntakeRow = { id: string; name: string; line: string; price: string; missing: string[] };
+export type IntakeRow = { id: string; kind: "apartments" | "houses"; name: string; line: string; price: string; missing: string[] };
 export type IntakeResult = { rows: IntakeRow[]; note: string | null } | { skipped: string };
 
 async function readAttachments(messageId: string): Promise<IntakeFile[]> {
@@ -131,6 +138,26 @@ const REQUIRED: { key: keyof ExtractedApartment | "developer"; label: string }[]
   { key: "floor", label: "Apartment floor" },
   { key: "mamad", label: "Mamad (yes or no)" },
 ];
+const REQUIRED_HOUSE: { key: keyof ExtractedApartment; label: string }[] = [
+  { key: "street", label: "Address" },
+  { key: "city", label: "City" },
+  { key: "completionDate", label: "Built or expected delivery" },
+  { key: "internalSqm", label: "Internal m²" },
+  { key: "mirpesetSqm", label: "Mirpeset size (m²)" },
+  { key: "floors", label: "How many floors" },
+  { key: "ceilingCms", label: "Ceiling height per floor (cm)" },
+  { key: "migrashSqm", label: "Migrash size (m²)" },
+  { key: "priceNis", label: "Asking price" },
+  { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
+  { key: "parkingSpots", label: "Parking" },
+  { key: "mamad", label: "Mamad (yes or no)" },
+];
+function missingForHouse(a: ExtractedApartment): string[] {
+  return REQUIRED_HOUSE.filter(({ key }) => {
+    const v = a[key];
+    return v == null || (Array.isArray(v) && v.length === 0);
+  }).map((r) => r.label);
+}
 function missingFor(a: ExtractedApartment, hasDeveloper: boolean): string[] {
   return REQUIRED.filter(({ key }) => {
     if (key === "developer") return !hasDeveloper;
@@ -158,12 +185,14 @@ async function findOrCreateAgent(agent: Extracted["agent"], sender: IntakeInput[
 }
 
 /** The floorplan among the files: a plan by name, else the biggest photo when there is more than one. */
-async function attachFloorplan(files: IntakeFile[], apartmentId: string) {
+async function attachFloorplan(files: IntakeFile[], unitId: string, kind: "apartments" | "houses" = "apartments") {
   const withBytes = files.filter((f) => f.bytes && f.size < 20 * 1024 * 1024);
   const isImg = (f: IntakeFile) => (f.type ?? "").startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(f.name);
   const plan = withBytes.find((f) => /plan|tochnit|תכנית|תוכנית/i.test(f.name) && (isImg(f) || f.type === "application/pdf")) ?? withBytes.filter(isImg).sort((a, b) => b.size - a.size)[0];
   if (!plan?.bytes) return;
-  await prisma.ilApartment.update({ where: { id: apartmentId }, data: { floorplan: Buffer.from(plan.bytes), floorplanType: plan.type ?? "application/octet-stream", floorplanName: plan.name } });
+  const data = { floorplan: Buffer.from(plan.bytes), floorplanType: plan.type ?? "application/octet-stream", floorplanName: plan.name };
+  if (kind === "houses") await prisma.ilHouse.update({ where: { id: unitId }, data });
+  else await prisma.ilApartment.update({ where: { id: unitId }, data });
 }
 
 /** The shared core: read, extract, create tickets, link people. Returns the rows for whichever reply the channel writes. */
@@ -172,15 +201,54 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   const mark = (result: string) => prisma.ilInbound.create({ data: { messageId: input.key, mailbox: input.mailbox, subject: input.subject, fromEmail: input.sender?.email ?? input.sender?.phone ?? null, result } }).catch(() => null);
   const extracted = await extract(input.subject, input.body, input.files);
   if (!extracted.apartments.length) {
-    await mark("skipped: no apartment found");
+    await mark("skipped: no apartment or house found");
     return { skipped: "no apartments" };
   }
   const senderIsInternal = input.sender?.email ? INTERNAL.test(input.sender.email) : false;
   const agentCompany = await findOrCreateCompany(extracted.agent?.company ?? null, "Broker");
   const agent = await findOrCreateAgent(extracted.agent, senderIsInternal ? null : input.sender, agentCompany?.id ?? null);
   const rows: IntakeRow[] = [];
+  const fileNames = input.files.map((f) => f.name);
+  const origin = `Created from ${input.channel === "WHATSAPP" ? "a WhatsApp message" : `an email to ${input.mailbox}`}${input.subject ? `: "${input.subject}"` : ""}${fileNames.length ? ` with ${fileNames.join(", ")}` : ""}`;
+  const mirpasot = (a: ExtractedApartment) => {
+    const list = a.mirpasot.filter((m) => m.sqm != null || m.direction.length);
+    const total = list.length > 1 ? list.reduce((t, m) => t + (m.sqm ?? 0), 0) : null;
+    return { mirpesetCount: list.length > 1 ? list.length : a.mirpesetSqm != null ? 1 : null, mirpesetSqm: a.mirpesetSqm ?? (total || null), mirpesetDirection: JSON.stringify(list.length > 1 ? [...new Set(list.flatMap((m) => m.direction))] : a.mirpesetDirection), mirpasot: JSON.stringify(list.length > 1 ? list : []) };
+  };
   for (const a of extracted.apartments) {
     const developer = await findOrCreateCompany(a.developerName, "Developer (Yazam)");
+    if (a.kind === "house") {
+      const house = await prisma.ilHouse.create({
+        data: {
+          name: stripDashes(a.name) || a.street || "House",
+          street: a.street,
+          city: a.city,
+          neighborhood: a.neighborhood,
+          developerId: developer?.id ?? null,
+          agentContactId: agent?.id ?? null,
+          rooms: a.rooms,
+          floors: a.floors,
+          ceilingCms: JSON.stringify(a.ceilingCms.length ? a.ceilingCms : a.ceilingCm != null ? [a.ceilingCm] : []),
+          completionDate: a.completionDate,
+          internalSqm: a.internalSqm,
+          ...mirpasot(a),
+          migrashSqm: a.migrashSqm,
+          parkingSpots: a.parkingSpots && (IL_PARKING as readonly string[]).includes(a.parkingSpots) ? a.parkingSpots : null,
+          sellerType: a.sellerType,
+          renovationYear: a.sellerType?.startsWith("Second hand") ? a.renovationYear : null,
+          mamad: a.mamad ?? false,
+          priceNis: a.priceNis,
+          description: a.description ? stripDashes(a.description) : null,
+          source: input.sourceLabel,
+          sourceMessageId: input.key,
+          pendingApproval: true,
+        },
+      });
+      await prisma.ilNote.create({ data: { houseId: house.id, body: origin } });
+      if (extracted.apartments.length === 1) await attachFloorplan(input.files, house.id, "houses").catch(() => null);
+      rows.push({ id: house.id, kind: "houses", name: house.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, a.migrashSqm ? `${sqm(a.migrashSqm)} migrash` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: missingForHouse(a) });
+      continue;
+    }
     let project = null as { id: string } | null;
     if (a.projectName?.trim()) {
       project = (await prisma.ilProject.findFirst({ where: { name: { equals: a.projectName.trim(), mode: "insensitive" } } })) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, stories: a.buildingStories, totalUnits: a.buildingUnits, completionDate: a.completionDate } }));
@@ -201,13 +269,14 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         totalFloors: a.buildingStories,
         buildingUnits: a.buildingUnits,
         internalSqm: a.internalSqm,
-        mirpesetSqm: a.mirpesetSqm,
-        ceilingCm: a.ceilingCm,
+        ...mirpasot(a),
+        levels: a.levels && a.levels > 1 ? Math.min(a.levels, 3) : null,
+        ceilingCms: JSON.stringify(a.levels && a.levels > 1 ? a.ceilingCms : []),
+        ceilingCm: a.ceilingCm ?? a.ceilingCms[0] ?? null,
         machsanSqm: a.machsanSqm,
         machsanLocation: a.machsanLocation && (IL_MACHSAN_LOCATIONS as readonly string[]).includes(a.machsanLocation) ? a.machsanLocation : null,
         parkingSpots: a.parkingSpots && (IL_PARKING as readonly string[]).includes(a.parkingSpots) ? a.parkingSpots : null,
         direction: JSON.stringify(a.direction),
-        mirpesetDirection: JSON.stringify(a.mirpesetDirection),
         mamad: a.mamad ?? false,
         priceNis: a.priceNis,
         sellerType: a.sellerType,
@@ -218,10 +287,9 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         pendingApproval: true,
       },
     });
-    const fileNames = input.files.map((f) => f.name);
-    await prisma.ilNote.create({ data: { apartmentId: created.id, body: `Created from ${input.channel === "WHATSAPP" ? "a WhatsApp message" : `an email to ${input.mailbox}`}${input.subject ? `: "${input.subject}"` : ""}${fileNames.length ? ` with ${fileNames.join(", ")}` : ""}` } });
+    await prisma.ilNote.create({ data: { apartmentId: created.id, body: origin } });
     if (extracted.apartments.length === 1) await attachFloorplan(input.files, created.id).catch(() => null);
-    rows.push({ id: created.id, name: created.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: missingFor(a, Boolean(developer)) });
+    rows.push({ id: created.id, kind: "apartments", name: created.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: missingFor(a, Boolean(developer)) });
   }
   await mark(`created ${rows.length}`);
   const note = agent ? `Agent on file: ${[agent.firstName, agent.lastName].filter(Boolean).join(" ") || agent.email || agent.phone}.` : null;
@@ -234,12 +302,12 @@ function replyHtml(rows: IntakeRow[], base: string, note: string | null): string
   const font = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
   const blocks = rows
     .map(
-      (r) => `<p style="margin:10pt 0 4pt 0;"><b><a href="${base}/israel/apartments/${r.id}">${r.name}</a></b>${r.line ? ` <span style="color:#6b716e;">${r.line}</span>` : ""}${r.price ? ` <span style="color:#6b716e;">${r.price}</span>` : ""}</p>
+      (r) => `<p style="margin:10pt 0 4pt 0;"><b><a href="${base}/israel/${r.kind}/${r.id}">${r.name}</a></b>${r.kind === "houses" ? ' <span style="color:#6b716e;">(house)</span>' : ""}${r.line ? ` <span style="color:#6b716e;">${r.line}</span>` : ""}${r.price ? ` <span style="color:#6b716e;">${r.price}</span>` : ""}</p>
 ${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still missing:</div><ol style="margin:0 0 6pt 18pt;">${r.missing.map((m) => `<li>${m}</li>`).join("")}</ol>` : `<div style="margin:0 0 6pt 0;">Nothing missing. The ticket is complete.</div>`}`,
     )
     .join("");
   return `<div style="${font}">
-<p>${rows.length === 1 ? "Apartment ticket created" : `${rows.length} apartment tickets created`} in RJL Israel. ${rows.some((r) => r.missing.length) ? "Tickets with data missing wait under Deals to be approved on the dashboard until the data is in and Jonathan approves them." : ""}</p>
+<p>${rows.length === 1 ? (rows[0].kind === "houses" ? "House ticket created" : "Apartment ticket created") : `${rows.length} tickets created`} in RJL Israel. ${rows.some((r) => r.missing.length) ? "Tickets with data missing wait under Deals to be approved on the dashboard until the data is in and Jonathan approves them." : ""}</p>
 ${blocks}
 ${note ? `<p style="color:#6b716e;">${note}</p>` : ""}
 <p style="color:#6b716e;font-size:9pt;">Reply to the agent for the missing items and forward their answer here; edit anything on the ticket in the CRM. A floorplan attached to the email is saved on the ticket.</p>
@@ -248,16 +316,16 @@ ${note ? `<p style="color:#6b716e;">${note}</p>` : ""}
 
 /** The same reply as plain text, for WhatsApp. */
 export function replyText(rows: IntakeRow[], base: string, note: string | null): string {
-  const lines = [rows.length === 1 ? "Apartment ticket created in RJL Israel." : `${rows.length} apartment tickets created in RJL Israel.`];
+  const lines = [rows.length === 1 ? `${rows[0].kind === "houses" ? "House" : "Apartment"} ticket created in RJL Israel.` : `${rows.length} tickets created in RJL Israel.`];
   for (const r of rows) {
-    lines.push("", `*${r.name}*${r.line ? ` · ${r.line}` : ""}${r.price ? ` · ${r.price}` : ""}`, `${base}/israel/apartments/${r.id}`);
+    lines.push("", `*${r.name}*${r.kind === "houses" ? " (house)" : ""}${r.line ? ` · ${r.line}` : ""}${r.price ? ` · ${r.price}` : ""}`, `${base}/israel/${r.kind}/${r.id}`);
     lines.push(r.missing.length ? `Still missing: ${r.missing.join(", ")}` : "Nothing missing, the ticket is complete.");
   }
   if (rows.some((r) => r.missing.length)) lines.push("", "Tickets with data missing wait under Deals to be approved until the data is in.");
   if (note) lines.push(note);
   return lines.join("\n");
 }
-export const NO_APARTMENT_TEXT = "I could not find an apartment in this message or its files, so no ticket was created. Send the listing with the details (address, size, price) or add it by hand under Apartments in RJL Israel.";
+export const NO_APARTMENT_TEXT = "I could not find an apartment or a house in this message or its files, so no ticket was created. Send the listing with the details (address, size, price) or add it by hand under Apartments or Houses in RJL Israel.";
 
 async function replyOnThread(msg: Msg, html: string) {
   const draft = await graph<{ id: string }>(`/users/${q(ISRAEL_MAILBOX())}/messages/${q(msg.id)}/createReply`, { method: "POST", body: JSON.stringify({}) });

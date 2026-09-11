@@ -549,7 +549,11 @@ model IlApartment {
   ceilingCm      Float?
   machsanSqm     Float?
   machsanLocation String?  // Attached to apartment, In basement
-  mirpesetDirection String @default("[]") // JSON list of air directions
+  mirpesetDirection String @default("[]") // JSON list of air directions (union of the mirpasot)
+  mirpesetCount  Int?
+  mirpasot       String    @default("[]") // JSON list of { sqm, direction[] } when there is more than one mirpeset
+  levels         Int?      // floors inside the apartment: 1, 2 (duplex) or 3
+  ceilingCms     String    @default("[]") // one ceiling height per level when levels > 1
   buildingUnits  Int?
   floorplan      Bytes?
   floorplanType  String?
@@ -801,8 +805,17 @@ model IlHouse {
   ceilingCms      String    @default("[]") // JSON list, one entry per floor, ground floor first
   completionDate  String?
   internalSqm     Float?
-  mirpesetSqm     Float?
+  mirpesetSqm     Float?    // total of the mirpasot
+  mirpesetCount   Int?
+  mirpesetDirection String  @default("[]")
+  mirpasot        String    @default("[]") // JSON list of { sqm, direction[] }
   migrashSqm      Float?    // the plot
+  pendingApproval Boolean   @default(false) // came in by email or WhatsApp with data missing
+  source          String?
+  sourceMessageId String?
+  floorplan       Bytes?
+  floorplanType   String?
+  floorplanName   String?
   parkingSpots    String?
   sellerType      String?
   renovationYear  Int?

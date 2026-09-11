@@ -5,12 +5,13 @@ import { AutoSaveForm } from "@/components/autosave-form";
 import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
 import { SelectField } from "@/components/select-field";
-import { IL_CITIES, IL_DIRECTIONS, IL_MACHSAN_LOCATIONS, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, pricePerMeter, sqft, usdFmt, usdPerSqft } from "@/lib/israel";
+import { IL_APARTMENT_LEVELS, IL_CITIES, IL_MACHSAN_LOCATIONS, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, parseMirpasot, pricePerMeter, sqft, usdFmt, usdPerSqft } from "@/lib/israel";
+import { Directions, MirpasotFields } from "@/components/mirpasot-fields";
 import type { FxRate } from "@/lib/fx";
 
 export type IlApartmentForm = Partial<{
   name: string; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
-  internalSqm: number | null; mirpesetSqm: number | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean;
+  internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpasot: string | null; levels: number | null; ceilingCms: string | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean;
   priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null;
 }>;
 
@@ -19,6 +20,18 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
   const [internal, setInternal] = useState<number | null>(a.internalSqm ?? null);
   const [mirpeset, setMirpeset] = useState<number | null>(a.mirpesetSqm ?? null);
   const [ceiling, setCeiling] = useState<number | null>(a.ceilingCm ?? null);
+  const [levels, setLevels] = useState(a.levels ? String(a.levels) : "");
+  const levelCount = Number(levels) > 1 ? Number(levels) : 1;
+  const [levelCeilings, setLevelCeilings] = useState<(number | null)[]>(() => parseJsonList(a.ceilingCms).map((x) => (x === "" ? null : Number(x))));
+  const setLevelCeiling = (k: number, v: number | null) =>
+    setLevelCeilings((cur) => {
+      const next = [...cur];
+      while (next.length < levelCount) next.push(null);
+      next[k] = v;
+      return next;
+    });
+  const LEVEL = ["Lower level", "Middle level", "Upper level"];
+  const levelName = (k: number) => (levelCount === 2 ? ["Lower level", "Upper level"][k] : LEVEL[k]) ?? `Level ${k + 1}`;
   const [machsan, setMachsan] = useState<number | null>(a.machsanSqm ?? null);
   const [price, setPrice] = useState<number | null>(a.priceNis ?? null);
   const [sellerType, setSellerType] = useState(a.sellerType ?? "");
@@ -63,7 +76,10 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         <Row label="Year of construction / expected date of delivery" hint="Month and year for a new build, e.g. 06/2027. Year alone for an existing building.">
           <Text name="completionDate" value={a.completionDate} placeholder="06/2027" />
         </Row>
-        <Row label="Apartment floor">
+        <Row label="Apartment floors (levels)" hint="One for a regular apartment. Two or three for a duplex or triplex; each level then gets its own ceiling height.">
+          <Select name="levels" value={levels} options={IL_APARTMENT_LEVELS} blank="1" onChange={setLevels} />
+        </Row>
+        <Row label={levelCount > 1 ? "Lowest floor" : "Apartment floor"} hint={levelCount > 1 ? `The apartment spans this floor and the ${levelCount - 1} above it.` : undefined}>
           <NumberInput name="floor" defaultValue={a.floor} decimals={false} />
         </Row>
         <Row label="Building stories">
@@ -74,9 +90,6 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         </Row>
         <Row label="Apartment direction">
           <Directions name="direction" chosen={dirs} />
-        </Row>
-        <Row label="Mirpeset direction">
-          <Directions name="mirpesetDirection" chosen={mDirs} />
         </Row>
         <Row label="Mamad">
           <Select name="mamad" value={a.mamad == null ? "" : a.mamad ? "Yes" : "No"} options={["Yes", "No"]} />
@@ -96,14 +109,24 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
           <NumberInput name="internalSqm" defaultValue={a.internalSqm} onValue={setInternal} />
         </Row>
         <Calc label="Internal square feet" value={internal != null ? sqft(internal) : dash} />
-        <Row label="Mirpeset m²">
-          <NumberInput name="mirpesetSqm" defaultValue={a.mirpesetSqm} onValue={setMirpeset} />
-        </Row>
-        <Calc label="Mirpeset square feet" value={mirpeset != null ? sqft(mirpeset) : dash} />
-        <Row label="Ceiling height (cm)">
-          <NumberInput name="ceilingCm" defaultValue={a.ceilingCm} onValue={setCeiling} />
-        </Row>
-        <Calc label="Ceiling height in feet" value={ceiling != null ? feet(ceiling) : dash} />
+        <MirpasotFields count={a.mirpesetCount} sqm={a.mirpesetSqm} directions={mDirs} mirpasot={parseMirpasot(a.mirpasot)} onTotal={setMirpeset} />
+        {levelCount > 1 ? (
+          Array.from({ length: levelCount }, (_, k) => (
+            <div key={k} className="contents">
+              <Row label={`${levelName(k)} ceiling (cm)`}>
+                <NumberInput name="ceilingCm" defaultValue={levelCeilings[k] ?? (k === 0 ? a.ceilingCm : null)} onValue={(v) => setLevelCeiling(k, v)} />
+              </Row>
+              <Calc label={`${levelName(k)} ceiling in feet`} value={(levelCeilings[k] ?? (k === 0 ? a.ceilingCm : null)) != null ? feet(levelCeilings[k] ?? a.ceilingCm) : dash} />
+            </div>
+          ))
+        ) : (
+          <>
+            <Row label="Ceiling height (cm)">
+              <NumberInput name="ceilingCm" defaultValue={a.ceilingCm} onValue={setCeiling} />
+            </Row>
+            <Calc label="Ceiling height in feet" value={ceiling != null ? feet(ceiling) : dash} />
+          </>
+        )}
         <Row label="Parking spots">
           <Select name="parkingSpots" value={a.parkingSpots ?? ""} options={IL_PARKING} />
         </Row>
@@ -141,17 +164,5 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         {submitLabel}
       </button>
     </form>
-  );
-}
-
-function Directions({ name, chosen }: { name: string; chosen: string[] }) {
-  return (
-    <div className="flex flex-wrap gap-3 py-1 text-sm">
-      {IL_DIRECTIONS.map((d) => (
-        <label key={d} className="flex items-center gap-1.5">
-          <input type="checkbox" name={name} value={d} defaultChecked={chosen.includes(d)} className="accent-sky-600" /> {d}
-        </label>
-      ))}
-    </div>
   );
 }

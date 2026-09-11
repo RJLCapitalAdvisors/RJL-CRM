@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { usdIls } from "@/lib/fx";
-import { feet, nis, parseJsonList, pricePerMeter, sqft, sqm, usdFmt, yearOf } from "@/lib/israel";
+import { feet, nis, parseJsonList, parseMirpasot, pricePerMeter, sqft, sqm, usdFmt, yearOf } from "@/lib/israel";
 import { MAX_COMPARE } from "../compare-select";
 
 export const metadata = { title: "Compare units" };
@@ -42,15 +42,31 @@ export default async function CompareUnitsPage({ searchParams }: { searchParams:
     { label: "Neighborhood", cell: (a) => a.neighborhood ?? dash },
     { label: "Rooms", cell: (a) => a.rooms ?? dash },
     { label: "Built / delivery", cell: (a) => (a.completionDate ? <span>{a.completionDate}{yearOf(a.completionDate) && yearOf(a.completionDate)! > new Date().getFullYear() ? <span className="text-xs text-muted"> (new)</span> : null}</span> : dash) },
-    { label: "Floor", cell: (a) => (a.floor != null ? a.floor : dash) },
+    { label: "Floor", cell: (a) => (a.floor != null ? (a.levels && a.levels > 1 ? `${a.floor} to ${a.floor + a.levels - 1}` : a.floor) : dash) },
+    { label: "Levels", cell: (a) => (a.levels && a.levels > 1 ? `${a.levels} (${a.levels === 2 ? "duplex" : "triplex"})` : "1") },
     { label: "Building stories", cell: (a) => a.totalFloors ?? dash },
     { label: "Total building units", cell: (a) => a.buildingUnits ?? dash },
     { label: "Apartment direction", cell: (a) => parseJsonList(a.direction).join(", ") || dash },
+    {
+      label: "Mirpasot",
+      cell: (a) => {
+        const list = parseMirpasot(a.mirpasot);
+        if (list.length > 1) return <span className="block text-right">{list.map((m, k) => <span key={k} className="block">{k + 1}: {m.sqm != null ? sqm(m.sqm) : "—"}{m.direction.length ? ` ${m.direction.join("/")}` : ""}</span>)}</span>;
+        return a.mirpesetCount ?? (a.mirpesetSqm ? 1 : dash);
+      },
+    },
     { label: "Mirpeset direction", cell: (a) => parseJsonList(a.mirpesetDirection).join(", ") || dash },
     { label: "Mamad", cell: (a) => (a.mamad ? "Yes" : "No") },
     { label: "Internal m²", cell: (a) => (a.internalSqm != null ? <span className={mark(a.internalSqm === bestInternal)}>{sqm(a.internalSqm)} <span className="text-xs text-muted">{sqft(a.internalSqm)}</span></span> : dash) },
     { label: "Mirpeset m²", cell: (a) => (a.mirpesetSqm != null ? <span className={mark(a.mirpesetSqm === bestMirpeset)}>{sqm(a.mirpesetSqm)} <span className="text-xs text-muted">{sqft(a.mirpesetSqm)}</span></span> : dash) },
-    { label: "Ceiling height", cell: (a) => (a.ceilingCm != null ? <span className={mark(a.ceilingCm === bestCeiling)}>{a.ceilingCm} cm <span className="text-xs text-muted">{feet(a.ceilingCm)}</span></span> : dash) },
+    {
+      label: "Ceiling height",
+      cell: (a) => {
+        const per = parseJsonList(a.ceilingCms).map((x) => (x === "" ? null : Number(x)));
+        if (a.levels && a.levels > 1 && per.some((x) => x != null)) return <span className="block text-right">{per.map((x, k) => (x == null ? null : <span key={k} className={`block ${mark(x === bestCeiling)}`}>Level {k + 1}: {x} cm <span className="text-xs text-muted">{feet(x)}</span></span>))}</span>;
+        return a.ceilingCm != null ? <span className={mark(a.ceilingCm === bestCeiling)}>{a.ceilingCm} cm <span className="text-xs text-muted">{feet(a.ceilingCm)}</span></span> : dash;
+      },
+    },
     { label: "Parking spots", cell: (a) => (a.parkingSpots ? <span className={mark(parkingCount(a.parkingSpots) === bestParking && bestParking !== 0)}>{a.parkingSpots}</span> : dash) },
     { label: "Machsan", cell: (a) => (a.machsanSqm || a.machsanLocation ? [a.machsanSqm ? sqm(a.machsanSqm) : null, a.machsanLocation].filter(Boolean).join(", ") : dash) },
     { label: "Seller type", cell: (a) => a.sellerType ?? dash },

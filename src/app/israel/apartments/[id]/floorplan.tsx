@@ -7,27 +7,27 @@ import { useRouter } from "next/navigation";
  * The big middle window of an apartment ticket: the floorplan, open as soon as the ticket opens.
  * Images show inline, PDFs in a viewer. Drop a file or pick one to replace it.
  */
-export function FloorplanWindow({ apartmentId, has, type, name, version }: { apartmentId: string; has: boolean; type: string | null; name: string | null; version: number }) {
+export function FloorplanWindow({ apartmentId, kind = "apartments", has, type, name, version }: { apartmentId: string; kind?: "apartments" | "houses"; has: boolean; type: string | null; name: string | null; version: number }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [busy, start] = useTransition();
   const [drag, setDrag] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const src = `/api/israel/apartments/${apartmentId}/floorplan?v=${version}`;
+  const src = `/api/israel/${kind}/${apartmentId}/floorplan?v=${version}`;
 
   const upload = (file: File) => {
     setError(null);
     const fd = new FormData();
     fd.set("file", file);
     start(async () => {
-      const r = await fetch(`/api/israel/apartments/${apartmentId}/floorplan`, { method: "POST", body: fd });
+      const r = await fetch(`/api/israel/${kind}/${apartmentId}/floorplan`, { method: "POST", body: fd });
       if (!r.ok) setError((await r.text()) || "Upload failed.");
       router.refresh();
     });
   };
   const remove = () =>
     start(async () => {
-      await fetch(`/api/israel/apartments/${apartmentId}/floorplan`, { method: "DELETE" });
+      await fetch(`/api/israel/${kind}/${apartmentId}/floorplan`, { method: "DELETE" });
       router.refresh();
     });
 

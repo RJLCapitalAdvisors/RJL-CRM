@@ -4,9 +4,10 @@ import { prisma } from "@/lib/db";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { SelectField } from "@/components/select-field";
 import { usdIls } from "@/lib/fx";
-import { ilFullName, nis, parseJsonList, pricePerMeter, sqm, usdFmt } from "@/lib/israel";
-import { addIlNote, deleteHouse, linkHouse, updateHouse } from "../../actions";
+import { houseMissing, ilFullName, nis, parseJsonList, pricePerMeter, sqm, usdFmt } from "@/lib/israel";
+import { addIlNote, approveHouse, deleteHouse, linkHouse, updateHouse } from "../../actions";
 import { HouseForm } from "../house-form";
+import { FloorplanWindow } from "../../apartments/[id]/floorplan";
 
 export const dynamic = "force-dynamic";
 
@@ -16,13 +17,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: h?.name ?? "House" };
 }
 
-/** The house ticket: fields on the left, notes in the middle, developer and people on the right. */
+/** The house ticket: fields on the left, the floorplan and notes in the middle, developer and people on the right. */
 export default async function HousePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [h, developers, people, fx] = await Promise.all([
     prisma.ilHouse.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true, name: true, street: true, city: true, neighborhood: true, rooms: true, floors: true, ceilingCms: true, completionDate: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpesetDirection: true, mirpasot: true, migrashSqm: true, parkingSpots: true, sellerType: true, renovationYear: true, mamad: true, priceNis: true, description: true,
+        pendingApproval: true, source: true, floorplanType: true, floorplanName: true, updatedAt: true, developerId: true, agentContactId: true, sellerContactId: true,
         developer: { select: { id: true, name: true, roles: true, city: true, phone: true } },
         agent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } },
         seller: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
@@ -35,6 +38,7 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
   ]);
   if (!h) notFound();
   const ppm = pricePerMeter(h.priceNis, h.internalSqm, h.mirpesetSqm);
+  const missing = houseMissing(h as unknown as Record<string, unknown>);
   const agents = people.filter((p) => parseJsonList(p.roles).includes("Broker"));
   const sellers = people.filter((p) => parseJsonList(p.roles).includes("Seller"));
   const label = (p: (typeof people)[number]) => `${ilFullName(p)}${p.company ? ` (${p.company.name})` : ""}`;
@@ -68,33 +72,49 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
               </form>
             }
           />
+          {h.pendingApproval && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="font-semibold">Waiting for approval</div>
+              {missing.length ? <div className="mt-0.5">This ticket came in by {h.source?.startsWith("WhatsApp") ? "WhatsApp" : "email"} and is not in the Houses list yet. Still needed: {missing.join(", ")}.</div> : <div className="mt-0.5">The data is complete. Approve it to add it to the Houses list.</div>}
+              {missing.length === 0 && (
+                <form action={approveHouse.bind(null, h.id)} className="mt-2">
+                  <button type="submit" className="btn-primary px-3 py-1.5 text-xs">
+                    Approve
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
           <AboutCard title="About this house">
             <HouseForm h={h} fx={fx} action={updateHouse.bind(null, h.id)} autosave />
           </AboutCard>
         </>
       }
       center={
-        <div className="card">
-          <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <h2 className="text-sm font-semibold">Notes</h2>
-            <span className="text-xs text-muted">{h.notes.length}</span>
+        <>
+          <FloorplanWindow apartmentId={h.id} kind="houses" has={Boolean(h.floorplanType)} type={h.floorplanType} name={h.floorplanName} version={h.updatedAt.getTime()} />
+          <div className="card">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <h2 className="text-sm font-semibold">Notes</h2>
+              <span className="text-xs text-muted">{h.notes.length}</span>
+            </div>
+            <form action={addIlNote.bind(null, { houseId: h.id })} className="flex gap-2 border-b border-line p-3">
+              <input name="body" placeholder="Log a note, a viewing, an offer…" className="input" />
+              <button className="btn-secondary" type="submit">
+                Add
+              </button>
+            </form>
+            <ul className="divide-y divide-line">
+              {h.notes.map((nt) => (
+                <li key={nt.id} className="px-4 py-3 text-sm">
+                  <div className="text-xs text-muted">{nt.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+                  <div className="whitespace-pre-wrap">{nt.body}</div>
+                </li>
+              ))}
+              {h.notes.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted">Nothing yet.</li>}
+            </ul>
           </div>
-          <form action={addIlNote.bind(null, { houseId: h.id })} className="flex gap-2 border-b border-line p-3">
-            <input name="body" placeholder="Log a note, a viewing, an offer…" className="input" />
-            <button className="btn-secondary" type="submit">
-              Add
-            </button>
-          </form>
-          <ul className="divide-y divide-line">
-            {h.notes.map((nt) => (
-              <li key={nt.id} className="px-4 py-3 text-sm">
-                <div className="text-xs text-muted">{nt.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
-                <div className="whitespace-pre-wrap">{nt.body}</div>
-              </li>
-            ))}
-            {h.notes.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted">Nothing yet.</li>}
-          </ul>
-        </div>
+        </>
       }
       right={
         <>

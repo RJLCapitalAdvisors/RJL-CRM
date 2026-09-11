@@ -22,7 +22,36 @@ const i = (fd: FormData, k: string) => {
 const list = (fd: FormData, k: string) => JSON.stringify(fd.getAll(k).map(String).filter(Boolean));
 const yesNo = (fd: FormData, k: string) => (fd.has(k) ? s(fd, k) === "Yes" : undefined);
 
+/**
+ * The mirpasot of an apartment or a house from the form. One mirpeset: the single size and direction fields.
+ * More than one: a size and a direction per mirpeset, summed into mirpesetSqm and unioned into mirpesetDirection
+ * so price per meter, filters and compare work on the totals.
+ */
+function mirpasotFrom(fd: FormData) {
+  const count = i(fd, "mirpesetCount");
+  if (!count || count <= 1) return { mirpesetCount: count ?? null, mirpesetSqm: n(fd, "mirpesetSqm"), mirpesetDirection: list(fd, "mirpesetDirection"), mirpasot: "[]" };
+  const sizes = fd.getAll("mirpasotSqm").map((v) => {
+    const x = Number(String(v).replace(/[^0-9.]/g, ""));
+    return String(v).trim() && !isNaN(x) ? x : null;
+  });
+  const items = Array.from({ length: Math.min(count, 8) }, (_, k) => ({ sqm: sizes[k] ?? null, direction: fd.getAll(`mirpasotDir_${k}`).map(String).filter(Boolean) }));
+  const total = items.reduce((a, m) => a + (m.sqm ?? 0), 0);
+  const dirs = [...new Set(items.flatMap((m) => m.direction))];
+  return { mirpesetCount: count, mirpesetSqm: items.some((m) => m.sqm != null) ? total : null, mirpesetDirection: JSON.stringify(dirs), mirpasot: JSON.stringify(items) };
+}
+/** Ceiling heights typed one per floor or level, in the order the form shows them. */
+function ceilingsFrom(fd: FormData, count: number | null) {
+  const all = fd.getAll("ceilingCm").map((v) => {
+    const x = Number(String(v).replace(/[^0-9.]/g, ""));
+    return String(v).trim() && !isNaN(x) ? x : "";
+  });
+  return count ? all.slice(0, Math.max(0, count)) : all;
+}
+
 function apartmentData(fd: FormData) {
+  const levels = i(fd, "levels");
+  const ceilings = ceilingsFrom(fd, levels);
+  const firstCeiling = ceilings.find((c): c is number => c !== "") ?? null;
   return {
     name: s(fd, "name") ?? (s(fd, "street") || "Apartment"),
     street: s(fd, "street"),
@@ -35,13 +64,15 @@ function apartmentData(fd: FormData) {
     totalFloors: i(fd, "totalFloors"),
     buildingUnits: i(fd, "buildingUnits"),
     internalSqm: n(fd, "internalSqm"),
-    mirpesetSqm: n(fd, "mirpesetSqm"),
-    ceilingCm: n(fd, "ceilingCm"),
+    ...mirpasotFrom(fd),
+    // one level keeps the single ceiling; a duplex or triplex stores one per level and the first stands in for the single field
+    levels,
+    ceilingCms: JSON.stringify(levels && levels > 1 ? ceilings : []),
+    ceilingCm: levels && levels > 1 ? firstCeiling : n(fd, "ceilingCm"),
     machsanSqm: n(fd, "machsanSqm"),
     machsanLocation: s(fd, "machsanLocation"),
     parkingSpots: s(fd, "parkingSpots"),
     direction: list(fd, "direction"),
-    mirpesetDirection: list(fd, "mirpesetDirection"),
     mamad: yesNo(fd, "mamad") ?? false,
     priceNis: n(fd, "priceNis"),
     sellerType: s(fd, "sellerType"),
@@ -75,11 +106,7 @@ export async function linkApartment(id: string, fd: FormData) {
 // ---------- houses ----------
 function houseData(fd: FormData) {
   const floors = i(fd, "floors");
-  // one ceiling height per floor, in the order the form shows them; extra entries from a lowered floor count are dropped
-  const ceilings = fd.getAll("ceilingCm").map((v) => {
-    const x = Number(String(v).replace(/[^0-9.]/g, ""));
-    return String(v).trim() && !isNaN(x) ? x : "";
-  });
+  const ceilings = ceilingsFrom(fd, floors);
   return {
     name: s(fd, "name") ?? (s(fd, "street") || "House"),
     street: s(fd, "street"),
@@ -87,10 +114,10 @@ function houseData(fd: FormData) {
     neighborhood: s(fd, "neighborhood"),
     rooms: n(fd, "rooms"),
     floors,
-    ceilingCms: JSON.stringify(floors ? ceilings.slice(0, Math.max(0, floors)) : ceilings),
+    ceilingCms: JSON.stringify(ceilings),
     completionDate: s(fd, "completionDate"),
     internalSqm: n(fd, "internalSqm"),
-    mirpesetSqm: n(fd, "mirpesetSqm"),
+    ...mirpasotFrom(fd),
     migrashSqm: n(fd, "migrashSqm"),
     parkingSpots: s(fd, "parkingSpots"),
     sellerType: s(fd, "sellerType"),
@@ -116,6 +143,15 @@ export async function linkHouse(id: string, fd: FormData) {
   if (fd.has("agentContactId")) data.agentContactId = s(fd, "agentContactId");
   if (fd.has("sellerContactId")) data.sellerContactId = s(fd, "sellerContactId");
   await prisma.ilHouse.update({ where: { id }, data });
+  revalidatePath(`/israel/houses/${id}`);
+}
+export async function approveHouse(id: string) {
+  const { houseMissing } = await import("@/lib/israel");
+  const h = await prisma.ilHouse.findUnique({ where: { id } });
+  if (!h || houseMissing(h as unknown as Record<string, unknown>).length) return;
+  await prisma.ilHouse.update({ where: { id }, data: { pendingApproval: false } });
+  revalidatePath("/israel");
+  revalidatePath("/israel/houses");
   revalidatePath(`/israel/houses/${id}`);
 }
 export async function deleteHouse(id: string) {
