@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager } from "@/components/ui";
 import { str } from "@/lib/format";
-import { nis, parseJsonList, pricePerMeter, yearOf } from "@/lib/israel";
+import { nis, parseJsonList, parseMirpasot, pricePerMeter, yearOf } from "@/lib/israel";
 import { ApartmentFilters, type AptFilters } from "./filters";
 import { CompareCheck, CompareProvider } from "./compare-select";
 import { CompanyLogo } from "@/components/company-logo";
@@ -44,6 +44,11 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
     directions: list(sp.direction),
     mamad: str(sp.mamad),
     machsan: str(sp.machsan),
+    levels: list(sp.levels),
+    mirpasot: list(sp.mirpasot),
+    sukka: str(sp.sukka),
+    ceilingMin: num(sp.ceilingMin),
+    ceilingMax: num(sp.ceilingMax),
     sort: str(sp.sort) || "updated",
   };
   const page = Math.max(1, Number(str(sp.page)) || 1);
@@ -72,6 +77,23 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
     if (f.mamad === "no" && a.mamad) return false;
     if (f.machsan === "yes" && !(a.machsanSqm && a.machsanSqm > 0)) return false;
     if (f.machsan === "no" && a.machsanSqm && a.machsanSqm > 0) return false;
+    if (f.levels.length && !f.levels.includes(String(a.levels && a.levels > 1 ? a.levels : 1))) return false;
+    const mCount = parseMirpasot(a.mirpasot).length > 1 ? parseMirpasot(a.mirpasot).length : a.mirpesetCount ?? (a.mirpesetSqm ? 1 : 0);
+    if (f.mirpasot.length && !f.mirpasot.includes(String(mCount))) return false;
+    // the tallest ceiling on the ticket: the single height, or the highest level on a duplex
+    const ceilings = [a.ceilingCm, ...parseJsonList(a.ceilingCms).map((x) => (x === "" ? null : Number(x)))].filter((x): x is number => x != null && !isNaN(x));
+    if (!inRange(ceilings.length ? Math.max(...ceilings) : null, f.ceilingMin, f.ceilingMax, 400)) return false;
+    const sk = (() => {
+      const m = parseMirpasot(a.mirpasot);
+      if (!m.length) return null;
+      if (m.every((x) => x.sukka === "No")) return "no";
+      if (m.some((x) => x.sukka === "Yes")) return "yes";
+      if (m.some((x) => x.sukka === "Partial")) return "partial";
+      return null;
+    })();
+    if (f.sukka === "yes" && sk !== "yes") return false;
+    if (f.sukka === "partial" && sk !== "yes" && sk !== "partial") return false;
+    if (f.sukka === "no" && sk !== "no") return false;
     return true;
   });
   const ppm = (a: (typeof all)[number]) => pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm);

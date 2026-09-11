@@ -24,6 +24,11 @@ export type AptFilters = {
   directions: string[];
   mamad: string;
   machsan: string;
+  levels: string[];
+  mirpasot: string[];
+  sukka: string;
+  ceilingMin: number | null;
+  ceilingMax: number | null;
   sort: string;
 };
 
@@ -31,6 +36,7 @@ export const SQM_STOPS: Stop[] = Array.from({ length: (300 - 40) / 5 + 1 }, (_, 
 export const MIRPESET_STOPS: Stop[] = Array.from({ length: 100 / 5 + 1 }, (_, i) => ({ value: i * 5, label: i * 5 >= 100 ? "100 m²+" : `${i * 5} m²` }));
 export const ROOMS_STOPS: Stop[] = Array.from({ length: (8 - 1) * 2 + 1 }, (_, i) => ({ value: 1 + i / 2, label: 1 + i / 2 >= 8 ? "8+" : String(1 + i / 2) }));
 export const FLOOR_STOPS: Stop[] = Array.from({ length: 41 }, (_, i) => ({ value: i, label: i === 0 ? "Ground" : i >= 40 ? "40+" : String(i) }));
+export const CEILING_STOPS: Stop[] = Array.from({ length: (400 - 240) / 10 + 1 }, (_, i) => ({ value: 240 + i * 10, label: 240 + i * 10 >= 400 ? "400 cm+" : `${240 + i * 10} cm` }));
 export const YEAR_STOPS: Stop[] = Array.from({ length: 2035 - 1950 + 1 }, (_, i) => ({ value: 1950 + i, label: i === 0 ? "Before 1950" : String(1950 + i) }));
 
 export const SORTS: { value: string; label: string }[] = [
@@ -49,13 +55,14 @@ export const SORTS: { value: string; label: string }[] = [
 /** The apartments filter rail: every field except asking price, ranges as sliders, plus a sort. A plain GET form, so a filtered list has a shareable URL. */
 export function ApartmentFilters({ f, cities, neighborhoods, total }: { f: AptFilters; cities: string[]; neighborhoods: string[]; total: number }) {
   return (
-    <form method="get" action="/israel/apartments" className="card space-y-4 p-4 text-sm">
-      <div className="flex items-center justify-between">
+    <form method="get" action="/israel/apartments" className="card flex max-h-[calc(100vh-140px)] flex-col text-sm xl:sticky xl:top-4">
+      <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <div className="font-semibold">Filters</div>
         <a href="/israel/apartments" className="text-xs text-muted hover:underline">
           Clear all
         </a>
       </div>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
       <input name="q" defaultValue={f.q} placeholder="Search name, address, project, developer" className="input" />
       <div>
         <div className="label">City</div>
@@ -81,6 +88,20 @@ export function ApartmentFilters({ f, cities, neighborhoods, total }: { f: AptFi
         <div className="label">Floor</div>
         <RangeSlider name="floor" stops={FLOOR_STOPS} min={f.floorMin} max={f.floorMax} />
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <div className="label">Levels</div>
+          <MultiSelect name="levels" options={["1", "2", "3"]} selected={f.levels} placeholder="Any" />
+        </div>
+        <div>
+          <div className="label">Mirpasot</div>
+          <MultiSelect name="mirpasot" options={["1", "2", "3"]} selected={f.mirpasot} placeholder="Any" />
+        </div>
+      </div>
+      <div>
+        <div className="label">Ceiling height</div>
+        <RangeSlider name="ceiling" stops={CEILING_STOPS} min={f.ceilingMin} max={f.ceilingMax} />
+      </div>
       <div>
         <div className="label">Built or expected delivery</div>
         <RangeSlider name="year" stops={YEAR_STOPS} min={f.yearMin} max={f.yearMax} />
@@ -97,7 +118,7 @@ export function ApartmentFilters({ f, cities, neighborhoods, total }: { f: AptFi
         <div className="label">Apartment direction</div>
         <MultiSelect name="direction" options={IL_DIRECTIONS} selected={f.directions} placeholder="Any" />
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <div>
           <div className="label">Mamad</div>
           <select name="mamad" defaultValue={f.mamad} className="input">
@@ -114,6 +135,15 @@ export function ApartmentFilters({ f, cities, neighborhoods, total }: { f: AptFi
             <option value="no">None</option>
           </select>
         </div>
+        <div>
+          <div className="label">Sukka</div>
+          <select name="sukka" defaultValue={f.sukka} className="input">
+            <option value="">Any</option>
+            <option value="yes">Yes</option>
+            <option value="partial">Partial or yes</option>
+            <option value="no">No</option>
+          </select>
+        </div>
       </div>
       <div>
         <div className="label">Sort by</div>
@@ -125,9 +155,12 @@ export function ApartmentFilters({ f, cities, neighborhoods, total }: { f: AptFi
           ))}
         </select>
       </div>
-      <button type="submit" className="btn-primary w-full justify-center">
-        Show {total.toLocaleString()} apartments
-      </button>
+      </div>
+      <div className="border-t border-line p-3">
+        <button type="submit" className="btn-primary w-full justify-center">
+          Show {total.toLocaleString()} apartments
+        </button>
+      </div>
     </form>
   );
 }

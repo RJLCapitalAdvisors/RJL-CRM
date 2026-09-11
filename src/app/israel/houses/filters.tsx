@@ -4,7 +4,7 @@ import { RangeSlider } from "@/components/range-slider";
 import { MultiSelect } from "@/components/multi-select";
 import type { Stop } from "@/lib/ranges";
 import { IL_DIRECTIONS, IL_PARKING, IL_SELLER_TYPES } from "@/lib/israel";
-import { MIRPESET_STOPS, ROOMS_STOPS, YEAR_STOPS } from "../apartments/filters";
+import { CEILING_STOPS, MIRPESET_STOPS, ROOMS_STOPS, YEAR_STOPS } from "../apartments/filters";
 
 export type HouseFilters = {
   q: string;
@@ -18,8 +18,7 @@ export type HouseFilters = {
   migrashMax: number | null;
   roomsMin: number | null;
   roomsMax: number | null;
-  floorsMin: number | null;
-  floorsMax: number | null;
+  floorsList: string[];
   yearMin: number | null;
   yearMax: number | null;
   parking: string[];
@@ -27,12 +26,14 @@ export type HouseFilters = {
   directions: string[];
   mamad: string;
   sukka: string;
+  mirpasot: string[];
+  ceilingMin: number | null;
+  ceilingMax: number | null;
   sort: string;
 };
 
 export const HOUSE_SQM_STOPS: Stop[] = Array.from({ length: (600 - 80) / 10 + 1 }, (_, i) => ({ value: 80 + i * 10, label: 80 + i * 10 >= 600 ? "600 m²+" : `${80 + i * 10} m²` }));
 export const MIGRASH_STOPS: Stop[] = Array.from({ length: 2000 / 50 + 1 }, (_, i) => ({ value: i * 50, label: i * 50 >= 2000 ? "2 dunam+" : i * 50 >= 1000 ? `${(i * 50) / 1000} dunam` : `${i * 50} m²` }));
-export const FLOORS_STOPS: Stop[] = Array.from({ length: 6 }, (_, i) => ({ value: i + 1, label: i + 1 >= 6 ? "6+" : String(i + 1) }));
 
 export const HOUSE_SORTS: { value: string; label: string }[] = [
   { value: "updated", label: "Recently touched" },
@@ -51,14 +52,15 @@ export const HOUSE_SORTS: { value: string; label: string }[] = [
 /** The houses filter rail, the apartments rail with house fields: migrash and floors instead of floor and machsan, sukka on the mirpeset. */
 export function HouseFiltersPanel({ f, cities, neighborhoods, total, compare }: { f: HouseFilters; cities: string[]; neighborhoods: string[]; total: number; compare: boolean }) {
   return (
-    <form method="get" action="/israel/houses" className="card space-y-4 p-4 text-sm">
+    <form method="get" action="/israel/houses" className="card flex max-h-[calc(100vh-140px)] flex-col text-sm xl:sticky xl:top-4">
       {compare && <input type="hidden" name="compare" value="1" />}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <div className="font-semibold">Filters</div>
         <a href={compare ? "/israel/houses?compare=1" : "/israel/houses"} className="text-xs text-muted hover:underline">
           Clear all
         </a>
       </div>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
       <input name="q" defaultValue={f.q} placeholder="Search name, address, neighborhood, developer" className="input" />
       <div>
         <div className="label">City</div>
@@ -84,9 +86,19 @@ export function HouseFiltersPanel({ f, cities, neighborhoods, total, compare }: 
         <div className="label">Rooms</div>
         <RangeSlider name="rooms" stops={ROOMS_STOPS} min={f.roomsMin} max={f.roomsMax} />
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <div className="label">Floors</div>
+          <MultiSelect name="floors" options={["1", "2", "3", "4", "5", "6"]} selected={f.floorsList} placeholder="Any" />
+        </div>
+        <div>
+          <div className="label">Mirpasot</div>
+          <MultiSelect name="mirpasot" options={["1", "2", "3"]} selected={f.mirpasot} placeholder="Any" />
+        </div>
+      </div>
       <div>
-        <div className="label">Floors</div>
-        <RangeSlider name="floors" stops={FLOORS_STOPS} min={f.floorsMin} max={f.floorsMax} />
+        <div className="label">Ceiling height (tallest floor)</div>
+        <RangeSlider name="ceiling" stops={CEILING_STOPS} min={f.ceilingMin} max={f.ceilingMax} />
       </div>
       <div>
         <div className="label">Built or expected delivery</div>
@@ -133,9 +145,12 @@ export function HouseFiltersPanel({ f, cities, neighborhoods, total, compare }: 
           ))}
         </select>
       </div>
-      <button type="submit" className="btn-primary w-full justify-center">
-        Show {total.toLocaleString()} houses
-      </button>
+      </div>
+      <div className="border-t border-line p-3">
+        <button type="submit" className="btn-primary w-full justify-center">
+          Show {total.toLocaleString()} houses
+        </button>
+      </div>
     </form>
   );
 }

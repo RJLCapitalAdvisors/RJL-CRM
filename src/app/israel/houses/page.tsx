@@ -37,8 +37,7 @@ export default async function HousesPage({ searchParams }: { searchParams: Promi
     migrashMax: num(sp.migrashMax),
     roomsMin: num(sp.roomsMin),
     roomsMax: num(sp.roomsMax),
-    floorsMin: num(sp.floorsMin),
-    floorsMax: num(sp.floorsMax),
+    floorsList: list(sp.floors),
     yearMin: num(sp.yearMin),
     yearMax: num(sp.yearMax),
     parking: list(sp.parking),
@@ -46,6 +45,9 @@ export default async function HousesPage({ searchParams }: { searchParams: Promi
     directions: list(sp.direction),
     mamad: str(sp.mamad),
     sukka: str(sp.sukka),
+    mirpasot: list(sp.mirpasot),
+    ceilingMin: num(sp.ceilingMin),
+    ceilingMax: num(sp.ceilingMax),
     sort: str(sp.sort) || "updated",
   };
   const page = Math.max(1, Number(str(sp.page)) || 1);
@@ -74,7 +76,11 @@ export default async function HousesPage({ searchParams }: { searchParams: Promi
     if (!inRange(h.mirpesetSqm ?? 0, f.mirpesetMin, f.mirpesetMax, 100)) return false;
     if (!inRange(h.migrashSqm, f.migrashMin, f.migrashMax, 2000)) return false;
     if (!inRange(h.rooms, f.roomsMin, f.roomsMax, 8)) return false;
-    if (!inRange(h.floors, f.floorsMin, f.floorsMax, 6)) return false;
+    if (f.floorsList.length && !f.floorsList.includes(String(h.floors ?? ""))) return false;
+    const mCount = parseMirpasot(h.mirpasot).length > 1 ? parseMirpasot(h.mirpasot).length : h.mirpesetCount ?? (h.mirpesetSqm ? 1 : 0);
+    if (f.mirpasot.length && !f.mirpasot.includes(String(mCount))) return false;
+    const ceilings = parseJsonList(h.ceilingCms).map((x) => Number(x)).filter((x) => x && !isNaN(x));
+    if (!inRange(ceilings.length ? Math.max(...ceilings) : null, f.ceilingMin, f.ceilingMax, 400)) return false;
     if (!inRange(yearOf(h.completionDate), f.yearMin, f.yearMax, 2035)) return false;
     if (f.parking.length && !f.parking.includes(h.parkingSpots ?? "")) return false;
     if (f.sellerTypes.length && !f.sellerTypes.includes(h.sellerType ?? "")) return false;
