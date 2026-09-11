@@ -48,19 +48,21 @@ export function MirpasotFields({ count: c0, sqm: single, directions, mirpasot, o
   const sum = total(sizes);
   return (
     <>
-      <Row label="Number of mirpasot" hint="With more than one, each mirpeset gets its own size and direction.">
-        <NumberInput name="mirpesetCount" defaultValue={count} decimals={false} onValue={changeCount} />
-      </Row>
-      {!many ? (
+      {!many && (
         <>
           <Row label="Mirpeset m²">
             <NumberInput name="mirpesetSqm" defaultValue={sizes[0] ?? null} onValue={(v) => setSize(0, v)} />
           </Row>
           <Calc label="Mirpeset square feet" value={sizes[0] != null ? sqft(sizes[0]) : dash} />
-          <Row label="Mirpeset direction">
-            <Directions name="mirpesetDirection" chosen={directions} />
-          </Row>
         </>
+      )}
+      <Row label="Number of mirpasot" hint="With more than one, each mirpeset gets its own size and direction.">
+        <NumberInput name="mirpesetCount" defaultValue={count} decimals={false} onValue={changeCount} />
+      </Row>
+      {!many ? (
+        <Row label="Mirpeset direction">
+          <Directions name="mirpesetDirection" chosen={directions} />
+        </Row>
       ) : (
         <>
           {Array.from({ length: n }, (_, k) => (

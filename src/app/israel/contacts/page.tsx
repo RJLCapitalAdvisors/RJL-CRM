@@ -5,6 +5,7 @@ import { PageHeader, Pager, SearchForm } from "@/components/ui";
 import { fmtDate, str } from "@/lib/format";
 import { IL_ROLES, ilFullName, nisShort } from "@/lib/israel";
 import { IlRoleCell } from "@/components/il-role-cell";
+import { CompanyLogo } from "@/components/company-logo";
 import { setIlContactRoles } from "../actions";
 
 export const metadata = { title: "Contacts" };
@@ -25,7 +26,7 @@ export default async function IlContactsPage({ searchParams }: { searchParams: P
   };
   const [total, rows] = await Promise.all([
     prisma.ilContact.count({ where }),
-    prisma.ilContact.findMany({ where, orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { lastName: "asc" }, { firstName: "asc" }], skip: (page - 1) * PAGE, take: PAGE, include: { company: { select: { id: true, name: true } } } }),
+    prisma.ilContact.findMany({ where, orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { lastName: "asc" }, { firstName: "asc" }], skip: (page - 1) * PAGE, take: PAGE, include: { company: { select: { id: true, name: true, domain: true, website: true } } } }),
   ]);
   const makeHref = (p: number) => {
     const u = new URLSearchParams();
@@ -80,7 +81,16 @@ export default async function IlContactsPage({ searchParams }: { searchParams: P
                     </Link>
                   </td>
                   <td className="text-muted">{k.email}</td>
-                  <td>{k.company ? <Link href={`/israel/companies/${k.company.id}`} className="hover:underline">{k.company.name}</Link> : <span className="text-muted">—</span>}</td>
+                  <td>
+                    {k.company ? (
+                      <Link href={`/israel/companies/${k.company.id}`} className="flex items-center gap-2 hover:underline">
+                        <CompanyLogo domain={k.company.domain ?? k.company.website?.replace(/^https?:\/\//, "").split("/")[0]} name={k.company.name} />
+                        <span className="truncate">{k.company.name}</span>
+                      </Link>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
                   <td>
                     <IlRoleCell roles={k.roles} options={IL_ROLES} action={setIlContactRoles.bind(null, k.id)} />
                   </td>

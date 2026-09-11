@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { graph, graphConfigured, realmFor } from "@/lib/graph";
@@ -22,40 +21,40 @@ type Att = { "@odata.type": string; id: string; name: string; contentType: strin
 
 const Direction = z.enum(["North", "South", "East", "West"]);
 const Apartment = z.object({
-  kind: z.enum(["apartment", "house"]).describe("house: a private house on its own plot (בית פרטי, וילה, קוטג', דו משפחתי, צמוד קרקע, בית קרקע). Everything in a building, including a duplex, penthouse or garden apartment, is an apartment."),
+  kind: z.enum(["apartment", "house"]).default("apartment").describe("house: a private house on its own plot (בית פרטי, וילה, קוטג', דו משפחתי, צמוד קרקע, בית קרקע). Everything in a building, including a duplex, penthouse or garden apartment, is an apartment."),
   name: z.string().describe("Short name in English: project or street plus apartment number, e.g. 'Rehavia Gardens, Apt 12'; for a house the street and city, e.g. 'HaPalmach 8, Jerusalem'"),
-  projectName: z.string().nullable(),
-  developerName: z.string().nullable(),
-  street: z.string().nullable().describe("Building address, street and number"),
-  city: z.string().nullable(),
-  neighborhood: z.string().nullable(),
-  rooms: z.number().nullable(),
-  completionDate: z.string().nullable().describe("Year built for an existing building, or expected delivery as MM/YYYY for a new build"),
-  floor: z.number().nullable(),
-  buildingStories: z.number().nullable(),
-  buildingUnits: z.number().nullable(),
-  internalSqm: z.number().nullable().describe("Internal square metres, excluding the mirpeset"),
-  mirpesetSqm: z.number().nullable().describe("Total mirpeset m²; with several mirpasot, the sum"),
-  mirpasot: z.array(z.object({ sqm: z.number().nullable(), direction: z.array(Direction) })).describe("Each mirpeset separately when the listing describes more than one; empty otherwise"),
-  ceilingCm: z.number().nullable().describe("Ceiling height; for a house or a duplex, the main level"),
-  levels: z.number().nullable().describe("Apartments only: floors inside the apartment, 1, 2 (duplex) or 3 (triplex)"),
-  floors: z.number().nullable().describe("Houses only: how many floors (miflasim)"),
-  ceilingCms: z.array(z.number()).describe("One ceiling height per floor or level, ground first, when the listing gives them; empty otherwise"),
-  migrashSqm: z.number().nullable().describe("Houses only: the plot (migrash) in m²; a dunam is 1,000 m²"),
-  machsanSqm: z.number().nullable(),
-  machsanLocation: z.enum(["Attached to apartment", "In basement"]).nullable(),
-  parkingSpots: z.enum(["None", "1", "2 - back to back", "2 side by side", "3"]).nullable(),
-  direction: z.array(Direction),
-  mirpesetDirection: z.array(Direction),
-  mamad: z.boolean().nullable(),
-  priceNis: z.number().nullable().describe("Asking price in shekels. Convert only if the document states a currency and an amount; never guess."),
-  sellerType: z.enum(["Yad Rishona (developer)", "Second hand, never occupied", "Second hand, occupied"]).nullable().describe("Yad rishona means bought from the developer; second hand is a resale, occupied or never lived in"),
-  renovationYear: z.number().nullable().describe("Year of the last renovation, second hand only"),
-  description: z.string().nullable().describe("Two to four plain English sentences about the apartment from the documents. No prices or numbers already captured in fields."),
+  projectName: z.string().nullish().default(null),
+  developerName: z.string().nullish().default(null),
+  street: z.string().nullish().default(null).describe("Building address, street and number"),
+  city: z.string().nullish().default(null),
+  neighborhood: z.string().nullish().default(null),
+  rooms: z.number().nullish().default(null),
+  completionDate: z.string().nullish().default(null).describe("Year built for an existing building, or expected delivery as MM/YYYY for a new build"),
+  floor: z.number().nullish().default(null),
+  buildingStories: z.number().nullish().default(null),
+  buildingUnits: z.number().nullish().default(null),
+  internalSqm: z.number().nullish().default(null).describe("Internal square metres, excluding the mirpeset"),
+  mirpesetSqm: z.number().nullish().default(null).describe("Total mirpeset m²; with several mirpasot, the sum"),
+  mirpasot: z.array(z.object({ sqm: z.number().nullish().default(null), direction: z.array(Direction).default([]) })).default([]).describe("Each mirpeset separately when the listing describes more than one; empty otherwise"),
+  ceilingCm: z.number().nullish().default(null).describe("Ceiling height; for a house or a duplex, the main level"),
+  levels: z.number().nullish().default(null).describe("Apartments only: floors inside the apartment, 1, 2 (duplex) or 3 (triplex)"),
+  floors: z.number().nullish().default(null).describe("Houses only: how many floors (miflasim)"),
+  ceilingCms: z.array(z.number()).default([]).describe("One ceiling height per floor or level, ground first, when the listing gives them; empty otherwise"),
+  migrashSqm: z.number().nullish().default(null).describe("Houses only: the plot (migrash) in m²; a dunam is 1,000 m²"),
+  machsanSqm: z.number().nullish().default(null),
+  machsanLocation: z.enum(["Attached to apartment", "In basement"]).nullish().default(null),
+  parkingSpots: z.enum(["None", "1", "2 - back to back", "2 side by side", "3"]).nullish().default(null),
+  direction: z.array(Direction).default([]),
+  mirpesetDirection: z.array(Direction).default([]),
+  mamad: z.boolean().nullish().default(null),
+  priceNis: z.number().nullish().default(null).describe("Asking price in shekels. Convert only if the document states a currency and an amount; never guess."),
+  sellerType: z.enum(["Yad Rishona (developer)", "Second hand, never occupied", "Second hand, occupied"]).nullish().default(null).describe("Yad rishona means bought from the developer; second hand is a resale, occupied or never lived in"),
+  renovationYear: z.number().nullish().default(null).describe("Year of the last renovation, second hand only"),
+  description: z.string().nullish().default(null).describe("Two to four plain English sentences about the apartment from the documents. No prices or numbers already captured in fields."),
 });
 const Output = z.object({
-  apartments: z.array(Apartment),
-  agent: z.object({ name: z.string().nullable(), email: z.string().nullable(), phone: z.string().nullable(), company: z.string().nullable() }).nullable().describe("The agent or seller who sent the listing, if the message says"),
+  apartments: z.array(Apartment).default([]),
+  agent: z.object({ name: z.string().nullish().default(null), email: z.string().nullish().default(null), phone: z.string().nullish().default(null), company: z.string().nullish().default(null) }).nullish().default(null).describe("The agent or seller who sent the listing, if the message says"),
 });
 type Extracted = z.infer<typeof Output>;
 type ExtractedApartment = Extracted["apartments"][number];
@@ -113,8 +112,20 @@ async function extract(subject: string | null, body: string, files: IntakeFile[]
     content.push({ type: "text", text: `Photo ${f.name}:` });
     content.push({ type: "image", source: { type: "base64", media_type: media, data: Buffer.from(f.bytes!).toString("base64") } });
   }
-  const res = await client.messages.parse({ model: "claude-opus-5", max_tokens: 12_000, system: SYSTEM, messages: [{ role: "user", content }], output_config: { format: zodOutputFormat(Output) } });
-  return res.parsed_output ?? { apartments: [], agent: null };
+  // The ticket has more optional fields than the API's structured-output mode allows, so the schema goes in the
+  // prompt and the answer is validated here. A field the model leaves out reads as unknown.
+  content.push({ type: "text", text: `Answer with one JSON object only, no prose and no code fence, matching this JSON schema exactly (use null for anything the documents do not state):\n${JSON.stringify(z.toJSONSchema(Output))}` });
+  const res = await client.messages.create({ model: "claude-opus-5", max_tokens: 12_000, system: SYSTEM, messages: [{ role: "user", content }] });
+  const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("");
+  const raw = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+  try {
+    const parsed = Output.safeParse(JSON.parse(raw));
+    if (parsed.success) return parsed.data;
+    console.error("israel intake: answer did not match the schema", parsed.error.issues.slice(0, 5));
+  } catch (e) {
+    console.error("israel intake: answer was not JSON", String(e).slice(0, 200));
+  }
+  return { apartments: [], agent: null };
 }
 
 /** What Jonathan wants on every ticket, in his order; the reply lists whichever are still blank. */
