@@ -134,48 +134,72 @@ const REQUIRED: { key: keyof ExtractedApartment | "developer"; label: string }[]
   { key: "developer", label: "Developer" },
   { key: "street", label: "Building address" },
   { key: "city", label: "City" },
+  { key: "neighborhood", label: "Neighborhood" },
+  { key: "rooms", label: "Rooms" },
   { key: "completionDate", label: "Year of construction or expected date of delivery (month and year)" },
-  { key: "internalSqm", label: "Internal m²" },
-  { key: "mirpesetSqm", label: "Mirpeset size (m²)" },
-  { key: "priceNis", label: "Asking price" },
+  { key: "floor", label: "Apartment floor" },
+  { key: "buildingStories", label: "Building stories" },
+  { key: "buildingUnits", label: "Total building units" },
+  { key: "direction", label: "Apartment direction" },
+  { key: "mamad", label: "Mamad (yes or no)" },
   { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
+  { key: "internalSqm", label: "Internal m²" },
+  { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
+  { key: "mirpesetDirection", label: "Mirpeset direction" },
+  { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
   { key: "ceilingCm", label: "Ceiling height (cm)" },
   { key: "parkingSpots", label: "Parking spots" },
   { key: "machsanSqm", label: "Machsan size (m²)" },
   { key: "machsanLocation", label: "Machsan location" },
-  { key: "direction", label: "Apartment direction" },
-  { key: "mirpesetDirection", label: "Mirpeset direction" },
-  { key: "buildingStories", label: "Building stories" },
-  { key: "buildingUnits", label: "Total building units" },
-  { key: "floor", label: "Apartment floor" },
-  { key: "mamad", label: "Mamad (yes or no)" },
+  { key: "priceNis", label: "Asking price" },
 ];
+/** Asked only when they apply: the project on a yad rishona apartment, the renovation year on a second-hand unit, a ceiling per level on a duplex. */
+function conditionalMissing(a: ExtractedApartment): string[] {
+  const out: string[] = [];
+  if (a.sellerType?.startsWith("Yad Rishona") && !a.projectName) out.push("Project name");
+  if (a.sellerType?.startsWith("Second hand") && a.renovationYear == null) out.push("Year of renovation (or never renovated)");
+  if (a.levels && a.levels > 1 && a.ceilingCms.length < a.levels) out.push(`Ceiling height for each of the ${a.levels} levels`);
+  if (a.mirpasot.length > 1 && a.mirpasot.some((m) => !m.sukka)) out.push("Sukka (yes, partial or no) for each mirpeset");
+  return out;
+}
 const REQUIRED_HOUSE: { key: keyof ExtractedApartment; label: string }[] = [
   { key: "street", label: "Address" },
   { key: "city", label: "City" },
-  { key: "completionDate", label: "Built or expected delivery" },
-  { key: "internalSqm", label: "Internal m²" },
-  { key: "mirpesetSqm", label: "Mirpeset size (m²)" },
-  { key: "floors", label: "How many floors" },
+  { key: "neighborhood", label: "Neighborhood" },
+  { key: "rooms", label: "Rooms" },
+  { key: "floors", label: "How many floors (miflasim)" },
   { key: "ceilingCms", label: "Ceiling height per floor (cm)" },
+  { key: "completionDate", label: "Built or expected delivery (month and year)" },
+  { key: "parkingSpots", label: "Parking" },
+  { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
+  { key: "mamad", label: "Mamad (yes or no)" },
+  { key: "internalSqm", label: "Internal m²" },
+  { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
+  { key: "mirpesetDirection", label: "Mirpeset direction" },
+  { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
   { key: "migrashSqm", label: "Migrash size (m²)" },
   { key: "priceNis", label: "Asking price" },
-  { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
-  { key: "parkingSpots", label: "Parking" },
-  { key: "mamad", label: "Mamad (yes or no)" },
 ];
-function missingForHouse(a: ExtractedApartment): string[] {
-  return REQUIRED_HOUSE.filter(({ key }) => {
+function missingForHouse(a: ExtractedApartment, hasDeveloper: boolean): string[] {
+  const base = REQUIRED_HOUSE.filter(({ key }) => {
     const v = a[key];
+    if (key === "ceilingCms") return a.ceilingCms.length === 0 || (a.floors != null && a.ceilingCms.length < a.floors);
+    if (key === "sukka") return !a.sukka && !(a.mirpasot.length > 1 && a.mirpasot.every((m) => m.sukka));
     return v == null || (Array.isArray(v) && v.length === 0);
   }).map((r) => r.label);
+  const extra = conditionalMissing(a).filter((x) => x !== "Project name");
+  if (a.sellerType?.startsWith("Yad Rishona") && !hasDeveloper) extra.unshift("Developer");
+  return [...base, ...extra];
 }
 function missingFor(a: ExtractedApartment, hasDeveloper: boolean): string[] {
-  return REQUIRED.filter(({ key }) => {
+  const base = REQUIRED.filter(({ key }) => {
     if (key === "developer") return !hasDeveloper;
+    if (key === "sukka") return !a.sukka && !(a.mirpasot.length > 1 && a.mirpasot.every((m) => m.sukka));
+    if (key === "mirpesetDirection") return a.mirpesetDirection.length === 0 && !(a.mirpasot.length > 1 && a.mirpasot.every((m) => m.direction.length));
     const v = a[key];
     return v == null || (Array.isArray(v) && v.length === 0);
   }).map((r) => r.label);
+  return [...base, ...conditionalMissing(a)];
 }
 
 async function findOrCreateCompany(name: string | null, role: string) {
@@ -259,7 +283,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
       });
       await prisma.ilNote.create({ data: { houseId: house.id, body: origin } });
       if (extracted.apartments.length === 1) await attachFloorplan(input.files, house.id, "houses").catch(() => null);
-      rows.push({ id: house.id, kind: "houses", name: house.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, a.migrashSqm ? `${sqm(a.migrashSqm)} migrash` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: missingForHouse(a) });
+      rows.push({ id: house.id, kind: "houses", name: house.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, a.migrashSqm ? `${sqm(a.migrashSqm)} migrash` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: missingForHouse(a, Boolean(developer)) });
       continue;
     }
     let project = null as { id: string } | null;
@@ -316,7 +340,7 @@ function replyHtml(rows: IntakeRow[], base: string, note: string | null): string
   const blocks = rows
     .map(
       (r) => `<p style="margin:10pt 0 4pt 0;"><b><a href="${base}/israel/${r.kind}/${r.id}">${r.name}</a></b>${r.kind === "houses" ? ' <span style="color:#6b716e;">(house)</span>' : ""}${r.line ? ` <span style="color:#6b716e;">${r.line}</span>` : ""}${r.price ? ` <span style="color:#6b716e;">${r.price}</span>` : ""}</p>
-${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still missing:</div><ol style="margin:0 0 6pt 18pt;">${r.missing.map((m) => `<li>${m}</li>`).join("")}</ol>` : `<div style="margin:0 0 6pt 0;">Nothing missing. The ticket is complete.</div>`}`,
+${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still needed to complete the ticket (${r.missing.length}):</div><ol style="margin:0 0 6pt 18pt;">${r.missing.map((m) => `<li>${m}</li>`).join("")}</ol>` : `<div style="margin:0 0 6pt 0;">Nothing missing. The ticket is complete.</div>`}`,
     )
     .join("");
   return `<div style="${font}">

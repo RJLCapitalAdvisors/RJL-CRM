@@ -131,6 +131,8 @@ export const IL_COMPLETE_FIELDS: { key: string; label: string }[] = [
   { key: "developerId", label: "Developer" },
   { key: "street", label: "Building address" },
   { key: "city", label: "City" },
+  { key: "neighborhood", label: "Neighborhood" },
+  { key: "rooms", label: "Rooms" },
   { key: "completionDate", label: "Year of construction or expected delivery" },
   { key: "internalSqm", label: "Internal m²" },
   { key: "mirpesetSqm", label: "Mirpeset size" },
@@ -146,23 +148,36 @@ export const IL_COMPLETE_FIELDS: { key: string; label: string }[] = [
   { key: "buildingUnits", label: "Total building units" },
   { key: "floor", label: "Apartment floor" },
 ];
+/** Sukka on every mirpeset, renovation year on a second-hand unit, project on a yad rishona apartment. */
+function commonMissing(a: Record<string, unknown>, apartment: boolean): string[] {
+  const out: string[] = [];
+  const list = parseMirpasot(typeof a.mirpasot === "string" ? a.mirpasot : "[]");
+  if (a.mirpesetSqm != null && (list.length === 0 || list.some((m) => !m.sukka))) out.push(list.length > 1 ? "Sukka (yes, partial or no) for each mirpeset" : "Sukka (yes, partial or no)");
+  if (isSecondHand(typeof a.sellerType === "string" ? a.sellerType : null) && a.renovationYear == null) out.push("Year of renovation (or never renovated)");
+  if (apartment && typeof a.sellerType === "string" && a.sellerType.startsWith("Yad Rishona") && !a.projectId && !a.projectName) out.push("Project name");
+  return out;
+}
 /** Labels of the complete-ticket fields still blank on an apartment. Empty means complete. */
 export function apartmentMissing(a: Record<string, unknown>): string[] {
-  return IL_COMPLETE_FIELDS.filter(({ key }) => {
+  const base = IL_COMPLETE_FIELDS.filter(({ key }) => {
     const v = a[key];
     if (v == null || v === "") return true;
     if (typeof v === "string" && (key === "direction" || key === "mirpesetDirection")) return parseJsonList(v).length === 0;
     return false;
   }).map((f) => f.label);
+  return [...base, ...commonMissing(a, true)];
 }
 
 /** What a complete house ticket carries; the dashboard and the reply list whichever are blank. */
 export const IL_HOUSE_COMPLETE_FIELDS: { key: string; label: string }[] = [
   { key: "street", label: "Address" },
   { key: "city", label: "City" },
+  { key: "neighborhood", label: "Neighborhood" },
+  { key: "rooms", label: "Rooms" },
   { key: "completionDate", label: "Built or expected delivery" },
   { key: "internalSqm", label: "Internal m²" },
   { key: "mirpesetSqm", label: "Mirpeset size" },
+  { key: "mirpesetDirection", label: "Mirpeset direction" },
   { key: "floors", label: "How many floors" },
   { key: "ceilingCms", label: "Ceiling heights" },
   { key: "migrashSqm", label: "Migrash size" },
@@ -171,12 +186,19 @@ export const IL_HOUSE_COMPLETE_FIELDS: { key: string; label: string }[] = [
   { key: "parkingSpots", label: "Parking" },
 ];
 export function houseMissing(h: Record<string, unknown>): string[] {
-  return IL_HOUSE_COMPLETE_FIELDS.filter(({ key }) => {
+  const base = IL_HOUSE_COMPLETE_FIELDS.filter(({ key }) => {
     const v = h[key];
     if (v == null || v === "") return true;
-    if (key === "ceilingCms" && typeof v === "string") return parseJsonList(v).filter((x) => x !== "").length === 0;
+    if (key === "ceilingCms" && typeof v === "string") {
+      const given = parseJsonList(v).filter((x) => x !== "").length;
+      return given === 0 || (typeof h.floors === "number" && given < h.floors);
+    }
+    if (key === "mirpesetDirection" && typeof v === "string") return parseJsonList(v).length === 0;
     return false;
   }).map((f) => f.label);
+  const extra = commonMissing(h, false);
+  if (typeof h.sellerType === "string" && h.sellerType.startsWith("Yad Rishona") && !h.developerId) extra.push("Developer");
+  return [...base, ...extra];
 }
 
 /** The year in "2016" or "06/2027" or "Q2 2028"; null when there is none. */

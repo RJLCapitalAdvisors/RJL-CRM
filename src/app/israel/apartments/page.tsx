@@ -5,6 +5,7 @@ import { str } from "@/lib/format";
 import { nis, parseJsonList, pricePerMeter, yearOf } from "@/lib/israel";
 import { ApartmentFilters, type AptFilters } from "./filters";
 import { CompareCheck, CompareProvider } from "./compare-select";
+import { CompanyLogo } from "@/components/company-logo";
 
 export const metadata = { title: "Apartments" };
 export const dynamic = "force-dynamic";
@@ -48,7 +49,7 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
   const page = Math.max(1, Number(str(sp.page)) || 1);
   const compare = str(sp.compare) === "1";
 
-  const all = await prisma.ilApartment.findMany({ where: { pendingApproval: false }, orderBy: { updatedAt: "desc" }, include: { developer: { select: { id: true, name: true } }, project: { select: { name: true } } } });
+  const all = await prisma.ilApartment.findMany({ where: { pendingApproval: false }, orderBy: { updatedAt: "desc" }, include: { developer: { select: { id: true, name: true, domain: true, website: true } }, project: { select: { name: true } } } });
   const cities = [...new Set(all.map((a) => a.city).filter((c): c is string => Boolean(c)))].sort();
   const neighborhoods = [...new Set(all.map((a) => a.neighborhood).filter((c): c is string => Boolean(c)))].sort();
 
@@ -149,13 +150,22 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
                           <CompareCheck id={a.id} name={a.name} />
                         </td>
                       )}
-                      <td>
+                      <td className="max-w-[300px] whitespace-nowrap">
                         <Link href={`/israel/apartments/${a.id}`} className="font-medium hover:underline">
                           {a.name}
                         </Link>
-                        {a.street && <div className="text-xs text-muted">{a.street}</div>}
+                        {a.street && !a.name.includes(a.street) && <span className="ml-2 text-xs text-muted">{a.street}</span>}
                       </td>
-                      <td>{a.developer ? <Link href={`/israel/companies/${a.developer.id}`} className="hover:underline">{a.developer.name}</Link> : <span className="text-muted">—</span>}</td>
+                      <td className="max-w-[220px]">
+                        {a.developer ? (
+                          <Link href={`/israel/companies/${a.developer.id}`} className="flex items-center gap-2 hover:underline">
+                            <CompanyLogo domain={a.developer.domain ?? a.developer.website?.replace(/^https?:///, "").split("/")[0]} name={a.developer.name} />
+                            <span className="truncate">{a.developer.name}</span>
+                          </Link>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
                       <td className="whitespace-nowrap">{[a.neighborhood, a.city].filter(Boolean).join(", ") || <span className="text-muted">—</span>}</td>
                       <td className="text-right tabular-nums">{a.rooms ?? ""}</td>
                       <td className="text-right tabular-nums">{a.internalSqm ?? ""}</td>
