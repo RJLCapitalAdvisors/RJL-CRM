@@ -4,7 +4,7 @@ import { noteDealSent } from "@/lib/deal-outbound";
 import { DEPARTURE_SUBJECT, HUMAN_DEPARTURE, noteDepartureIfAny } from "@/lib/departures";
 import { emailHtmlToText } from "@/lib/attachments";
 import { graph, graphConfigured, type GraphMessage } from "@/lib/graph";
-import { domainOf } from "@/lib/domains";
+import { contactForEmail, domainOf } from "@/lib/domains";
 import { ACTIVE_STAGES, isLegacyIntroTicket } from "@/lib/taxonomy";
 
 /**
@@ -15,6 +15,18 @@ import { ACTIVE_STAGES, isLegacyIntroTicket } from "@/lib/taxonomy";
  */
 
 const INTERNAL = new Set(["rjlcapadvisors.com", "rjlequities.com"]);
+/**
+ * People we write to become contacts. An email we send to someone the CRM does not know creates them (and their
+ * company from the domain, which then reads its own website); a reply from an unknown person to one of our emails
+ * does the same. A stranger's first email does not: newsletters, listings blasts and notifications stay out.
+ */
+const MAILER = /^(no-?reply|noreply|donotreply|do-not-reply|notifications?|notify|mailer-daemon|postmaster|bounces?|newsletters?|marketing|news|updates?|digest|hello|team|community|alerts?|calendar-notification|invitations?|receipts?|billing|security|account|welcome|feedback|survey|promo|offers?|unsubscribe|reply|\d+)[@._+-]/i;
+const BULK_HOSTS = ["bcc.hubspot.com", "hubspot.com", "hubspotemail.net", "instagram.com", "facebookmail.com", "linkedin.com", "google.com", "microsoft.com", "microsoftonline.com", "office.com", "apple.com", "amazon.com", "amazonses.com", "paypal.com", "stripe.com", "zoom.us", "calendly.com", "docusign.net", "docusign.com", "dropbox.com", "dropboxmail.com", "mailchimp.com", "mcsv.net", "sendgrid.net", "constantcontact.com", "substack.com", "fireflies.ai", "otter.ai", "slack.com", "atlassian.com", "github.com", "vercel.com", "resend.com", "anthropic.com"];
+const isSystemAddress = (a: string) => {
+  const d = a.toLowerCase().split("@")[1] ?? "";
+  return MAILER.test(a.toLowerCase()) || BULK_HOSTS.some((h) => d === h || d.endsWith("." + h));
+};
+const REPLY = /^\s*(re|fwd?|fw)\s*:/i;
 const FIRST_SYNC_DAYS = 120;
 const PAGE = 50;
 
@@ -80,12 +92,13 @@ export async function dealResolver() {
   return dealFor;
 }
 
-export async function syncMailbox(mailbox: string): Promise<{ scanned: number; logged: number }> {
+export async function syncMailbox(mailbox: string, opts: { sinceDays?: number } = {}): Promise<{ scanned: number; logged: number; created: number }> {
   const user = await prisma.user.findFirst({ where: { email: { equals: mailbox, mode: "insensitive" } } });
   // Sent Items show up in Graph a little after the send. A window that starts exactly where the last pass ended
   // misses an email sent during that pass, forever. Overlap the window; the Message-ID check keeps it from logging twice.
   const OVERLAP_MS = 90 * 60_000;
-  const since = user?.mailSyncedAt ? new Date(user.mailSyncedAt.getTime() - OVERLAP_MS) : new Date(Date.now() - FIRST_SYNC_DAYS * 86_400_000);
+  const since = opts.sinceDays ? new Date(Date.now() - opts.sinceDays * 86_400_000) : user?.mailSyncedAt ? new Date(user.mailSyncedAt.getTime() - OVERLAP_MS) : new Date(Date.now() - FIRST_SYNC_DAYS * 86_400_000);
+  let created = 0;
   const startedAt = new Date();
   const [sent, inbox] = await Promise.all([pageThrough(mailbox, "sentitems", since), pageThrough(mailbox, "inbox", since)]);
   const messages = [...sent, ...inbox];
@@ -131,7 +144,15 @@ export async function syncMailbox(mailbox: string): Promise<{ scanned: number; l
     if (!contactId && !companyId) {
       // a bounce or auto-reply from a mail system about someone we know: "so-and-so is no longer with the firm"
       if (!outbound && departureHint(m)) await noteDepartureIfAny({ subject: m.subject ?? null, text: await departureText(mailbox, m), fromAddress: from?.address ?? null, contactId: null, messageId: m.internetMessageId ?? null }).catch(() => 0);
-      continue; // nobody we track
+      // someone new: created when we wrote to them, or when they replied to us; never from a stranger's first email
+      const person = ordered[0];
+      const conversation = outbound ? external.length <= 6 : REPLY.test(m.subject ?? "") && [...to, ...cc].some((p) => isInternal(p.address));
+      if (!person || !conversation || isSystemAddress(person.address)) continue; // nobody we track
+      const c = await contactForEmail(person.address, { name: person.name && !person.name.includes("@") ? person.name : null }).catch(() => null);
+      if (!c) continue;
+      contactId = c.id;
+      companyId = c.companyId;
+      created++;
     }
     if (!outbound && departureHint(m)) await noteDepartureIfAny({ subject: m.subject ?? null, text: await departureText(mailbox, m), fromAddress: from?.address ?? null, contactId, messageId: m.internetMessageId ?? null }).catch(() => 0);
 
@@ -157,7 +178,7 @@ export async function syncMailbox(mailbox: string): Promise<{ scanned: number; l
     logged++;
   }
   if (user) await prisma.user.update({ where: { id: user.id }, data: { mailSyncedAt: startedAt } });
-  return { scanned: messages.length, logged };
+  return { scanned: messages.length, logged, created };
 }
 
 /**
@@ -193,13 +214,13 @@ export async function syncRecentSent(mailbox: string, hours = 6): Promise<number
 }
 
 /** Every active team mailbox. Skips quietly when Microsoft is not configured. */
-export async function syncAllMailboxes(): Promise<Record<string, { scanned: number; logged: number } | string>> {
+export async function syncAllMailboxes(opts: { sinceDays?: number } = {}): Promise<Record<string, { scanned: number; logged: number; created: number } | string>> {
   if (!graphConfigured()) return {};
   const users = await prisma.user.findMany({ where: { active: true, email: { not: null } } });
-  const out: Record<string, { scanned: number; logged: number } | string> = {};
+  const out: Record<string, { scanned: number; logged: number; created: number } | string> = {};
   for (const u of users) {
     try {
-      out[u.email!] = await syncMailbox(u.email!);
+      out[u.email!] = await syncMailbox(u.email!, opts);
     } catch (e) {
       out[u.email!] = String(e instanceof Error ? e.message : e).slice(0, 160);
     }

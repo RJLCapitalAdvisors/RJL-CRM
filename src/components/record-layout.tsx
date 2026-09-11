@@ -14,14 +14,14 @@ export function RecordLayout({ left, center, right }: { left: React.ReactNode; c
   );
 }
 
-export function RecordHeader({ backHref, backLabel, initial, title, subtitle, lines, actions }: { backHref: string; backLabel: string; initial: string; title: string; subtitle?: React.ReactNode; lines?: React.ReactNode[]; actions?: React.ReactNode }) {
+export function RecordHeader({ backHref, backLabel, initial, avatar, title, subtitle, lines, actions }: { backHref: string; backLabel: string; initial: string; avatar?: React.ReactNode; title: string; subtitle?: React.ReactNode; lines?: React.ReactNode[]; actions?: React.ReactNode }) {
   return (
     <div className="card p-4">
       <Link href={backHref} className="text-xs text-muted hover:underline">
         ← {backLabel}
       </Link>
       <div className="mt-3 flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky text-base font-semibold text-ink">{initial}</div>
+        {avatar ?? <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky text-base font-semibold text-ink">{initial}</div>}
         <div className="min-w-0">
           <h1 className="break-words text-lg font-semibold leading-tight">{title}</h1>
           {subtitle && <div className="text-sm text-ink-soft">{subtitle}</div>}

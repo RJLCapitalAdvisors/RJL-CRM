@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { IL_DEAL_STAGES } from "@/lib/israel";
+import { IL_COMPANY_KINDS, IL_DEAL_STAGES } from "@/lib/israel";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -97,6 +97,13 @@ export async function createIlCompany(fd: FormData) {
   revalidatePath("/israel/companies");
   redirect(`/israel/companies/${c.id}`);
 }
+/** One click on the kind token on the company page. */
+export async function setIlCompanyKind(id: string, kind: string | null) {
+  await prisma.ilCompany.update({ where: { id }, data: { kind: kind && (IL_COMPANY_KINDS as readonly string[]).includes(kind) ? kind : null } });
+  revalidatePath(`/israel/companies/${id}`);
+  revalidatePath("/israel/companies");
+}
+
 export async function updateIlCompany(id: string, fd: FormData) {
   await prisma.ilCompany.update({ where: { id }, data: companyData(fd) });
   revalidatePath(`/israel/companies/${id}`);

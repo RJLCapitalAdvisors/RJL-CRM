@@ -4,7 +4,10 @@ import { prisma } from "@/lib/db";
 import { AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { fmtDate } from "@/lib/format";
 import { apartmentLine, ilFullName, nis, parseJsonList } from "@/lib/israel";
-import { addIlNote, updateIlCompany } from "../../actions";
+import { addIlNote, setIlCompanyKind, updateIlCompany } from "../../actions";
+import { CompanyLogo } from "@/components/company-logo";
+import { TokenPicker } from "@/components/token-picker";
+import { IL_COMPANY_KINDS } from "@/lib/israel";
 import { IlCompanyForm } from "../company-form";
 import { IlActivityLog } from "@/components/il-activity";
 
@@ -29,6 +32,11 @@ export default async function IlCompanyPage({ params }: { params: Promise<{ id: 
             backHref="/israel/companies"
             backLabel="Companies"
             initial={c.name[0]?.toUpperCase() ?? "?"}
+            avatar={
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-white">
+                <CompanyLogo domain={c.domain ?? (site ? site.split("/")[0] : null)} name={c.name} size={28} />
+              </div>
+            }
             title={c.name}
             subtitle={c.city ?? undefined}
             lines={[
@@ -41,10 +49,10 @@ export default async function IlCompanyPage({ params }: { params: Promise<{ id: 
             ].filter(Boolean)}
             actions={
               <>
+                <TokenPicker value={c.kind} options={IL_COMPANY_KINDS} action={setIlCompanyKind.bind(null, c.id)} />
                 <Link href={`/israel/contacts/new?companyId=${c.id}`} className="btn-secondary">
                   Add contact
                 </Link>
-                {c.kind && <span className="chip bg-cream text-[11px]">{c.kind}</span>}
               </>
             }
           />

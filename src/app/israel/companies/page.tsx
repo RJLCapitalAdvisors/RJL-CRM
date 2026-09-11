@@ -4,12 +4,13 @@ import { prisma } from "@/lib/db";
 import { PageHeader, Pager, SearchForm } from "@/components/ui";
 import { fmtDate, str } from "@/lib/format";
 import { IL_COMPANY_KINDS } from "@/lib/israel";
+import { CompanyLogo } from "@/components/company-logo";
 
 export const metadata = { title: "Companies" };
 export const dynamic = "force-dynamic";
 const PAGE = 50;
 
-/** Companies: developers, agencies and the firms around a purchase. Same window as the RJL Capital Advisors list. */
+/** Companies: developers, agencies and the firms around a purchase. Same window as the RJL Capital Advisors list: logo by the name, the firms emailed most recently on top. */
 export default async function IlCompaniesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const q = str(sp.q).trim();
@@ -20,7 +21,7 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
   };
   const [total, rows] = await Promise.all([
     prisma.ilCompany.count({ where }),
-    prisma.ilCompany.findMany({ where, orderBy: { name: "asc" }, skip: (page - 1) * PAGE, take: PAGE, include: { _count: { select: { contacts: true, apartments: true } } } }),
+    prisma.ilCompany.findMany({ where, orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { name: "asc" }], skip: (page - 1) * PAGE, take: PAGE, include: { _count: { select: { contacts: true, apartments: true } } } }),
   ]);
   const makeHref = (p: number) => {
     const u = new URLSearchParams();
@@ -62,24 +63,25 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
                 <th>Phone</th>
                 <th>Website</th>
                 <th>Location</th>
-                <th>Added</th>
+                <th>Last activity</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((c) => (
                 <tr key={c.id}>
                   <td>
-                    <Link href={`/israel/companies/${c.id}`} className="font-medium hover:underline">
-                      {c.name}
+                    <Link href={`/israel/companies/${c.id}`} className="flex items-center gap-2 font-medium hover:underline">
+                      <CompanyLogo domain={c.domain ?? c.website?.replace(/^https?:\/\//, "").split("/")[0]} name={c.name} />
+                      <span className="truncate">{c.name}</span>
                     </Link>
                   </td>
-                  <td>{c.kind ? <span className="chip bg-cream text-[11px]">{c.kind}</span> : <span className="text-muted">—</span>}</td>
+                  <td>{c.kind ? <span className="chip bg-sky text-[11px] text-ink">{c.kind}</span> : <span className="text-muted">—</span>}</td>
                   <td className="text-right">{c._count.contacts}</td>
                   <td className="text-right">{c._count.apartments}</td>
                   <td className="whitespace-nowrap">{c.phone ?? <span className="text-muted">—</span>}</td>
                   <td className="max-w-[220px] truncate text-muted">{c.website?.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? "—"}</td>
                   <td className="whitespace-nowrap">{c.city ?? <span className="text-muted">—</span>}</td>
-                  <td className="whitespace-nowrap text-muted">{fmtDate(c.createdAt)}</td>
+                  <td className="whitespace-nowrap text-muted">{c.lastActivityAt ? fmtDate(c.lastActivityAt) : <span title={`Added ${fmtDate(c.createdAt)}`}>—</span>}</td>
                 </tr>
               ))}
               {rows.length === 0 && (

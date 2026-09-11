@@ -23,7 +23,7 @@ export default async function IlContactsPage({ searchParams }: { searchParams: P
   };
   const [total, rows] = await Promise.all([
     prisma.ilContact.count({ where }),
-    prisma.ilContact.findMany({ where, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], skip: (page - 1) * PAGE, take: PAGE, include: { company: { select: { id: true, name: true } } } }),
+    prisma.ilContact.findMany({ where, orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { lastName: "asc" }, { firstName: "asc" }], skip: (page - 1) * PAGE, take: PAGE, include: { company: { select: { id: true, name: true } } } }),
   ]);
   const makeHref = (p: number) => {
     const u = new URLSearchParams();
@@ -66,7 +66,7 @@ export default async function IlContactsPage({ searchParams }: { searchParams: P
                 <th>Language</th>
                 <th className="text-right">Budget</th>
                 <th>Wants</th>
-                <th>Added</th>
+                <th>Last activity</th>
               </tr>
             </thead>
             <tbody>
@@ -92,7 +92,7 @@ export default async function IlContactsPage({ searchParams }: { searchParams: P
                   <td>{k.language}</td>
                   <td className="whitespace-nowrap text-right tabular-nums">{k.budgetMaxNis ? `${k.budgetMinNis ? `${nisShort(k.budgetMinNis)} to ` : "up to "}${nisShort(k.budgetMaxNis)}` : ""}</td>
                   <td className="max-w-[220px] truncate text-xs text-muted">{[k.wantsCities, k.wantsRooms ? `${k.wantsRooms} rooms` : null].filter(Boolean).join(" · ")}</td>
-                  <td className="whitespace-nowrap text-muted">{fmtDate(k.createdAt)}</td>
+                  <td className="whitespace-nowrap text-muted">{k.lastActivityAt ? fmtDate(k.lastActivityAt) : <span title={`Added ${fmtDate(k.createdAt)}`}>—</span>}</td>
                 </tr>
               ))}
               {rows.length === 0 && (
