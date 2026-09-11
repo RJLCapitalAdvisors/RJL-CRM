@@ -69,7 +69,7 @@ const q = (s: string) => encodeURIComponent(s);
 
 /** Most recent messages in a mailbox's Sent Items addressed to `toEmail` (newest first). */
 export async function sentMessagesTo(mailbox: string, toEmail: string, top = 10): Promise<GraphMessage[]> {
-  const r = await graph<{ value: GraphMessage[] }>(`/users/${q(mailbox)}/mailFolders/sentitems/messages?$search=${q(`"recipients:${toEmail}"`)}&$top=${top}&$select=id,subject,conversationId,sentDateTime,hasAttachments,toRecipients,ccRecipients,webLink`);
+  const r = await graph<{ value: GraphMessage[] }>(`/users/${q(mailbox)}/mailFolders/sentitems/messages?$search=${q(`"recipients:${toEmail}"`)}&$top=${top}&$select=id,subject,conversationId,sentDateTime,hasAttachments,toRecipients,ccRecipients,webLink,internetMessageId`);
   return [...r.value].sort((a, b) => (b.sentDateTime ?? "").localeCompare(a.sentDateTime ?? ""));
 }
 

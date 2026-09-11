@@ -66,7 +66,16 @@ export async function saveSignature(userId: string, fd: FormData) {
 }
 
 /** Deal momentum "Handle": open a reply-all draft on the thread in question, empty body, your signature. */
+/** Handle on Deal momentum: the draft, and a note of the click so the item closes once the email goes out. */
 export async function openMomentumDraft(momentumId: string) {
+  const r = await openMomentumDraftInner(momentumId);
+  if (r.ok) {
+    const me = await currentUser();
+    if (me) await prisma.momentum.update({ where: { id: momentumId }, data: { handledAt: new Date(), handledBy: me.email } }).catch(() => null);
+  }
+  return r;
+}
+async function openMomentumDraftInner(momentumId: string) {
   const me = await currentUser();
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
   const m = await prisma.momentum.findUnique({ where: { id: momentumId } });
@@ -283,7 +292,16 @@ export async function notDuplicateAction(aId: string, bId: string) {
  * lives on. A mentioned deal replies on the email that mentioned it (often the intro); otherwise the ongoing
  * sponsor-only conversation about the deal; otherwise the latest thread with the sponsor contact; otherwise fresh.
  */
+/** Handle on a quiet deal: the check-in draft, and a note of the click so the deal leaves Data updates once it goes out. */
 export async function handleStaleDeal(dealId: string) {
+  const r = await handleStaleDealInner(dealId);
+  if (r.ok) {
+    const me = await currentUser();
+    if (me) await prisma.deal.update({ where: { id: dealId }, data: { staleHandledAt: new Date(), staleHandledBy: me.email } }).catch(() => null);
+  }
+  return r;
+}
+async function handleStaleDealInner(dealId: string) {
   const me = await currentUser();
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the draft is created in your own mailbox." };
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { sponsorCompany: { select: { id: true, name: true, domain: true, roles: true } }, _count: { select: { investors: true } } } });

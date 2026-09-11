@@ -143,6 +143,8 @@ model Deal {
   stage     String  @default("Deal Received")
   position  Int     @default(0)
   staleCheckedAt DateTime?
+  staleHandledAt DateTime? // Handle on a quiet deal; leaves Data updates once the check-in goes out
+  staleHandledBy String?
   parentDealId String?  // a component of a portfolio deal: off the board, its data and files serve the portfolio
   parent       Deal?    @relation("Portfolio", fields: [parentDealId], references: [id])
   children     Deal[]   @relation("Portfolio")
@@ -406,6 +408,8 @@ model Momentum {
   waitingSince  DateTime
   lastMessageId String? // Internet Message-ID of the latest email in that thread (Handle replies to it)
   status        String   @default("OPEN") // OPEN | DONE | DISMISSED
+  handledAt     DateTime? // Handle clicked; the item closes once an email to the party goes out
+  handledBy     String?   // whose mailbox to watch
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

@@ -47,6 +47,7 @@ async function readThread(kind: "sponsor" | "intro", dealName: string, party: st
 async function upsert(dealId: string, kind: string, party: string, data: { companyId?: string | null; contactId?: string | null; summary: string; waitingSince: Date; lastMessageId?: string | null }) {
   const existing = await prisma.momentum.findUnique({ where: { dealId_kind_party: { dealId, kind, party } } });
   if (existing?.status === "DISMISSED" && existing.lastMessageId === (data.lastMessageId ?? null)) return; // he dismissed this exact state
+  if (existing?.status === "DONE" && existing.lastMessageId && existing.lastMessageId === (data.lastMessageId ?? null)) return; // handled and sent; nothing new since
   await prisma.momentum.upsert({ where: { dealId_kind_party: { dealId, kind, party } }, create: { dealId, kind, party, status: "OPEN", ...data }, update: { ...data, status: "OPEN" } });
 }
 
@@ -173,6 +174,7 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
 }
 
 export async function listMomentum(since?: Date) {
+  await import("@/lib/handled").then((m) => m.syncHandledMomentum()).catch(() => 0);
   const rows = await prisma.momentum.findMany({ where: { status: "OPEN", ...(since ? { waitingSince: { gte: since } } : {}) }, orderBy: { waitingSince: "asc" } });
   // a deal that is lost or closed takes its items off the board with it
   const deals = new Map((await prisma.deal.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.dealId))] }, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true } })).map((d) => [d.id, d]));
