@@ -20,11 +20,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 /** The house ticket: fields on the left, the floorplan and notes in the middle, developer and people on the right. */
 export default async function HousePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [h, developers, people, fx] = await Promise.all([
+  const [h, developers, people, fx, projects] = await Promise.all([
     prisma.ilHouse.findUnique({
       where: { id },
       select: {
-        id: true, name: true, houseType: true, street: true, city: true, neighborhood: true, rooms: true, floors: true, ceilingCms: true, completionDate: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpesetDirection: true, mirpasot: true, migrashSqm: true, parkingSpots: true, sellerType: true, renovationYear: true, mamad: true, priceNis: true, description: true,
+        id: true, name: true, houseType: true, projectId: true, project: { select: { id: true, name: true } }, street: true, city: true, neighborhood: true, rooms: true, floors: true, ceilingCms: true, completionDate: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpesetDirection: true, mirpasot: true, migrashSqm: true, parkingSpots: true, sellerType: true, renovationYear: true, mamad: true, priceNis: true, description: true,
         pendingApproval: true, source: true, floorplanType: true, floorplanName: true, updatedAt: true, developerId: true, agentContactId: true, sellerContactId: true,
         developer: { select: { id: true, name: true, roles: true, city: true, phone: true } },
         agent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } },
@@ -35,6 +35,7 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
     prisma.ilCompany.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, roles: true } }),
     prisma.ilContact.findMany({ orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { id: true, firstName: true, lastName: true, email: true, roles: true, company: { select: { name: true } } } }),
     usdIls(),
+    prisma.ilProject.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, city: true } }),
   ]);
   if (!h) notFound();
   const ppm = pricePerMeter(h.priceNis, h.internalSqm, h.mirpesetSqm);
@@ -86,7 +87,7 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
             </div>
           )}
           <AboutCard title="About this house">
-            <HouseForm h={h} fx={fx} action={updateHouse.bind(null, h.id)} autosave />
+            <HouseForm h={h} fx={fx} projects={projects} action={updateHouse.bind(null, h.id)} autosave />
           </AboutCard>
         </>
       }
@@ -118,6 +119,15 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
       }
       right={
         <>
+          <AssocCard title="Project" count={h.project ? 1 : 0} addHref="/israel/projects/new" addLabel="New project" empty="Pick the project in the form on the left.">
+            {h.project && (
+              <div className="p-4 text-sm">
+                <Link href={`/israel/projects/${h.project.id}`} className="font-semibold hover:underline">
+                  {h.project.name}
+                </Link>
+              </div>
+            )}
+          </AssocCard>
           <AssocCard title="Developer" count={h.developer ? 1 : 0} addHref="/israel/companies/new" addLabel="New company" empty="Pick the developer below.">
             {h.developer && (
               <div className="px-4 pt-3 text-sm">

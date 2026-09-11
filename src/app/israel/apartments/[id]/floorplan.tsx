@@ -7,33 +7,34 @@ import { useRouter } from "next/navigation";
  * The big middle window of an apartment ticket: the floorplan, open as soon as the ticket opens.
  * Images show inline, PDFs in a viewer. Drop a file or pick one to replace it.
  */
-export function FloorplanWindow({ apartmentId, kind = "apartments", has, type, name, version }: { apartmentId: string; kind?: "apartments" | "houses"; has: boolean; type: string | null; name: string | null; version: number }) {
+export function FloorplanWindow({ apartmentId, kind = "apartments", endpoint, title = "Floorplan", compact = false, has, type, name, version }: { apartmentId: string; kind?: "apartments" | "houses"; endpoint?: string; title?: string; compact?: boolean; has: boolean; type: string | null; name: string | null; version: number }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [busy, start] = useTransition();
   const [drag, setDrag] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const src = `/api/israel/${kind}/${apartmentId}/floorplan?v=${version}`;
+  const base = endpoint ?? `/api/israel/${kind}/${apartmentId}/floorplan`;
+  const src = `${base}?v=${version}`;
 
   const upload = (file: File) => {
     setError(null);
     const fd = new FormData();
     fd.set("file", file);
     start(async () => {
-      const r = await fetch(`/api/israel/${kind}/${apartmentId}/floorplan`, { method: "POST", body: fd });
+      const r = await fetch(base, { method: "POST", body: fd });
       if (!r.ok) setError((await r.text()) || "Upload failed.");
       router.refresh();
     });
   };
   const remove = () =>
     start(async () => {
-      await fetch(`/api/israel/${kind}/${apartmentId}/floorplan`, { method: "DELETE" });
+      await fetch(base, { method: "DELETE" });
       router.refresh();
     });
 
   return (
     <div
-      className={`card flex min-h-[70vh] flex-col ${drag ? "ring-2 ring-sky-600" : ""}`}
+      className={`card flex flex-col ${compact ? "min-h-[320px]" : "min-h-[70vh]"} ${drag ? "ring-2 ring-sky-600" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
         setDrag(true);
@@ -47,7 +48,7 @@ export function FloorplanWindow({ apartmentId, kind = "apartments", has, type, n
       }}
     >
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <div className="text-sm font-semibold">Floorplan</div>
+        <div className="text-sm font-semibold">{title}</div>
         <div className="flex items-center gap-2 text-xs">
           {name && <span className="max-w-[240px] truncate text-muted">{name}</span>}
           {has && (
@@ -70,15 +71,15 @@ export function FloorplanWindow({ apartmentId, kind = "apartments", has, type, n
       <div className="flex min-h-0 flex-1 items-center justify-center p-3">
         {!has ? (
           <div className="text-center text-sm text-muted">
-            No floorplan yet.
+            No {title.toLowerCase()} yet.
             <br />
-            Drop an image or PDF here, or click Upload.
+            Drop {title === "Brochure" ? "the PDF" : "an image or PDF"} here, or click Upload.
           </div>
         ) : type === "application/pdf" ? (
-          <iframe src={src} title="Floorplan" className="h-[70vh] w-full rounded-md border border-line bg-white" />
+          <iframe src={src} title={title} className={`${compact ? "h-[420px]" : "h-[70vh]"} w-full rounded-md border border-line bg-white`} />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={src} alt="Floorplan" className="max-h-[75vh] w-auto max-w-full rounded-md" />
+          <img src={src} alt={title} className={`${compact ? "max-h-[420px]" : "max-h-[75vh]"} w-auto max-w-full rounded-md`} />
         )}
       </div>
     </div>

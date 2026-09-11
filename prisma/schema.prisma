@@ -698,7 +698,11 @@ model IlProject {
   stories        Int?
   completionDate String?
   description    String?
+  brochure       Bytes?
+  brochureType   String?
+  brochureName   String?
   apartments     IlApartment[]
+  houses         IlHouse[]
   notes          IlNote[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -799,6 +803,8 @@ model IlHouse {
   id              String    @id @default(cuid())
   name            String
   houseType       String?   // Villa, Semi-attached, Cottage
+  projectId       String?
+  project         IlProject? @relation(fields: [projectId], references: [id])
   city            String?
   neighborhood    String?
   street          String?

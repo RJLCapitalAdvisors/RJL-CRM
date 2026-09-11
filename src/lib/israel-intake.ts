@@ -257,10 +257,15 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   for (const a of extracted.apartments) {
     const developer = await findOrCreateCompany(a.developerName, "Sponsor (Yazam)");
     if (a.kind === "house") {
+      let houseProject = null as { id: string } | null;
+      if (a.projectName?.trim()) {
+        houseProject = (await prisma.ilProject.findFirst({ where: { name: { equals: a.projectName.trim(), mode: "insensitive" } } })) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, completionDate: a.completionDate } }));
+      }
       const house = await prisma.ilHouse.create({
         data: {
           name: stripDashes(a.name) || a.street || "House",
           houseType: a.houseType,
+          projectId: houseProject?.id ?? null,
           street: a.street,
           city: a.city,
           neighborhood: a.neighborhood,

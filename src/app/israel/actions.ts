@@ -114,6 +114,7 @@ function houseData(fd: FormData) {
   return {
     name: s(fd, "name") ?? (s(fd, "street") || "House"),
     houseType: s(fd, "houseType"),
+    projectId: s(fd, "projectId"),
     street: s(fd, "street"),
     city: s(fd, "city"),
     neighborhood: s(fd, "neighborhood"),
@@ -138,9 +139,11 @@ export async function createHouse(fd: FormData) {
   redirect(`/israel/houses/${h.id}`);
 }
 export async function updateHouse(id: string, fd: FormData) {
-  await prisma.ilHouse.update({ where: { id }, data: houseData(fd) });
+  const data = houseData(fd);
+  await prisma.ilHouse.update({ where: { id }, data });
   revalidatePath(`/israel/houses/${id}`);
   revalidatePath("/israel/houses");
+  if (data.projectId) revalidatePath(`/israel/projects/${data.projectId}`);
 }
 export async function linkHouse(id: string, fd: FormData) {
   const data: { developerId?: string | null; agentContactId?: string | null; sellerContactId?: string | null } = {};

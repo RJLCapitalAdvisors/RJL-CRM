@@ -5,11 +5,12 @@ import { AutoSaveForm } from "@/components/autosave-form";
 import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
 import { MirpasotFields } from "@/components/mirpasot-fields";
+import { SelectField } from "@/components/select-field";
 import { ACRES_PER_SQM, IL_CITIES, IL_HOUSE_TYPES, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, parseMirpasot, pricePerMeter, sqft, usdFmt, usdPerSqft } from "@/lib/israel";
 import type { FxRate } from "@/lib/fx";
 
 export type IlHouseForm = Partial<{
-  name: string; houseType: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; floors: number | null; ceilingCms: string | null; completionDate: string | null;
+  name: string; houseType: string | null; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; floors: number | null; ceilingCms: string | null; completionDate: string | null;
   internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpesetDirection: string | null; mirpasot: string | null; migrashSqm: number | null; parkingSpots: string | null; mamad: boolean; priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null;
 }>;
 
@@ -20,7 +21,7 @@ const floorName = (i: number) => FLOOR_NAMES[i] ?? `Floor ${i + 1}`;
  * The house ticket. Same shape as the apartment ticket, with the house-only fields: how many floors (miflasim) and a
  * ceiling height for each of them, and the migrash (plot) in m² shown in dunam and acres beside it.
  */
-export function HouseForm({ h = {}, fx, action, autosave = false, submitLabel = "Create house" }: { h?: IlHouseForm; fx: FxRate | null; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
+export function HouseForm({ h = {}, fx, projects = [], action, autosave = false, submitLabel = "Create house" }: { h?: IlHouseForm; fx: FxRate | null; projects?: { id: string; name: string; city: string | null }[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
   const [internal, setInternal] = useState<number | null>(h.internalSqm ?? null);
   const [mirpeset, setMirpeset] = useState<number | null>(h.mirpesetSqm ?? null);
   const [migrash, setMigrash] = useState<number | null>(h.migrashSqm ?? null);
@@ -50,6 +51,17 @@ export function HouseForm({ h = {}, fx, action, autosave = false, submitLabel = 
         </Row>
         <Row label="House type">
           <Select name="houseType" value={h.houseType ?? ""} options={IL_HOUSE_TYPES} />
+        </Row>
+        <Row label="Project" hint="The development this house is part of, if any. Its facts flow up to the project.">
+          <SelectField name="projectId" defaultValue={h.projectId ?? ""}>
+            <option value="">No project</option>
+            {projects.map((pr) => (
+              <option key={pr.id} value={pr.id}>
+                {pr.name}
+                {pr.city ? ` · ${pr.city}` : ""}
+              </option>
+            ))}
+          </SelectField>
         </Row>
         <Row label="City">
           <input name="city" defaultValue={h.city ?? ""} className="input" list="il-cities-house" />
