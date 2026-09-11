@@ -14,7 +14,7 @@ export default async function NewIlContactPage({ searchParams }: { searchParams:
       <PageHeader title="New contact" />
       <div className="mx-auto max-w-2xl px-8 py-5">
         <div className="card p-5">
-          <IlContactForm c={{ companyId: typeof sp.companyId === "string" ? sp.companyId : null, roles: typeof sp.companyId === "string" ? '["Sales agent"]' : "[]" }} companies={companies} action={createIlContact} />
+          <IlContactForm c={{ companyId: typeof sp.companyId === "string" ? sp.companyId : null, roles: typeof sp.companyId === "string" ? '["Broker"]' : "[]" }} companies={companies} action={createIlContact} />
         </div>
       </div>
     </>

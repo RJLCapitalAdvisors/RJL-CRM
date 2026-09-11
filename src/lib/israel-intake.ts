@@ -139,10 +139,10 @@ function missingFor(a: ExtractedApartment, hasDeveloper: boolean): string[] {
   }).map((r) => r.label);
 }
 
-async function findOrCreateCompany(name: string | null, kind: string) {
+async function findOrCreateCompany(name: string | null, role: string) {
   const n = name?.trim();
   if (!n) return null;
-  return (await prisma.ilCompany.findFirst({ where: { name: { equals: n, mode: "insensitive" } } })) ?? prisma.ilCompany.create({ data: { name: n, kind } });
+  return (await prisma.ilCompany.findFirst({ where: { name: { equals: n, mode: "insensitive" } } })) ?? prisma.ilCompany.create({ data: { name: n, roles: JSON.stringify([role]) } });
 }
 
 async function findOrCreateAgent(agent: Extracted["agent"], sender: IntakeInput["sender"], companyId: string | null) {
@@ -154,7 +154,7 @@ async function findOrCreateAgent(agent: Extracted["agent"], sender: IntakeInput[
   const existing = (email ? await prisma.ilContact.findFirst({ where: { email } }) : null) ?? (phone ? await prisma.ilContact.findFirst({ where: { phone: { contains: phone.replace(/\D/g, "").slice(-9) } } }) : null);
   if (existing) return existing;
   const [firstName, ...rest] = fullName.split(/\s+/);
-  return prisma.ilContact.create({ data: { firstName: firstName || null, lastName: rest.join(" ") || null, email, phone, roles: '["Sales agent"]', companyId } });
+  return prisma.ilContact.create({ data: { firstName: firstName || null, lastName: rest.join(" ") || null, email, phone, roles: '["Broker"]', companyId } });
 }
 
 /** The floorplan among the files: a plan by name, else the biggest photo when there is more than one. */
@@ -176,11 +176,11 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     return { skipped: "no apartments" };
   }
   const senderIsInternal = input.sender?.email ? INTERNAL.test(input.sender.email) : false;
-  const agentCompany = await findOrCreateCompany(extracted.agent?.company ?? null, "Agency");
+  const agentCompany = await findOrCreateCompany(extracted.agent?.company ?? null, "Broker");
   const agent = await findOrCreateAgent(extracted.agent, senderIsInternal ? null : input.sender, agentCompany?.id ?? null);
   const rows: IntakeRow[] = [];
   for (const a of extracted.apartments) {
-    const developer = await findOrCreateCompany(a.developerName, "Developer");
+    const developer = await findOrCreateCompany(a.developerName, "Developer (Yazam)");
     let project = null as { id: string } | null;
     if (a.projectName?.trim()) {
       project = (await prisma.ilProject.findFirst({ where: { name: { equals: a.projectName.trim(), mode: "insensitive" } } })) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, stories: a.buildingStories, totalUnits: a.buildingUnits, completionDate: a.completionDate } }));

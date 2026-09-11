@@ -20,7 +20,7 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const [p, developers] = await Promise.all([
     prisma.ilProject.findUnique({ where: { id }, include: { developer: true, apartments: { orderBy: [{ floor: "desc" }, { name: "asc" }] }, notes: { orderBy: { createdAt: "desc" } } } }),
-    prisma.ilCompany.findMany({ where: { kind: "Developer" }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.ilCompany.findMany({ where: { roles: { contains: "Developer" } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   if (!p) notFound();
   return (
@@ -83,7 +83,7 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
                 <Link href={`/israel/companies/${p.developer.id}`} className="font-semibold hover:underline">
                   {p.developer.name}
                 </Link>
-                <div className="text-xs text-muted">{[p.developer.kind, p.developer.city, p.developer.phone].filter(Boolean).join(" · ")}</div>
+                <div className="text-xs text-muted">{[...(JSON.parse(p.developer.roles || "[]") as string[]), p.developer.city, p.developer.phone].filter(Boolean).join(" · ")}</div>
               </div>
             )}
           </AssocCard>

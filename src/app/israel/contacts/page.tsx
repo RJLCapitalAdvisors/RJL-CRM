@@ -3,7 +3,9 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager, SearchForm } from "@/components/ui";
 import { fmtDate, str } from "@/lib/format";
-import { IL_ROLES, ilFullName, nisShort, parseJsonList } from "@/lib/israel";
+import { IL_ROLES, ilFullName, nisShort } from "@/lib/israel";
+import { IlRoleCell } from "@/components/il-role-cell";
+import { setIlContactRoles } from "../actions";
 
 export const metadata = { title: "Contacts" };
 export const dynamic = "force-dynamic";
@@ -46,7 +48,7 @@ export default async function IlContactsPage({ searchParams }: { searchParams: P
       <div className="px-8 py-4">
         <SearchForm action="/israel/contacts" q={q} placeholder="Search name, email, phone, or company">
           <select name="role" defaultValue={role} className="input w-40">
-            <option value="">Buyers and sellers</option>
+            <option value="">Any role</option>
             {IL_ROLES.map((r) => (
               <option key={r}>{r}</option>
             ))}
@@ -80,13 +82,7 @@ export default async function IlContactsPage({ searchParams }: { searchParams: P
                   <td className="text-muted">{k.email}</td>
                   <td>{k.company ? <Link href={`/israel/companies/${k.company.id}`} className="hover:underline">{k.company.name}</Link> : <span className="text-muted">—</span>}</td>
                   <td>
-                    <div className="flex flex-wrap gap-1">
-                      {parseJsonList(k.roles).map((r) => (
-                        <span key={r} className="chip bg-cream text-[11px]">
-                          {r}
-                        </span>
-                      ))}
-                    </div>
+                    <IlRoleCell roles={k.roles} options={IL_ROLES} action={setIlContactRoles.bind(null, k.id)} />
                   </td>
                   <td className="whitespace-nowrap">{k.phone}</td>
                   <td>{k.language}</td>

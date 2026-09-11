@@ -5,7 +5,7 @@ import { AutoSaveForm } from "@/components/autosave-form";
 import { Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
 import { SelectField } from "@/components/select-field";
-import { IL_ROLES, parseJsonList } from "@/lib/israel";
+import { IL_ROLES, ilRoleColor, parseJsonList } from "@/lib/israel";
 
 type Ct = Partial<{ firstName: string | null; lastName: string | null; email: string | null; phone: string | null; companyId: string | null; roles: string; language: string | null; budgetMinNis: number | null; budgetMaxNis: number | null; wantsCities: string | null; wantsRooms: string | null; notes: string | null }>;
 
@@ -15,13 +15,13 @@ export function IlContactForm({ c = {}, companies, action, autosave = false, sub
   const toggle = (r: string) => setRoles((cur) => (cur.includes(r) ? cur.filter((x) => x !== r) : [...cur, r]));
   const body = (
     <>
-      <Group title="Buyer or seller">
-        <Row label="This contact is a" hint="Sales agents are usually the people linked to an agency or developer.">
-          <div className="flex flex-wrap gap-2 py-1">
+      <Group title="Roles">
+        <Row label="This contact is a" hint="A person at a company carries the company's roles as well.">
+          <div className="flex flex-wrap gap-1.5 py-1">
             {IL_ROLES.map((r) => {
               const on = roles.includes(r);
               return (
-                <label key={r} className={`cursor-pointer rounded-md border px-3 py-1.5 text-sm ${on ? "border-sky-600 bg-sky text-ink" : "border-line text-muted hover:bg-cream"}`}>
+                <label key={r} className={`chip cursor-pointer text-[11px] ${on ? ilRoleColor(r) : "border border-dashed border-line bg-transparent text-muted hover:text-ink"}`}>
                   <input type="checkbox" name="roles" value={r} checked={on} onChange={() => toggle(r)} className="sr-only" />
                   {r}
                 </label>

@@ -28,7 +28,7 @@ export function IlDealForm({ d = {}, apartments, buyers, agents, action, autosav
         </Row>
         <Row label="Apartment">{pick("apartmentId", d.apartmentId, apartments, "Pick an apartment")}</Row>
         <Row label="Buyer">{pick("buyerContactId", d.buyerContactId, buyers, "Pick a buyer (contacts marked Buyer)")}</Row>
-        <Row label="Sales agent">{pick("agentContactId", d.agentContactId, agents, "Pick an agent (contacts marked Sales agent)")}</Row>
+        <Row label="Broker">{pick("agentContactId", d.agentContactId, agents, "Pick an agent (contacts marked Broker)")}</Row>
       </Group>
       <Group title="Numbers and timing">
         <Row label="Offer">

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { IL_COMPANY_KINDS, IL_DEAL_STAGES } from "@/lib/israel";
+import { IL_COMPANY_ROLES, IL_DEAL_STAGES, IL_ROLES, mergeIlRoles } from "@/lib/israel";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -90,24 +90,44 @@ export async function addIlNote(target: { apartmentId?: string; contactId?: stri
 }
 
 function companyData(fd: FormData) {
-  return { name: s(fd, "name") ?? "Company", kind: s(fd, "kind"), city: s(fd, "city"), website: s(fd, "website"), phone: s(fd, "phone"), notes: s(fd, "notes") };
+  return { name: s(fd, "name") ?? "Company", roles: list(fd, "roles"), city: s(fd, "city"), website: s(fd, "website"), phone: s(fd, "phone"), notes: s(fd, "notes") };
+}
+/** A company's roles flow to every contact at it (added, never removed from the person). */
+async function flowRolesToContacts(companyId: string, roles: string[]) {
+  const people = await prisma.ilContact.findMany({ where: { companyId }, select: { id: true, roles: true } });
+  for (const c of people) {
+    const merged = mergeIlRoles(c.roles, roles);
+    if (merged !== c.roles) await prisma.ilContact.update({ where: { id: c.id }, data: { roles: merged } });
+  }
 }
 export async function createIlCompany(fd: FormData) {
   const c = await prisma.ilCompany.create({ data: companyData(fd) });
   revalidatePath("/israel/companies");
   redirect(`/israel/companies/${c.id}`);
 }
-/** One click on the kind token on the company page. */
-export async function setIlCompanyKind(id: string, kind: string | null) {
-  await prisma.ilCompany.update({ where: { id }, data: { kind: kind && (IL_COMPANY_KINDS as readonly string[]).includes(kind) ? kind : null } });
+/** Roles ticked on a list row or the company header; saved once when the list closes. */
+export async function setIlCompanyRoles(id: string, roles: string[]) {
+  const clean = (IL_COMPANY_ROLES as readonly string[]).filter((r) => roles.includes(r));
+  await prisma.ilCompany.update({ where: { id }, data: { roles: JSON.stringify(clean) } });
+  await flowRolesToContacts(id, clean);
   revalidatePath(`/israel/companies/${id}`);
   revalidatePath("/israel/companies");
+  revalidatePath("/israel/contacts");
+}
+export async function setIlContactRoles(id: string, roles: string[]) {
+  const clean = (IL_ROLES as readonly string[]).filter((r) => roles.includes(r));
+  await prisma.ilContact.update({ where: { id }, data: { roles: JSON.stringify(clean) } });
+  revalidatePath(`/israel/contacts/${id}`);
+  revalidatePath("/israel/contacts");
 }
 
 export async function updateIlCompany(id: string, fd: FormData) {
-  await prisma.ilCompany.update({ where: { id }, data: companyData(fd) });
+  const data = companyData(fd);
+  await prisma.ilCompany.update({ where: { id }, data });
+  await flowRolesToContacts(id, JSON.parse(data.roles) as string[]);
   revalidatePath(`/israel/companies/${id}`);
   revalidatePath("/israel/companies");
+  revalidatePath("/israel/contacts");
 }
 
 function contactData(fd: FormData) {
@@ -127,12 +147,17 @@ function contactData(fd: FormData) {
   };
 }
 export async function createIlContact(fd: FormData) {
-  const c = await prisma.ilContact.create({ data: contactData(fd) });
+  const data = contactData(fd);
+  // a person at a company carries the company's roles
+  const co = data.companyId ? await prisma.ilCompany.findUnique({ where: { id: data.companyId }, select: { roles: true } }) : null;
+  const c = await prisma.ilContact.create({ data: { ...data, roles: mergeIlRoles(data.roles, co?.roles) } });
   revalidatePath("/israel/contacts");
   redirect(`/israel/contacts/${c.id}`);
 }
 export async function updateIlContact(id: string, fd: FormData) {
-  await prisma.ilContact.update({ where: { id }, data: contactData(fd) });
+  const data = contactData(fd);
+  const co = data.companyId ? await prisma.ilCompany.findUnique({ where: { id: data.companyId }, select: { roles: true } }) : null;
+  await prisma.ilContact.update({ where: { id }, data: { ...data, roles: mergeIlRoles(data.roles, co?.roles) } });
   revalidatePath(`/israel/contacts/${id}`);
   revalidatePath("/israel/contacts");
 }

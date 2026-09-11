@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { graph, graphConfigured, israelGraphConfigured, type GraphMessage } from "@/lib/graph";
 import { FREE_MAIL, nameFromDomain } from "@/lib/domains";
 import { ISRAEL_MAILBOX } from "@/lib/israel-intake";
+import { mergeIlRoles } from "@/lib/israel";
 
 /**
  * RJL Israel email log. The same job the RJL Capital Advisors sync does, for the other business: every RJL Israel
@@ -95,13 +96,18 @@ async function contactFor(p: Party): Promise<{ id: string; companyId: string | n
   const found = await prisma.ilContact.findFirst({ where: { email: { equals: email, mode: "insensitive" } }, select: { id: true, companyId: true, firstName: true, lastName: true } });
   const companyId = await companyForDomain(domainOf(email));
   if (found) {
-    const data: { companyId?: string; firstName?: string | null; lastName?: string | null } = {};
-    if (!found.companyId && companyId) data.companyId = companyId;
+    const data: { companyId?: string; firstName?: string | null; lastName?: string | null; roles?: string } = {};
+    if (!found.companyId && companyId) {
+      data.companyId = companyId;
+      const co = await prisma.ilCompany.findUnique({ where: { id: companyId }, select: { roles: true } });
+      if (co) Object.assign(data, { roles: mergeIlRoles(await prisma.ilContact.findUnique({ where: { id: found.id }, select: { roles: true } }).then((x) => x?.roles), co.roles) });
+    }
     if (!found.firstName && !found.lastName && p.name && !p.name.includes("@")) Object.assign(data, splitName(p.name, email));
     if (Object.keys(data).length) await prisma.ilContact.update({ where: { id: found.id }, data }).catch(() => null);
     return { id: found.id, companyId: found.companyId ?? companyId };
   }
-  const c = await prisma.ilContact.create({ data: { ...splitName(p.name, email), email, companyId, roles: "[]" }, select: { id: true } });
+  const co = companyId ? await prisma.ilCompany.findUnique({ where: { id: companyId }, select: { roles: true } }) : null;
+  const c = await prisma.ilContact.create({ data: { ...splitName(p.name, email), email, companyId, roles: co?.roles ?? "[]" }, select: { id: true } });
   return { id: c.id, companyId };
 }
 

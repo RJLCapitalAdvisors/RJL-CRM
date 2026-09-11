@@ -114,7 +114,7 @@ export default async function IlDealPage({ params }: { params: Promise<{ id: str
               </div>
             )}
           </AssocCard>
-          <AssocCard title="Sales agent" count={d.agent ? 1 : 0} empty="Pick the agent in the form on the left.">
+          <AssocCard title="Broker" count={d.agent ? 1 : 0} empty="Pick the agent in the form on the left.">
             {d.agent && (
               <div className="p-4 text-sm">
                 <Link href={`/israel/contacts/${d.agent.id}`} className="font-semibold hover:underline">

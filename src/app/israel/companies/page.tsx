@@ -3,7 +3,9 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager, SearchForm } from "@/components/ui";
 import { fmtDate, str } from "@/lib/format";
-import { IL_COMPANY_KINDS } from "@/lib/israel";
+import { IL_COMPANY_ROLES } from "@/lib/israel";
+import { IlRoleCell } from "@/components/il-role-cell";
+import { setIlCompanyRoles } from "../actions";
 import { CompanyLogo } from "@/components/company-logo";
 
 export const metadata = { title: "Companies" };
@@ -14,10 +16,10 @@ const PAGE = 50;
 export default async function IlCompaniesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const q = str(sp.q).trim();
-  const kind = str(sp.kind);
+  const role = str(sp.role);
   const page = Math.max(1, Number(str(sp.page)) || 1);
   const where: Prisma.IlCompanyWhereInput = {
-    AND: [q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { contacts: { some: { email: { contains: q, mode: "insensitive" } } } }] } : {}, kind ? { kind } : {}],
+    AND: [q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { contacts: { some: { email: { contains: q, mode: "insensitive" } } } }] } : {}, role ? { roles: { contains: `"${role}"` } } : {}],
   };
   const [total, rows] = await Promise.all([
     prisma.ilCompany.count({ where }),
@@ -26,7 +28,7 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
   const makeHref = (p: number) => {
     const u = new URLSearchParams();
     if (q) u.set("q", q);
-    if (kind) u.set("kind", kind);
+    if (role) u.set("role", role);
     u.set("page", String(p));
     return `/israel/companies?${u}`;
   };
@@ -43,9 +45,9 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
       />
       <div className="px-8 py-4">
         <SearchForm action="/israel/companies" q={q} placeholder="Search name, city, or contact email">
-          <select name="kind" defaultValue={kind} className="input w-44">
-            <option value="">Any kind</option>
-            {IL_COMPANY_KINDS.map((k) => (
+          <select name="role" defaultValue={role} className="input w-44">
+            <option value="">Any role</option>
+            {IL_COMPANY_ROLES.map((k) => (
               <option key={k}>{k}</option>
             ))}
           </select>
@@ -57,7 +59,7 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
             <thead>
               <tr>
                 <th>Company</th>
-                <th>Kind</th>
+                <th>Roles</th>
                 <th className="text-right">Contacts</th>
                 <th className="text-right">Apartments</th>
                 <th>Phone</th>
@@ -75,7 +77,9 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
                       <span className="truncate">{c.name}</span>
                     </Link>
                   </td>
-                  <td>{c.kind ? <span className="chip bg-sky text-[11px] text-ink">{c.kind}</span> : <span className="text-muted">—</span>}</td>
+                  <td>
+                    <IlRoleCell roles={c.roles} options={IL_COMPANY_ROLES} action={setIlCompanyRoles.bind(null, c.id)} />
+                  </td>
                   <td className="text-right">{c._count.contacts}</td>
                   <td className="text-right">{c._count.apartments}</td>
                   <td className="whitespace-nowrap">{c.phone ?? <span className="text-muted">—</span>}</td>

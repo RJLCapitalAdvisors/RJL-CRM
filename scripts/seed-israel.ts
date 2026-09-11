@@ -3,9 +3,9 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-async function company(name: string, kind: string, city: string, phone: string, website?: string) {
+async function company(name: string, role: string, city: string, phone: string, website?: string) {
   const found = await prisma.ilCompany.findFirst({ where: { name } });
-  return found ?? prisma.ilCompany.create({ data: { name, kind, city, phone, website } });
+  return found ?? prisma.ilCompany.create({ data: { name, roles: JSON.stringify([role]), city, phone, website } });
 }
 async function contact(firstName: string, lastName: string, roles: string[], extra: { email?: string; phone?: string; companyId?: string; language?: string; budgetMinNis?: number; budgetMaxNis?: number; wantsCities?: string; wantsRooms?: string }) {
   const found = await prisma.ilContact.findFirst({ where: { firstName, lastName } });

@@ -26,13 +26,13 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
       select: {
         id: true, name: true, street: true, city: true, neighborhood: true, rooms: true, completionDate: true, floor: true, totalFloors: true, buildingUnits: true, internalSqm: true, mirpesetSqm: true, ceilingCm: true, machsanSqm: true, machsanLocation: true,
         parkingSpots: true, direction: true, sellerType: true, renovationYear: true, pendingApproval: true, projectId: true, project: { select: { id: true, name: true, totalUnits: true, stories: true, completionDate: true } }, mirpesetDirection: true, mamad: true, priceNis: true, description: true, floorplanType: true, floorplanName: true, updatedAt: true, developerId: true, agentContactId: true, sellerContactId: true,
-        developer: { select: { id: true, name: true, kind: true, city: true, website: true, phone: true } },
+        developer: { select: { id: true, name: true, roles: true, city: true, website: true, phone: true } },
         agent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } },
         seller: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
         notes: { orderBy: { createdAt: "desc" } },
       },
     }),
-    prisma.ilCompany.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } }),
+    prisma.ilCompany.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, roles: true } }),
     prisma.ilContact.findMany({ orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { id: true, firstName: true, lastName: true, email: true, roles: true, company: { select: { name: true } } } }),
     usdIls(),
     prisma.ilProject.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, city: true } }),
@@ -41,7 +41,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
   const hasPlan = Boolean(a.floorplanType);
   const ppm = pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm);
   const missing = apartmentMissing(a as unknown as Record<string, unknown>);
-  const agents = people.filter((p) => parseJsonList(p.roles).includes("Sales agent"));
+  const agents = people.filter((p) => parseJsonList(p.roles).includes("Broker"));
   const sellers = people.filter((p) => parseJsonList(p.roles).includes("Seller"));
   const label = (p: (typeof people)[number]) => `${ilFullName(p)}${p.company ? ` (${p.company.name})` : ""}`;
   const link = linkApartment.bind(null, a.id);
@@ -136,7 +136,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
                 <Link href={`/israel/companies/${a.developer.id}`} className="font-semibold hover:underline">
                   {a.developer.name}
                 </Link>
-                <div className="text-xs text-muted">{[a.developer.kind, a.developer.city, a.developer.phone].filter(Boolean).join(" · ")}</div>
+                <div className="text-xs text-muted">{[...parseJsonList(a.developer.roles), a.developer.city, a.developer.phone].filter(Boolean).join(" · ")}</div>
               </div>
             )}
             <form action={link} className="flex gap-2 p-3">
@@ -145,7 +145,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
                 {developers.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
-                    {d.kind ? ` (${d.kind})` : ""}
+                    {parseJsonList(d.roles).length ? ` (${parseJsonList(d.roles).join(", ")})` : ""}
                   </option>
                 ))}
               </SelectField>
@@ -154,7 +154,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
               </button>
             </form>
           </AssocCard>
-          <AssocCard title="Sales agent" count={a.agent ? 1 : 0} addHref="/israel/contacts/new" addLabel="New contact" empty="Pick the agent below (contacts marked Sales agent).">
+          <AssocCard title="Broker" count={a.agent ? 1 : 0} addHref="/israel/contacts/new" addLabel="New contact" empty="Pick the agent below (contacts marked Broker).">
             {a.agent && (
               <div className="px-4 pt-3 text-sm">
                 <Link href={`/israel/contacts/${a.agent.id}`} className="font-semibold hover:underline">

@@ -7,7 +7,7 @@ export const metadata = { title: "New project" };
 export const dynamic = "force-dynamic";
 
 export default async function NewIlProjectPage() {
-  const developers = await prisma.ilCompany.findMany({ where: { kind: "Developer" }, orderBy: { name: "asc" }, select: { id: true, name: true } });
+  const developers = await prisma.ilCompany.findMany({ where: { roles: { contains: "Developer" } }, orderBy: { name: "asc" }, select: { id: true, name: true } });
   return (
     <>
       <PageHeader title="New project" subtitle="The whole building or development. Apartments inside it are added under Apartments and linked to it." />

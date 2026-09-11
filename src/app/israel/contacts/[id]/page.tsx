@@ -7,6 +7,7 @@ import { apartmentLine, ilFullName, nis, parseJsonList } from "@/lib/israel";
 import { addIlNote, updateIlContact } from "../../actions";
 import { IlContactForm } from "../contact-form";
 import { IlActivityLog } from "@/components/il-activity";
+import { IlRoleChips } from "@/components/il-role-cell";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +45,7 @@ export default async function IlContactPage({ params }: { params: Promise<{ id: 
                     Email
                   </a>
                 )}
-                {roles.map((r) => (
-                  <span key={r} className="chip bg-cream text-[11px]">
-                    {r}
-                  </span>
-                ))}
+                <IlRoleChips roles={roles} />
               </>
             }
           />
@@ -85,7 +82,7 @@ export default async function IlContactPage({ params }: { params: Promise<{ id: 
                 </div>
                 <div className="mt-2 space-y-1 text-xs text-ink-soft">
                   <div>
-                    <span className="text-muted">Kind:</span> {c.company.kind ?? "—"}
+                    <span className="text-muted">Roles:</span> {parseJsonList(c.company.roles).join(", ") || "—"}
                   </div>
                   <div>
                     <span className="text-muted">City:</span> {c.company.city ?? "—"}

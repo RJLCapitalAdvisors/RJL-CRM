@@ -12,7 +12,7 @@ export const IL_TOOLS: Anthropic.Tool[] = [
   { name: "search_projects", description: "Find projects (whole buildings or developments) by name, address, city, neighborhood or developer.", input_schema: { type: "object", properties: { q: { type: "string" } } } },
   { name: "get_project", description: "One project with its apartments.", input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } },
   { name: "search_companies", description: "Developers, agencies, law firms and other companies by name or city.", input_schema: { type: "object", properties: { q: { type: "string" } } } },
-  { name: "search_contacts", description: "Buyers, sellers and sales agents by name, email, phone or company. Optional role filter: Buyer, Seller, Sales agent.", input_schema: { type: "object", properties: { q: { type: "string" }, role: { type: "string" } } } },
+  { name: "search_contacts", description: "Buyers, sellers, brokers, developers and attorneys by name, email, phone or company. Optional role filter: Developer (Yazam), Broker, Buyer, Seller, Attorneys, Mortgage Broker.", input_schema: { type: "object", properties: { q: { type: "string" }, role: { type: "string" } } } },
   { name: "get_contact", description: "One contact with what they want (buyers), their company, apartments and deals.", input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } },
   { name: "deals_funnel", description: "The deals pipeline: every deal by stage (Lead, Viewing Scheduled, Offer Made, Negotiation, Under Contract, Closed, Lost) with apartment, buyer, agent and price. Optional stage filter.", input_schema: { type: "object", properties: { stage: { type: "string" } } } },
   { name: "match_buyers", description: "Buyers whose budget and wanted cities fit an apartment (by apartment id).", input_schema: { type: "object", properties: { apartmentId: { type: "string" } }, required: ["apartmentId"] } },
@@ -77,7 +77,7 @@ export async function runIl(name: string, input: Record<string, unknown>): Promi
     }
     case "search_companies": {
       const rows = await prisma.ilCompany.findMany({ where: q ? { OR: [{ name: { contains: q, mode: ci } }, { city: { contains: q, mode: ci } }] } : {}, include: { _count: { select: { contacts: true, apartments: true, projects: true } } }, take: 25 });
-      return rows.map((c) => ({ id: c.id, link: `/israel/companies/${c.id}`, name: c.name, kind: c.kind, city: c.city, phone: c.phone, website: c.website, contacts: c._count.contacts, apartments: c._count.apartments, projects: c._count.projects }));
+      return rows.map((c) => ({ id: c.id, link: `/israel/companies/${c.id}`, name: c.name, roles: JSON.parse(c.roles || "[]"), city: c.city, phone: c.phone, website: c.website, contacts: c._count.contacts, apartments: c._count.apartments, projects: c._count.projects }));
     }
     case "search_contacts": {
       const role = typeof input.role === "string" ? input.role : "";

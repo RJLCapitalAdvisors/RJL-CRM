@@ -4,8 +4,34 @@
  * conventions apply.
  */
 
-export const IL_ROLES = ["Buyer", "Seller", "Sales agent"] as const;
-export const IL_COMPANY_KINDS = ["Developer", "Agency", "Law firm", "Mortgage", "Other"] as const;
+/** Roles, the same word as in RJL Capital Advisors. A company's roles flow to its contacts; Seller is a person-only role. */
+export const IL_COMPANY_ROLES = ["Developer (Yazam)", "Broker", "Buyer", "Attorneys", "Mortgage Broker", "Other"] as const;
+export const IL_ROLES = [...IL_COMPANY_ROLES, "Seller"] as const;
+export function ilRoleColor(role: string): string {
+  switch (role) {
+    case "Developer (Yazam)":
+      return "bg-ink text-white";
+    case "Broker":
+      return "bg-stone-200 text-ink";
+    case "Buyer":
+      return "bg-sky text-ink";
+    case "Seller":
+      return "bg-sky/50 text-ink";
+    case "Attorneys":
+      return "bg-amber-200 text-ink";
+    case "Mortgage Broker":
+      return "bg-emerald-200 text-ink";
+    default:
+      return "bg-stone-100 text-ink";
+  }
+}
+/** Union of two JSON role lists, in option order. */
+export const mergeIlRoles = (a: string | string[] | null | undefined, b: string | string[] | null | undefined) => {
+  const la = Array.isArray(a) ? a : parseJsonList(a ?? "[]");
+  const lb = Array.isArray(b) ? b : parseJsonList(b ?? "[]");
+  const set = new Set([...la, ...lb]);
+  return JSON.stringify((IL_ROLES as readonly string[]).filter((r) => set.has(r)));
+};
 export const IL_DIRECTIONS = ["North", "South", "East", "West"] as const;
 export const IL_PARKING = ["None", "1", "2 - back to back", "2 side by side", "3"] as const;
 export const IL_MACHSAN_LOCATIONS = ["Attached to apartment", "In basement"] as const;

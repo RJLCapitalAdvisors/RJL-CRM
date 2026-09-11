@@ -1,19 +1,33 @@
 "use client";
 
+import { useState } from "react";
 import { AutoSaveForm } from "@/components/autosave-form";
-import { Group, Row, Select, Text } from "@/components/form-rows";
-import { IL_CITIES, IL_COMPANY_KINDS } from "@/lib/israel";
+import { Group, Row, Text } from "@/components/form-rows";
+import { IL_CITIES, IL_COMPANY_ROLES, ilRoleColor, parseJsonList } from "@/lib/israel";
 
-type Co = Partial<{ name: string; kind: string | null; city: string | null; website: string | null; phone: string | null; notes: string | null }>;
+type Co = Partial<{ name: string; roles: string; city: string | null; website: string | null; phone: string | null; notes: string | null }>;
 
+/** Company fields. Roles are tokens: tick what the firm is; they flow to the firm's contacts. */
 export function IlCompanyForm({ c = {}, action, autosave = false, submitLabel = "Create company" }: { c?: Co; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
+  const [roles, setRoles] = useState<string[]>(() => parseJsonList(c.roles ?? "[]"));
+  const toggle = (r: string) => setRoles((cur) => (cur.includes(r) ? cur.filter((x) => x !== r) : [...cur, r]));
   const body = (
     <Group title="Company">
       <Row label="Name">
         <Text name="name" value={c.name} placeholder="Harel Development Ltd." />
       </Row>
-      <Row label="Kind">
-        <Select name="kind" value={c.kind ?? ""} options={IL_COMPANY_KINDS} />
+      <Row label="Roles">
+        <div className="flex flex-wrap gap-1.5 py-1">
+          {IL_COMPANY_ROLES.map((r) => {
+            const on = roles.includes(r);
+            return (
+              <label key={r} className={`chip cursor-pointer text-[11px] ${on ? ilRoleColor(r) : "border border-dashed border-line bg-transparent text-muted hover:text-ink"}`}>
+                <input type="checkbox" name="roles" value={r} checked={on} onChange={() => toggle(r)} className="sr-only" />
+                {r}
+              </label>
+            );
+          })}
+        </div>
       </Row>
       <Row label="City">
         <input name="city" defaultValue={c.city ?? ""} className="input" list="il-cities-co" />

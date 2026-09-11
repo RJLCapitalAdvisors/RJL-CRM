@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { ilFullName, parseJsonList } from "@/lib/israel";
 
-/** Dropdown choices for a deal: apartments in the list, contacts marked Buyer, contacts marked Sales agent. */
+/** Dropdown choices for a deal: apartments in the list, contacts marked Buyer, contacts marked Broker. */
 export async function dealOptions() {
   const [apartments, people] = await Promise.all([
     prisma.ilApartment.findMany({ where: { pendingApproval: false }, orderBy: { name: "asc" }, select: { id: true, name: true, city: true } }),
@@ -11,6 +11,6 @@ export async function dealOptions() {
   return {
     apartments: apartments.map((a) => ({ id: a.id, label: a.city ? `${a.name} · ${a.city}` : a.name })),
     buyers: people.filter((p) => parseJsonList(p.roles).includes("Buyer")).map((p) => ({ id: p.id, label: label(p) })),
-    agents: people.filter((p) => parseJsonList(p.roles).includes("Sales agent")).map((p) => ({ id: p.id, label: label(p) })),
+    agents: people.filter((p) => parseJsonList(p.roles).includes("Broker")).map((p) => ({ id: p.id, label: label(p) })),
   };
 }
