@@ -3,11 +3,12 @@
 import { RangeSlider } from "@/components/range-slider";
 import { MultiSelect } from "@/components/multi-select";
 import type { Stop } from "@/lib/ranges";
-import { IL_DIRECTIONS, IL_PARKING, IL_SELLER_TYPES } from "@/lib/israel";
+import { IL_DIRECTIONS, IL_HOUSE_TYPES, IL_PARKING, IL_SELLER_TYPES } from "@/lib/israel";
 import { CEILING_STOPS, MIRPESET_STOPS, ROOMS_STOPS, YEAR_STOPS } from "../apartments/filters";
 
 export type HouseFilters = {
   q: string;
+  houseTypes: string[];
   cities: string[];
   neighborhoods: string[];
   sqmMin: number | null;
@@ -62,6 +63,10 @@ export function HouseFiltersPanel({ f, cities, neighborhoods, total, compare }: 
       </div>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
       <input name="q" defaultValue={f.q} placeholder="Search name, address, neighborhood, developer" className="input" />
+      <div>
+        <div className="label">House type</div>
+        <MultiSelect name="houseType" options={IL_HOUSE_TYPES} selected={f.houseTypes} placeholder="Villa, semi-attached or cottage" />
+      </div>
       <div>
         <div className="label">City</div>
         <MultiSelect name="city" options={cities} selected={f.cities} placeholder="Any city" />

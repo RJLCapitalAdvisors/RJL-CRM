@@ -797,6 +797,7 @@ model IlSyncState {
 model IlHouse {
   id              String    @id @default(cuid())
   name            String
+  houseType       String?   // Villa, Semi-attached, Cottage
   city            String?
   neighborhood    String?
   street          String?

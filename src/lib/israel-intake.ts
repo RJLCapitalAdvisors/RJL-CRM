@@ -40,6 +40,7 @@ const Apartment = z.object({
   ceilingCm: z.number().nullish().default(null).describe("Ceiling height; for a house or a duplex, the main level"),
   levels: z.number().nullish().default(null).describe("Apartments only: floors inside the apartment, 1, 2 (duplex) or 3 (triplex)"),
   floors: z.number().nullish().default(null).describe("Houses only: how many floors (miflasim)"),
+  houseType: z.enum(["Villa", "Semi-attached", "Cottage"]).nullish().default(null).describe("Houses only: וילה Villa, דו משפחתי Semi-attached, קוטג' Cottage; null when not stated"),
   ceilingCms: z.array(z.number()).default([]).describe("One ceiling height per floor or level, ground first, when the listing gives them; empty otherwise"),
   migrashSqm: z.number().nullish().default(null).describe("Houses only: the plot (migrash) in m²; a dunam is 1,000 m²"),
   machsanSqm: z.number().nullish().default(null),
@@ -163,6 +164,7 @@ function conditionalMissing(a: ExtractedApartment): string[] {
   return out;
 }
 const REQUIRED_HOUSE: { key: keyof ExtractedApartment; label: string }[] = [
+  { key: "houseType", label: "House type (villa, semi-attached or cottage)" },
   { key: "street", label: "Address" },
   { key: "city", label: "City" },
   { key: "neighborhood", label: "Neighborhood" },
@@ -258,6 +260,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
       const house = await prisma.ilHouse.create({
         data: {
           name: stripDashes(a.name) || a.street || "House",
+          houseType: a.houseType,
           street: a.street,
           city: a.city,
           neighborhood: a.neighborhood,

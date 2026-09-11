@@ -24,7 +24,7 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
     prisma.ilHouse.findUnique({
       where: { id },
       select: {
-        id: true, name: true, street: true, city: true, neighborhood: true, rooms: true, floors: true, ceilingCms: true, completionDate: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpesetDirection: true, mirpasot: true, migrashSqm: true, parkingSpots: true, sellerType: true, renovationYear: true, mamad: true, priceNis: true, description: true,
+        id: true, name: true, houseType: true, street: true, city: true, neighborhood: true, rooms: true, floors: true, ceilingCms: true, completionDate: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpesetDirection: true, mirpasot: true, migrashSqm: true, parkingSpots: true, sellerType: true, renovationYear: true, mamad: true, priceNis: true, description: true,
         pendingApproval: true, source: true, floorplanType: true, floorplanName: true, updatedAt: true, developerId: true, agentContactId: true, sellerContactId: true,
         developer: { select: { id: true, name: true, roles: true, city: true, phone: true } },
         agent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } },

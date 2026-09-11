@@ -5,11 +5,11 @@ import { AutoSaveForm } from "@/components/autosave-form";
 import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
 import { MirpasotFields } from "@/components/mirpasot-fields";
-import { ACRES_PER_SQM, IL_CITIES, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, parseMirpasot, pricePerMeter, sqft, usdFmt, usdPerSqft } from "@/lib/israel";
+import { ACRES_PER_SQM, IL_CITIES, IL_HOUSE_TYPES, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, parseMirpasot, pricePerMeter, sqft, usdFmt, usdPerSqft } from "@/lib/israel";
 import type { FxRate } from "@/lib/fx";
 
 export type IlHouseForm = Partial<{
-  name: string; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; floors: number | null; ceilingCms: string | null; completionDate: string | null;
+  name: string; houseType: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; floors: number | null; ceilingCms: string | null; completionDate: string | null;
   internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpesetDirection: string | null; mirpasot: string | null; migrashSqm: number | null; parkingSpots: string | null; mamad: boolean; priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null;
 }>;
 
@@ -47,6 +47,9 @@ export function HouseForm({ h = {}, fx, action, autosave = false, submitLabel = 
       <Group title="House">
         <Row label="Name">
           <Text name="name" value={h.name} placeholder="Katamon cottage, HaPalmach 8" />
+        </Row>
+        <Row label="House type">
+          <Select name="houseType" value={h.houseType ?? ""} options={IL_HOUSE_TYPES} />
         </Row>
         <Row label="City">
           <input name="city" defaultValue={h.city ?? ""} className="input" list="il-cities-house" />

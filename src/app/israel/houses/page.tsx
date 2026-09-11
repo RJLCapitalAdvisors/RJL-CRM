@@ -27,6 +27,7 @@ export default async function HousesPage({ searchParams }: { searchParams: Promi
   const sp = await searchParams;
   const f: HouseFilters = {
     q: str(sp.q).trim(),
+    houseTypes: list(sp.houseType),
     cities: list(sp.city),
     neighborhoods: list(sp.neighborhood),
     sqmMin: num(sp.sqmMin),
@@ -70,6 +71,7 @@ export default async function HousesPage({ searchParams }: { searchParams: Promi
   const q = f.q.toLowerCase();
   const rows = all.filter((h) => {
     if (q && !`${h.name} ${h.street ?? ""} ${h.neighborhood ?? ""} ${h.city ?? ""} ${h.developer?.name ?? ""}`.toLowerCase().includes(q)) return false;
+    if (f.houseTypes.length && !f.houseTypes.includes(h.houseType ?? "")) return false;
     if (f.cities.length && !f.cities.includes(h.city ?? "")) return false;
     if (f.neighborhoods.length && !f.neighborhoods.includes(h.neighborhood ?? "")) return false;
     if (!inRange(h.internalSqm, f.sqmMin, f.sqmMax, 600)) return false;
@@ -151,6 +153,7 @@ export default async function HousesPage({ searchParams }: { searchParams: Promi
                     <tr>
                       {compare && <th className="w-8"></th>}
                       <th>House</th>
+                      <th>Type</th>
                       <th>Developer</th>
                       <th>City</th>
                       <th className="text-right">Rooms</th>
@@ -179,6 +182,7 @@ export default async function HousesPage({ searchParams }: { searchParams: Promi
                           </Link>
                           {h.street && !h.name.includes(h.street) && <span className="ml-2 text-xs text-muted">{h.street}</span>}
                         </td>
+                        <td className="whitespace-nowrap">{h.houseType ?? <span className="text-muted">—</span>}</td>
                         <td className="max-w-[220px]">
                           {h.developer ? (
                             <Link href={`/israel/companies/${h.developer.id}`} className="flex items-center gap-2 hover:underline">
@@ -210,7 +214,7 @@ export default async function HousesPage({ searchParams }: { searchParams: Promi
                     ))}
                     {pageRows.length === 0 && (
                       <tr>
-                        <td colSpan={compare ? 14 : 13} className="py-10 text-center text-muted">
+                        <td colSpan={compare ? 15 : 14} className="py-10 text-center text-muted">
                           {all.length === 0 ? "No houses yet. New house adds the first ticket." : "No houses match these filters."}
                         </td>
                       </tr>

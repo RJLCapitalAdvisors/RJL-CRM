@@ -71,6 +71,7 @@ export const pricePerMeter = (price: number | null | undefined, internal: number
 export const PRICE_PER_METER_NOTE = "asking price ÷ (internal m² + ⅓ of the mirpeset m²)";
 
 export const IL_SUKKA = ["Yes", "Partial", "No"] as const;
+export const IL_HOUSE_TYPES = ["Villa", "Semi-attached", "Cottage"] as const;
 export type Mirpeset = { sqm: number | null; direction: string[]; sukka: string | null };
 /** The mirpasot list stored on a ticket with more than one mirpeset. */
 export const parseMirpasot = (s: string | null | undefined): Mirpeset[] => {
@@ -170,6 +171,7 @@ export function apartmentMissing(a: Record<string, unknown>): string[] {
 
 /** What a complete house ticket carries; the dashboard and the reply list whichever are blank. */
 export const IL_HOUSE_COMPLETE_FIELDS: { key: string; label: string }[] = [
+  { key: "houseType", label: "House type" },
   { key: "street", label: "Address" },
   { key: "city", label: "City" },
   { key: "neighborhood", label: "Neighborhood" },

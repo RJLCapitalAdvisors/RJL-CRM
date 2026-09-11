@@ -113,6 +113,7 @@ function houseData(fd: FormData) {
   const ceilings = ceilingsFrom(fd, floors);
   return {
     name: s(fd, "name") ?? (s(fd, "street") || "House"),
+    houseType: s(fd, "houseType"),
     street: s(fd, "street"),
     city: s(fd, "city"),
     neighborhood: s(fd, "neighborhood"),

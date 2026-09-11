@@ -44,6 +44,7 @@ export default async function CompareHousesPage({ searchParams }: { searchParams
 
   type Row = { label: string; cell: (h: (typeof houses)[number]) => React.ReactNode };
   const rows: Row[] = [
+    { label: "House type", cell: (h) => h.houseType ?? dash },
     { label: "Address", cell: (h) => h.street ?? dash },
     { label: "City", cell: (h) => h.city ?? dash },
     { label: "Neighborhood", cell: (h) => h.neighborhood ?? dash },
