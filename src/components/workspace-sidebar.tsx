@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect } from "react";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare } from "lucide-react";
+import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home } from "lucide-react";
 import { NavLink } from "@/components/nav-link";
 import { DealContextNav } from "@/components/deal-context-nav";
 import { ApartmentContextNav } from "@/components/apartment-context-nav";
@@ -28,6 +28,7 @@ const IL_NAV = [
   { href: "/israel", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/israel/projects", label: "Projects", icon: Building2 },
   { href: "/israel/apartments", label: "Apartments", icon: Building2 },
+  { href: "/israel/houses", label: "Houses", icon: Home },
   { href: "/israel/companies", label: "Companies", icon: Building2 },
   { href: "/israel/contacts", label: "Contacts", icon: Users },
   { href: "/israel/deals", label: "Deals", icon: KanbanSquare },

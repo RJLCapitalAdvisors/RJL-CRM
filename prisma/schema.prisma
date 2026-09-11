@@ -596,6 +596,7 @@ model IlCompany {
   activities IlActivity[]
   contacts   IlContact[]
   apartments IlApartment[]
+  houses     IlHouse[]
   projects   IlProject[]
   ilNotes    IlNote[]
   createdAt  DateTime      @default(now())
@@ -619,6 +620,8 @@ model IlContact {
   company      IlCompany?    @relation(fields: [companyId], references: [id])
   agentOf      IlApartment[] @relation("IlAgent")
   sellerOf     IlApartment[] @relation("IlSeller")
+  houseAgentOf  IlHouse[]    @relation("IlHouseAgent")
+  houseSellerOf IlHouse[]    @relation("IlHouseSeller")
   buyerDeals   IlDeal[]      @relation("IlDealBuyer")
   agentDeals   IlDeal[]      @relation("IlDealAgent")
   ilNotes      IlNote[]
@@ -636,6 +639,8 @@ model IlNote {
   body        String
   apartmentId String?
   apartment   IlApartment? @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  houseId     String?
+  house       IlHouse?     @relation(fields: [houseId], references: [id], onDelete: Cascade)
   contactId   String?
   contact     IlContact?   @relation(fields: [contactId], references: [id], onDelete: Cascade)
   companyId   String?
@@ -782,4 +787,37 @@ model IlActivity {
 model IlSyncState {
   mailbox  String   @id
   syncedAt DateTime
+}
+
+// RJL Israel: a house (cottage, villa) with a plot, its own floors and a ceiling height per floor
+model IlHouse {
+  id              String    @id @default(cuid())
+  name            String
+  city            String?
+  neighborhood    String?
+  street          String?
+  rooms           Float?
+  floors          Int?      // miflasim
+  ceilingCms      String    @default("[]") // JSON list, one entry per floor, ground floor first
+  completionDate  String?
+  internalSqm     Float?
+  mirpesetSqm     Float?
+  migrashSqm      Float?    // the plot
+  parkingSpots    String?
+  sellerType      String?
+  renovationYear  Int?
+  mamad           Boolean   @default(false)
+  priceNis        Float?
+  description     String?
+  developerId     String?
+  developer       IlCompany? @relation(fields: [developerId], references: [id])
+  agentContactId  String?
+  agent           IlContact? @relation("IlHouseAgent", fields: [agentContactId], references: [id])
+  sellerContactId String?
+  seller          IlContact? @relation("IlHouseSeller", fields: [sellerContactId], references: [id])
+  notes           IlNote[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([city])
 }

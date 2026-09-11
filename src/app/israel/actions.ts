@@ -72,17 +72,70 @@ export async function linkApartment(id: string, fd: FormData) {
   revalidatePath(`/israel/apartments/${id}`);
 }
 
+// ---------- houses ----------
+function houseData(fd: FormData) {
+  const floors = i(fd, "floors");
+  // one ceiling height per floor, in the order the form shows them; extra entries from a lowered floor count are dropped
+  const ceilings = fd.getAll("ceilingCm").map((v) => {
+    const x = Number(String(v).replace(/[^0-9.]/g, ""));
+    return String(v).trim() && !isNaN(x) ? x : "";
+  });
+  return {
+    name: s(fd, "name") ?? (s(fd, "street") || "House"),
+    street: s(fd, "street"),
+    city: s(fd, "city"),
+    neighborhood: s(fd, "neighborhood"),
+    rooms: n(fd, "rooms"),
+    floors,
+    ceilingCms: JSON.stringify(floors ? ceilings.slice(0, Math.max(0, floors)) : ceilings),
+    completionDate: s(fd, "completionDate"),
+    internalSqm: n(fd, "internalSqm"),
+    mirpesetSqm: n(fd, "mirpesetSqm"),
+    migrashSqm: n(fd, "migrashSqm"),
+    parkingSpots: s(fd, "parkingSpots"),
+    sellerType: s(fd, "sellerType"),
+    renovationYear: s(fd, "sellerType")?.startsWith("Second hand") ? i(fd, "renovationYear") : null,
+    mamad: yesNo(fd, "mamad") ?? false,
+    priceNis: n(fd, "priceNis"),
+    description: s(fd, "description"),
+  };
+}
+export async function createHouse(fd: FormData) {
+  const h = await prisma.ilHouse.create({ data: houseData(fd) });
+  revalidatePath("/israel/houses");
+  redirect(`/israel/houses/${h.id}`);
+}
+export async function updateHouse(id: string, fd: FormData) {
+  await prisma.ilHouse.update({ where: { id }, data: houseData(fd) });
+  revalidatePath(`/israel/houses/${id}`);
+  revalidatePath("/israel/houses");
+}
+export async function linkHouse(id: string, fd: FormData) {
+  const data: { developerId?: string | null; agentContactId?: string | null; sellerContactId?: string | null } = {};
+  if (fd.has("developerId")) data.developerId = s(fd, "developerId");
+  if (fd.has("agentContactId")) data.agentContactId = s(fd, "agentContactId");
+  if (fd.has("sellerContactId")) data.sellerContactId = s(fd, "sellerContactId");
+  await prisma.ilHouse.update({ where: { id }, data });
+  revalidatePath(`/israel/houses/${id}`);
+}
+export async function deleteHouse(id: string) {
+  await prisma.ilHouse.delete({ where: { id } });
+  revalidatePath("/israel/houses");
+  redirect("/israel/houses");
+}
+
 export async function deleteApartment(id: string) {
   await prisma.ilApartment.delete({ where: { id } });
   revalidatePath("/israel/apartments");
   redirect("/israel/apartments");
 }
 
-export async function addIlNote(target: { apartmentId?: string; contactId?: string; companyId?: string; dealId?: string; projectId?: string }, fd: FormData) {
+export async function addIlNote(target: { apartmentId?: string; houseId?: string; contactId?: string; companyId?: string; dealId?: string; projectId?: string }, fd: FormData) {
   const body = s(fd, "body");
   if (!body) return;
   await prisma.ilNote.create({ data: { ...target, body } });
   if (target.apartmentId) revalidatePath(`/israel/apartments/${target.apartmentId}`);
+  if (target.houseId) revalidatePath(`/israel/houses/${target.houseId}`);
   if (target.contactId) revalidatePath(`/israel/contacts/${target.contactId}`);
   if (target.companyId) revalidatePath(`/israel/companies/${target.companyId}`);
   if (target.dealId) revalidatePath(`/israel/deals/${target.dealId}`);

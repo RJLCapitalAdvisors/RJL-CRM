@@ -46,6 +46,7 @@ export const usdPerSqft = (priceNis: number | null | undefined, internal: number
 export const IL_CITIES = ["Jerusalem", "Tel Aviv", "Herzliya", "Ra'anana", "Netanya", "Modi'in", "Beit Shemesh", "Ramat Gan", "Givatayim", "Haifa", "Ashdod", "Ashkelon", "Petah Tikva", "Rehovot", "Efrat", "Ma'ale Adumim"] as const;
 
 export const SQFT_PER_SQM = 10.7639;
+export const ACRES_PER_SQM = 1 / 4046.8564; // a dunam is 1,000 m²
 export const CM_PER_FOOT = 30.48;
 
 export const nis = (n: number | null | undefined) => (n == null ? "" : `₪${Math.round(n).toLocaleString("en-US")}`);
