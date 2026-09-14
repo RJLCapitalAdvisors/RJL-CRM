@@ -52,6 +52,10 @@ body {
   .act {
     @apply w-full justify-center whitespace-nowrap px-2 py-1.5 text-xs;
   }
+  /* Mark as deal lost: quiet red italic text in the same slot as the buttons above it */
+  .act-lost {
+    @apply w-full whitespace-nowrap py-1 text-center text-xs italic text-red-600/70 hover:text-red-700 hover:underline;
+  }
   .act-col {
     @apply flex w-[128px] shrink-0 flex-col gap-1 self-center;
   }

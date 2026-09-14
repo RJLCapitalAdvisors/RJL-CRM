@@ -222,7 +222,7 @@ export default async function Dashboard() {
                       </button>
                     </form>
                     <form action={markDealLostFromLaunchAction.bind(null, r.id)}>
-                      <button type="submit" className="btn-danger act" title="Clears the deal from the pipeline and the dashboard (intros to reconsider stay)">
+                      <button type="submit" className="act-lost" title="Clears the deal from the pipeline and the dashboard (intros to reconsider stay)">
                         Mark as deal lost
                       </button>
                     </form>
@@ -248,7 +248,7 @@ export default async function Dashboard() {
                     Send deal
                   </Link>
                   <form action={markDealLostFromLaunchAction.bind(null, d.id)}>
-                    <button type="submit" className="btn-danger act" title="Clears the deal from the pipeline and the dashboard (intros to reconsider stay)">
+                    <button type="submit" className="act-lost" title="Clears the deal from the pipeline and the dashboard (intros to reconsider stay)">
                       Mark as deal lost
                     </button>
                   </form>
@@ -322,7 +322,7 @@ export default async function Dashboard() {
                       </button>
                     </form>
                     <form action={markDealLostAction.bind(null, d.id)}>
-                      <button className="btn-danger act" type="submit" title="Move to Deal Lost; it leaves Deal momentum and LP follow-ups">
+                      <button className="act-lost" type="submit" title="Move to Deal Lost; it leaves Deal momentum and LP follow-ups">
                         Mark as deal lost
                       </button>
                     </form>
