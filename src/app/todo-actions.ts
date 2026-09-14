@@ -100,7 +100,8 @@ async function openMomentumDraftInner(momentumId: string) {
       const lp = m.lastMessageId ? await findMessageCopy(m.lastMessageId, me.email).catch(() => null) : null;
       const lpText = lp ? lpOwnWords(lp.body) : "";
       const lpWhen = lp?.receivedDateTime ? new Date(lp.receivedDateTime).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
-      const lpFrom = lp?.from?.emailAddress?.name || lp?.from?.emailAddress?.address || m.party;
+      // the quote is attributed to the firm, never to the individual (their name and signature stay out of the sponsor's inbox)
+      const lpFrom = m.party.replace(/\s*\([^)]*\)\s*$/, "");
       const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const opening = `Hi${firstName ? ` ${firstName}` : ""} - please also see the below requests from ${m.party} on ${dealName}:`;
       const closing = "Could you send these over when you get a chance and I will pass them along.";

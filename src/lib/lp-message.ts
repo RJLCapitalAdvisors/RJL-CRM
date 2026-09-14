@@ -35,9 +35,27 @@ export function lpOwnWords(html: string): string {
     .replace(/[ \t]+/g, " ")
     .replace(/\n\s*\n\s*\n+/g, "\n\n")
     .trim();
-  const cut = text.split(/\n\s*(?:From:|-----Original Message-----|On .{5,80} wrote:|Sent from my)/i)[0];
-  // drop a trailing signature: from the sign-off line on
-  const lines = cut.split("\n");
-  const signOff = lines.findIndex((l, i) => i > 0 && /^(thanks|thank you|best|regards|cheers|sincerely|talk soon)[\s,!.]*$/i.test(l.trim()));
-  return (signOff > 0 ? lines.slice(0, signOff) : lines).join("\n").trim().slice(0, 4000);
+  const cut = text.split(/\n\s*(?:From:|-----Original Message-----|On .{5,80} wrote:|Sent from my|Get Outlook for)/i)[0];
+  // drop a trailing signature: from the sign-off line on ("Thanks," "Best regards, Jim")
+  const lines = cut.split("\n").map((l) => l.trim());
+  const SIGN_OFF = /^(thanks|thank you|thanks so much|thanks again|many thanks|thx|best|best regards|kind regards|warm regards|warmest|regards|cheers|sincerely|talk soon|take care|all the best|appreciate it)[\s,!.]*(?:[A-Z][a-z]+\.?){0,2}$/i;
+  const signOff = lines.findIndex((l, i) => i > 0 && SIGN_OFF.test(l));
+  const kept = signOff > 0 ? lines.slice(0, signOff) : lines;
+  // then whatever signature lines are left at the bottom: phone, email, links, titles, firm names, a bare name
+  const SIG_LINE = /(\d{3}[).\-\s]\s?\d{3}[.\-\s]\d{4}|@\w|https?:\/\/|www\.|\b(ceo|cfo|coo|cio|president|vice president|vp|managing director|managing partner|director|principal|partner|founder|associate|analyst|manager|head of|chief|executive|officer|senior|sr\.|jr\.)\b|\b(llc|inc\.?|l\.?p\.?|ltd\.?|capital|partners|group|advisors|investments|equity|management|holdings|realty|properties)\s*$|^[|•·]|\b(o|m|c|t|p|f|e|mobile|cell|office|phone|tel|fax|email)\s*[:.]\s)/i;
+  const NAME_LINE = /^(?:[A-Z][\w'’.-]+\s?){1,4}$/;
+  let end = kept.length;
+  while (end > 1 && kept[end - 1] === "") end--;
+  let stripped = false;
+  while (end > 1) {
+    const l = kept[end - 1];
+    if (l === "" || SIG_LINE.test(l) || (NAME_LINE.test(l) && l.split(/\s+/).length <= 4)) {
+      end--;
+      stripped = stripped || l !== "";
+      continue;
+    }
+    break;
+  }
+  void stripped;
+  return kept.slice(0, end).join("\n").trim().slice(0, 4000);
 }
