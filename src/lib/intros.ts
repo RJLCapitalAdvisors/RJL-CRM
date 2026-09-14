@@ -104,47 +104,50 @@ export async function quietIntros(since = new Date(Date.now() - INTRO_WINDOW_DAY
   const cutoff = new Date(Date.now() - QUIET_INTRO_DAYS * DAY);
   const unanswered = new Date(Date.now() - UNANSWERED_INTRO_DAYS * DAY);
   const rows = await prisma.intro.findMany({ where: { status: "OPEN", lastActivityAt: { gte: since }, OR: [{ lastActivityAt: { lt: cutoff } }, { replies: 0, introducedAt: { lt: unanswered } }] }, orderBy: { lastActivityAt: "desc" } });
+  if (!rows.length) return [];
+  const recipsOf = (r: (typeof rows)[number]) => (JSON.parse(r.recipients || "[]") as string[]).map((x) => x.toLowerCase());
+  const outside = (emails: string[]) => [...new Set(emails.map((e) => e.split("@")[1]).filter((d): d is string => Boolean(d) && !/rjlcapadvisors|rjlequities/i.test(d)))];
+
+  // Three queries for the whole list instead of three per intro (the page renders this on every load).
+  // 1) traction: the two sides of an intro now share a live deal (one side sponsors it, the other is on its report at Taking a look or better)
+  const allDomains = [...new Set(rows.flatMap((r) => outside(recipsOf(r))))];
+  const companies = allDomains.length ? await prisma.company.findMany({ where: { domain: { in: allDomains } }, select: { id: true, domain: true } }) : [];
+  const idByDomain = new Map(companies.map((c) => [c.domain!, c.id]));
+  const ids = companies.map((c) => c.id);
+  const pairs = ids.length >= 2 ? await prisma.dealInvestor.findMany({ where: { status: { gte: 4 }, deal: { stage: { notIn: ["Deal Lost", "Deal Closed"] }, sponsorCompanyId: { in: ids } }, contact: { companyId: { in: ids } } }, select: { deal: { select: { sponsorCompanyId: true } }, contact: { select: { companyId: true } } } }) : [];
+  const pairSet = new Set(pairs.filter((x) => x.deal.sponsorCompanyId && x.contact.companyId && x.deal.sponsorCompanyId !== x.contact.companyId).map((x) => `${x.deal.sponsorCompanyId}|${x.contact.companyId}`));
+  const hasTraction = (recips: string[]) => {
+    const cids = outside(recips).map((d) => idByDomain.get(d)).filter((x): x is string => Boolean(x));
+    return cids.some((a) => cids.some((b) => a !== b && pairSet.has(`${a}|${b}`)));
+  };
+  // 2) handled intros: any outbound email in the log to one of the parties since the click
+  const handled = rows.filter((r) => r.handledAt);
+  const handledEmails = [...new Set(handled.flatMap(recipsOf))];
+  const earliest = handled.length ? new Date(Math.min(...handled.map((r) => r.handledAt!.getTime()))) : null;
+  const acts = handledEmails.length && earliest ? await prisma.activity.findMany({ where: { type: "EMAIL", direction: "OUTBOUND", occurredAt: { gt: earliest }, contact: { email: { in: handledEmails } } }, select: { occurredAt: true, contact: { select: { email: true } } } }) : [];
+
+  const updates: Promise<unknown>[] = [];
   const seen = new Map<string, (typeof rows)[number]>();
   for (const r of rows) {
-    const recips = (JSON.parse(r.recipients || "[]") as string[]).map((x) => x.toLowerCase());
-    // traction: the two sides of the intro are now on a live deal together (sponsor and an LP taking a look or further). Retired for good.
-    if (await introHasTraction(recips)) {
-      await prisma.intro.update({ where: { id: r.id }, data: { status: "DONE" } }).catch(() => null);
+    const recips = recipsOf(r);
+    if (hasTraction(recips)) {
+      updates.push(prisma.intro.update({ where: { id: r.id }, data: { status: "DONE" } }).catch(() => null));
       continue;
     }
     if (r.handledAt) {
-      const logged = recips.length
-        ? await prisma.activity.findFirst({ where: { type: "EMAIL", direction: "OUTBOUND", occurredAt: { gt: r.handledAt }, contact: { email: { in: recips } } }, select: { occurredAt: true } })
-        : null;
       // the email log only here; Sent Items is checked in the background (dashboard-refresh.ts), never in the render
-      const sentAt: Date | null = logged?.occurredAt ?? null;
+      const sentAt = acts.filter((a) => a.contact?.email && recips.includes(a.contact.email.toLowerCase()) && a.occurredAt > r.handledAt!).map((a) => a.occurredAt).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
       if (sentAt) {
         // the thread moved: quiet clock restarts from the reply, and the intro comes back only after QUIET_INTRO_DAYS of silence
-        await prisma.intro.update({ where: { id: r.id }, data: { lastActivityAt: sentAt, replies: { increment: 1 }, handledAt: null } }).catch(() => null);
+        updates.push(prisma.intro.update({ where: { id: r.id }, data: { lastActivityAt: sentAt, replies: { increment: 1 }, handledAt: null } }).catch(() => null));
         continue;
       }
     }
-    const key = r.subject.toLowerCase().replace(/^s*intros*[-:–—]?s*/, "").replace(/s+/g, " ").trim();
+    const key = r.subject.toLowerCase().replace(/^\s*intro\s*[-:–—]?\s*/, "").replace(/\s+/g, " ").trim();
     if (!seen.has(key)) seen.set(key, r);
   }
+  await Promise.all(updates);
   return [...seen.values()];
 }
 
 
-/**
- * An intro has traction when the people on it are now on a live deal together: one recipient's firm sponsors an
- * active deal and someone at another recipient's firm sits on that deal's progress report at Taking a look or
- * better. Such an intro never comes back to the dashboard.
- */
-async function introHasTraction(recipients: string[]): Promise<boolean> {
-  const domains = [...new Set(recipients.map((e) => e.split("@")[1]).filter((d): d is string => Boolean(d) && !/rjlcapadvisors|rjlequities/i.test(d)))];
-  if (domains.length < 2) return false;
-  const companies = await prisma.company.findMany({ where: { domain: { in: domains } }, select: { id: true, domain: true } });
-  if (companies.length < 2) return false;
-  const ids = companies.map((c) => c.id);
-  const hit = await prisma.dealInvestor.findFirst({
-    where: { status: { gte: 4 }, deal: { stage: { notIn: ["Deal Lost", "Deal Closed"] }, sponsorCompanyId: { in: ids } }, contact: { companyId: { in: ids } } },
-    select: { id: true, deal: { select: { sponsorCompanyId: true } }, contact: { select: { companyId: true } } },
-  });
-  return Boolean(hit && hit.deal.sponsorCompanyId !== hit.contact.companyId);
-}
