@@ -6,16 +6,18 @@ import { AttachmentList } from "@/components/attachment-list";
 import { progressReportFileName } from "@/lib/progress-report-pdf";
 import { ReportView } from "@/components/report-view";
 import { AWAITING_RESPONSE, TRACKER_STATUSES, fmtReportDate } from "@/lib/tracker";
+import { GrowingTextarea } from "@/components/growing-textarea";
+import { DraftButton } from "@/app/draft-button";
+import { openReportDraftAction } from "@/app/todo-actions";
 import { AutoSaveForm } from "@/components/autosave-form";
 import { str } from "@/lib/format";
 import { loadReport } from "@/lib/tracker-report";
 import { syncSendDrafts } from "@/lib/send-deal";
 import { signContactToken, signFileToken } from "@/lib/tokens";
 import { missingFor, itemLabel } from "@/lib/checklist";
-import { createFollowUpCampaign, regenerateTrackerSummary, removeTrackerRow, saveTrackerMeta , refreshResponsesAction } from "./actions";
+import { removeTrackerRow, saveTrackerMeta } from "./actions";
 import { NoteCell, StatusBadge } from "./tracker-row";
 import { TrackerContactPicker } from "./contact-picker";
-import { CopyLink } from "./copy-link";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,10 +32,7 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
   await syncSendDrafts().catch(() => 0); // a deal email sent from Outlook (Send deal, Send to one person) shows as Deal Sent here right away
   const sp = await searchParams;
   const statusFilter = Number(str(sp.status)) || 0;
-  const [report, followUpTemplates] = await Promise.all([
-    loadReport(id),
-    prisma.emailTemplate.findMany({ where: { kind: "DEAL", name: { contains: "Follow-up" } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-  ]);
+  const report = await loadReport(id);
   if (!report) notFound();
   const { deal, name, lastUpdated } = report;
   const awaiting = deal.investors.filter((r) => AWAITING_RESPONSE.includes(r.status) && r.contact.email && !r.contact.unsubscribed).length;
@@ -54,24 +53,10 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
             <Link href={`/deals/${deal.id}`} className="btn-secondary">
               Back to deal
             </Link>
-            <CopyLink url={shareUrl} />
             <a href={shareUrl} target="_blank" className="btn-secondary" title="What the sponsor sees. Print from there to save a PDF.">
               Sponsor view / PDF
             </a>
-            <form id="followup" action={createFollowUpCampaign.bind(null, deal.id)} className="flex items-center gap-1">
-              {followUpTemplates.length > 1 && (
-                <select name="templateId" className="input w-56 text-xs" defaultValue={followUpTemplates[0]?.id}>
-                  {followUpTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <button className="btn-primary" type="submit" disabled={awaiting === 0} title={awaiting === 0 ? "Nobody is waiting on a response" : "One-at-a-time follow-up queue for everyone in Deal Sent / Followed Up"}>
-                Follow up with {awaiting} not responded
-              </button>
-            </form>
+            <DraftButton label="Send to sponsor" action={openReportDraftAction.bind(null, deal.id)} title="Reply all on your latest exchange with the sponsor, today's progress report attached" />
           </>
         }
       />
@@ -84,16 +69,6 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
             Download PDF
           </a>
         </div>
-        <form action={refreshResponsesAction.bind(null, deal.id)}>
-          <button className="btn-secondary" type="submit" title="Re-reads every team mailbox for these firms: new replies update statuses and notes here and LP requests on the Dashboard. Takes a minute.">
-            Refresh responses
-          </button>
-        </form>
-        <form action={regenerateTrackerSummary.bind(null, deal.id)}>
-          <button className="btn-secondary" type="submit" title="Rewrites the feedback themes and items needed from the notes below. Also happens on its own whenever you save a note.">
-            Rewrite from notes
-          </button>
-        </form>
         <div className="ml-auto flex flex-wrap items-center gap-1.5 text-xs">
           <span className="text-muted">Show</span>
           <Link href={`/deals/${deal.id}/tracker`} className={`rounded-full border px-2.5 py-0.5 ${statusFilter === 0 ? "border-ink bg-ink text-white" : "border-line text-muted hover:bg-cream"}`}>
@@ -122,11 +97,11 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
                 <div className="grid gap-3 md:grid-cols-2" style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>
                   <div>
                     <div className="text-[13pt] font-bold">Notable Feedback Themes</div>
-                    <textarea name="trackerThemes" rows={5} defaultValue={deal.trackerThemes ?? ""} className="input mt-1 text-[10.5pt]" placeholder="One theme per line. Rewritten from the notes automatically; edit freely." />
+                    <GrowingTextarea name="trackerThemes" defaultValue={deal.trackerThemes} minRows={3} className="mt-1 text-[10.5pt]" placeholder="One theme per line. Written from the notes on its own; type here to change it." />
                   </div>
                   <div>
                     <div className="text-[13pt] font-bold">Items Needed from Sponsor</div>
-                    <textarea name="trackerItemsNote" rows={5} defaultValue={deal.trackerItemsNote ?? ""} className="input mt-1 text-[10.5pt]" placeholder="One item per line." />
+                    <GrowingTextarea name="trackerItemsNote" defaultValue={deal.trackerItemsNote} minRows={3} className="mt-1 text-[10.5pt]" placeholder="One item per line." />
                     {checklistGaps.length > 0 && <div className="mt-1 text-[9pt] text-muted">Still blank on the ticket: {checklistGaps.join(", ")}</div>}
                   </div>
                 </div>
