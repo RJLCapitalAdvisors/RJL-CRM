@@ -57,6 +57,7 @@ export type GraphMessage = {
   hasAttachments?: boolean;
   webLink?: string;
   internetMessageId?: string;
+  lastModifiedDateTime?: string;
   body?: { contentType: "html" | "text"; content: string };
   from?: { emailAddress: { address: string; name?: string } };
   toRecipients?: { emailAddress: { address: string; name?: string } }[];

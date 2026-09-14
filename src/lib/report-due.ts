@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { addAttachment, createDraft, createReplyAllDraft, getMessage, graphConfigured, outlookDesktopLink, sentMessagesTo, updateDraftBody } from "@/lib/graph";
+import { addAttachment, createDraft, createReplyAllDraft, getMessage, graph, graphConfigured, listAttachments, outlookDesktopLink, sentMessagesTo, updateDraftBody } from "@/lib/graph";
 import { signatureFor, type FollowUpResult } from "@/lib/followup";
 import { sponsorContactsFor } from "@/lib/engagement";
 import { sponsorThreadFor } from "@/lib/sponsor-thread";
@@ -87,10 +87,25 @@ export async function openReportDraft(dealId: string, mailbox: string): Promise<
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { sponsorCompany: { select: { domain: true } } } });
   if (!deal) return { ok: false, reason: "Deal not found." };
   const dealName = deal.propertyName ?? deal.name;
-  // an unsent draft from an earlier click: reopen it
+  // an unsent draft from an earlier click: reopen it, with the report brought up to date when it moved since
   if (deal.reportDraftId && deal.reportDraftMailbox) {
-    const d = await getMessage(deal.reportDraftMailbox, deal.reportDraftId, "id,isDraft,webLink,internetMessageId").catch(() => null);
-    if (d?.isDraft) return { ok: true, webLink: d.webLink ?? "", outlookLink: await outlookDesktopLink(deal.reportDraftMailbox, d.id), messageId: d.internetMessageId ?? null, mode: "replyAll", attachments: 1 };
+    const box = deal.reportDraftMailbox;
+    const d = await getMessage(box, deal.reportDraftId, "id,isDraft,webLink,internetMessageId,lastModifiedDateTime").catch(() => null);
+    if (d?.isDraft) {
+      const changed = await prisma.dealInvestor.aggregate({ where: { dealId }, _max: { updatedAt: true } });
+      const draftAt = d.lastModifiedDateTime ? new Date(d.lastModifiedDateTime) : deal.reportDraftAt;
+      if (changed._max.updatedAt && draftAt && changed._max.updatedAt > draftAt) {
+        const pdf = await buildProgressReportPdf(dealId);
+        if (pdf) {
+          // swap the stale report for today's; the draft, its recipients and its thread stay as they are
+          const atts = await listAttachments(box, d.id).catch(() => []);
+          for (const a of atts) if (/progress report/i.test(a.name) && /\.pdf$/i.test(a.name)) await graph(`/users/${encodeURIComponent(box)}/messages/${encodeURIComponent(d.id)}/attachments/${encodeURIComponent(a.id)}`, { method: "DELETE" }).catch(() => null);
+          await addAttachment(box, d.id, { name: pdf.name, contentType: "application/pdf", bytes: pdf.bytes });
+          await prisma.deal.update({ where: { id: dealId }, data: { reportDraftAt: new Date() } });
+        }
+      }
+      return { ok: true, webLink: d.webLink ?? "", outlookLink: await outlookDesktopLink(box, d.id), messageId: d.internetMessageId ?? null, mode: "replyAll", attachments: 1 };
+    }
   }
   const people = await sponsorContactsFor(dealId);
   if (!people.length) return { ok: false, reason: `No sponsor contact with an email on ${dealName}. Link the sponsor company on the ticket.` };
