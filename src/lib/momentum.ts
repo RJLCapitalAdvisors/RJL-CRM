@@ -55,6 +55,23 @@ async function close(dealId: string, kind: string, party: string) {
   await prisma.momentum.updateMany({ where: { dealId, kind, party, status: "OPEN" }, data: { status: "DONE" } });
 }
 
+/** The asks an LP_ASK item carries: outstanding ones, and the ones already answered from the ticket. */
+export function parseAsks(summary: string | null): { asks: string[]; answered: string[] } {
+  if (!summary) return { asks: [], answered: [] };
+  const [open, done] = summary.replace(/^.*?asks:\s*/, "").split(" | Already on the ticket:");
+  return { asks: (open ?? "").split(";").map((x) => x.trim()).filter(Boolean), answered: (done ?? "").split(" / ").map((x) => x.trim()).filter(Boolean) };
+}
+/** Earlier open asks plus the new ones (no repeats); an ask now answered from the ticket moves to the answered list. */
+export function mergeAsks(existingSummary: string | null, asks: string[], answered: { ask: string; answer: string }[]): { asks: string[]; answered: string[] } {
+  const prev = parseAsks(existingSummary);
+  const key = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const answeredKeys = new Set(answered.map((a) => key(a.ask)));
+  const out: string[] = [];
+  for (const a of [...prev.asks, ...asks]) if (!answeredKeys.has(key(a)) && !out.some((o) => key(o) === key(a))) out.push(a);
+  const done = [...prev.answered, ...answered.map((x) => `${x.ask} -> ${x.answer.slice(0, 120)}`)].filter((x, i, arr) => arr.findIndex((y) => key(y) === key(x)) === i);
+  return { asks: out, answered: done };
+}
+
 export async function refreshMomentum(): Promise<{ checked: number; open: number }> {
   if (!process.env.ANTHROPIC_API_KEY) return { checked: 0, open: 0 };
   // deals sponsors mentioned in email but never sent become "Deal Mentioned" tickets first
@@ -161,7 +178,12 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
   const { detectLpAsks } = await import("@/lib/lp-asks");
   for (const ask of await detectLpAsks().catch(() => [])) {
     const d = await prisma.deal.findUnique({ where: { id: ask.dealId }, select: { sponsorCompanyId: true, sponsorName: true } });
-    await upsert(ask.dealId, "LP_ASK", ask.lpName, { companyId: d?.sponsorCompanyId ?? null, contactId: ask.contactId, summary: `${ask.lpName} asks: ${ask.asks.join("; ")}${ask.answered.length ? ` | Already on the ticket: ${ask.answered.map((x) => `${x.ask} -> ${x.answer.slice(0, 120)}`).join(" / ")}` : ""}`, waitingSince: ask.at, lastMessageId: ask.messageId });
+    // the firm's earlier asks stay on the list until the sponsor answers them: a scheduling note two days later
+    // ("Tuesday 9:30 works") must not wipe Monday's seven questions
+    const existing = await prisma.momentum.findUnique({ where: { dealId_kind_party: { dealId: ask.dealId, kind: "LP_ASK", party: ask.lpName } }, select: { summary: true, waitingSince: true } });
+    const merged = mergeAsks(existing?.summary ?? null, ask.asks, ask.answered);
+    if (!merged.asks.length && existing) continue; // nothing new asked and nothing outstanding: leave the item as it is
+    await upsert(ask.dealId, "LP_ASK", ask.lpName, { companyId: d?.sponsorCompanyId ?? null, contactId: ask.contactId, summary: `${ask.lpName} asks: ${merged.asks.join("; ")}${merged.answered.length ? ` | Already on the ticket: ${merged.answered.join(" / ")}` : ""}`, waitingSince: ask.at, lastMessageId: ask.messageId });
   }
 
   // 4) open action items older than QUIET_DAYS (Fireflies will feed these once connected)

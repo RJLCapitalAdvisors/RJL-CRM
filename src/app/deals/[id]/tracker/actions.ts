@@ -151,10 +151,12 @@ export async function createFollowUpCampaign(dealId: string, fd: FormData) {
 }
 
 /** Header fields of the progress report: prepared for, feedback themes, extra items needed. */
+/** The editor shows "• " in front of each line; the lines are stored bare. */
+const strip = (v: string | null) => (v ? v.split("\n").map((l) => l.replace(/^\s*[•\-*]\s*/, "").trim()).filter(Boolean).join("\n") || null : null);
 export async function saveTrackerMeta(dealId: string, fd: FormData) {
   await prisma.deal.update({
     where: { id: dealId },
-    data: { trackerPreparedFor: s(fd, "trackerPreparedFor"), trackerThemes: s(fd, "trackerThemes"), trackerItemsNote: s(fd, "trackerItemsNote"), trackerSummaryAt: new Date() },
+    data: { trackerPreparedFor: s(fd, "trackerPreparedFor"), trackerThemes: strip(s(fd, "trackerThemes")), trackerItemsNote: strip(s(fd, "trackerItemsNote")), trackerSummaryAt: new Date() },
   });
   touch(dealId);
   revalidatePath(`/share/tracker`);

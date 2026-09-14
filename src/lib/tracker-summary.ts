@@ -12,19 +12,21 @@ import { investorLabel, statusOf } from "@/lib/tracker";
  */
 const Out = z.object({
   themes: z.array(z.string()).describe('Notable feedback themes, at most 4, each under 15 words, ending with the firm name(s) in parentheses, e.g. "Deal size flagged as too small by more than one group (Slate, Prospect Ridge)". Group similar objections into one theme. Empty if there is no substantive feedback yet.'),
-  items: z.array(z.string()).describe('Items the sponsor still owes, at most 4, each under 12 words, e.g. "Argus model in Argus 14.0 format (Corebridge, MLG Capital)". Taken ONLY from the Open requests list (those are the asks not yet answered); never from the notes, which may mention requests already fulfilled. Empty when the Open requests list is empty.'),
+  items: z.array(z.string()).describe('Items the sponsor still owes, each under 14 words, e.g. "Argus model in Argus 14.0 format (Corebridge, MLG Capital)". Taken ONLY from the Outstanding requests list; never from the notes, which may mention requests already fulfilled. List every outstanding request, grouping the same ask from several firms into one item with the firms in parentheses; when a firm sent a numbered list of questions, each question is its own item. Empty when the list is empty.'),
 });
 
-const SYSTEM = `You maintain investor progress reports for RJL Capital Advisors, a real estate capital advisory firm. You are given the investor rows of one report (firm, status, note). Write the "Notable Feedback Themes" and "Items Needed from Sponsor" sections exactly in the house style: plain, factual, analyst tone, no marketing language, no speculation beyond what the notes say. Themes summarize why groups passed or hesitated and what interested groups are focused on; each ends with the firm(s) in parentheses. Items are concrete deliverables the sponsor still owes (models, rent rolls, calls to schedule, answers to questions), each with the requesting firm(s) in parentheses, and they come only from the Open requests list: a request that appears in a note but not in that list has been dealt with and must not be listed. Skip rows with no note. Do not restate statuses. Be terse: fragments, not full sentences; one clause per theme; never explain or editorialize. Match this register exactly: "Occupancy and asset vintage flagged as a concern (Hamilton Lane)", "Argus model requested by multiple groups (Corebridge, MLG Capital)", "Return underwriting fell short of minimum thresholds for one group (Blue Vista)". Use the firm names as given.`;
+const SYSTEM = `You maintain investor progress reports for RJL Capital Advisors, a real estate capital advisory firm. You are given the investor rows of one report (firm, status, note). Write the "Notable Feedback Themes" and "Items Needed from Sponsor" sections exactly in the house style: plain, factual, analyst tone, no marketing language, no speculation beyond what the notes say. Themes summarize why groups passed or hesitated and what interested groups are focused on; each ends with the firm(s) in parentheses. Items are concrete deliverables the sponsor still owes (models, rent rolls, calls to schedule, answers to questions), each with the requesting firm(s) in parentheses, and they come only from the Outstanding requests list: a request that appears in a note but not in that list has been dealt with and must not be listed. Every outstanding request is listed, one per line. Skip rows with no note. Do not restate statuses. Be terse: fragments, not full sentences; one clause per theme; never explain or editorialize. Match this register exactly: "Occupancy and asset vintage flagged as a concern (Hamilton Lane)", "Argus model requested by multiple groups (Corebridge, MLG Capital)", "Return underwriting fell short of minimum thresholds for one group (Blue Vista)". Use the firm names as given.`;
 
 export async function generateTrackerSummary(dealId: string): Promise<{ themes: string[]; items: string[] } | null> {
   if (!process.env.ANTHROPIC_API_KEY) return null;
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { investors: { include: { contact: { include: { company: true } } } } } });
   if (!deal) return null;
   const rows = deal.investors.filter((r) => r.note?.trim()).map((r) => `- ${investorLabel(r.contact)} | ${statusOf(r.status).label} | ${r.note!.trim()}`);
-  // what LPs asked the sponsor for and have not received (open LP requests on Deal momentum) are items too
-  const asks = await prisma.momentum.findMany({ where: { dealId, kind: "LP_ASK", status: "OPEN" }, select: { party: true, summary: true } });
-  const askRows = asks.map((m) => `- ${m.party} asked for: ${m.summary.replace(/^.*?asks:\s*/, "").split(" | Already on the ticket:")[0]}`);
+  // what LPs asked the sponsor for and have not received. Dismissing or handling the Deal momentum item only quiets
+  // the dashboard; the sponsor still owes the answer, so the ask stays here until the ticket answers it.
+  const asks = await prisma.momentum.findMany({ where: { dealId, kind: "LP_ASK", updatedAt: { gte: new Date(Date.now() - 90 * 86_400_000) } }, select: { party: true, summary: true } });
+  const { parseAsks } = await import("@/lib/momentum");
+  const askRows = asks.map((m) => ({ party: m.party, asks: parseAsks(m.summary).asks })).filter((m) => m.asks.length).map((m) => `- ${m.party} asked for: ${m.asks.join("; ")}`);
   if (rows.length === 0 && askRows.length === 0) {
     await prisma.deal.update({ where: { id: dealId }, data: { trackerSummaryAt: new Date() } }).catch(() => null);
     return { themes: [], items: [] };
@@ -34,7 +36,7 @@ export async function generateTrackerSummary(dealId: string): Promise<{ themes: 
     model: "claude-opus-5",
     max_tokens: 1500,
     system: SYSTEM,
-    messages: [{ role: "user", content: `Deal: ${deal.propertyName ?? deal.name}\nSponsor: ${deal.sponsorName ?? ""}\nAsset class: ${deal.assetClass ?? ""}\n\nInvestor rows:\n${rows.join("\n") || "(no notes yet)"}\n\nOpen requests from investors:\n${askRows.join("\n") || "(none)"}` }],
+    messages: [{ role: "user", content: `Deal: ${deal.propertyName ?? deal.name}\nSponsor: ${deal.sponsorName ?? ""}\nAsset class: ${deal.assetClass ?? ""}\n\nInvestor rows:\n${rows.join("\n") || "(no notes yet)"}\n\nOutstanding requests from investors (the sponsor has not answered these):\n${askRows.join("\n") || "(none)"}` }],
     output_config: { format: zodOutputFormat(Out) },
   });
   if (!res.parsed_output) return null;

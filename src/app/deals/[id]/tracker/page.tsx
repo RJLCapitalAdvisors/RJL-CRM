@@ -97,11 +97,11 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
                 <div className="grid gap-3 md:grid-cols-2" style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>
                   <div>
                     <div className="text-[13pt] font-bold">Notable Feedback Themes</div>
-                    <GrowingTextarea name="trackerThemes" defaultValue={deal.trackerThemes} minRows={3} className="mt-1 text-[10.5pt]" placeholder="One theme per line. Written from the notes on its own; type here to change it." />
+                    <GrowingTextarea name="trackerThemes" defaultValue={deal.trackerThemes} minRows={3} bullets className="mt-1 text-[10.5pt]" placeholder="One theme per line. Written from the notes on its own; type here to change it." />
                   </div>
                   <div>
                     <div className="text-[13pt] font-bold">Items Needed from Sponsor</div>
-                    <GrowingTextarea name="trackerItemsNote" defaultValue={deal.trackerItemsNote} minRows={3} className="mt-1 text-[10.5pt]" placeholder="One item per line." />
+                    <GrowingTextarea name="trackerItemsNote" defaultValue={deal.trackerItemsNote} minRows={3} bullets className="mt-1 text-[10.5pt]" placeholder="One item per line." />
                     {checklistGaps.length > 0 && <div className="mt-1 text-[9pt] text-muted">Still blank on the ticket: {checklistGaps.join(", ")}</div>}
                   </div>
                 </div>

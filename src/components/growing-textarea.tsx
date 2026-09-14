@@ -7,10 +7,15 @@ import { useEffect, useRef, useState } from "react";
  * Given `onSave`, it saves itself a moment after typing stops and when focus leaves, with a quiet "Saved".
  * Without `onSave` it is just the input for an autosaving form around it.
  */
-export function GrowingTextarea({ name, defaultValue, placeholder, className = "", style, onSave, minRows = 1 }: { name?: string; defaultValue?: string | null; placeholder?: string; className?: string; style?: React.CSSProperties; onSave?: (value: string) => Promise<void> | void; minRows?: number }) {
+/** "• " in front of every line for display; stripped again before saving. */
+export const withBullets = (v: string | null | undefined) => (v ?? "").split("\n").map((l) => (l.trim() ? (/^[•\-*]\s/.test(l.trim()) ? l.trim() : `• ${l.trim()}`) : l)).join("\n");
+export const withoutBullets = (v: string | null | undefined) => (v ?? "").split("\n").map((l) => l.replace(/^\s*[•\-*]\s*/, "").trim()).filter(Boolean).join("\n");
+
+export function GrowingTextarea({ name, defaultValue, placeholder, className = "", style, onSave, minRows = 1, bullets = false }: { name?: string; defaultValue?: string | null; placeholder?: string; className?: string; style?: React.CSSProperties; onSave?: (value: string) => Promise<void> | void; minRows?: number; bullets?: boolean }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const last = useRef(defaultValue ?? "");
+  const shown = bullets ? withBullets(defaultValue) : (defaultValue ?? "");
+  const last = useRef(shown);
   const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
 
   const grow = () => {
@@ -26,7 +31,7 @@ export function GrowingTextarea({ name, defaultValue, placeholder, className = "
     if (!onSave || v === last.current) return;
     last.current = v;
     setState("saving");
-    Promise.resolve(onSave(v)).then(() => {
+    Promise.resolve(onSave(bullets ? withoutBullets(v) : v)).then(() => {
       setState("saved");
       setTimeout(() => setState("idle"), 1500);
     });
@@ -43,10 +48,18 @@ export function GrowingTextarea({ name, defaultValue, placeholder, className = "
       <textarea
         ref={ref}
         name={name}
-        defaultValue={defaultValue ?? ""}
+        defaultValue={shown}
         placeholder={placeholder}
         rows={minRows}
         onInput={onInput}
+        onKeyDown={(e) => {
+          if (!bullets || e.key !== "Enter") return;
+          const el = e.currentTarget;
+          e.preventDefault();
+          const { selectionStart, selectionEnd } = el;
+          el.setRangeText("\n• ", selectionStart, selectionEnd, "end");
+          onInput();
+        }}
         onBlur={() => {
           if (timer.current) clearTimeout(timer.current);
           save();
