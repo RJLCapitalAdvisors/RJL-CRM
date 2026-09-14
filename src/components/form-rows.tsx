@@ -30,12 +30,12 @@ export function Text({ name, value, placeholder }: { name: string; value?: strin
   return <input name={name} defaultValue={value ?? ""} placeholder={placeholder} className="input" />;
 }
 /** Dropdown that keeps a stored value visible even if it is not in the standard list. */
-export function Select({ name, value, options, blank = "—", onChange }: { name: string; value: string; options: readonly string[]; blank?: string; onChange?: (v: string) => void }) {
+export function Select({ name, value, options, blank = "—", noBlank = false, onChange }: { name: string; value: string; options: readonly string[]; blank?: string; noBlank?: boolean; onChange?: (v: string) => void }) {
   const [inner, setInner] = useState(value);
   const list = value && !options.includes(value) ? [value, ...options] : options;
   return (
     <select name={name} value={onChange ? value : inner} onChange={(e) => (onChange ? onChange(e.target.value) : setInner(e.target.value))} className="input">
-      <option value="">{blank}</option>
+      {!noBlank && <option value="">{blank}</option>}
       {list.map((o) => (
         <option key={o} value={o}>
           {o}

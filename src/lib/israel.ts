@@ -76,12 +76,16 @@ export const PRICE_PER_METER_NOTE = "asking price ÷ (internal m² + ⅓ of the 
 
 export const IL_SUKKA = ["Yes", "Partial", "No"] as const;
 export const IL_HOUSE_TYPES = ["Villa", "Semi-attached", "Cottage"] as const;
-export type Mirpeset = { sqm: number | null; direction: string[]; sukka: string | null };
+export const IL_APARTMENT_TYPES = ["Regular apartment", "Garden apartment", "Penthouse"] as const;
+export const isGardenApartment = (t: string | null | undefined) => t === "Garden apartment";
+export type Mirpeset = { sqm: number | null; direction: string[]; sukka: string | null; sukkaSqm: number | null; pool: string | null; poolSqm: number | null };
 /** The mirpasot list stored on a ticket with more than one mirpeset. */
 export const parseMirpasot = (s: string | null | undefined): Mirpeset[] => {
   try {
     const v = JSON.parse(s || "[]");
-    return Array.isArray(v) ? v.map((m) => ({ sqm: typeof m?.sqm === "number" ? m.sqm : null, direction: Array.isArray(m?.direction) ? m.direction.map(String) : [], sukka: typeof m?.sukka === "string" && m.sukka ? m.sukka : null })) : [];
+    const num = (x: unknown) => (typeof x === "number" && !isNaN(x) ? x : null);
+    const str = (x: unknown) => (typeof x === "string" && x ? x : null);
+    return Array.isArray(v) ? v.map((m) => ({ sqm: num(m?.sqm), direction: Array.isArray(m?.direction) ? m.direction.map(String) : [], sukka: str(m?.sukka), sukkaSqm: num(m?.sukkaSqm), pool: str(m?.pool), poolSqm: num(m?.poolSqm) })) : [];
   } catch {
     return [];
   }
@@ -134,6 +138,7 @@ export function ilStageTone(stage: string): string {
  */
 export const IL_COMPLETE_FIELDS: { key: string; label: string }[] = [
   { key: "developerId", label: "Developer" },
+  { key: "apartmentType", label: "Apartment type (regular, garden or penthouse)" },
   { key: "street", label: "Building address" },
   { key: "city", label: "City" },
   { key: "neighborhood", label: "Neighborhood" },
@@ -157,7 +162,12 @@ export const IL_COMPLETE_FIELDS: { key: string; label: string }[] = [
 function commonMissing(a: Record<string, unknown>, apartment: boolean): string[] {
   const out: string[] = [];
   const list = parseMirpasot(typeof a.mirpasot === "string" ? a.mirpasot : "[]");
-  if (a.mirpesetSqm != null && (list.length === 0 || list.some((m) => !m.sukka))) out.push(list.length > 1 ? "Sukka (yes, partial or no) for each mirpeset" : "Sukka (yes, partial or no)");
+  const garden = a.apartmentType === "Garden apartment";
+  if (a.mirpesetSqm != null && (list.length === 0 || list.some((m) => !m.sukka))) out.push(list.length > 1 ? `Sukka (yes, partial or no) for each ${garden ? "garden" : "mirpeset"}` : "Sukka (yes, partial or no)");
+  if (list.some((m) => m.sukka && m.sukka !== "No" && m.sukkaSqm == null)) out.push("Sukka area (m²)");
+  if (apartment && list.length && list.some((m) => !m.pool)) out.push("Pool (yes or no)");
+  if (list.some((m) => m.pool === "Yes" && m.poolSqm == null)) out.push("Pool size (m²)");
+  if (!apartment && a.pool === "Yes" && a.poolSqm == null) out.push("Pool size (m²)");
   if (isSecondHand(typeof a.sellerType === "string" ? a.sellerType : null) && a.renovationYear == null) out.push("Year of renovation (or never renovated)");
   if (apartment && typeof a.sellerType === "string" && a.sellerType.startsWith("Yad Rishona") && !a.projectId && !a.projectName) out.push("Project name");
   return out;
@@ -187,6 +197,7 @@ export const IL_HOUSE_COMPLETE_FIELDS: { key: string; label: string }[] = [
   { key: "floors", label: "How many floors" },
   { key: "ceilingCms", label: "Ceiling heights" },
   { key: "migrashSqm", label: "Migrash size" },
+  { key: "pool", label: "Pool" },
   { key: "priceNis", label: "Asking price" },
   { key: "sellerType", label: "Seller type" },
   { key: "parkingSpots", label: "Parking" },

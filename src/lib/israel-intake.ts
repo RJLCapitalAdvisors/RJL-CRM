@@ -23,6 +23,7 @@ const Direction = z.enum(["North", "South", "East", "West"]);
 const Apartment = z.object({
   kind: z.enum(["apartment", "house"]).default("apartment").describe("house: a private house on its own plot (בית פרטי, וילה, קוטג', דו משפחתי, צמוד קרקע, בית קרקע). Everything in a building, including a duplex, penthouse or garden apartment, is an apartment."),
   name: z.string().describe("Short name in English: project or street plus apartment number, e.g. 'Rehavia Gardens, Apt 12'; for a house the street and city, e.g. 'HaPalmach 8, Jerusalem'"),
+  apartmentType: z.enum(["Regular apartment", "Garden apartment", "Penthouse"]).nullish().default(null).describe("Apartments only: דירת גן Garden apartment, פנטהאוז Penthouse, otherwise Regular apartment when the listing describes a normal unit; null when unclear"),
   projectName: z.string().nullish().default(null),
   developerName: z.string().nullish().default(null),
   street: z.string().nullish().default(null).describe("Building address, street and number"),
@@ -36,7 +37,10 @@ const Apartment = z.object({
   internalSqm: z.number().nullish().default(null).describe("Internal square metres, excluding the mirpeset"),
   mirpesetSqm: z.number().nullish().default(null).describe("Total mirpeset m²; with several mirpasot, the sum"),
   sukka: z.enum(["Yes", "Partial", "No"]).nullish().default(null).describe("Whether a sukka can be built on the mirpeset (מרפסת סוכה): Yes, Partial or No; null when not stated"),
-  mirpasot: z.array(z.object({ sqm: z.number().nullish().default(null), direction: z.array(Direction).default([]), sukka: z.enum(["Yes", "Partial", "No"]).nullish().default(null) })).default([]).describe("Each mirpeset separately when the listing describes more than one; empty otherwise"),
+  sukkaSqm: z.number().nullish().default(null).describe("The area the sukka can take, m², when stated"),
+  pool: z.enum(["Yes", "No"]).nullish().default(null).describe("A private pool (בריכה) on the mirpeset, garden or roof: Yes or No; null when not stated"),
+  poolSqm: z.number().nullish().default(null).describe("Pool size in m², when stated"),
+  mirpasot: z.array(z.object({ sqm: z.number().nullish().default(null), direction: z.array(Direction).default([]), sukka: z.enum(["Yes", "Partial", "No"]).nullish().default(null), sukkaSqm: z.number().nullish().default(null), pool: z.enum(["Yes", "No"]).nullish().default(null), poolSqm: z.number().nullish().default(null) })).default([]).describe("Each mirpeset separately when the listing describes more than one; empty otherwise"),
   ceilingCm: z.number().nullish().default(null).describe("Ceiling height; for a house or a duplex, the main level"),
   levels: z.number().nullish().default(null).describe("Apartments only: floors inside the apartment, 1, 2 (duplex) or 3 (triplex)"),
   floors: z.number().nullish().default(null).describe("Houses only: how many floors (miflasim)"),
@@ -63,7 +67,7 @@ type ExtractedApartment = Extracted["apartments"][number];
 
 const SYSTEM = `You read messages and documents about apartments for sale in Israel and fill in apartment tickets for RJL Israel.
 Rules: one entry per distinct apartment or house, with kind set (a private house on its own plot is a house; anything inside a building is an apartment). A building with several units for sale is several apartments; a whole project description with no specific unit is one apartment named after the project with the unit fields blank). Only record what the documents state; leave a field null when it is not stated. Never use placeholders like TBD. Square metres: internal excludes the mirpeset (balcony); if only a total is given, put it in internalSqm and say so in the description. Prices in shekels; if a price is in dollars, convert only if the document gives the rate, else leave priceNis null and mention the dollar price in the description. Parking must be one of the allowed values. Direction is the apartment's air directions. Mamad is the safe room. The subject line is often stale; trust the body, the attachments and the photos. No dashes as punctuation in text you write.
-Hebrew: most of what arrives is in Hebrew. Read it natively. Write every field value in English: cities and neighborhoods in their usual English spelling (ירושלים Jerusalem, תל אביב Tel Aviv, רעננה Ra'anana, הרצליה Herzliya, רחביה Rehavia, קטמון Katamon, בקעה Baka, ארנונה Arnona, טלביה Talbiya), streets and project names transliterated with the Hebrew in parentheses the first time. Vocabulary: חדרים rooms (3.5 חדרים is 3.5 rooms), מ"ר or מטר square metres, מרפסת mirpeset (balcony), מרפסת שמש sun balcony, מרפסת סוכה a mirpeset that takes a sukka (sukka Yes), גינה garden, ממ"ד mamad, מחסן machsan (storage), חניה parking (חניה כפולה two spots, בטור back to back, מקבילה side by side), קומה floor, קומת קרקע ground floor, מעלית elevator, קבלן or יזם developer, פרויקט project, יד ראשונה מקבלן yad rishona from the developer, יד שנייה second hand, לא גרו never occupied, משופצת renovated, שנת בניה year built, טופס 4 or מסירה delivery, כיווני אוויר air directions (צפון north, דרום south, מזרח east, מערב west), גובה תקרה ceiling height, מחיר or מבוקש asking price, ש"ח or ₪ shekels, מיליון million (4.2 מיליון is 4,200,000). Text pulled out of Hebrew PDFs sometimes arrives with the letters or words of a line in reverse order; read it in whichever direction makes sense. Photos of listings (Yad2, Madlan, agency flyers) carry the same fields: read the numbers off the image.`;
+Hebrew: most of what arrives is in Hebrew. Read it natively. Write every field value in English: cities and neighborhoods in their usual English spelling (ירושלים Jerusalem, תל אביב Tel Aviv, רעננה Ra'anana, הרצליה Herzliya, רחביה Rehavia, קטמון Katamon, בקעה Baka, ארנונה Arnona, טלביה Talbiya), streets and project names transliterated with the Hebrew in parentheses the first time. Vocabulary: חדרים rooms (3.5 חדרים is 3.5 rooms), מ"ר or מטר square metres, מרפסת mirpeset (balcony), מרפסת שמש sun balcony, מרפסת סוכה a mirpeset that takes a sukka (sukka Yes), דירת גן garden apartment (its outdoor space is the garden, read it as the mirpeset fields), פנטהאוז penthouse, בריכה pool, גינה garden, ממ"ד mamad, מחסן machsan (storage), חניה parking (חניה כפולה two spots, בטור back to back, מקבילה side by side), קומה floor, קומת קרקע ground floor, מעלית elevator, קבלן or יזם developer, פרויקט project, יד ראשונה מקבלן yad rishona from the developer, יד שנייה second hand, לא גרו never occupied, משופצת renovated, שנת בניה year built, טופס 4 or מסירה delivery, כיווני אוויר air directions (צפון north, דרום south, מזרח east, מערב west), גובה תקרה ceiling height, מחיר or מבוקש asking price, ש"ח or ₪ shekels, מיליון million (4.2 מיליון is 4,200,000). Text pulled out of Hebrew PDFs sometimes arrives with the letters or words of a line in reverse order; read it in whichever direction makes sense. Photos of listings (Yad2, Madlan, agency flyers) carry the same fields: read the numbers off the image.`;
 
 /** One file that came with the message: text if we could read it, the bytes when it is an image or a candidate floorplan. */
 export type IntakeFile = { name: string; type: string | null; size: number; text?: string | null; bytes?: Uint8Array | null };
@@ -133,6 +137,7 @@ async function extract(subject: string | null, body: string, files: IntakeFile[]
 /** What Jonathan wants on every ticket, in his order; the reply lists whichever are still blank. */
 const REQUIRED: { key: keyof ExtractedApartment | "developer"; label: string }[] = [
   { key: "developer", label: "Developer" },
+  { key: "apartmentType", label: "Apartment type (regular, garden or penthouse)" },
   { key: "street", label: "Building address" },
   { key: "city", label: "City" },
   { key: "neighborhood", label: "Neighborhood" },
@@ -148,6 +153,7 @@ const REQUIRED: { key: keyof ExtractedApartment | "developer"; label: string }[]
   { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
   { key: "mirpesetDirection", label: "Mirpeset direction" },
   { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
+  { key: "pool", label: "Pool (yes or no)" },
   { key: "ceilingCm", label: "Ceiling height (cm)" },
   { key: "parkingSpots", label: "Parking spots" },
   { key: "machsanSqm", label: "Machsan size (m²)" },
@@ -161,8 +167,14 @@ function conditionalMissing(a: ExtractedApartment): string[] {
   if (a.sellerType?.startsWith("Second hand") && a.renovationYear == null) out.push("Year of renovation (or never renovated)");
   if (a.levels && a.levels > 1 && a.ceilingCms.length < a.levels) out.push(`Ceiling height for each of the ${a.levels} levels`);
   if (a.mirpasot.length > 1 && a.mirpasot.some((m) => !m.sukka)) out.push("Sukka (yes, partial or no) for each mirpeset");
+  const sukkaYes = (a.sukka && a.sukka !== "No") || a.mirpasot.some((m) => m.sukka && m.sukka !== "No");
+  if (sukkaYes && a.sukkaSqm == null && !a.mirpasot.some((m) => m.sukkaSqm != null)) out.push("Sukka area (m²)");
+  const poolYes = a.pool === "Yes" || a.mirpasot.some((m) => m.pool === "Yes");
+  if (poolYes && a.poolSqm == null && !a.mirpasot.some((m) => m.poolSqm != null)) out.push("Pool size (m²)");
   return out;
 }
+/** A garden apartment's outdoor space is its garden: the questions say so. */
+const gardenWords = (a: ExtractedApartment, labels: string[]) => (a.apartmentType === "Garden apartment" ? labels.map((l) => l.replace(/Mirpeset size (m²), each mirpeset separately if there is more than one/, "Garden size (m²), each garden separately if there is more than one").replace(/Mirpeset direction/, "Garden direction").replace(/Sukka on the mirpeset/, "Sukka in the garden").replace(/for each mirpeset/, "for each garden")) : labels);
 const REQUIRED_HOUSE: { key: keyof ExtractedApartment; label: string }[] = [
   { key: "houseType", label: "House type (villa, semi-attached or cottage)" },
   { key: "street", label: "Address" },
@@ -179,6 +191,7 @@ const REQUIRED_HOUSE: { key: keyof ExtractedApartment; label: string }[] = [
   { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
   { key: "mirpesetDirection", label: "Mirpeset direction" },
   { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
+  { key: "pool", label: "Pool (yes or no)" },
   { key: "migrashSqm", label: "Migrash size (m²)" },
   { key: "priceNis", label: "Asking price" },
 ];
@@ -201,7 +214,7 @@ function missingFor(a: ExtractedApartment, hasDeveloper: boolean): string[] {
     const v = a[key];
     return v == null || (Array.isArray(v) && v.length === 0);
   }).map((r) => r.label);
-  return [...base, ...conditionalMissing(a)];
+  return gardenWords(a, [...base, ...conditionalMissing(a)]);
 }
 
 async function findOrCreateCompany(name: string | null, role: string) {
@@ -251,8 +264,8 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   const mirpasot = (a: ExtractedApartment) => {
     const list = a.mirpasot.filter((m) => m.sqm != null || m.direction.length || m.sukka).slice(0, 3);
     const total = list.length > 1 ? list.reduce((t, m) => t + (m.sqm ?? 0), 0) : null;
-    const single = { sqm: a.mirpesetSqm ?? null, direction: a.mirpesetDirection, sukka: a.sukka ?? null };
-    return { mirpesetCount: list.length > 1 ? list.length : a.mirpesetSqm != null ? 1 : null, mirpesetSqm: a.mirpesetSqm ?? (total || null), mirpesetDirection: JSON.stringify(list.length > 1 ? [...new Set(list.flatMap((m) => m.direction))] : a.mirpesetDirection), mirpasot: JSON.stringify(list.length > 1 ? list : single.sqm != null || single.direction.length || single.sukka ? [single] : []) };
+    const single = { sqm: a.mirpesetSqm ?? null, direction: a.mirpesetDirection, sukka: a.sukka ?? null, sukkaSqm: a.sukkaSqm ?? null, pool: a.pool ?? null, poolSqm: a.poolSqm ?? null };
+    return { mirpesetCount: list.length > 1 ? list.length : a.mirpesetSqm != null ? 1 : null, mirpesetSqm: a.mirpesetSqm ?? (total || null), mirpesetDirection: JSON.stringify(list.length > 1 ? [...new Set(list.flatMap((m) => m.direction))] : a.mirpesetDirection), mirpasot: JSON.stringify(list.length > 1 ? list : single.sqm != null || single.direction.length || single.sukka || single.pool ? [single] : []) };
   };
   for (const a of extracted.apartments) {
     const developer = await findOrCreateCompany(a.developerName, "Sponsor (Yazam)");
@@ -301,6 +314,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     const created = await prisma.ilApartment.create({
       data: {
         name: stripDashes(a.name) || a.street || "Apartment",
+        apartmentType: a.apartmentType,
         street: a.street,
         city: a.city,
         neighborhood: a.neighborhood,

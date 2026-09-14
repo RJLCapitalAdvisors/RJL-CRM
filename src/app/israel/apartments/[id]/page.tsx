@@ -24,7 +24,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
     prisma.ilApartment.findUnique({
       where: { id },
       select: {
-        id: true, name: true, street: true, city: true, neighborhood: true, rooms: true, completionDate: true, floor: true, totalFloors: true, buildingUnits: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpasot: true, levels: true, ceilingCms: true, ceilingCm: true, machsanSqm: true, machsanLocation: true,
+        id: true, name: true, apartmentType: true, street: true, city: true, neighborhood: true, rooms: true, completionDate: true, floor: true, totalFloors: true, buildingUnits: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpasot: true, levels: true, ceilingCms: true, ceilingCm: true, machsanSqm: true, machsanLocation: true,
         parkingSpots: true, direction: true, sellerType: true, renovationYear: true, pendingApproval: true, projectId: true, project: { select: { id: true, name: true, totalUnits: true, stories: true, completionDate: true } }, mirpesetDirection: true, mamad: true, priceNis: true, description: true, floorplanType: true, floorplanName: true, updatedAt: true, developerId: true, agentContactId: true, sellerContactId: true,
         developer: { select: { id: true, name: true, roles: true, city: true, website: true, phone: true } },
         agent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } },

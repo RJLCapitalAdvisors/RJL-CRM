@@ -822,6 +822,8 @@ model IlHouse {
   mirpesetDirection String  @default("[]")
   mirpasot        String    @default("[]") // JSON list of { sqm, direction[] }
   migrashSqm      Float?    // the plot
+  pool            String?   // Yes | No
+  poolSqm         Float?
   pendingApproval Boolean   @default(false) // came in by email or WhatsApp with data missing
   source          String?
   sourceMessageId String?

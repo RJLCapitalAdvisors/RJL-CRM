@@ -57,6 +57,7 @@ export default async function CompareUnitsPage({ searchParams }: { searchParams:
     },
     { label: "Mirpeset direction", cell: (a) => parseJsonList(a.mirpesetDirection).join(", ") || dash },
     { label: "Sukka", cell: (a) => { const list = parseMirpasot(a.mirpasot); const v = list.length === 1 ? list[0].sukka : list.length > 1 ? (list.every((m) => m.sukka === "No") ? "No" : list.some((m) => m.sukka === "Yes") ? "Yes" : list.some((m) => m.sukka) ? "Partial" : null) : null; return v ?? dash; } },
+    { label: "Pool", cell: (a) => { const list = parseMirpasot(a.mirpasot); const withPool = list.filter((m) => m.pool === "Yes"); return withPool.length ? withPool.map((m) => (m.poolSqm ? sqm(m.poolSqm) : "Yes")).join(", ") : list.some((m) => m.pool === "No") ? "No" : dash; } },
     { label: "Mamad", cell: (a) => (a.mamad ? "Yes" : "No") },
     { label: "Internal m²", cell: (a) => (a.internalSqm != null ? <span className={mark(a.internalSqm === bestInternal)}>{sqm(a.internalSqm)} <span className="text-xs text-muted">{sqft(a.internalSqm)}</span></span> : dash) },
     { label: "Mirpeset m²", cell: (a) => (a.mirpesetSqm != null ? <span className={mark(a.mirpesetSqm === bestMirpeset)}>{sqm(a.mirpesetSqm)} <span className="text-xs text-muted">{sqft(a.mirpesetSqm)}</span></span> : dash) },

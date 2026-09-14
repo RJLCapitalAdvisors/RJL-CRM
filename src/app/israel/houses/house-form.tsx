@@ -11,7 +11,7 @@ import type { FxRate } from "@/lib/fx";
 
 export type IlHouseForm = Partial<{
   name: string; houseType: string | null; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; floors: number | null; ceilingCms: string | null; completionDate: string | null;
-  internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpesetDirection: string | null; mirpasot: string | null; migrashSqm: number | null; parkingSpots: string | null; mamad: boolean; priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null;
+  internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpesetDirection: string | null; mirpasot: string | null; migrashSqm: number | null; pool: string | null; poolSqm: number | null; parkingSpots: string | null; mamad: boolean; priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null;
 }>;
 
 const FLOOR_NAMES = ["Ground floor", "First floor", "Second floor", "Third floor", "Fourth floor", "Fifth floor", "Sixth floor", "Seventh floor"];
@@ -29,6 +29,7 @@ export function HouseForm({ h = {}, fx, projects = [], action, autosave = false,
   const [ceilings, setCeilings] = useState<(number | null)[]>(() => parseJsonList(h.ceilingCms).map((x) => (x === "" ? null : Number(x))));
   const [price, setPrice] = useState<number | null>(h.priceNis ?? null);
   const [sellerType, setSellerType] = useState(h.sellerType ?? "");
+  const [pool, setPool] = useState(h.pool ?? "");
   const perSqft = usdPerSqft(price, internal, mirpeset, fx?.ilsPerUsd);
   const ppm = pricePerMeter(price, internal, mirpeset);
   const usd = (v: number | null) => (v != null && fx ? usdFmt(v / fx.ilsPerUsd) : null);
@@ -111,12 +112,20 @@ export function HouseForm({ h = {}, fx, projects = [], action, autosave = false,
           <NumberInput name="internalSqm" defaultValue={h.internalSqm} onValue={setInternal} />
         </Row>
         <Calc label="Internal square feet" value={internal != null ? sqft(internal) : dash} />
-        <MirpasotFields count={h.mirpesetCount} sqm={h.mirpesetSqm} directions={parseJsonList(h.mirpesetDirection)} mirpasot={parseMirpasot(h.mirpasot)} onTotal={setMirpeset} />
+        <MirpasotFields count={h.mirpesetCount} sqm={h.mirpesetSqm} directions={parseJsonList(h.mirpesetDirection)} mirpasot={parseMirpasot(h.mirpasot)} onTotal={setMirpeset} showPool={false} />
         <Row label="Migrash size (m²)" hint="The plot the house sits on.">
           <NumberInput name="migrashSqm" defaultValue={h.migrashSqm} onValue={setMigrash} />
         </Row>
         <Calc label="Migrash in dunam" value={migrash != null ? `${(migrash / 1000).toLocaleString("en-US", { maximumFractionDigits: 3 })} dunam` : dash} hint="1 dunam = 1,000 m²" />
         <Calc label="Migrash in acres" value={migrash != null ? `${(migrash * ACRES_PER_SQM).toLocaleString("en-US", { maximumFractionDigits: 3 })} acres` : dash} hint="1 acre = 4,046.86 m²" />
+        <Row label="Pool?">
+          <Select name="housePool" value={pool} options={["Yes", "No"]} onChange={setPool} />
+        </Row>
+        {pool === "Yes" && (
+          <Row label="Pool size (m²)">
+            <NumberInput name="housePoolSqm" defaultValue={h.poolSqm} />
+          </Row>
+        )}
       </Group>
 
       <Group title="Pricing">

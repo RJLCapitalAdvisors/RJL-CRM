@@ -30,15 +30,20 @@ const yesNo = (fd: FormData, k: string) => (fd.has(k) ? s(fd, k) === "Yes" : und
 function mirpasotFrom(fd: FormData) {
   const count = i(fd, "mirpesetCount");
   if (!count || count <= 1) {
-    const single = { sqm: n(fd, "mirpesetSqm"), direction: fd.getAll("mirpesetDirection").map(String).filter(Boolean), sukka: s(fd, "sukka") };
-    return { mirpesetCount: count ?? (single.sqm != null ? 1 : null), mirpesetSqm: single.sqm, mirpesetDirection: JSON.stringify(single.direction), mirpasot: JSON.stringify(single.sqm != null || single.direction.length || single.sukka ? [single] : []) };
+    const sukka = s(fd, "sukka");
+    const pool = s(fd, "pool");
+    const single = { sqm: n(fd, "mirpesetSqm"), direction: fd.getAll("mirpesetDirection").map(String).filter(Boolean), sukka, sukkaSqm: sukka && sukka !== "No" ? n(fd, "sukkaSqm") : null, pool, poolSqm: pool === "Yes" ? n(fd, "poolSqm") : null };
+    return { mirpesetCount: count ?? (single.sqm != null ? 1 : null), mirpesetSqm: single.sqm, mirpesetDirection: JSON.stringify(single.direction), mirpasot: JSON.stringify(single.sqm != null || single.direction.length || single.sukka || single.pool ? [single] : []) };
   }
   const sizes = fd.getAll("mirpasotSqm").map((v) => {
     const x = Number(String(v).replace(/[^0-9.]/g, ""));
     return String(v).trim() && !isNaN(x) ? x : null;
   });
-  const sukkas = fd.getAll("mirpasotSukka").map((v) => String(v).trim() || null);
-  const items = Array.from({ length: Math.min(count, 3) }, (_, k) => ({ sqm: sizes[k] ?? null, direction: fd.getAll(`mirpasotDir_${k}`).map(String).filter(Boolean), sukka: sukkas[k] ?? null }));
+  const items = Array.from({ length: Math.min(count, 3) }, (_, k) => {
+    const sukka = s(fd, `mirpasotSukka_${k}`);
+    const pool = s(fd, `mirpasotPool_${k}`);
+    return { sqm: sizes[k] ?? null, direction: fd.getAll(`mirpasotDir_${k}`).map(String).filter(Boolean), sukka, sukkaSqm: sukka && sukka !== "No" ? n(fd, `mirpasotSukkaSqm_${k}`) : null, pool, poolSqm: pool === "Yes" ? n(fd, `mirpasotPoolSqm_${k}`) : null };
+  });
   const total = items.reduce((a, m) => a + (m.sqm ?? 0), 0);
   const dirs = [...new Set(items.flatMap((m) => m.direction))];
   return { mirpesetCount: count, mirpesetSqm: items.some((m) => m.sqm != null) ? total : null, mirpesetDirection: JSON.stringify(dirs), mirpasot: JSON.stringify(items) };
@@ -58,6 +63,7 @@ function apartmentData(fd: FormData) {
   const firstCeiling = ceilings.find((c): c is number => c !== "") ?? null;
   return {
     name: s(fd, "name") ?? (s(fd, "street") || "Apartment"),
+    apartmentType: s(fd, "apartmentType"),
     street: s(fd, "street"),
     city: s(fd, "city"),
     neighborhood: s(fd, "neighborhood"),
@@ -125,6 +131,8 @@ function houseData(fd: FormData) {
     internalSqm: n(fd, "internalSqm"),
     ...mirpasotFrom(fd),
     migrashSqm: n(fd, "migrashSqm"),
+    pool: s(fd, "housePool"),
+    poolSqm: s(fd, "housePool") === "Yes" ? n(fd, "housePoolSqm") : null,
     parkingSpots: s(fd, "parkingSpots"),
     sellerType: s(fd, "sellerType"),
     renovationYear: s(fd, "sellerType")?.startsWith("Second hand") ? i(fd, "renovationYear") : null,
