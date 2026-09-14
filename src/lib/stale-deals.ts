@@ -6,7 +6,7 @@ import { DEAL_STAGES } from "@/lib/taxonomy";
  * (no email, no note, no report change, no edit) is probably dead. It shows under Data updates for Jonathan to
  * move to Deal Lost, which takes it off Deal momentum and LP follow-ups. "Keep" hides it for another STALE_DAYS.
  */
-export const STALE_DAYS = 3;
+export const STALE_DAYS = 7;
 const DAY = 86_400_000;
 // Deal Received or further: a deal that was only mentioned in passing is not worth a culling decision
 const STALE_STAGES = DEAL_STAGES.slice(DEAL_STAGES.indexOf("Deal Received"), DEAL_STAGES.indexOf("Intro To Capital Made") + 1) as string[];
