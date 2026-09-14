@@ -183,6 +183,8 @@ export async function dismissMomentum(id: string) {
 // ---------- intros to reconsider ----------
 /** Handle on an intro: reply-all on the latest message of that thread (from your mailbox), blank, with your signature. */
 export async function openIntroDraft(introId: string) {
+  // a HubSpot intro record ("Wright | Marble"): reply on the intro email, the same path a quiet deal uses
+  if (introId.startsWith("deal:")) return handleStaleDeal(introId.slice(5));
   const r = await openIntroDraftInner(introId);
   if (r.ok) await prisma.intro.update({ where: { id: introId }, data: { handledAt: new Date() } }).catch(() => null); // marked handled; drops off once the reply shows in Sent Items
   return r;
@@ -229,6 +231,18 @@ async function openIntroDraftInner(introId: string) {
 }
 
 export async function dismissIntro(id: string) {
+  if (id.startsWith("deal:")) {
+    const d = await prisma.deal.findUnique({ where: { id: id.slice(5) }, select: { details: true } });
+    let det: Record<string, unknown> = {};
+    try {
+      det = JSON.parse(d?.details || "{}");
+    } catch {
+      /* no details */
+    }
+    await prisma.deal.update({ where: { id: id.slice(5) }, data: { details: JSON.stringify({ ...det, introDismissed: true }) } });
+    revalidatePath("/");
+    return;
+  }
   await prisma.intro.update({ where: { id }, data: { status: "DISMISSED" } });
   revalidatePath("/");
 }

@@ -5,7 +5,7 @@ import { DEPARTURE_SUBJECT, HUMAN_DEPARTURE, noteDepartureIfAny } from "@/lib/de
 import { emailHtmlToText } from "@/lib/attachments";
 import { graph, graphConfigured, type GraphMessage } from "@/lib/graph";
 import { contactForEmail, domainOf } from "@/lib/domains";
-import { ACTIVE_STAGES, isLegacyIntroTicket } from "@/lib/taxonomy";
+import { ACTIVE_STAGES, isBlindIntro, isLegacyIntroTicket } from "@/lib/taxonomy";
 
 /**
  * Email log: read every team member's Sent Items and Inbox through Graph and record each email that
@@ -80,7 +80,7 @@ async function fillContactName(contactId: string, displayName: string | undefine
 
 export async function dealResolver() {
   // legacy HubSpot intro records are not tickets: an email is never filed on one
-  const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, parentDealId: true, sponsorCompany: { select: { roles: true } }, investors: { select: { contactId: true } } } })).filter((d) => !isLegacyIntroTicket({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, investorCount: d.investors.length }));
+  const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, parentDealId: true, propertyAddress: true, sponsorCompany: { select: { roles: true } }, investors: { select: { contactId: true } }, _count: { select: { files: true, facts: true } } } })).filter((d) => !isLegacyIntroTicket({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, investorCount: d.investors.length }) && !isBlindIntro({ ...d, fileCount: d._count.files, factCount: d._count.facts }));
   // an email about one property of a portfolio belongs to the portfolio
   const up = (id: string | undefined) => (id ? (activeDeals.find((d) => d.id === id)?.parentDealId ?? id) : id);
   const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null) =>

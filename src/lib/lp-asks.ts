@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { isSponsorSide } from "@/lib/report-guard";
 import { graph } from "@/lib/graph";
-import { ACTIVE_STAGES, isLegacyIntroTicket } from "@/lib/taxonomy";
+import { ACTIVE_STAGES, isBlindIntro, isLegacyIntroTicket } from "@/lib/taxonomy";
 import { mergeNote } from "@/lib/tracker";
 import { stripDashes } from "@/lib/style";
 import { houseSubjectMatches, subjectMatchesDeal } from "@/lib/deal-match";
@@ -49,7 +49,8 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const legacyIntro = (x: { id: string }) => legacy.has(x.id);
     const candidatesAll = rows.map((r) => r.deal).filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
     const legacy = new Set((await prisma.deal.findMany({ where: { id: { in: candidatesAll.map((x) => x.id) }, stage: "Intro To Capital Made", hubspotId: { not: null } }, select: { id: true, hubspotId: true, stage: true, sponsorCompany: { select: { roles: true } }, _count: { select: { investors: true } } } })).filter((x) => isLegacyIntroTicket({ ...x, sponsorRoles: x.sponsorCompany?.roles ?? null, investorCount: x._count.investors })).map((x) => x.id));
-    const candidates = candidatesAll.filter((x) => !legacyIntro(x));
+    const blind = new Set((await prisma.deal.findMany({ where: { id: { in: candidatesAll.map((x) => x.id) }, hubspotId: { not: null } }, select: { id: true, name: true, propertyName: true, propertyAddress: true, hubspotId: true, _count: { select: { files: true, facts: true } } } })).filter((x) => isBlindIntro({ ...x, fileCount: x._count.files, factCount: x._count.facts })).map((x) => x.id));
+    const candidates = candidatesAll.filter((x) => !legacyIntro(x) && !blind.has(x.id));
     if (a.dealId && !candidates.some((x) => x.id === a.dealId)) {
       // the deal the email log pinned, unless it is a legacy intro record (those are never tickets)
       const linked = await prisma.deal.findFirst({ where: { id: a.dealId, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true, hubspotId: true, stage: true, sponsorCompany: { select: { roles: true } }, _count: { select: { investors: true } } } });

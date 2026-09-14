@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { DEAL_STAGES, introParties, isBlindIntro } from "@/lib/taxonomy";
 import { graph, graphConfigured, sentMessagesTo } from "@/lib/graph";
 
 /**
@@ -147,7 +148,38 @@ export async function quietIntros(since = new Date(Date.now() - INTRO_WINDOW_DAY
     if (!seen.has(key)) seen.set(key, r);
   }
   await Promise.all(updates);
-  return [...seen.values()];
+  const fromDeals = await blindIntroRows(since, cutoff);
+  for (const r of fromDeals) {
+    const key = r.subject.toLowerCase().replace(/^\s*intro\s*[-:–—]?\s*/, "").replace(/\s+/g, " ").trim();
+    if (!seen.has(key)) seen.set(key, r);
+  }
+  return [...seen.values()].sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
+}
+
+/**
+ * The HubSpot import carried intros as deal records ("Wright | Marble"). They are intros, so they show here, shaped
+ * like the email intros: id "deal:<id>", the two firms as the parties, last touch = the record or its latest email.
+ * Handle replies on the intro email (same path as a quiet deal); Dismiss marks the record so it stays out.
+ */
+async function blindIntroRows(since: Date, cutoff: Date) {
+  const stages = DEAL_STAGES.slice(DEAL_STAGES.indexOf("Deal Received"), DEAL_STAGES.indexOf("Intro To Capital Made") + 1) as string[];
+  const deals = await prisma.deal.findMany({ where: { stage: { in: stages }, parentDealId: null, hubspotId: { not: null }, name: { contains: "|" } }, select: { id: true, name: true, propertyName: true, propertyAddress: true, hubspotId: true, details: true, createdAt: true, updatedAt: true, staleCheckedAt: true, staleHandledAt: true, _count: { select: { files: true, facts: true, activities: true } }, activities: { orderBy: { occurredAt: "desc" }, take: 1, select: { occurredAt: true } } } });
+  const out: Awaited<ReturnType<typeof prisma.intro.findMany>> = [];
+  for (const d of deals) {
+    if (!isBlindIntro({ ...d, fileCount: d._count.files, factCount: d._count.facts })) continue;
+    let det: { introDismissed?: boolean } = {};
+    try {
+      det = JSON.parse(d.details || "{}");
+    } catch {
+      /* no details */
+    }
+    if (det.introDismissed) continue;
+    const last = new Date(Math.max(d.updatedAt.getTime(), d.staleCheckedAt?.getTime() ?? 0, d.activities[0]?.occurredAt.getTime() ?? 0));
+    if (last < since || last >= cutoff) continue; // touched in the last 30 days, or older than the 12-month window
+    const [partyA, partyB] = introParties(d.name);
+    out.push({ id: `deal:${d.id}`, mailbox: "hubspot", subject: `Intro - ${partyA} | ${partyB}`, partyA, partyB, recipients: "[]", conversationId: null, messageId: `deal:${d.id}`, introducedAt: d.createdAt, lastActivityAt: last, lastMessageId: null, replies: d._count.activities, handledAt: d.staleHandledAt, status: "OPEN", createdAt: d.createdAt, updatedAt: d.updatedAt });
+  }
+  return out;
 }
 
 

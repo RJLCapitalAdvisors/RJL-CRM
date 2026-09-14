@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { ACTIVE_STAGES } from "@/lib/taxonomy";
+import { ACTIVE_STAGES, isBlindIntro } from "@/lib/taxonomy";
 
 /**
  * One deal, one ticket. Three ways two tickets turn out to be the same deal, in order of certainty:
@@ -32,7 +32,7 @@ const cityOf = (s: string | null | undefined) => (s ?? "").toLowerCase().replace
 export type DealCtx = { sponsorCompanyId?: string | null; sponsorName?: string | null; city?: string | null; state?: string | null; address?: string | null; text?: string | null };
 type Cand = { id: string; name: string; propertyName: string | null; sponsorName: string | null; sponsorCompanyId: string | null; city: string | null; state: string | null; propertyAddress: string | null; summary: string | null };
 
-const select = { id: true, name: true, propertyName: true, sponsorName: true, sponsorCompanyId: true, city: true, state: true, propertyAddress: true, summary: true } as const;
+const select = { id: true, name: true, propertyName: true, sponsorName: true, sponsorCompanyId: true, city: true, state: true, propertyAddress: true, summary: true, hubspotId: true } as const;
 
 function certainMatch(name: string, ctx: DealCtx, d: Cand): boolean {
   const key = normName(name);
@@ -93,7 +93,7 @@ export type DealCard = { id: string; name: string; stage: string; sponsorName: s
 
 export async function possibleDuplicates(): Promise<DupePair[]> {
   // Deal Received or further on both sides: Deal Mentioned records are not tickets yet and only add noise here
-  const deals = await prisma.deal.findMany({ where: { stage: { in: ACTIVE_STAGES.filter((x) => x !== "Deal Mentioned") }, parentDealId: null }, select: { ...select, stage: true, createdAt: true, _count: { select: { investors: true, activities: true, files: true, facts: true, emails: true } } } });
+  const deals = (await prisma.deal.findMany({ where: { stage: { in: ACTIVE_STAGES.filter((x) => x !== "Deal Mentioned") }, parentDealId: null }, select: { ...select, stage: true, createdAt: true, _count: { select: { investors: true, activities: true, files: true, facts: true, emails: true } } } })).filter((d) => !isBlindIntro({ ...d, fileCount: d._count.files, factCount: d._count.facts }));
   const cleared = new Set((await prisma.dealNotDuplicate.findMany()).map((x) => `${x.aId}|${x.bId}`));
   const card = (d: (typeof deals)[number]): DealCard => ({ id: d.id, name: d.propertyName ?? d.name, stage: d.stage, sponsorName: d.sponsorName, city: d.city, state: d.state, propertyAddress: d.propertyAddress, createdAt: d.createdAt, weight: d._count.investors * 5 + d._count.activities + d._count.files * 2 + d._count.facts + d._count.emails });
   const out: DupePair[] = [];

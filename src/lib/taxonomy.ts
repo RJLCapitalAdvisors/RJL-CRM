@@ -329,6 +329,27 @@ export const STAGE_ORDER = ["Deal Mentioned", "Deal Received", "Deal Underwritte
  * HubSpot brought over "X | Indicap" intro records as deals at Intro To Capital Made, with the LP's name in the
  * sponsor slot. They are history, not tickets: emails, LP requests and Handles must never land on them.
  */
+/**
+ * A blind intro from the HubSpot import: "Wright | Marble", "Corta | Marble", "Intro - MLG | BKM". Two firms in the
+ * name, a HubSpot id, and nothing that makes it a deal we received: no files, no facts, no address, and the
+ * "property" is just the second firm. These are intros to reconsider, never tickets for Data updates, emails or
+ * LP requests. Anything Jonathan sent to deals@ has files or facts and passes.
+ */
+export const isBlindIntro = (d: { name: string; propertyName?: string | null; propertyAddress?: string | null; hubspotId?: string | null; fileCount?: number; factCount?: number }) => {
+  if (!d.hubspotId || d.fileCount || d.factCount || d.propertyAddress) return false;
+  const m = d.name.match(/^([^|]+)\|([^|]+)$/);
+  if (!m) return false;
+  const second = m[2].trim();
+  if (/\d/.test(second)) return false;
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return !d.propertyName || norm(d.propertyName) === norm(second);
+};
+/** The two firms in a blind intro's name, "Intro - " prefixes dropped. */
+export const introParties = (name: string): [string, string] => {
+  const [a, b] = name.split("|").map((x) => x.replace(/^\s*intro\b\s*[-:–—]?\s*/i, "").trim());
+  return [a ?? "", b ?? ""];
+};
+
 export const isLegacyIntroTicket = (d: { hubspotId?: string | null; stage: string; sponsorRoles?: string | null; investorCount?: number }) => {
   if (!d.hubspotId || d.stage !== "Intro To Capital Made") return false;
   // the tell: the "sponsor" is a capital source (Nelnet, Clairmont), not a sponsor; failing that, no report at all
