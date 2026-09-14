@@ -19,7 +19,8 @@ export function looksLikeDeparture(subject: string | null | undefined, text: str
   return HUMAN_DEPARTURE.test(body);
 }
 /** What a colleague writes back: "no longer with the firm", "has left", "moved on", "retired", "is no longer here". */
-export const HUMAN_DEPARTURE = /no longer (?:employed|with|works?|at|a part of|associated|here|handles?)|has (?:since )?left (?:the |our )?(?:company|firm|organization|team|bank|group)|is no longer (?:with|at|employed|here)|left the (?:company|firm|organization|team)|(?:has|have) (?:departed|moved on|retired)|\bI(?:'m| am) no longer (?:with|at)|\bI (?:have )?(?:left|moved on)/i;
+export const HUMAN_DEPARTURE = /no longer (?:employed|with|works?|at|a part of|associated|here|handles?)|has (?:since )?left (?:the |our )?(?:company|firm|organization|team|bank|group)|is no longer (?:with|at|employed|here)|left the (?:company|firm|organization|team)|(?:has|have) (?:departed|moved on from|retired)|\bI(?:'m| am) no longer (?:with|at)|\bI (?:have )?left (?:the |my |our )?(?:company|firm|organization|team|bank|group|role|position)|\bI (?:have )?moved on (?:from|to)/i;
+// "I left you a VM", "I left the meeting early", "I have left comments" are not departures: leaving must name the firm, role or team.
 
 /** Queue "remove this contact" for approval (once per contact while pending). */
 export async function proposeContactRemoval(contactId: string, evidence: string, sourceRef?: string | null, replacements: string[] = []): Promise<boolean> {
