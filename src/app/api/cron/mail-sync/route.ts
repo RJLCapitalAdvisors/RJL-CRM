@@ -2,6 +2,7 @@ import { linkStrayEmails, syncAllMailboxes } from "@/lib/mail-sync";
 import { ensureDealsSubscription, processDealsInbox } from "@/lib/deals-inbox";
 import { ensureIsraelSubscription, processIsraelInbox } from "@/lib/israel-intake";
 import { syncIsraelMailboxes } from "@/lib/israel-mail";
+import { refreshDashboardSignals } from "@/lib/dashboard-refresh";
 import { refreshMomentum } from "@/lib/momentum";
 import { scanAllIntros } from "@/lib/intros";
 
@@ -15,6 +16,7 @@ export async function GET(req: Request) {
   if (!secret || (auth !== `Bearer ${secret}` && key !== secret)) return new Response("Unauthorized", { status: 401 });
   const [result, deals, subscription] = await Promise.all([syncAllMailboxes(), processDealsInbox().catch((e) => String(e)), ensureDealsSubscription().catch((e) => String(e))]);
   const stray = await linkStrayEmails().catch(() => 0);
+  await refreshDashboardSignals().catch(() => undefined);
   const momentum = await refreshMomentum().catch((e) => String(e));
   const intros = await scanAllIntros().catch((e) => String(e));
   const israel = await processIsraelInbox().catch((e) => String(e));

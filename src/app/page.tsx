@@ -1,11 +1,9 @@
 import Link from "next/link";
-import { after } from "next/server";
 import type { ReactNode } from "react";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
 import { investorLabel } from "@/lib/tracker";
-import { syncFollowUpDrafts } from "@/lib/followup";
 import { EXTRA_FIELD_LABELS, PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
 import { STALE_DAYS, staleDeals } from "@/lib/stale-deals";
 import { possibleDuplicates } from "@/lib/deal-dedupe";
@@ -15,7 +13,9 @@ import { DraftButton } from "./draft-button";
 import { listMomentum } from "@/lib/momentum";
 import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
 import { currentUser } from "@/lib/current-user";
-import { kickMailSync, syncRecentSent } from "@/lib/mail-sync";
+import { kickMailSync } from "@/lib/mail-sync";
+import { kickDashboardRefresh } from "@/lib/dashboard-refresh";
+import { Item, ItemForm } from "./dash-item";
 import { kickBlasts } from "@/lib/blasts";
 
 export const metadata = { title: "Dashboard" };
@@ -28,12 +28,10 @@ const QUIET_AFTER_DAYS = 2;
 /** The dashboard starts the clock here: anything that began before this date stays off (the old backlog lives on the report and deal pages). */
 const HOME_SINCE = new Date("2026-08-31T00:00:00Z");
 const days = (d: Date) => Math.floor((Date.now() - d.getTime()) / DAY);
-let lastSync = 0;
 const KIND: Record<string, string> = { LP_ASK: "LP request for the sponsor", ENGAGEMENT: "engagement letter unanswered", SPONSOR_ITEMS: "waiting on sponsor", INTRO: "intro not scheduled", ACTION: "open action item", MENTIONED: "mentioned, never sent" };
 
 /** LPs who were sent a deal (or followed up with) and have said nothing for QUIET_AFTER_DAYS, grouped by deal. */
 async function quietInvestors() {
-  await syncFollowUpDrafts().catch(() => 0); // a follow-up sent from Outlook drops off here at once
   // calendar days in New York, not 48 hours: a deal sent Monday afternoon shows its quiet LPs Wednesday morning
   const now = new Date();
   const nyWall = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" })); // New York wall clock, read as if it were UTC
@@ -71,14 +69,9 @@ export default async function Dashboard() {
   kickMailSync();
   kickBlasts();
   const me = await currentUser();
-  // what you just sent, and drafts that went out, are picked up after the page is served (throttled), so every
-  // click and refresh on this page stays quick; the next load shows the result
-  if (me && Date.now() - lastSync > 60_000) {
-    lastSync = Date.now();
-    after(async () => {
-      await syncRecentSent(me.email).catch(() => 0);
-    });
-  }
+  // Microsoft is never asked during the render. What you just sent, drafts that went out and Handle emails that
+  // went out are picked up after the page is served (throttled); the next load shows the result.
+  kickDashboardRefresh(me?.email);
   const showCriteria = Boolean(me?.canEditCriteria);
   const [proposals, quiet, momentum, intros, readyDeals, stale, dupes, reports] = await Promise.all([
     showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING", createdAt: { gte: HOME_SINCE } }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]),
@@ -104,20 +97,16 @@ export default async function Dashboard() {
         <Window title="LP follow-ups" count={quietCount} empty={`Everyone you have sent a deal to has responded, or got it less than ${QUIET_AFTER_DAYS} days ago.`}>
           <ul className="divide-y divide-line">
             {quiet.map((g) => (
-              <li key={g.deal.id} className="px-3 py-2.5">
+              <Item key={g.deal.id} className="px-3 py-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <Link href={`/deals/${g.deal.id}/tracker`} className="font-semibold hover:underline">
                     {g.deal.propertyName ?? g.deal.name}
                   </Link>
-                  <form action={dismissFollowUps.bind(null, g.rows.map((r) => r.id))}>
-                    <button type="submit" className="text-[11px] text-muted hover:text-ink hover:underline" title="Take every quiet LP on this deal off the list (they stay on the progress report)">
-                      Dismiss all
-                    </button>
-                  </form>
+                  <ItemForm action={dismissFollowUps.bind(null, g.rows.map((r) => r.id))} className="text-[11px] text-muted hover:text-ink hover:underline" title="Take every quiet LP on this deal off the list (they stay on the progress report)">Dismiss all</ItemForm>
                 </div>
                 <ul className="mt-1.5 space-y-1.5">
                   {g.rows.map((r) => (
-                    <li key={r.id} className="flex items-center justify-between gap-2">
+                    <Item key={r.id} className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <div className="truncate">{r.contact.company?.name ?? investorLabel(r.contact)}</div>
                         <div className="truncate text-xs text-muted">
@@ -126,17 +115,13 @@ export default async function Dashboard() {
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
-                        <form action={dismissFollowUps.bind(null, [r.id])}>
-                          <button type="submit" className="text-[11px] text-muted hover:text-ink" title="Take this LP off the list (they stay on the progress report)">
-                            ✕
-                          </button>
-                        </form>
+                        <ItemForm action={dismissFollowUps.bind(null, [r.id])} className="text-[11px] text-muted hover:text-ink" title="Take this LP off the list (they stay on the progress report)">✕</ItemForm>
                         <DraftButton label={r.followUpDraftId ? "Open" : "Handle"} action={openFollowUp.bind(null, r.id)} disabled={!r.contact.email || r.contact.unsubscribed} title="Reply-all to the deal email with the attachments, your signature" />
                       </div>
-                    </li>
+                    </Item>
                   ))}
                 </ul>
-              </li>
+              </Item>
             ))}
           </ul>
         </Window>
@@ -144,7 +129,7 @@ export default async function Dashboard() {
         <Window title="Deal momentum" count={momentum.length} empty="Nothing stalled: sponsors owing items, intros not getting scheduled, open call action items, deals mentioned but never sent.">
           <ul className="divide-y divide-line">
             {momentum.map((m) => (
-              <li key={m.id} className="px-3 py-2.5">
+              <Item key={m.id} className="px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <Link href={`/deals/${m.dealId}`} className="font-semibold hover:underline">
@@ -157,14 +142,10 @@ export default async function Dashboard() {
                   </div>
                   <div className="act-col">
                     <DraftButton block action={openMomentumDraft.bind(null, m.id)} title="Reply on that thread in Outlook, blank, with your signature" />
-                    <form action={dismissMomentum.bind(null, m.id)}>
-                      <button type="submit" className="btn-grey act">
-                        Dismiss
-                      </button>
-                    </form>
+                    <ItemForm action={dismissMomentum.bind(null, m.id)} className="btn-grey act">Dismiss</ItemForm>
                   </div>
                 </div>
-              </li>
+              </Item>
             ))}
           </ul>
         </Window>
@@ -172,7 +153,7 @@ export default async function Dashboard() {
         <Window title="Intros to reconsider" count={intros.length} empty={`Every intro any of you made has had activity in the last ${QUIET_INTRO_DAYS} days.`}>
           <ul className="divide-y divide-line">
             {intros.map((i) => (
-              <li key={i.id} className="px-3 py-2.5">
+              <Item key={i.id} className="px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="font-semibold">{i.partyA && i.partyB ? `${i.partyA} | ${i.partyB}` : i.subject.replace(/^\s*intro\b\s*[-:–—]?\s*/i, "")}</div>
@@ -183,14 +164,10 @@ export default async function Dashboard() {
                   </div>
                   <div className="act-col">
                     <DraftButton block action={openIntroDraft.bind(null, i.id)} title="Reply-all on the intro thread, blank, with your signature" />
-                    <form action={dismissIntro.bind(null, i.id)}>
-                      <button type="submit" className="btn-grey act">
-                        Dismiss
-                      </button>
-                    </form>
+                    <ItemForm action={dismissIntro.bind(null, i.id)} className="btn-grey act">Dismiss</ItemForm>
                   </div>
                 </div>
-              </li>
+              </Item>
             ))}
           </ul>
         </Window>
@@ -203,7 +180,7 @@ export default async function Dashboard() {
           )}
           <ul className="divide-y divide-line">
             {reports.map((r) => (
-              <li key={`report-${r.id}`} className="px-3 py-2.5">
+              <Item key={`report-${r.id}`} className="px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <Link href={`/deals/${r.id}/tracker`} className="font-semibold hover:underline">
@@ -216,25 +193,17 @@ export default async function Dashboard() {
                   </div>
                   <div className="act-col">
                     <DraftButton block label="Handle" action={openReportDraftAction.bind(null, r.id)} title="Reply all on your latest exchange with the sponsor, the fresh progress report attached" />
-                    <form action={markReportSentAction.bind(null, r.id)}>
-                      <button type="submit" className="btn-grey act" title="You already sent it another way; restart the clock">
-                        Sent already
-                      </button>
-                    </form>
-                    <form action={markDealLostFromLaunchAction.bind(null, r.id)}>
-                      <button type="submit" className="act-lost" title="Clears the deal from the pipeline and the dashboard (intros to reconsider stay)">
-                        Mark as deal lost
-                      </button>
-                    </form>
+                    <ItemForm action={markReportSentAction.bind(null, r.id)} className="btn-grey act" title="You already sent it another way; restart the clock">Sent already</ItemForm>
+                    <ItemForm action={markDealLostFromLaunchAction.bind(null, r.id)} className="act-lost" title="Clears the deal from the pipeline and the dashboard (intros to reconsider stay)">Mark as deal lost</ItemForm>
                   </div>
                 </div>
-              </li>
+              </Item>
             ))}
           </ul>
           {readyDeals.length > 0 && reports.length > 0 && <div className="border-b border-t border-line bg-cream-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Engagement letter signed, ready to send</div>}
           <ul className="divide-y divide-line">
             {readyDeals.map((d) => (
-              <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <Item key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                 <div className="min-w-0">
                   <Link href={`/deals/${d.id}`} className="font-semibold hover:underline">
                     {d.propertyName ?? d.name}
@@ -247,13 +216,9 @@ export default async function Dashboard() {
                   <Link href={`/deals/${d.id}/send`} className="btn-soft act">
                     Send deal
                   </Link>
-                  <form action={markDealLostFromLaunchAction.bind(null, d.id)}>
-                    <button type="submit" className="act-lost" title="Clears the deal from the pipeline and the dashboard (intros to reconsider stay)">
-                      Mark as deal lost
-                    </button>
-                  </form>
+                  <ItemForm action={markDealLostFromLaunchAction.bind(null, d.id)} className="act-lost" title="Clears the deal from the pipeline and the dashboard (intros to reconsider stay)">Mark as deal lost</ItemForm>
                 </div>
-              </li>
+              </Item>
             ))}
           </ul>
         </Window>
@@ -267,7 +232,7 @@ export default async function Dashboard() {
             )}
             <ul className="divide-y divide-line">
               {dupes.map((d) => (
-                <li key={`${d.a.id}-${d.b.id}`} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                <Item key={`${d.a.id}-${d.b.id}`} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
                   <div className="min-w-0">
                     <div className="text-[11px] text-muted">{d.why}</div>
                     <div className="mt-0.5">
@@ -284,18 +249,10 @@ export default async function Dashboard() {
                     </div>
                   </div>
                   <div className="act-col">
-                    <form action={mergeDealsAction.bind(null, d.b.id, d.a.id)}>
-                      <button className="btn-soft act" type="submit" title={`Fold "${d.b.name}" into "${d.a.name}" (the ticket with more on it); emails, files, report rows and notes all move over`}>
-                        Merge into first
-                      </button>
-                    </form>
-                    <form action={notDuplicateAction.bind(null, d.a.id, d.b.id)}>
-                      <button className="btn-grey act" type="submit">
-                        Not the same
-                      </button>
-                    </form>
+                    <ItemForm action={mergeDealsAction.bind(null, d.b.id, d.a.id)} className="btn-soft act" title={`Fold "${d.b.name}" into "${d.a.name}" (the ticket with more on it); emails, files, report rows and notes all move over`}>Merge into first</ItemForm>
+                    <ItemForm action={notDuplicateAction.bind(null, d.a.id, d.b.id)} className="btn-grey act">Not the same</ItemForm>
                   </div>
-                </li>
+                </Item>
               ))}
             </ul>
             {stale.length > 0 && (
@@ -305,7 +262,7 @@ export default async function Dashboard() {
             )}
             <ul className="divide-y divide-line">
               {stale.map((d) => (
-                <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <Item key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                   <div className="min-w-0">
                     <Link href={`/deals/${d.id}`} className="font-semibold hover:underline">
                       {d.name}
@@ -316,23 +273,15 @@ export default async function Dashboard() {
                   </div>
                   <div className="act-col">
                     <DraftButton block label="Handle" action={handleStaleDeal.bind(null, d.id)} title="Open a check-in email on the thread this deal came through" />
-                    <form action={keepDealAction.bind(null, d.id)}>
-                      <button className="btn-grey act" type="submit" title={`Still alive; ask me again in ${STALE_DAYS} quiet days`}>
-                        Keep
-                      </button>
-                    </form>
-                    <form action={markDealLostAction.bind(null, d.id)}>
-                      <button className="act-lost" type="submit" title="Move to Deal Lost; it leaves Deal momentum and LP follow-ups">
-                        Mark as deal lost
-                      </button>
-                    </form>
+                    <ItemForm action={keepDealAction.bind(null, d.id)} className="btn-grey act" title={`Still alive; ask me again in ${STALE_DAYS} quiet days`}>Keep</ItemForm>
+                    <ItemForm action={markDealLostAction.bind(null, d.id)} className="act-lost" title="Move to Deal Lost; it leaves Deal momentum and LP follow-ups">Mark as deal lost</ItemForm>
                   </div>
-                </li>
+                </Item>
               ))}
               {proposals.map((p) => {
                 const changes = JSON.parse(p.changes) as Change[];
                 return (
-                  <li key={p.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                  <Item key={p.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                     <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <Link href={p.contactId && changes.some((c) => c.field === "removeContact") ? `/contacts/${p.contactId}` : `/companies/${p.companyId}`} className="font-semibold hover:underline">
@@ -342,26 +291,18 @@ export default async function Dashboard() {
                     </div>
                     <ul className="mt-1 space-y-1">
                       {changes.map((c) => (
-                        <li key={c.field} className="text-xs">
+                        <Item key={c.field} className="text-xs">
                           <span className="text-muted">{c.field === "removeContact" ? EXTRA_FIELD_LABELS.removeContact : PROPOSAL_FIELDS[c.field]?.label ?? c.field}:</span> <span className="line-through text-muted">{c.from || "blank"}</span> <span className="font-medium">{c.to}</span>
                           {c.evidence && <div className="italic text-muted">“{c.evidence}”</div>}
-                        </li>
+                        </Item>
                       ))}
                     </ul>
                     </div>
                     <div className="act-col">
-                      <form action={approveProposal.bind(null, p.id)}>
-                        <button className="btn-soft act" type="submit">
-                          Approve
-                        </button>
-                      </form>
-                      <form action={dismissProposal.bind(null, p.id)}>
-                        <button className="btn-grey act" type="submit">
-                          Dismiss
-                        </button>
-                      </form>
+                      <ItemForm action={approveProposal.bind(null, p.id)} className="btn-soft act">Approve</ItemForm>
+                      <ItemForm action={dismissProposal.bind(null, p.id)} className="btn-grey act">Dismiss</ItemForm>
                     </div>
-                  </li>
+                  </Item>
                 );
               })}
             </ul>

@@ -116,18 +116,8 @@ export async function quietIntros(since = new Date(Date.now() - INTRO_WINDOW_DAY
       const logged = recips.length
         ? await prisma.activity.findFirst({ where: { type: "EMAIL", direction: "OUTBOUND", occurredAt: { gt: r.handledAt }, contact: { email: { in: recips } } }, select: { occurredAt: true } })
         : null;
-      let sentAt: Date | null = logged?.occurredAt ?? null;
-      if (!sentAt && graphConfigured()) {
-        // Sent Items itself, so the item goes the moment the email is sent, not when the log catches up
-        for (const to of recips.slice(0, 3)) {
-          const sent = await sentMessagesTo(r.mailbox, to, 5).catch(() => [] as { sentDateTime?: string }[]);
-          const hit = sent.find((x) => x.sentDateTime && new Date(x.sentDateTime) > r.handledAt!);
-          if (hit?.sentDateTime) {
-            sentAt = new Date(hit.sentDateTime);
-            break;
-          }
-        }
-      }
+      // the email log only here; Sent Items is checked in the background (dashboard-refresh.ts), never in the render
+      const sentAt: Date | null = logged?.occurredAt ?? null;
       if (sentAt) {
         // the thread moved: quiet clock restarts from the reply, and the intro comes back only after QUIET_INTRO_DAYS of silence
         await prisma.intro.update({ where: { id: r.id }, data: { lastActivityAt: sentAt, replies: { increment: 1 }, handledAt: null } }).catch(() => null);

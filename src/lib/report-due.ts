@@ -29,7 +29,6 @@ export type ReportDue = { id: string; name: string; sponsorName: string | null; 
 
 /** Deals whose progress report changed since it was last sent, and whose next send is due. */
 export async function reportsDue(): Promise<ReportDue[]> {
-  await syncReportDrafts().catch(() => 0);
   const now = new Date();
   const thursday = lastThursdaySlot(now);
   const deals = await prisma.deal.findMany({ where: { stage: { in: LIVE_STAGES }, parentDealId: null, investors: { some: {} } }, select: { id: true, name: true, propertyName: true, sponsorName: true, reportSentAt: true, reportDraftAt: true, _count: { select: { investors: true } } } });

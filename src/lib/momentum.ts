@@ -174,7 +174,6 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
 }
 
 export async function listMomentum(since?: Date) {
-  await import("@/lib/handled").then((m) => m.syncHandledMomentum()).catch(() => 0);
   const rows = await prisma.momentum.findMany({ where: { status: "OPEN", ...(since ? { waitingSince: { gte: since } } : {}) }, orderBy: { waitingSince: "asc" } });
   // a deal that is lost or closed takes its items off the board with it
   const deals = new Map((await prisma.deal.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.dealId))] }, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true } })).map((d) => [d.id, d]));
