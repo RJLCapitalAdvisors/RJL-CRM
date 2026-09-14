@@ -16,7 +16,7 @@ export default async function DealListPage({ searchParams }: { searchParams: Pro
   const stage = str(sp.stage);
   const page = Math.max(1, Number(str(sp.page)) || 1);
   const where: Prisma.DealWhereInput = {
-    AND: [q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { sponsorName: { contains: q, mode: "insensitive" } }, { propertyAddress: { contains: q, mode: "insensitive" } }] } : {}, stage ? { stage } : {}],
+    AND: [q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { propertyName: { contains: q, mode: "insensitive" } }, { sponsorName: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { state: { contains: q, mode: "insensitive" } }, { propertyAddress: { contains: q, mode: "insensitive" } }, { summary: { contains: q, mode: "insensitive" } }, { sponsorCompany: { name: { contains: q, mode: "insensitive" } } }] } : {}, stage ? { stage } : {}],
   };
   const [total, rows] = await Promise.all([
     prisma.deal.count({ where }),
@@ -42,7 +42,7 @@ export default async function DealListPage({ searchParams }: { searchParams: Pro
         }
       />
       <div className="px-8 py-4">
-        <SearchForm action="/deals/list" q={q} placeholder="Search deal, sponsor, or address">
+        <SearchForm action="/deals/list" q={q} placeholder="Search deal, property, sponsor, city, address or plan">
           <select name="stage" defaultValue={stage} className="input w-52">
             <option value="">All stages</option>
             {DEAL_STAGES.map((s) => (
