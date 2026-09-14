@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { REPORT_STAGES } from "@/lib/taxonomy";
 import { addAttachment, createDraft, createReplyAllDraft, getMessage, graph, graphConfigured, listAttachments, outlookDesktopLink, sentMessagesTo, updateDraftBody } from "@/lib/graph";
 import { signatureFor, type FollowUpResult } from "@/lib/followup";
 import { sponsorContactsFor } from "@/lib/engagement";
@@ -12,7 +13,7 @@ import { buildProgressReportPdf } from "@/lib/progress-report-pdf";
  * leaves Drafts (or a report email to the sponsor shows in Sent Items), the deal's reportSentAt moves and the clock restarts.
  */
 const DAY = 86_400_000;
-const LIVE_STAGES = ["Deal Taken To Market", "Intro To Capital Made", "Term Sheet Issued", "Term Sheet Signed"];
+const LIVE_STAGES = [...REPORT_STAGES];
 const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
 
 /** The most recent Thursday 4:30pm New York, as an instant. */

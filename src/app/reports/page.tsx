@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { CompanyLogo } from "@/components/company-logo";
-import { ACTIVE_STAGES } from "@/lib/taxonomy";
+import { REPORT_STAGES } from "@/lib/taxonomy";
 import { AWAITING_RESPONSE, TRACKER_STATUSES } from "@/lib/tracker";
 import { fmtDate } from "@/lib/format";
 
@@ -14,7 +14,7 @@ const DAY = 86_400_000;
 /** Every deal that has a progress report, most in need of attention first. */
 async function loadRows() {
   const deals = await prisma.deal.findMany({
-    where: { stage: { in: [...ACTIVE_STAGES] }, investors: { some: {} } },
+    where: { stage: { in: [...REPORT_STAGES] }, investors: { some: {} } },
     include: { sponsorCompany: { select: { domain: true, name: true } }, investors: { select: { status: true, updatedAt: true } } },
   });
 

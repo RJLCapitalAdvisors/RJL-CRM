@@ -58,6 +58,8 @@ export const DEAL_STAGES = [
 ] as const;
 export type DealStage = (typeof DEAL_STAGES)[number];
 export const ACTIVE_STAGES = DEAL_STAGES.filter((s) => s !== "Deal Closed" && s !== "Deal Lost");
+/** A progress report exists only while the deal is out to market: from Deal Taken To Market until a term sheet is signed. */
+export const REPORT_STAGES = ["Deal Taken To Market", "Intro To Capital Made", "Term Sheet Issued"] as const;
 
 export const REGIONS = [
   "Nationwide",
