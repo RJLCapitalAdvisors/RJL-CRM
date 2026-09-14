@@ -37,6 +37,15 @@ function fuzzyMatch(a: string, b: string) {
   return hit > 0 && hit >= Math.min(A.size, B.size) * 0.5;
 }
 
+/** "Everett" against "Everett Mall Plaza": one name is a whole-word part of the other (5+ letters), same deal. */
+function nameContains(a: string, b: string): boolean {
+  const n = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  const x = n(a), y = n(b);
+  if (x.length < 5 || y.length < 5) return false;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return new RegExp(`(^| )${short.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`).test(long);
+}
+
 export async function detectMentionedDeals(): Promise<{ threads: number; created: string[] }> {
   if (!graphConfigured() || !process.env.ANTHROPIC_API_KEY) return { threads: 0, created: [] };
   const since = new Date(Date.now() - LOOKBACK_DAYS * DAY);
@@ -89,9 +98,16 @@ export async function detectMentionedDeals(): Promise<{ threads: number; created
     await prisma.mentionScan.create({ data: { externalId: newest.externalId!, companyId: company.id } }).catch(() => {});
     if (!out) continue;
     const existing = await prisma.deal.findMany({ where: { OR: [{ sponsorCompanyId: company.id }, { sponsorName: { contains: company.name.split(" ")[0], mode: "insensitive" } }] }, select: { name: true, propertyName: true } });
+    // deals this firm was SENT (they sit on the progress report): when they write about one of those they are the
+    // LP on it, never the sponsor of a new one. JDI writing about Everett is JDI the investor, not "JDI | Everett".
+    const theirDeals = await prisma.deal.findMany({ where: { investors: { some: { contact: { companyId: company.id } } } }, select: { name: true, propertyName: true, city: true, state: true } });
+    // and any live deal by that name, whoever sponsors it: one deal, one ticket
+    const live = await prisma.deal.findMany({ where: { stage: { notIn: ["Deal Lost", "Deal Closed"] }, parentDealId: null }, select: { name: true, propertyName: true, city: true, state: true } });
     for (const d of out.deals) {
       if (!d.name.trim()) continue;
       if (existing.some((e) => fuzzyMatch(d.name, e.propertyName ?? e.name))) continue;
+      if (theirDeals.some((e) => fuzzyMatch(d.name, e.propertyName ?? e.name) || nameContains(d.name, e.propertyName ?? e.name))) continue;
+      if (live.some((e) => fuzzyMatch(d.name, e.propertyName ?? e.name) || nameContains(d.name, e.propertyName ?? e.name))) continue;
       const { findSameDeal } = await import("@/lib/deal-knowledge");
       const [city, state] = d.location.split(",").map((x) => x.trim());
       // same deal already on the board: same name, its street address, or the same sponsor in the same city (Claude confirms)

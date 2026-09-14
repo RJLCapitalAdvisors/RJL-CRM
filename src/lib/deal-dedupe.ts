@@ -46,6 +46,14 @@ function certainMatch(name: string, ctx: DealCtx, d: Cand): boolean {
   return false;
 }
 /** Names that share more than half of their meaningful words, at least two: "BSPG Recap" and "Kansas City Metro Retail Portfolio (BSPG Recap)". */
+/** One name is a whole-word part of the other ("Everett" in "Everett Mall Plaza"), 5+ letters, not a generic word. */
+export function nameWithin(a: string, b: string): boolean {
+  const x = normName(a), y = normName(b);
+  if (x.length < 5 || y.length < 5 || x === y) return false;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  if (/^(plaza|center|centre|portfolio|apartments|apartment|village|park|place|square|commons|crossing|station|tower|towers|lofts|ranch|estates|the)$/.test(short)) return false;
+  return new RegExp(`(^| )${short.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`).test(long);
+}
 export function similarName(a: string, b: string): boolean {
   const w = (s: string) => new Set(normName(s).split(" ").filter((x) => x.length > 3));
   const A = w(a), B = w(b);
@@ -97,6 +105,7 @@ export async function possibleDuplicates(): Promise<DupePair[]> {
       if (normName(x.propertyName ?? x.name).length >= 4 && normName(x.propertyName ?? x.name) === normName(y.propertyName ?? y.name)) why = "same name";
       else if (certainMatch(x.propertyName ?? x.name, ctx, y)) why = "same address";
       else if (similarName(x.propertyName ?? x.name, y.propertyName ?? y.name)) why = "similar names";
+      else if (nameWithin(x.propertyName ?? x.name, y.propertyName ?? y.name)) why = "one name contains the other";
       else if (sameSponsorAndCity(ctx, y)) why = `same sponsor, both in ${y.city}`;
       if (!why) continue;
       const [a, b] = card(x).weight >= card(y).weight ? [card(x), card(y)] : [card(y), card(x)];

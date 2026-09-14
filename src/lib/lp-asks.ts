@@ -55,8 +55,14 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
       const linked = await prisma.deal.findFirst({ where: { id: a.dealId, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true, hubspotId: true, stage: true, sponsorCompany: { select: { roles: true } }, _count: { select: { investors: true } } } });
       if (linked && !isLegacyIntroTicket({ ...linked, sponsorRoles: linked.sponsorCompany?.roles ?? null, investorCount: linked._count.investors })) candidates.unshift(linked);
     }
-    let dealId: string | null = a.dealId && candidates.some((x) => x.id === a.dealId) ? a.dealId : null;
-    if (!dealId) dealId = candidates.find((x) => subjectMatchesDeal(a.subject, x) || houseSubjectMatches(a.subject, x))?.id ?? null;
+    // the deals this firm sits on (the report rows) come first; a record that only came from the mention detector
+    // ("Deal Mentioned", nobody on its report) never outranks the ticket the firm was actually sent
+    const onReport = new Set(rows.map((r) => r.dealId));
+    const stageOf = new Map((await prisma.deal.findMany({ where: { id: { in: candidates.map((x) => x.id) } }, select: { id: true, stage: true } })).map((x) => [x.id, x.stage]));
+    const preferReal = (list: typeof candidates) => [...list].sort((x, y) => Number(onReport.has(y.id)) - Number(onReport.has(x.id)) || Number(stageOf.get(x.id) === "Deal Mentioned") - Number(stageOf.get(y.id) === "Deal Mentioned"));
+    const byName = preferReal(candidates.filter((x) => subjectMatchesDeal(a.subject, x) || houseSubjectMatches(a.subject, x)));
+    let dealId: string | null = a.dealId && candidates.some((x) => x.id === a.dealId) && (onReport.has(a.dealId) || stageOf.get(a.dealId) !== "Deal Mentioned" || !byName.length) ? a.dealId : null;
+    if (!dealId) dealId = byName[0]?.id ?? null;
     // the sponsor answering about their own deal is not an LP response
     const sponsorOf = await prisma.deal.findFirst({ where: { sponsorCompanyId: a.companyId!, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true } });
     if (sponsorOf && !candidates.some((x) => x.id !== sponsorOf.id)) {
