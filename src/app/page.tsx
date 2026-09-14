@@ -257,7 +257,7 @@ export default async function Dashboard() {
             </ul>
             {stale.length > 0 && (
               <div className="border-b border-line bg-cream-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                Deals gone quiet ({stale.length}) · nothing for {STALE_DAYS}+ days, Deal Mentioned through Intro To Capital Made
+                Deals gone quiet ({stale.length}) · nothing for {STALE_DAYS}+ days, Deal Received through Intro To Capital Made
               </div>
             )}
             <ul className="divide-y divide-line">

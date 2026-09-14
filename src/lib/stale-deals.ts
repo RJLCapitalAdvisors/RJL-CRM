@@ -2,13 +2,14 @@ import { prisma } from "@/lib/db";
 import { DEAL_STAGES } from "@/lib/taxonomy";
 
 /**
- * Culling: a deal between Deal Mentioned and Intro To Capital Made with nothing happening for STALE_DAYS
+ * Culling: a deal between Deal Received and Intro To Capital Made with nothing happening for STALE_DAYS
  * (no email, no note, no report change, no edit) is probably dead. It shows under Data updates for Jonathan to
  * move to Deal Lost, which takes it off Deal momentum and LP follow-ups. "Keep" hides it for another STALE_DAYS.
  */
 export const STALE_DAYS = 3;
 const DAY = 86_400_000;
-const STALE_STAGES = DEAL_STAGES.slice(DEAL_STAGES.indexOf("Deal Mentioned"), DEAL_STAGES.indexOf("Intro To Capital Made") + 1) as string[];
+// Deal Received or further: a deal that was only mentioned in passing is not worth a culling decision
+const STALE_STAGES = DEAL_STAGES.slice(DEAL_STAGES.indexOf("Deal Received"), DEAL_STAGES.indexOf("Intro To Capital Made") + 1) as string[];
 
 export type StaleDeal = { id: string; name: string; stage: string; sponsorName: string | null; lastActivityAt: Date; quietDays: number; investors: number };
 
