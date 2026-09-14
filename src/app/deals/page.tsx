@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { ACTIVE_STAGES } from "@/lib/taxonomy";
+import { ACTIVE_STAGES, isBlindIntro } from "@/lib/taxonomy";
 import { PageHeader } from "@/components/ui";
 import { Board, type BoardDeal } from "./board";
 import { str } from "@/lib/format";
@@ -32,6 +32,10 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
     city: true,
     state: true,
     assetClass: true,
+    strategy: true,
+    propertyAddress: true,
+    hubspotId: true,
+    _count: { select: { files: true, facts: true } },
     requestType: true,
     requestedAmount: true,
     closeDate: true,
@@ -50,6 +54,7 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
 
   const toBoard = (d: (typeof active)[number]): BoardDeal => ({
     ...d,
+    intro: isBlindIntro({ ...d, fileCount: d._count.files, factCount: d._count.facts }),
     ownerName: d.owner?.name ?? null,
     closeDate: d.closeDate?.toISOString() ?? null,
     updatedAt: d.updatedAt.toISOString(),

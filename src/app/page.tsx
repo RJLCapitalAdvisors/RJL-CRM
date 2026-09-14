@@ -86,6 +86,7 @@ export default async function Dashboard() {
 
   const companies = new Map((await prisma.company.findMany({ where: { id: { in: proposals.map((p) => p.companyId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   const people = new Map((await prisma.contact.findMany({ where: { id: { in: proposals.map((p) => p.contactId).filter(Boolean) as string[] } }, select: { id: true, firstName: true, lastName: true } })).map((c) => [c.id, [c.firstName, c.lastName].filter(Boolean).join(" ")]));
+  const dealNames = new Map((await prisma.deal.findMany({ where: { id: { in: proposals.map((p) => p.dealId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
   const today = new Date();
   const quietCount = quiet.reduce((n, g) => n + g.rows.length, 0);
   const cols = showCriteria ? "2xl:grid-cols-5" : "2xl:grid-cols-4";
@@ -284,15 +285,15 @@ export default async function Dashboard() {
                   <Item key={p.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                     <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <Link href={p.contactId && changes.some((c) => c.field === "removeContact") ? `/contacts/${p.contactId}` : `/companies/${p.companyId}`} className="font-semibold hover:underline">
-                        {changes.some((c) => c.field === "removeContact") && p.contactId ? `${people.get(p.contactId) || "Contact"}${p.companyId && companies.get(p.companyId) ? ` · ${companies.get(p.companyId)}` : ""}` : (p.companyId && companies.get(p.companyId)) ?? "Investor"}
+                      <Link href={p.dealId ? `/deals/${p.dealId}` : p.contactId && changes.some((c) => c.field === "removeContact") ? `/contacts/${p.contactId}` : `/companies/${p.companyId}`} className="font-semibold hover:underline">
+                        {p.dealId ? dealNames.get(p.dealId) ?? "Deal" : changes.some((c) => c.field === "removeContact") && p.contactId ? `${people.get(p.contactId) || "Contact"}${p.companyId && companies.get(p.companyId) ? ` · ${companies.get(p.companyId)}` : ""}` : (p.companyId && companies.get(p.companyId)) ?? "Investor"}
                       </Link>
-                      <span className="shrink-0 text-[11px] text-muted">{p.source === "NOTE" ? "note" : p.source === "EMAIL" ? "email" : p.source === "FIREFLIES" ? "call" : p.sourceRef ?? "teammate"}</span>
+                      <span className="shrink-0 text-[11px] text-muted">{p.source === "NAMING" ? "naming" : p.source === "NOTE" ? "note" : p.source === "EMAIL" ? "email" : p.source === "FIREFLIES" ? "call" : p.sourceRef ?? "teammate"}</span>
                     </div>
                     <ul className="mt-1 space-y-1">
                       {changes.map((c) => (
                         <Item key={c.field} className="text-xs">
-                          <span className="text-muted">{c.field === "removeContact" ? EXTRA_FIELD_LABELS.removeContact : PROPOSAL_FIELDS[c.field]?.label ?? c.field}:</span> <span className="line-through text-muted">{c.from || "blank"}</span> <span className="font-medium">{c.to}</span>
+                          <span className="text-muted">{c.field === "removeContact" || c.field === "dealName" ? EXTRA_FIELD_LABELS[c.field] : PROPOSAL_FIELDS[c.field]?.label ?? c.field}:</span> <span className="line-through text-muted">{c.from || "blank"}</span> <span className="font-medium">{c.to}</span>
                           {c.evidence && <div className="italic text-muted">“{c.evidence}”</div>}
                         </Item>
                       ))}

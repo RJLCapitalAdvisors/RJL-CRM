@@ -3,6 +3,7 @@ import { ensureDealsSubscription, processDealsInbox } from "@/lib/deals-inbox";
 import { ensureIsraelSubscription, processIsraelInbox } from "@/lib/israel-intake";
 import { syncIsraelMailboxes } from "@/lib/israel-mail";
 import { refreshDashboardSignals } from "@/lib/dashboard-refresh";
+import { proposeNamingConventions } from "@/lib/naming";
 import { refreshMomentum } from "@/lib/momentum";
 import { scanAllIntros } from "@/lib/intros";
 
@@ -17,10 +18,11 @@ export async function GET(req: Request) {
   const [result, deals, subscription] = await Promise.all([syncAllMailboxes(), processDealsInbox().catch((e) => String(e)), ensureDealsSubscription().catch((e) => String(e))]);
   const stray = await linkStrayEmails().catch(() => 0);
   await refreshDashboardSignals().catch(() => undefined);
+  const naming = await proposeNamingConventions().catch((e) => String(e));
   const momentum = await refreshMomentum().catch((e) => String(e));
   const intros = await scanAllIntros().catch((e) => String(e));
   const israel = await processIsraelInbox().catch((e) => String(e));
   const israelMail = await syncIsraelMailboxes().catch((e) => String(e));
   const israelSubscription = await ensureIsraelSubscription().catch((e) => String(e));
-  return Response.json({ ok: true, result, deals, subscription, stray, momentum, intros, israel, israelMail, israelSubscription });
+  return Response.json({ ok: true, result, deals, subscription, stray, momentum, intros, israel, israelMail, israelSubscription, naming });
 }

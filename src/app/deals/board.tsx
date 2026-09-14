@@ -21,6 +21,8 @@ export type BoardDeal = {
   city: string | null;
   state: string | null;
   assetClass: string | null;
+  strategy: string | null;
+  intro: boolean;
   requestType: string | null;
   requestedAmount: number | null;
   closeDate: string | null;
@@ -104,6 +106,9 @@ function Column({ stage, deals, total, truncated, preview, onLost }: { stage: st
   );
 }
 
+/** "INTRO | A | B" or "A | B" shown as "A | B". */
+const introLabel = (name: string) => name.replace(/^\s*intro\s*\|\s*/i, "").split("|").map((x) => x.replace(/^\s*intro\b\s*[-:–—]?\s*/i, "").trim()).filter(Boolean).join(" | ");
+
 function Card({ deal, overlay = false, onLost }: { deal: BoardDeal; overlay?: boolean; onLost?: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal.id, disabled: overlay });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
@@ -130,23 +135,20 @@ function Card({ deal, overlay = false, onLost }: { deal: BoardDeal; overlay?: bo
       title="Click to open; drag to move between stages"
       className={`card cursor-pointer p-3 text-sm active:cursor-grabbing ${isDragging && !overlay ? "opacity-30" : ""} ${overlay ? "rotate-1 shadow-xl" : ""}`}
     >
-      {deal.sponsorName && <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-sky-600">{deal.sponsorName}</div>}
+      {/* the convention: sponsor, deal name, then asset class, development or acquisitions, City, ST, owner. An intro reads INTRO over the two groups. */}
+      <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-sky-600">{deal.intro ? "INTRO" : deal.sponsorName ?? <span className="text-muted">No sponsor</span>}</div>
       <Link href={`/deals/${deal.id}`} className="mt-0.5 block font-medium leading-snug hover:underline" onPointerDown={(e) => e.stopPropagation()}>
-        {title}
+        {deal.intro ? introLabel(deal.name) : title}
       </Link>
-      <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-muted">
-        {deal.assetClass && <span className="chip bg-cream">{deal.assetClass}</span>}
-        {(deal.city || deal.state) && <span className="chip bg-cream">{[deal.city, deal.state].filter(Boolean).join(", ")}</span>}
-        {deal.requestedAmount != null && (
-          <span className="chip bg-sky-50">
-            {fmtMoney(deal.requestedAmount)}
-            {deal.requestType ? ` ${deal.requestType.toLowerCase()}` : ""}
-          </span>
-        )}
-      </div>
-      <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
+      {!deal.intro && (
+        <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-muted">
+          <span className={`chip ${deal.assetClass ? "bg-cream" : "border border-dashed border-line bg-transparent"}`}>{deal.assetClass ?? "asset class?"}</span>
+          <span className={`chip ${deal.strategy ? "bg-cream" : "border border-dashed border-line bg-transparent"}`}>{deal.strategy ?? "dev / acq?"}</span>
+          <span className={`chip ${deal.city || deal.state ? "bg-cream" : "border border-dashed border-line bg-transparent"}`}>{[deal.city, deal.state].filter(Boolean).join(", ") || "city, state?"}</span>
+        </div>
+      )}
+      <div className="mt-2 text-[11px] text-muted">
         <span className="truncate">{deal.ownerName ?? "Unassigned"}</span>
-        <span>{deal.closeDate ? fmtDate(deal.closeDate) : fmtDate(deal.updatedAt)}</span>
       </div>
       {onLost && deal.stage !== "Deal Lost" && deal.stage !== "Deal Closed" && (
         <button

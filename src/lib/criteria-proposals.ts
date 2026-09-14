@@ -29,9 +29,9 @@ export const PROPOSAL_FIELDS = {
   otherInfo: { label: "Other info", list: false, allowed: null },
 } as const;
 export type ProposalField = keyof typeof PROPOSAL_FIELDS;
-export type Change = { field: ProposalField | "removeContact"; from: string; to: string; evidence: string };
+export type Change = { field: ProposalField | "removeContact" | "dealName"; from: string; to: string; evidence: string };
 /** Labels for changes that are not criteria fields. */
-export const EXTRA_FIELD_LABELS: Record<string, string> = { removeContact: "Remove contact" };
+export const EXTRA_FIELD_LABELS: Record<string, string> = { removeContact: "Remove contact", dealName: "Deal name" };
 
 const Out = z.object({
   summary: z.string().describe("One sentence: what the investor said that changes their criteria. Empty if nothing changes."),
@@ -109,6 +109,13 @@ export async function applyProposal(id: string, onlyFields?: ProposalField[]) {
   const p = await prisma.criteriaProposal.findUnique({ where: { id } });
   if (!p) return;
   const all = JSON.parse(p.changes) as Change[];
+  // a naming-convention rename: write the new name on the deal
+  const rename = all.find((c) => c.field === "dealName");
+  if (rename && p.dealId) {
+    await prisma.deal.update({ where: { id: p.dealId }, data: { name: rename.to } }).catch(() => null);
+    await prisma.criteriaProposal.update({ where: { id }, data: { status: "APPROVED", reviewedAt: new Date() } });
+    return;
+  }
   // someone left their firm: mark the contact departed (no more emails, off every picker); the record stays for history
   if (all.some((c) => c.field === "removeContact") && p.contactId) {
     await prisma.contact.update({ where: { id: p.contactId }, data: { departedAt: new Date(), unsubscribed: true } }).catch(() => null);
@@ -117,7 +124,7 @@ export async function applyProposal(id: string, onlyFields?: ProposalField[]) {
     await prisma.criteriaProposal.update({ where: { id }, data: { status: "APPROVED", reviewedAt: new Date() } });
     return;
   }
-  const changes = all.filter((c): c is Change & { field: ProposalField } => c.field !== "removeContact" && (!onlyFields || onlyFields.includes(c.field)));
+  const changes = all.filter((c): c is Change & { field: ProposalField } => c.field !== "removeContact" && c.field !== "dealName" && (!onlyFields || onlyFields.includes(c.field)));
   const data: Record<string, unknown> = {};
   for (const c of changes) {
     const spec = PROPOSAL_FIELDS[c.field];

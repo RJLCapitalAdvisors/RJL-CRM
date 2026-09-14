@@ -339,7 +339,7 @@ export const STAGE_ORDER = ["Deal Mentioned", "Deal Received", "Deal Underwritte
  */
 export const isBlindIntro = (d: { name: string; propertyName?: string | null; propertyAddress?: string | null; hubspotId?: string | null; fileCount?: number; factCount?: number }) => {
   if (!d.hubspotId || d.fileCount || d.factCount || d.propertyAddress) return false;
-  const m = d.name.match(/^([^|]+)\|([^|]+)$/);
+  const m = d.name.match(/^(?:intro\s*\|\s*)?([^|]+)\|([^|]+)$/i);
   if (!m) return false;
   const second = m[2].trim();
   if (/\d/.test(second)) return false;
@@ -348,8 +348,8 @@ export const isBlindIntro = (d: { name: string; propertyName?: string | null; pr
 };
 /** The two firms in a blind intro's name, "Intro - " prefixes dropped. */
 export const introParties = (name: string): [string, string] => {
-  const [a, b] = name.split("|").map((x) => x.replace(/^\s*intro\b\s*[-:–—]?\s*/i, "").trim());
-  return [a ?? "", b ?? ""];
+  const parts = name.split("|").map((x) => x.replace(/^\s*intro\b\s*[-:–—]?\s*/i, "").trim()).filter(Boolean);
+  return [parts[0] ?? "", parts[1] ?? ""];
 };
 
 export const isLegacyIntroTicket = (d: { hubspotId?: string | null; stage: string; sponsorRoles?: string | null; investorCount?: number }) => {

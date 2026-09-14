@@ -358,6 +358,7 @@ model CriteriaProposal {
   sourceRef  String? // transcript id / message id
   companyId  String?
   contactId  String?
+  dealId     String?  // naming-convention renames
   summary    String
   changes    String // JSON: [{ field, from, to, evidence }]
   status     String   @default("PENDING") // PENDING | APPROVED | REJECTED
