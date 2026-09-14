@@ -162,7 +162,7 @@ export async function quietIntros(since = new Date(Date.now() - INTRO_WINDOW_DAY
  * Handle replies on the intro email (same path as a quiet deal); Dismiss marks the record so it stays out.
  */
 async function blindIntroRows(since: Date, cutoff: Date) {
-  const stages = DEAL_STAGES.slice(DEAL_STAGES.indexOf("Deal Received"), DEAL_STAGES.indexOf("Intro To Capital Made") + 1) as string[];
+  const stages = DEAL_STAGES.filter((x) => x !== "Deal Mentioned" && x !== "Deal Lost" && x !== "Deal Closed") as string[];
   const deals = await prisma.deal.findMany({ where: { stage: { in: stages }, parentDealId: null, hubspotId: { not: null }, name: { contains: "|" } }, select: { id: true, name: true, propertyName: true, propertyAddress: true, hubspotId: true, details: true, createdAt: true, updatedAt: true, staleCheckedAt: true, staleHandledAt: true, _count: { select: { files: true, facts: true, activities: true } }, activities: { orderBy: { occurredAt: "desc" }, take: 1, select: { occurredAt: true } } } });
   const out: Awaited<ReturnType<typeof prisma.intro.findMany>> = [];
   for (const d of deals) {
@@ -174,7 +174,7 @@ async function blindIntroRows(since: Date, cutoff: Date) {
       /* no details */
     }
     if (det.introDismissed) continue;
-    const last = new Date(Math.max(d.updatedAt.getTime(), d.staleCheckedAt?.getTime() ?? 0, d.activities[0]?.occurredAt.getTime() ?? 0));
+    const last = new Date(Math.max(d.createdAt.getTime(), d.staleCheckedAt?.getTime() ?? 0, d.activities[0]?.occurredAt.getTime() ?? 0));
     if (last < since || last >= cutoff) continue; // touched in the last 30 days, or older than the 12-month window
     const [partyA, partyB] = introParties(d.name);
     out.push({ id: `deal:${d.id}`, mailbox: "hubspot", subject: `Intro - ${partyA} | ${partyB}`, partyA, partyB, recipients: "[]", conversationId: null, messageId: `deal:${d.id}`, introducedAt: d.createdAt, lastActivityAt: last, lastMessageId: null, replies: d._count.activities, handledAt: d.staleHandledAt, status: "OPEN", createdAt: d.createdAt, updatedAt: d.updatedAt });
