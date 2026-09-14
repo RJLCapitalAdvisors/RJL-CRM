@@ -127,8 +127,16 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const newStatus = parsed.stance === "pass" ? 8 : parsed.stance === "interested" ? 5 : autoReply ? null : 4;
     // "looping in Sarah": colleagues at the LP's firm on the reply join the row (and the CRM), so the next email reaches them too
     const loopedIn = await loopInColleagues(a.companyId!, a.company?.domain ?? null, a.contactId, [...(meta.to ?? []), ...(meta.cc ?? [])]).catch(() => [] as string[]);
+    // A note is written only on the deal it is about. If the LP's words name a different deal the firm is on
+    // (its property or its city) and not this one, the note stays off this report; the status still moves.
+    const noteText = stripDashes(parsed.note ?? "").trim();
+    const here = candidates.find((x) => x.id === dealId);
+    const names = (x: { propertyName: string | null; name: string; city: string | null }) => [x.propertyName ?? x.name, x.city].filter((w): w is string => Boolean(w && w.trim().length >= 5)).map((w) => w.toLowerCase());
+    const mentionsHere = here ? names(here).some((w) => noteText.toLowerCase().includes(w)) : false;
+    const mentionsOther = candidates.filter((x) => x.id !== dealId).some((x) => names(x).some((w) => noteText.toLowerCase().includes(w)));
+    const noteForThisDeal = noteText && !(mentionsOther && !mentionsHere) ? noteText : "";
     for (const r of reportRows) {
-      const cleaned = stripDashes(parsed.note ?? "").trim();
+      const cleaned = noteForThisDeal;
       const note = cleaned && !/^(confirmed receipt|acknowledged|received|thanks?)\b/i.test(cleaned) ? `${cleaned} (${dateTag})` : null;
       const extras = new Set<string>([...(r.extraContactIds ? (JSON.parse(r.extraContactIds) as string[]) : []), ...loopedIn.filter((id) => id !== r.contactId)]);
       await prisma.dealInvestor.update({ where: { id: r.id }, data: { ...(note ? { note: mergeNote(r.note, note), noteDate: a.occurredAt } : {}), ...(newStatus && newStatus > r.status && r.status < 6 ? { status: newStatus } : {}), ...(loopedIn.length ? { extraContactIds: JSON.stringify([...extras]) } : {}), updatedAt: a.occurredAt } });
