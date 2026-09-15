@@ -1,6 +1,6 @@
 import { US_STATES } from "@/lib/taxonomy";
 import { cleanBusinessPlan } from "@/lib/style";
-import { CHECKLIST, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
+import { uniqueChecklist, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
 import { intro, metricsHtml, subjectLine, usd } from "@/lib/deal-copy";
 import { prefMetrics } from "@/lib/pref";
 
@@ -61,7 +61,7 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.stabilizedYieldLD", label: "Stabilized yield on last dollar %" },
   { key: "deal.basisLD", label: "Stabilized basis on last pref dollar" },
   { key: "deal.facts", label: "Bulleted list of every answered checklist item" },
-  ...CHECKLIST.filter((it) => !it.core).map((it) => ({ key: `deal.details.${it.key}`, label: it.label })),
+  ...uniqueChecklist().filter((it) => !it.core).map((it) => ({ key: `deal.details.${it.key}`, label: it.label })),
   { key: "openingLine", label: "Personal opening line (set per recipient in deal outreach)" },
   { key: "sender.name", label: "Sender name" },
   { key: "unsubscribeUrl", label: "Unsubscribe link" },

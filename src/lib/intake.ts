@@ -4,7 +4,7 @@ import { z } from "zod";
 import { houseText, cleanBusinessPlan } from "@/lib/style";
 import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
 import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LOAN_TERMS, UNIT_MIXES } from "@/lib/taxonomy";
-import { CHECKLIST, missingFor, type DealLikeForChecklist } from "@/lib/checklist";
+import { uniqueChecklist, missingFor, type DealLikeForChecklist } from "@/lib/checklist";
 import { loadChecklist } from "@/lib/required-items";
 
 export const ExtractedDealSchema = z.object({
@@ -100,7 +100,7 @@ const claudeOutput = () => z.object({
   onMarket: z.enum(["on", "off", ""]).describe("on if marketed/listed, off if off-market."),
   sponsorExperience: str("Sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes."),
   summary: str("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), the value-add opportunity, notable physical attributes. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
-  details: z.object(Object.fromEntries(CHECKLIST.filter((it) => !it.core).map((it) => [it.key, str(`${it.label}. ${it.question}${it.kind === "doc" ? " Answer Received only if the document is attached or explicitly provided." : ""}`)]))),
+  details: z.object(Object.fromEntries(uniqueChecklist().filter((it) => !it.core).map((it) => [it.key, str(`${it.label}. ${it.question}${it.kind === "doc" ? " Answer Received only if the document is attached or explicitly provided." : ""}`)]))),
   units: str("Number of units, keys (hotel) or beds (student housing), digits only."),
   squareFeet: str("Net rentable square feet (NRSF / rentable area / GLA for retail), digits only. Never gross building area, gross SF, land or site area, or lot size; if only a gross figure is given, leave this blank and say so in confidenceNotes."),
   yearBuilt: str("Year built or vintage range."),

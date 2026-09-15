@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { fmtMoney } from "@/lib/format";
 import { graph, type GraphAttachment } from "@/lib/graph";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
-import { CHECKLIST, parseDetails, reconcileDocuments } from "@/lib/checklist";
+import { parseDetails, reconcileDocuments, uniqueChecklist } from "@/lib/checklist";
 
 /**
  * A deal keeps learning. Every email about it that reaches deals@ after the first one is a follow-up:
@@ -158,7 +158,7 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   const changes: MergeChange[] = [];
   const details = parseDetails(deal.details);
   let filled = 0;
-  for (const it of CHECKLIST) {
+  for (const it of uniqueChecklist()) {
     const v = d.details?.[it.key];
     if (v && !details[it.key]) {
       details[it.key] = v;

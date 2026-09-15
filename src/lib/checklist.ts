@@ -56,6 +56,11 @@ export const CHECKLIST: ChecklistItem[] = [...DEFAULT_CHECKLIST];
 export function setChecklist(items: ChecklistItem[]) {
   CHECKLIST.splice(0, CHECKLIST.length, ...items);
 }
+/** Each key once (the same item can sit in several windows with different asset classes). */
+export function uniqueChecklist(items: ChecklistItem[] = CHECKLIST): ChecklistItem[] {
+  const seen = new Set<string>();
+  return items.filter((it) => (seen.has(it.key) ? false : (seen.add(it.key), true)));
+}
 
 export function itemLabel(item: ChecklistItem, strategy?: string | null) {
   return strategy === "Development" && item.devLabel ? item.devLabel : item.label;
@@ -68,12 +73,14 @@ export function labelFor(key: string, strategy?: string | null) {
 
 /** Items that apply to a deal given its strategy and asset class. Unknown strategy = show everything. */
 export function applicableItems(strategy: string | null | undefined, assetClass: string | null | undefined): ChecklistItem[] {
-  return CHECKLIST.filter((it) => {
-    if (strategy && !it.strategy.includes(strategy as "Acquisitions" | "Development")) return false;
-    if (assetClass && it.onlyAssetClasses && !it.onlyAssetClasses.includes(assetClass)) return false;
-    if (assetClass && it.excludeAssetClasses?.includes(assetClass)) return false;
-    return true;
-  });
+  return uniqueChecklist(
+    CHECKLIST.filter((it) => {
+      if (strategy && !it.strategy.includes(strategy as "Acquisitions" | "Development")) return false;
+      if (assetClass && it.onlyAssetClasses && !it.onlyAssetClasses.includes(assetClass)) return false;
+      if (assetClass && it.excludeAssetClasses?.includes(assetClass)) return false;
+      return true;
+    }),
+  );
 }
 
 export type DealLikeForChecklist = {

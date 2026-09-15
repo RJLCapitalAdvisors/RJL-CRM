@@ -475,6 +475,22 @@ model RequiredItem {
   @@index([workspace, category, sortOrder])
 }
 
+/// Required Items Lists as windows: one bulleted list each, with a heading saying what it is for (RJL CA: Acquisitions or
+/// Development plus asset classes; RJL Israel: apartments or houses). The default windows cover whatever has no window.
+model RequiredList {
+  id           String   @id @default(cuid())
+  workspace    String   // CA | IL
+  kind         String   // CA: Acquisitions | Development. IL: apartments | houses | projects
+  assetClasses String?  // CA: JSON list of the asset classes this window is for; null on the defaults
+  isDefault    Boolean  @default(false)
+  text         String   @default("") // one item per line
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([workspace, sortOrder])
+}
+
 /// Sponsor emails already read for answers to LP questions (each once).
 model SponsorAnswerScan {
   externalId String   @id

@@ -1,39 +1,23 @@
-import Link from "next/link";
 import { PageHeader } from "@/components/ui";
-import { RequiredItemsEditor, type EditorRow } from "@/components/required-items-editor";
-import { ilRequiredItems } from "@/lib/required-items";
-import { IL_CATEGORIES, type IlCategory } from "@/lib/israel";
+import { RequiredWindows } from "@/components/required-items-editor";
+import { ilWindows } from "@/lib/required-items";
 
 export const metadata = { title: "Required Items Lists" };
 export const dynamic = "force-dynamic";
 
 /**
- * RJL Israel > Required Items Lists: what a complete ticket carries, one list each for projects, apartments and
- * houses. The deals@rjlisrael.com and WhatsApp replies list whichever of these are still blank, the dashboard's
- * Deals to be approved shows the same, and Approve waits until the list is satisfied.
+ * RJL Israel > Required Items Lists: what a complete ticket carries, as windows for apartments and houses (and the
+ * project ticket). The email and WhatsApp replies list whichever lines are still blank; a ticket waits under Deals
+ * to be approved until its list is satisfied.
  */
-export default async function IlRequiredItemsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const sp = await searchParams;
-  const raw = Array.isArray(sp.category) ? sp.category[0] : sp.category;
-  const category: IlCategory = IL_CATEGORIES.some((c) => c.key === raw) ? (raw as IlCategory) : "apartments";
-  const all = await ilRequiredItems(category);
-  const rows: EditorRow[] = all.map((r) => ({ id: r.id, key: r.key, label: r.label, devLabel: r.devLabel, question: r.question, kind: r.kind, strategies: [], assetClasses: null, core: r.core, active: r.active, fieldLabel: r.key.startsWith("x_") ? null : "Ticket field" }));
+export default async function IlRequiredItemsPage() {
+  const rows = await ilWindows();
   return (
     <>
-      <PageHeader title="Required Items Lists" subtitle="What a complete ticket carries. The email and WhatsApp replies ask for whichever of these are still blank, and a ticket waits under Deals to be approved until the list is satisfied." />
-      <div className="flex flex-col gap-4 px-8 py-5">
-        <div className="flex gap-1">
-          {IL_CATEGORIES.map((c) => (
-            <Link key={c.key} href={`/israel/required-items?category=${c.key}`} className={`rounded-md px-4 py-2 text-sm font-medium ${category === c.key ? "bg-ink text-paper" : "bg-cream text-ink hover:bg-sky/40"}`}>
-              {c.label}
-            </Link>
-          ))}
-        </div>
-        <div className="text-sm text-muted">
-          The order here is the order the agent reads in the reply. Changes save as you go and apply from the next message the deals mailbox reads. A few follow-ups stay automatic:
-          {category === "houses" ? " sukka and pool size when there is one, the ceiling height per floor, the developer on a yad rishona house, the renovation year on a second-hand one." : category === "apartments" ? " sukka and pool size when there is one, a ceiling per level on a duplex, the project name on a yad rishona apartment, the renovation year on a second-hand one." : " a project's ranges (rooms, sizes, prices) come from its apartments and houses."}
-        </div>
-        <RequiredItemsEditor rows={rows} workspace="IL" category={category} />
+      <PageHeader title="Required Items Lists" subtitle="What a complete ticket carries. The first windows are the defaults for apartments and houses; the plus opens another list. One item per line." />
+      <div className="px-8 py-5">
+        <RequiredWindows windows={rows.map((w) => ({ id: w.id, kind: w.kind, isDefault: w.isDefault, assetClasses: [], text: w.text }))} workspace="IL" />
+        <div className="mt-4 text-xs text-muted">Changes save as you type and apply from the next message the deals mailbox reads. A line that matches a ticket field is satisfied by that field; any other line is a question of its own, answered under Other items on the ticket. A few follow-ups stay automatic: sukka and pool size when there is one, a ceiling per level, the project name on a yad rishona apartment, the renovation year on a second-hand unit.</div>
       </div>
     </>
   );
