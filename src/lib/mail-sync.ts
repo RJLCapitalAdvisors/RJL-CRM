@@ -174,8 +174,7 @@ export async function syncMailbox(mailbox: string, opts: { sinceDays?: number } 
       },
     });
     if (outbound && sentDeal) await noteDealSent({ dealId: sentDeal, contactId, companyId, mailbox, graphId: m.id, hasAttachments: m.hasAttachments ?? false, when, toEmails: to.map((p) => p.address) }).catch(() => false);
-    const bump = [contactId ? prisma.contact.updateMany({ where: { id: contactId, OR: [{ lastActivityAt: null }, { lastActivityAt: { lt: when } }] }, data: { lastActivityAt: when } }) : null, companyId ? prisma.company.updateMany({ where: { id: companyId, OR: [{ lastActivityAt: null }, { lastActivityAt: { lt: when } }] }, data: { lastActivityAt: when } }) : null];
-    await Promise.all(bump);
+    await bumpLastActivity(contactId, companyId, when);
     logged++;
   }
   if (user) await prisma.user.update({ where: { id: user.id }, data: { mailSyncedAt: startedAt } });
@@ -209,9 +208,18 @@ export async function syncRecentSent(mailbox: string, hours = 6): Promise<number
     const sentDeal = dealFor(msg.subject ?? "", contactId, companyId);
     await prisma.activity.create({ data: { type: "EMAIL", direction: "OUTBOUND", subject: msg.subject ?? "(no subject)", body: msg.bodyPreview ?? null, occurredAt: when, externalId: ext, contactId, companyId, dealId: sentDeal ?? null, meta: JSON.stringify({ from: msg.from?.emailAddress, to, cc, mailbox, hasAttachments: msg.hasAttachments ?? false }) } }).catch(() => null);
     if (sentDeal) await noteDealSent({ dealId: sentDeal, contactId, companyId, mailbox, graphId: msg.id, hasAttachments: msg.hasAttachments ?? false, when, toEmails: to.map((p) => p.address) }).catch(() => false);
+    await bumpLastActivity(contactId, companyId, when); // this pass used to log without bumping, so Last activity lagged the email log
     logged++;
   }
   return logged;
+}
+
+/** Last activity on the contact and its company moves forward to this email (never backwards). Every path that logs an email calls this. */
+export async function bumpLastActivity(contactId: string | null, companyId: string | null, when: Date) {
+  await Promise.all([
+    contactId ? prisma.contact.updateMany({ where: { id: contactId, OR: [{ lastActivityAt: null }, { lastActivityAt: { lt: when } }] }, data: { lastActivityAt: when } }) : null,
+    companyId ? prisma.company.updateMany({ where: { id: companyId, OR: [{ lastActivityAt: null }, { lastActivityAt: { lt: when } }] }, data: { lastActivityAt: when } }) : null,
+  ]);
 }
 
 /** Every active team mailbox. Skips quietly when Microsoft is not configured. */
