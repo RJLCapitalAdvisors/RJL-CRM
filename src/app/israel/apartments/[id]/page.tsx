@@ -7,6 +7,8 @@ import { apartmentMissing, ilFullName, nis, parseJsonList, pricePerMeter, sqm, u
 import { addIlNote, approveApartment, deleteApartment, linkApartment, updateApartment } from "../../actions";
 import { ApartmentForm } from "../apartment-form";
 import { FloorplanWindow } from "./floorplan";
+import { IlExtraCard } from "@/components/il-extra-card";
+import { loadIlRequired } from "@/lib/required-items";
 import { SelectField } from "@/components/select-field";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +26,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
     prisma.ilApartment.findUnique({
       where: { id },
       select: {
-        id: true, name: true, apartmentType: true, street: true, city: true, neighborhood: true, rooms: true, completionDate: true, floor: true, totalFloors: true, buildingUnits: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpasot: true, levels: true, ceilingCms: true, ceilingCm: true, machsanSqm: true, machsanLocation: true,
+        id: true, name: true, extra: true, apartmentType: true, street: true, city: true, neighborhood: true, rooms: true, completionDate: true, floor: true, totalFloors: true, buildingUnits: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpasot: true, levels: true, ceilingCms: true, ceilingCm: true, machsanSqm: true, machsanLocation: true,
         parkingSpots: true, direction: true, sellerType: true, renovationYear: true, pendingApproval: true, projectId: true, project: { select: { id: true, name: true, totalUnits: true, stories: true, completionDate: true } }, mirpesetDirection: true, mamad: true, priceNis: true, description: true, floorplanType: true, floorplanName: true, updatedAt: true, developerId: true, agentContactId: true, sellerContactId: true,
         developer: { select: { id: true, name: true, roles: true, city: true, website: true, phone: true } },
         agent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } },
@@ -40,6 +42,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
   if (!a) notFound();
   const hasPlan = Boolean(a.floorplanType);
   const ppm = pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm);
+  await loadIlRequired();
   const missing = apartmentMissing(a as unknown as Record<string, unknown>);
   const agents = people.filter((p) => parseJsonList(p.roles).includes("Broker"));
   const sellers = people.filter((p) => parseJsonList(p.roles).includes("Seller"));
@@ -87,6 +90,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
               )}
             </div>
           )}
+          <IlExtraCard kind="apartments" id={a.id} extra={a.extra} />
           <AboutCard title="About this apartment">
             <ApartmentForm a={a} fx={fx} projects={projects} action={updateApartment.bind(null, a.id)} autosave />
           </AboutCard>

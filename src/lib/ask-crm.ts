@@ -4,6 +4,7 @@ import { IL_SYSTEM, IL_TOOLS, runIl } from "@/lib/ask-israel";
 import { ACTIVE_STAGES, parseList } from "@/lib/taxonomy";
 import { investorLabel, statusOf } from "@/lib/tracker";
 import { missingFor, itemLabel } from "@/lib/checklist";
+import { loadChecklist } from "@/lib/required-items";
 import { listMomentum } from "@/lib/momentum";
 import { quietIntros } from "@/lib/intros";
 import { stripDashes } from "@/lib/style";
@@ -217,6 +218,7 @@ Write for Jonathan and his team: plain, direct, short. Lead with the answer. Use
 If the data does not hold the answer, say so plainly and say where it would be found. You cannot change anything: roles and investor criteria are Jonathan's to set, and edits by others become Data updates for him to approve; if asked to change or send something, explain which page does it. Never invent facts.`;
 
 export async function askCrm(history: ChatMessage[], userName: string, workspace: "CA" | "IL" = "CA"): Promise<AskResult> {
+  await loadChecklist();
   const israel = workspace === "IL";
   const tools = israel ? IL_TOOLS : TOOLS;
   const system = israel ? IL_SYSTEM : SYSTEM;

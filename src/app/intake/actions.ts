@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { reconcileDocuments } from "@/lib/checklist";
+import { loadChecklist } from "@/lib/required-items";
 import { logActivity } from "@/lib/activity";
 import { extractDeal, missingItems, type ExtractedDeal, EMPTY, applyDealRules } from "@/lib/intake";
 import { detailsFromForm } from "@/components/checklist-fields";
@@ -17,6 +18,7 @@ const s = (fd: FormData, k: string) => {
 };
 
 export async function processIntake(input: { rawText: string; subject?: string | null; fromName?: string | null; fromEmail?: string | null; toEmail?: string | null; source: "PASTE" | "WEBHOOK"; attachments?: string[] }) {
+  await loadChecklist();
   let extracted: ExtractedDeal = EMPTY;
   let extractor = "none";
   let notes: string | null = null;
@@ -63,6 +65,7 @@ export async function submitPastedEmail(fd: FormData) {
 }
 
 export async function reprocessIntake(id: string) {
+  await loadChecklist();
   const it = await prisma.dealIntake.findUniqueOrThrow({ where: { id } });
   const r = await extractDeal(it.rawText, it.subject, it.fromName, it.fromEmail, JSON.parse(it.attachments || "[]"));
   await prisma.dealIntake.update({
@@ -74,6 +77,7 @@ export async function reprocessIntake(id: string) {
 
 /** Save manual corrections to the extracted fields and checklist answers. */
 export async function updateExtracted(id: string, fd: FormData) {
+  await loadChecklist();
   const it = await prisma.dealIntake.findUniqueOrThrow({ where: { id } });
   const cur = { ...EMPTY, ...(JSON.parse(it.extracted) as Partial<ExtractedDeal>) } as ExtractedDeal;
   const num = (k: string) => {
@@ -111,6 +115,7 @@ export async function updateExtracted(id: string, fd: FormData) {
 
 /** Create the deal from an intake record. Returns the deal id (existing one if already converted). */
 export async function createDealFromIntake(id: string): Promise<string> {
+  await loadChecklist();
   const it = await prisma.dealIntake.findUniqueOrThrow({ where: { id } });
   if (it.dealId) return it.dealId;
   const d = applyDealRules({ ...EMPTY, ...(JSON.parse(it.extracted) as Partial<ExtractedDeal>) } as ExtractedDeal);

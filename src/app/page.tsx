@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
 import { investorLabel } from "@/lib/tracker";
-import { EXTRA_FIELD_LABELS, PROPOSAL_FIELDS, type Change } from "@/lib/criteria-proposals";
+import { EXTRA_FIELD_LABELS, PROPOSAL_FIELDS, type Change, type ProposalField } from "@/lib/criteria-proposals";
 import { STALE_DAYS, staleDeals } from "@/lib/stale-deals";
 import { possibleDuplicates } from "@/lib/deal-dedupe";
 import { reportsDue, type ReportDue } from "@/lib/report-due";
@@ -293,7 +293,7 @@ export default async function Dashboard() {
                     <ul className="mt-1 space-y-1">
                       {changes.map((c) => (
                         <Item key={c.field} className="text-xs">
-                          <span className="text-muted">{c.field === "removeContact" || c.field === "dealName" ? EXTRA_FIELD_LABELS[c.field] : PROPOSAL_FIELDS[c.field]?.label ?? c.field}:</span> <span className="line-through text-muted">{c.from || "blank"}</span> <span className="font-medium">{c.to}</span>
+                          <span className="text-muted">{EXTRA_FIELD_LABELS[c.field] ?? PROPOSAL_FIELDS[c.field as ProposalField]?.label ?? c.field}:</span> <span className="line-through text-muted">{c.from || "blank"}</span> <span className="font-medium">{c.to}</span>
                           {c.evidence && <div className="italic text-muted">“{c.evidence}”</div>}
                         </Item>
                       ))}

@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui";
 import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
 import { EMPTY, toChecklistDeal, type ExtractedDeal } from "@/lib/intake";
 import { applicableItems, completeness, followUpText, labelFor, missingFor } from "@/lib/checklist";
+import { loadChecklist } from "@/lib/required-items";
 import { ChecklistFields } from "@/components/checklist-fields";
 import { renderTemplate, toHtml, type MergeContext } from "@/lib/merge";
 import { fmtDate, str } from "@/lib/format";
@@ -50,6 +51,7 @@ function Select({ id, label, value, options }: { id: string; label: string; valu
 export default async function IntakeDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
   const sp = await searchParams;
+  await loadChecklist();
   const [it, templates] = await Promise.all([prisma.dealIntake.findUnique({ where: { id } }), prisma.emailTemplate.findMany({ orderBy: { updatedAt: "desc" } })]);
   if (!it) notFound();
   const d = { ...EMPTY, ...(JSON.parse(it.extracted) as Partial<ExtractedDeal>) } as ExtractedDeal;

@@ -3,7 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { graph, graphConfigured, realmFor } from "@/lib/graph";
 import { attachmentToText, emailHtmlToText } from "@/lib/attachments";
-import { IL_MACHSAN_LOCATIONS, IL_PARKING, nis, pricePerMeter, sqm } from "@/lib/israel";
+import { IL_MACHSAN_LOCATIONS, IL_PARKING, IL_REQUIRED, isCustomKey, nis, parseExtra, pricePerMeter, sqm } from "@/lib/israel";
+import { loadIlRequired } from "@/lib/required-items";
 import { stripDashes } from "@/lib/style";
 
 /**
@@ -57,6 +58,7 @@ const Apartment = z.object({
   sellerType: z.enum(["Yad Rishona (developer)", "Second hand, never occupied", "Second hand, occupied"]).nullish().default(null).describe("Yad rishona means bought from the developer; second hand is a resale, occupied or never lived in"),
   renovationYear: z.number().nullish().default(null).describe("Year of the last renovation, second hand only"),
   description: z.string().nullish().default(null).describe("Two to four plain English sentences about the apartment from the documents. No prices or numbers already captured in fields."),
+  extra: z.record(z.string(), z.string().nullable()).nullish().default(null).describe("Answers to the extra questions listed in the message, by their keys; only what the documents state"),
 });
 const Output = z.object({
   apartments: z.array(Apartment).default([]),
@@ -120,6 +122,8 @@ async function extract(subject: string | null, body: string, files: IntakeFile[]
   }
   // The ticket has more optional fields than the API's structured-output mode allows, so the schema goes in the
   // prompt and the answer is validated here. A field the model leaves out reads as unknown.
+  const customQs = [...IL_REQUIRED.apartments.map((i) => ({ ...i, on: "apartments" })), ...IL_REQUIRED.houses.map((i) => ({ ...i, on: "houses" }))].filter((i) => isCustomKey(i.key));
+  if (customQs.length) content.push({ type: "text", text: `Extra questions RJL Israel asks on every ticket. Answer each under "extra" by its key when the documents state it, null otherwise: ${customQs.map((i) => `${i.key} (${i.on}): ${i.question || i.label}`).join("; ")}` });
   content.push({ type: "text", text: `Answer with one JSON object only, no prose and no code fence, matching this JSON schema exactly (use null for anything the documents do not state):\n${JSON.stringify(z.toJSONSchema(Output))}` });
   const res = await client.messages.create({ model: "claude-opus-5", max_tokens: 12_000, system: SYSTEM, messages: [{ role: "user", content }] });
   const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("");
@@ -134,32 +138,6 @@ async function extract(subject: string | null, body: string, files: IntakeFile[]
   return { apartments: [], agent: null };
 }
 
-/** What Jonathan wants on every ticket, in his order; the reply lists whichever are still blank. */
-const REQUIRED: { key: keyof ExtractedApartment | "developer"; label: string }[] = [
-  { key: "developer", label: "Developer" },
-  { key: "apartmentType", label: "Apartment type (regular, garden or penthouse)" },
-  { key: "street", label: "Building address" },
-  { key: "city", label: "City" },
-  { key: "neighborhood", label: "Neighborhood" },
-  { key: "rooms", label: "Rooms" },
-  { key: "completionDate", label: "Year of construction or expected date of delivery (month and year)" },
-  { key: "floor", label: "Apartment floor" },
-  { key: "buildingStories", label: "Building stories" },
-  { key: "buildingUnits", label: "Total building units" },
-  { key: "direction", label: "Apartment direction" },
-  { key: "mamad", label: "Mamad (yes or no)" },
-  { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
-  { key: "internalSqm", label: "Internal m²" },
-  { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
-  { key: "mirpesetDirection", label: "Mirpeset direction" },
-  { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
-  { key: "pool", label: "Pool (yes or no)" },
-  { key: "ceilingCm", label: "Ceiling height (cm)" },
-  { key: "parkingSpots", label: "Parking spots" },
-  { key: "machsanSqm", label: "Machsan size (m²)" },
-  { key: "machsanLocation", label: "Machsan location" },
-  { key: "priceNis", label: "Asking price" },
-];
 /** Asked only when they apply: the project on a yad rishona apartment, the renovation year on a second-hand unit, a ceiling per level on a duplex. */
 function conditionalMissing(a: ExtractedApartment): string[] {
   const out: string[] = [];
@@ -175,47 +153,41 @@ function conditionalMissing(a: ExtractedApartment): string[] {
 }
 /** A garden apartment's outdoor space is its garden: the questions say so. */
 const gardenWords = (a: ExtractedApartment, labels: string[]) => (a.apartmentType === "Garden apartment" ? labels.map((l) => l.replace(/Mirpeset size (m²), each mirpeset separately if there is more than one/, "Garden size (m²), each garden separately if there is more than one").replace(/Mirpeset direction/, "Garden direction").replace(/Sukka on the mirpeset/, "Sukka in the garden").replace(/for each mirpeset/, "for each garden")) : labels);
-const REQUIRED_HOUSE: { key: keyof ExtractedApartment; label: string }[] = [
-  { key: "houseType", label: "House type (villa, semi-attached or cottage)" },
-  { key: "street", label: "Address" },
-  { key: "city", label: "City" },
-  { key: "neighborhood", label: "Neighborhood" },
-  { key: "rooms", label: "Rooms" },
-  { key: "floors", label: "How many floors (miflasim)" },
-  { key: "ceilingCms", label: "Ceiling height per floor (cm)" },
-  { key: "completionDate", label: "Built or expected delivery (month and year)" },
-  { key: "parkingSpots", label: "Parking" },
-  { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
-  { key: "mamad", label: "Mamad (yes or no)" },
-  { key: "internalSqm", label: "Internal m²" },
-  { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
-  { key: "mirpesetDirection", label: "Mirpeset direction" },
-  { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
-  { key: "pool", label: "Pool (yes or no)" },
-  { key: "migrashSqm", label: "Migrash size (m²)" },
-  { key: "priceNis", label: "Asking price" },
-];
+/** The extracted field that answers a list key when the ticket column is named differently. */
+const EXTRACT_KEY: Record<string, keyof ExtractedApartment> = { totalFloors: "buildingStories" };
+/** Whether a Required Items List entry is still blank on what was extracted. */
+function blankExtracted(a: ExtractedApartment, key: string, hasDeveloper: boolean): boolean {
+  if (isCustomKey(key)) return !(a.extra?.[key] ?? "").trim();
+  if (key === "developerId") return !hasDeveloper;
+  if (key === "brochureName") return false;
+  if (key === "ceilingCms") return a.ceilingCms.length === 0 || (a.floors != null && a.ceilingCms.length < a.floors);
+  if (key === "sukka") return !a.sukka && !(a.mirpasot.length > 1 && a.mirpasot.every((m) => m.sukka));
+  if (key === "pool") return !a.pool && !(a.mirpasot.length > 0 && a.mirpasot.every((m) => m.pool));
+  if (key === "mirpesetDirection") return a.mirpesetDirection.length === 0 && !(a.mirpasot.length > 1 && a.mirpasot.every((m) => m.direction.length));
+  const k = (EXTRACT_KEY[key] ?? key) as keyof ExtractedApartment;
+  if (!(k in a)) return false;
+  const v = a[k];
+  return v == null || (Array.isArray(v) && v.length === 0);
+}
 function missingForHouse(a: ExtractedApartment, hasDeveloper: boolean): string[] {
-  const base = REQUIRED_HOUSE.filter(({ key }) => {
-    const v = a[key];
-    if (key === "ceilingCms") return a.ceilingCms.length === 0 || (a.floors != null && a.ceilingCms.length < a.floors);
-    if (key === "sukka") return !a.sukka && !(a.mirpasot.length > 1 && a.mirpasot.every((m) => m.sukka));
-    return v == null || (Array.isArray(v) && v.length === 0);
-  }).map((r) => r.label);
+  const base = IL_REQUIRED.houses.filter(({ key }) => blankExtracted(a, key, hasDeveloper)).map((r) => r.label);
   const extra = conditionalMissing(a).filter((x) => x !== "Project name");
-  if (a.sellerType?.startsWith("Yad Rishona") && !hasDeveloper) extra.unshift("Developer");
+  if (a.sellerType?.startsWith("Yad Rishona") && !hasDeveloper && !IL_REQUIRED.houses.some((i) => i.key === "developerId")) extra.unshift("Developer");
   return [...base, ...extra];
 }
 function missingFor(a: ExtractedApartment, hasDeveloper: boolean): string[] {
-  const base = REQUIRED.filter(({ key }) => {
-    if (key === "developer") return !hasDeveloper;
-    if (key === "sukka") return !a.sukka && !(a.mirpasot.length > 1 && a.mirpasot.every((m) => m.sukka));
-    if (key === "mirpesetDirection") return a.mirpesetDirection.length === 0 && !(a.mirpasot.length > 1 && a.mirpasot.every((m) => m.direction.length));
-    const v = a[key];
-    return v == null || (Array.isArray(v) && v.length === 0);
-  }).map((r) => r.label);
+  const base = IL_REQUIRED.apartments.filter(({ key }) => blankExtracted(a, key, hasDeveloper)).map((r) => r.label);
   return gardenWords(a, [...base, ...conditionalMissing(a)]);
 }
+/** The extra answers as stored on a ticket: JSON, or null when there are none; a later email's answers merge in. */
+const extraJson = (e: unknown) => {
+  const o = parseExtra(e);
+  return Object.keys(o).length ? JSON.stringify(o) : null;
+};
+const mergedExtra = (old: unknown, add: unknown) => {
+  const o = { ...parseExtra(old), ...parseExtra(add) };
+  return Object.keys(o).length ? { extra: JSON.stringify(o) } : {};
+};
 
 async function findOrCreateCompany(name: string | null, role: string) {
   const n = name?.trim();
@@ -283,6 +255,7 @@ function fillFrom<T extends Record<string, unknown>>(data: T): Partial<T> {
 export async function intakeApartments(input: IntakeInput): Promise<IntakeResult> {
   if (await prisma.ilInbound.findUnique({ where: { messageId: input.key } })) return { skipped: "already processed" };
   const mark = (result: string) => prisma.ilInbound.create({ data: { messageId: input.key, mailbox: input.mailbox, subject: input.subject, fromEmail: input.sender?.email ?? input.sender?.phone ?? null, result } }).catch(() => null);
+  await loadIlRequired(); // the Required Items Lists as Jonathan last edited them
   const extracted = await extract(input.subject, input.body, input.files);
   if (!extracted.apartments.length) {
     await mark("skipped: no apartment or house found");
@@ -329,14 +302,15 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
           mamad: a.mamad ?? false,
           priceNis: a.priceNis,
           description: a.description ? stripDashes(a.description) : null,
+          extra: extraJson(a.extra),
           source: input.sourceLabel,
           sourceMessageId: input.key,
           pendingApproval: true,
       };
-      const candidates = await prisma.ilHouse.findMany({ select: { id: true, name: true, street: true, city: true, floorplanType: true } });
+      const candidates = await prisma.ilHouse.findMany({ select: { id: true, name: true, street: true, city: true, floorplanType: true, extra: true } });
       const found = candidates.find((h) => sameUnit({ name: houseData.name, street: a.street, city: a.city }, h));
       const house = found
-        ? await prisma.ilHouse.update({ where: { id: found.id }, data: fillFrom(houseData) })
+        ? await prisma.ilHouse.update({ where: { id: found.id }, data: { ...fillFrom(houseData), ...mergedExtra(found.extra, a.extra) } })
         : await prisma.ilHouse.create({ data: houseData });
       await prisma.ilNote.create({ data: { houseId: house.id, body: found ? origin.replace(/^Created from/, "Updated from") : origin } });
       if (extracted.apartments.length === 1 && !(found?.floorplanType)) await attachFloorplan(input.files, house.id, "houses").catch(() => null);
@@ -377,14 +351,15 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         sellerType: a.sellerType,
         renovationYear: a.sellerType?.startsWith("Second hand") ? a.renovationYear : null,
         description: a.description ? stripDashes(a.description) : null,
+        extra: extraJson(a.extra),
         source: input.sourceLabel,
         sourceMessageId: input.key,
         pendingApproval: true,
     };
-    const aptCandidates = await prisma.ilApartment.findMany({ select: { id: true, name: true, street: true, city: true, floorplanType: true } });
+    const aptCandidates = await prisma.ilApartment.findMany({ select: { id: true, name: true, street: true, city: true, floorplanType: true, extra: true } });
     const foundApt = aptCandidates.find((x) => sameUnit({ name: aptData.name, street: a.street, city: a.city }, x));
     const created = foundApt
-      ? await prisma.ilApartment.update({ where: { id: foundApt.id }, data: fillFrom(aptData) })
+      ? await prisma.ilApartment.update({ where: { id: foundApt.id }, data: { ...fillFrom(aptData), ...mergedExtra(foundApt.extra, a.extra) } })
       : await prisma.ilApartment.create({ data: aptData });
     await prisma.ilNote.create({ data: { apartmentId: created.id, body: foundApt ? origin.replace(/^Created from/, "Updated from") : origin } });
     if (extracted.apartments.length === 1 && !(foundApt?.floorplanType)) await attachFloorplan(input.files, created.id).catch(() => null);

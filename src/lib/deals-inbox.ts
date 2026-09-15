@@ -3,6 +3,7 @@ import { fmtMoney } from "@/lib/format";
 import { addAttachment, copyAttachment, graph, graphConfigured, listAttachments, type GraphAttachment } from "@/lib/graph";
 import { assembleDealText, attachmentToText, emailHtmlToText } from "@/lib/attachments";
 import { missingFor, itemLabel } from "@/lib/checklist";
+import { loadChecklist } from "@/lib/required-items";
 import { intro, metricsHtml, subjectLine } from "@/lib/deal-copy";
 import { processIntake } from "@/app/intake/actions";
 import { applyForwarderInstructions } from "@/lib/forwarder-notes";
@@ -101,6 +102,7 @@ async function replyOnThread(msg: Msg, html: string, fileSources: { mailbox: str
 }
 
 export async function processDealsMessage(messageId: string): Promise<{ dealId: string; replied: boolean } | { skipped: string }> {
+  await loadChecklist(); // the Required Items List as Jonathan last edited it
   const msg = await graph<Msg>(`/users/${q(MAILBOX())}/messages/${q(messageId)}?$select=id,internetMessageId,subject,receivedDateTime,hasAttachments,isRead,from,body,conversationId`);
   const ext = msg.internetMessageId ?? msg.id;
   if (await prisma.dealIntake.findUnique({ where: { messageId: ext } })) return { skipped: "already processed" };
@@ -323,6 +325,7 @@ export async function ensureDealsSubscription(): Promise<string> {
 
 /** Re-send the summary reply for a deal that came through the mailbox (e.g. after editing the ticket). */
 export async function sendDealsReply(dealId: string): Promise<boolean> {
+  await loadChecklist();
   const it = await prisma.dealIntake.findFirst({ where: { dealId, messageId: { not: null } } });
   const deal = await prisma.deal.findUnique({ where: { id: dealId } });
   if (!it?.messageId || !deal) return false;

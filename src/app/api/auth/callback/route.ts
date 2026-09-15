@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
   const byDomain = workspacesByDomain(email);
   if (!user && byDomain.length) user = await prisma.user.create({ data: { name: me.displayName ?? email, email, active: true, workspaces: JSON.stringify(byDomain), israelEmail: byDomain.includes("IL") ? email : null } });
   if (!user || !user.active) return fail(`${email} is not a CRM user. Ask Jonathan to add you.`);
+  await prisma.user.update({ where: { id: user.id }, data: { lastSignInAt: new Date() } }).catch(() => null);
   // this sign-in unlocks the business its email belongs to (an @rjlcapadvisors.com account opens RJL Capital
   // Advisors, an @rjlisrael.com account opens RJL Israel), within what Jonathan allows the person under Settings
   const allowed = parseWorkspaces(user.workspaces, user.email ?? email);

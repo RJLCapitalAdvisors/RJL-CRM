@@ -5,11 +5,7 @@ import { houseText, cleanBusinessPlan } from "@/lib/style";
 import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
 import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LOAN_TERMS, UNIT_MIXES } from "@/lib/taxonomy";
 import { CHECKLIST, missingFor, type DealLikeForChecklist } from "@/lib/checklist";
-
-// Checklist answers Claude should look for in the email (items without a core column).
-const detailShape = Object.fromEntries(
-  CHECKLIST.filter((it) => !it.core).map((it) => [it.key, z.string().nullable().describe(`${it.label}. ${it.question}${it.kind === "doc" ? ' Say "Received" if the document is attached or clearly provided, otherwise describe what was said or null.' : ""}`)])
-);
+import { loadChecklist } from "@/lib/required-items";
 
 export const ExtractedDealSchema = z.object({
   sponsorName: z.string().nullable().describe("Company sponsoring / acquiring the deal (not the broker or forwarder)"),
@@ -30,7 +26,7 @@ export const ExtractedDealSchema = z.object({
   onMarket: z.boolean().nullable(),
   sponsorExperience: z.string().nullable().describe("Sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes."),
   summary: z.string().nullable().describe("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), the value-add opportunity, notable physical attributes. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
-  details: z.object(detailShape),
+  details: z.record(z.string(), z.string().nullable()).describe("Checklist answers by Required Items List key"),
   // underwriting snapshot
   units: z.number().nullable(),
   squareFeet: z.number().nullable(),
@@ -59,7 +55,7 @@ export const EMPTY: ExtractedDeal = {
   sponsorName: null, propertyName: null, propertyAddress: null, city: null, state: null, assetClass: null, strategy: null,
   requestType: null, requestedAmount: null, purchasePrice: null, totalEquity: null, ltv: null, loanTerm: null, equityMultiple: null,
   occupancy: null, onMarket: null, sponsorExperience: null, summary: null,
-  details: Object.fromEntries(CHECKLIST.filter((it) => !it.core).map((it) => [it.key, null])) as ExtractedDeal["details"],
+  details: {} as ExtractedDeal["details"],
   units: null, squareFeet: null, yearBuilt: null, unitMix: null, totalCapitalization: null, totalDebt: null, executionType: null, interestRate: null,
   lenderType: null, irr: null, capRateT12: null, capRateY1: null, yieldOnCost: null, cashOnCash: null, holdPeriod: null, expectedClose: null, amortization: null,
   contactName: null, contactEmail: null, confidenceNotes: null,
@@ -82,7 +78,8 @@ export function claudeConfigured() {
 // The API limits structured-output schemas to 16 nullable/union fields, so Claude returns plain
 // strings ("" = unknown) and we convert to the typed ExtractedDeal afterwards.
 const str = (desc: string) => z.string().describe(desc + " Empty string if not stated.");
-const ClaudeOutput = z.object({
+// built when called, so it carries the Required Items List as Jonathan last edited it
+const claudeOutput = () => z.object({
   sponsorName: str("Company sponsoring / acquiring the deal (not the broker or forwarder)."),
   propertyName: str("Property or deal name."),
   propertyAddress: str("Street address."),
@@ -123,7 +120,7 @@ const ClaudeOutput = z.object({
   contactEmail: str("Email of the person who sent the deal."),
   confidenceNotes: str("Anything ambiguous, inferred, left blank for lack of a source, or where a special rule (pad sale) was applied."),
 });
-type ClaudeOutput = z.infer<typeof ClaudeOutput>;
+type ClaudeOutput = z.infer<ReturnType<typeof claudeOutput>>;
 
 function fromClaude(o: ClaudeOutput): ExtractedDeal {
   const n = (v: string) => {
@@ -201,13 +198,14 @@ Read the email (including quoted/forwarded content) and fill the schema. Rules:
 - summary is the business plan paragraph for the investor email: lead with location and market context, then anchor/key tenants, the value-add opportunity, notable physical attributes. 4-6 sentences, flowing prose, no dashes as punctuation. Never put in the summary what has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count.`;
 
 export async function extractWithClaude(rawText: string, subject?: string | null, attachments: string[] = []): Promise<ExtractedDeal> {
+  await loadChecklist(); // the Required Items List as Jonathan last edited it
   const client = new Anthropic();
   const response = await client.messages.parse({
     model: "claude-opus-5",
     max_tokens: 16000,
     system: SYSTEM,
     messages: [{ role: "user", content: `Subject: ${subject ?? ""}\nAttachments: ${attachments.length ? attachments.join(", ") : "(none)"}\n\n${rawText}` }],
-    output_config: { format: zodOutputFormat(ClaudeOutput) },
+    output_config: { format: zodOutputFormat(claudeOutput()) },
   });
   if (response.stop_reason === "refusal") throw new Error("Extraction was refused by the model");
   if (!response.parsed_output) throw new Error("Model returned no structured output");

@@ -137,90 +137,138 @@ export function ilStageTone(stage: string): string {
 
 // ---------- completeness and approval ----------
 /**
- * What a ticket needs before it counts as complete. An apartment that arrives by email with any of these blank
- * waits under "Deals to be approved" on the dashboard until the data is chased down and Jonathan approves it.
- * Edit this list to change the rule.
+ * Required Items Lists for RJL Israel: what a complete ticket carries, one list per kind of ticket. Jonathan edits
+ * them on the Required Items Lists page; the defaults below seed the lists and stand in until loadIlRequired()
+ * (src/lib/required-items.ts) has read his version. A key that is a ticket column is satisfied by that column; an
+ * x_ key is a question with no column and its answer lives in the ticket's `extra` JSON. A ticket with anything
+ * on its list blank waits under "Deals to be approved" on the dashboard until the data is chased down and approved.
  */
-export const IL_COMPLETE_FIELDS: { key: string; label: string }[] = [
-  { key: "developerId", label: "Developer" },
-  { key: "apartmentType", label: "Apartment type (regular, garden or penthouse)" },
-  { key: "street", label: "Building address" },
-  { key: "city", label: "City" },
-  { key: "neighborhood", label: "Neighborhood" },
-  { key: "rooms", label: "Rooms" },
-  { key: "completionDate", label: "Year of construction or expected delivery" },
-  { key: "internalSqm", label: "Internal m²" },
-  { key: "mirpesetSqm", label: "Mirpeset size" },
-  { key: "priceNis", label: "Asking price" },
-  { key: "sellerType", label: "Seller type" },
-  { key: "ceilingCm", label: "Ceiling height" },
-  { key: "parkingSpots", label: "Parking spots" },
-  { key: "machsanSqm", label: "Machsan size" },
-  { key: "machsanLocation", label: "Machsan location" },
-  { key: "direction", label: "Apartment direction" },
-  { key: "mirpesetDirection", label: "Mirpeset direction" },
-  { key: "totalFloors", label: "Building stories" },
-  { key: "buildingUnits", label: "Total building units" },
-  { key: "floor", label: "Apartment floor" },
+export type IlCategory = "projects" | "apartments" | "houses";
+export type IlRequiredItem = { key: string; label: string; question?: string | null };
+export const IL_CATEGORIES: { key: IlCategory; label: string }[] = [
+  { key: "projects", label: "Projects" },
+  { key: "apartments", label: "Apartments" },
+  { key: "houses", label: "Houses" },
 ];
+export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
+  projects: [
+    { key: "developerId", label: "Developer" },
+    { key: "street", label: "Address" },
+    { key: "city", label: "City" },
+    { key: "neighborhood", label: "Neighborhood" },
+    { key: "totalUnits", label: "Total units" },
+    { key: "stories", label: "Building stories" },
+    { key: "parkingSpaces", label: "Parking spaces" },
+    { key: "completionDate", label: "Expected delivery (month and year)" },
+    { key: "brochureName", label: "Brochure" },
+  ],
+  apartments: [
+    { key: "developerId", label: "Developer" },
+    { key: "apartmentType", label: "Apartment type (regular, garden or penthouse)" },
+    { key: "street", label: "Building address" },
+    { key: "city", label: "City" },
+    { key: "neighborhood", label: "Neighborhood" },
+    { key: "rooms", label: "Rooms" },
+    { key: "completionDate", label: "Year of construction or expected date of delivery (month and year)" },
+    { key: "floor", label: "Apartment floor" },
+    { key: "totalFloors", label: "Building stories" },
+    { key: "buildingUnits", label: "Total building units" },
+    { key: "direction", label: "Apartment direction" },
+    { key: "mamad", label: "Mamad (yes or no)" },
+    { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
+    { key: "internalSqm", label: "Internal m²" },
+    { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
+    { key: "mirpesetDirection", label: "Mirpeset direction" },
+    { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
+    { key: "pool", label: "Pool (yes or no)" },
+    { key: "ceilingCm", label: "Ceiling height (cm)" },
+    { key: "parkingSpots", label: "Parking spots" },
+    { key: "machsanSqm", label: "Machsan size (m²)" },
+    { key: "machsanLocation", label: "Machsan location" },
+    { key: "priceNis", label: "Asking price" },
+  ],
+  houses: [
+    { key: "houseType", label: "House type (villa, semi-attached or cottage)" },
+    { key: "street", label: "Address" },
+    { key: "city", label: "City" },
+    { key: "neighborhood", label: "Neighborhood" },
+    { key: "rooms", label: "Rooms" },
+    { key: "floors", label: "How many floors (miflasim)" },
+    { key: "ceilingCms", label: "Ceiling height per floor (cm)" },
+    { key: "completionDate", label: "Built or expected delivery (month and year)" },
+    { key: "parkingSpots", label: "Parking" },
+    { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
+    { key: "mamad", label: "Mamad (yes or no)" },
+    { key: "internalSqm", label: "Internal m²" },
+    { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
+    { key: "mirpesetDirection", label: "Mirpeset direction" },
+    { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
+    { key: "pool", label: "Pool (yes or no)" },
+    { key: "migrashSqm", label: "Migrash size (m²)" },
+    { key: "priceNis", label: "Asking price" },
+  ],
+};
+/** The live lists (swapped in by loadIlRequired). */
+export const IL_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
+  projects: [...IL_DEFAULT_REQUIRED.projects],
+  apartments: [...IL_DEFAULT_REQUIRED.apartments],
+  houses: [...IL_DEFAULT_REQUIRED.houses],
+};
+export function setIlRequired(lists: Partial<Record<IlCategory, IlRequiredItem[]>>) {
+  for (const c of IL_CATEGORIES) if (lists[c.key]) IL_REQUIRED[c.key].splice(0, IL_REQUIRED[c.key].length, ...lists[c.key]!);
+}
+export const isCustomKey = (k: string) => k.startsWith("x_");
+/** The answers to list questions with no field of their own, from a ticket's `extra` JSON. */
+export function parseExtra(v: unknown): Record<string, string> {
+  try {
+    const o = typeof v === "string" ? JSON.parse(v) : v;
+    if (!o || typeof o !== "object") return {};
+    return Object.fromEntries(Object.entries(o as Record<string, unknown>).filter(([, x]) => typeof x === "string" && x.trim()).map(([k, x]) => [k, (x as string).trim()]));
+  } catch {
+    return {};
+  }
+}
+const listHas = (cat: IlCategory, key: string) => IL_REQUIRED[cat].some((i) => i.key === key);
+/** Whether a listed item is still blank on a ticket row (a Prisma record as a plain object). */
+function blankOn(row: Record<string, unknown>, key: string): boolean {
+  if (isCustomKey(key)) return !parseExtra(row.extra)[key];
+  if (!(key in row)) return false; // no column of that name on this kind of ticket (the rules below cover sukka and pool)
+  const v = row[key];
+  if (v == null || v === "" || v === "[]") return true;
+  if (key === "ceilingCms" && typeof v === "string") {
+    const given = parseJsonList(v).filter((x) => x !== "").length;
+    return given === 0 || (typeof row.floors === "number" && given < row.floors);
+  }
+  return false;
+}
 /** Sukka on every mirpeset, renovation year on a second-hand unit, project on a yad rishona apartment. */
 function commonMissing(a: Record<string, unknown>, apartment: boolean): string[] {
   const out: string[] = [];
+  const cat: IlCategory = apartment ? "apartments" : "houses";
   const list = parseMirpasot(typeof a.mirpasot === "string" ? a.mirpasot : "[]");
   const garden = a.apartmentType === "Garden apartment";
-  if (a.mirpesetSqm != null && (list.length === 0 || list.some((m) => !m.sukka))) out.push(list.length > 1 ? `Sukka (yes, partial or no) for each ${garden ? "garden" : "mirpeset"}` : "Sukka (yes, partial or no)");
+  if (listHas(cat, "sukka") && a.mirpesetSqm != null && (list.length === 0 || list.some((m) => !m.sukka))) out.push(list.length > 1 ? `Sukka (yes, partial or no) for each ${garden ? "garden" : "mirpeset"}` : "Sukka (yes, partial or no)");
   if (list.some((m) => m.sukka && m.sukka !== "No" && m.sukkaSqm == null)) out.push("Sukka area (m²)");
-  if (apartment && list.length && list.some((m) => !m.pool)) out.push("Pool (yes or no)");
+  if (apartment && listHas(cat, "pool") && list.length && list.some((m) => !m.pool)) out.push("Pool (yes or no)");
   if (list.some((m) => m.pool === "Yes" && m.poolSqm == null)) out.push("Pool size (m²)");
   if (!apartment && a.pool === "Yes" && a.poolSqm == null) out.push("Pool size (m²)");
   if (isSecondHand(typeof a.sellerType === "string" ? a.sellerType : null) && a.renovationYear == null) out.push("Year of renovation (or never renovated)");
   if (apartment && typeof a.sellerType === "string" && a.sellerType.startsWith("Yad Rishona") && !a.projectId && !a.projectName) out.push("Project name");
   return out;
 }
-/** Labels of the complete-ticket fields still blank on an apartment. Empty means complete. */
+/** Labels of the apartment list items still blank. Empty means complete. */
 export function apartmentMissing(a: Record<string, unknown>): string[] {
-  const base = IL_COMPLETE_FIELDS.filter(({ key }) => {
-    const v = a[key];
-    if (v == null || v === "") return true;
-    if (typeof v === "string" && (key === "direction" || key === "mirpesetDirection")) return parseJsonList(v).length === 0;
-    return false;
-  }).map((f) => f.label);
+  const base = IL_REQUIRED.apartments.filter(({ key }) => blankOn(a, key)).map((f) => f.label);
   return [...base, ...commonMissing(a, true)];
 }
-
-/** What a complete house ticket carries; the dashboard and the reply list whichever are blank. */
-export const IL_HOUSE_COMPLETE_FIELDS: { key: string; label: string }[] = [
-  { key: "houseType", label: "House type" },
-  { key: "street", label: "Address" },
-  { key: "city", label: "City" },
-  { key: "neighborhood", label: "Neighborhood" },
-  { key: "rooms", label: "Rooms" },
-  { key: "completionDate", label: "Built or expected delivery" },
-  { key: "internalSqm", label: "Internal m²" },
-  { key: "mirpesetSqm", label: "Mirpeset size" },
-  { key: "mirpesetDirection", label: "Mirpeset direction" },
-  { key: "floors", label: "How many floors" },
-  { key: "ceilingCms", label: "Ceiling heights" },
-  { key: "migrashSqm", label: "Migrash size" },
-  { key: "pool", label: "Pool" },
-  { key: "priceNis", label: "Asking price" },
-  { key: "sellerType", label: "Seller type" },
-  { key: "parkingSpots", label: "Parking" },
-];
 export function houseMissing(h: Record<string, unknown>): string[] {
-  const base = IL_HOUSE_COMPLETE_FIELDS.filter(({ key }) => {
-    const v = h[key];
-    if (v == null || v === "") return true;
-    if (key === "ceilingCms" && typeof v === "string") {
-      const given = parseJsonList(v).filter((x) => x !== "").length;
-      return given === 0 || (typeof h.floors === "number" && given < h.floors);
-    }
-    if (key === "mirpesetDirection" && typeof v === "string") return parseJsonList(v).length === 0;
-    return false;
-  }).map((f) => f.label);
+  const base = IL_REQUIRED.houses.filter(({ key }) => blankOn(h, key)).map((f) => f.label);
   const extra = commonMissing(h, false);
-  if (typeof h.sellerType === "string" && h.sellerType.startsWith("Yad Rishona") && !h.developerId) extra.push("Developer");
+  if (typeof h.sellerType === "string" && h.sellerType.startsWith("Yad Rishona") && !h.developerId && !listHas("houses", "developerId")) extra.push("Developer");
   return [...base, ...extra];
+}
+export function projectMissing(p: Record<string, unknown>): string[] {
+  return IL_REQUIRED.projects.filter(({ key }) => blankOn(p, key)).map((f) => f.label);
 }
 
 /** The year in "2016" or "06/2027" or "Q2 2028"; null when there is none. */

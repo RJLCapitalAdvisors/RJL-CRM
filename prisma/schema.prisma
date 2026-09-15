@@ -22,6 +22,8 @@ model User {
   israelEmail   String?  // the person's @rjlisrael.com mailbox, read into RJL Israel once that tenant is connected
   israelMailSyncedAt DateTime? // last RJL Israel mailbox pass for israelEmail
   mailSyncedAt  DateTime? // last time this mailbox was read into the email log
+  invitedAt     DateTime? // when the invite email last went out (Settings > Users)
+  lastSignInAt  DateTime? // last Microsoft sign-in
   createdAt DateTime @default(now())
 
   companies Company[]
@@ -449,6 +451,29 @@ model MentionScan {
 }
 
 /// Inbound LP emails already read for requests (each email is sent to Claude once).
+/// Required Items Lists: what the deals mailbox asks a sponsor for (RJL CA, by strategy and asset class) and what a
+/// complete RJL Israel ticket carries (projects, apartments, houses). Edited on the Required Items Lists pages.
+model RequiredItem {
+  id           String   @id @default(cuid())
+  workspace    String   // CA | IL
+  category     String   // CA: deal. IL: projects | apartments | houses
+  key          String   // the ticket field it fills, or x_<slug> for a question with no field of its own
+  label        String
+  devLabel     String?  // CA: wording on a development
+  question     String?  // how it is asked / what Claude looks for
+  kind         String   @default("text") // short | text | number | yesno | doc
+  strategies   String   @default("[]") // CA: JSON list of Acquisitions and/or Development
+  assetClasses String?  // CA: JSON list; null means every asset class
+  core         String?  // CA: the Deal column the answer lives in
+  sortOrder    Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([workspace, category, key])
+  @@index([workspace, category, sortOrder])
+}
+
 /// Sponsor emails already read for answers to LP questions (each once).
 model SponsorAnswerScan {
   externalId String   @id
@@ -578,6 +603,7 @@ model IlApartment {
   mamad          Boolean   @default(false)
   priceNis       Float?
   pendingApproval Boolean  @default(false) // came in by email with data missing; waits on the dashboard until approved
+  extra          String?   // JSON answers to Required Items List questions that have no field of their own
   sellerType     String?   // Yad Rishona (developer), Second hand, never occupied, Second hand, occupied
   renovationYear Int?
   builtYear      Int?
@@ -712,6 +738,7 @@ model IlProject {
   stories        Int?
   completionDate String?
   description    String?
+  extra          String?       // JSON answers to Required Items List questions that have no field of their own
   brochure       Bytes?
   brochureType   String?
   brochureName   String?
@@ -835,6 +862,7 @@ model IlHouse {
   pool            String?   // Yes | No
   poolSqm         Float?
   pendingApproval Boolean   @default(false) // came in by email or WhatsApp with data missing
+  extra           String?   // JSON answers to Required Items List questions that have no field of their own
   source          String?
   sourceMessageId String?
   floorplan       Bytes?

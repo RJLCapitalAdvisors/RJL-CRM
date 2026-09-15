@@ -5,7 +5,9 @@ import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/r
 import { IlActivityLog } from "@/components/il-activity";
 import { IlRoleChips } from "@/components/il-role-cell";
 import { usdIls } from "@/lib/fx";
-import { apartmentLine, houseLine, nis, nisShort, sqm, usdFmt } from "@/lib/israel";
+import { apartmentLine, houseLine, nis, nisShort, projectMissing, sqm, usdFmt } from "@/lib/israel";
+import { IlExtraCard } from "@/components/il-extra-card";
+import { loadIlRequired } from "@/lib/required-items";
 import { projectRanges, type Range } from "@/lib/project-ranges";
 import { addIlNote, deleteIlProject, updateIlProject } from "../../actions";
 import { IlProjectForm } from "../project-form";
@@ -41,6 +43,8 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
     usdIls(),
   ]);
   if (!p) notFound();
+  await loadIlRequired();
+  const missing = projectMissing(p as unknown as Record<string, unknown>);
 
   // emails about the project: with its developer's people, with the brokers and sellers of its units, or naming the project
   const people = [...p.apartments, ...p.houses].flatMap((u) => [u.agentContactId, u.sellerContactId]).filter((x): x is string => Boolean(x));
@@ -99,6 +103,8 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
               </>
             }
           />
+          {missing.length > 0 && <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">Still needed on this project: {missing.join(", ")}.</div>}
+          <IlExtraCard kind="projects" id={p.id} extra={p.extra} />
           <AboutCard title="About this project">
             <IlProjectForm p={p} developers={developers} action={updateIlProject.bind(null, p.id)} autosave />
           </AboutCard>

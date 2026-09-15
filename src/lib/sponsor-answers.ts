@@ -63,11 +63,25 @@ export async function detectSponsorAnswers(): Promise<{ emails: number; items: n
   let emails = 0, items = 0;
   for (const [dealId, dealAsks] of byDeal) {
     const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, name: true, propertyName: true, stage: true, sponsorCompanyId: true, sponsorName: true } });
-    if (!deal || !deal.sponsorCompanyId || !(ACTIVE_STAGES as readonly string[]).includes(deal.stage)) continue;
+    if (!deal || !(ACTIVE_STAGES as readonly string[]).includes(deal.stage)) continue;
     const earliest = new Date(Math.min(...dealAsks.map((a) => a.waitingSince.getTime())));
-    // sponsor emails since the first ask: filed on this deal, or from the sponsor with no deal pinned (Claude judges relevance)
+    // Emails since the first ask that could carry the sponsor's answers: anything filed on this deal from someone who
+    // is not an investor (the sponsor's people, whichever company they write from: a principal answering from a
+    // second entity, a partner, their analyst), plus the sponsor company's emails with no deal pinned. Claude then
+    // judges whether the words answer a listed question, so a broker or attorney on the thread creates nothing unless
+    // they actually answer. The old rule (sender at deal.sponsorCompanyId only) missed Parker Webb and Cory Tuck
+    // answering Nelnet on the BrightStar recap from ftwinvestmentsllc.com.
     const mails = await prisma.activity.findMany({
-      where: { type: "EMAIL", direction: "INBOUND", externalId: { not: null }, occurredAt: { gte: earliest }, contact: { companyId: deal.sponsorCompanyId }, OR: [{ dealId }, { dealId: null }] },
+      where: {
+        type: "EMAIL",
+        direction: "INBOUND",
+        externalId: { not: null },
+        occurredAt: { gte: earliest },
+        OR: [
+          { dealId, contact: { OR: [{ companyId: null }, { company: { NOT: { roles: { contains: "Investor" } } } }] } },
+          ...(deal.sponsorCompanyId ? [{ dealId: null, contact: { companyId: deal.sponsorCompanyId } }] : []),
+        ],
+      },
       orderBy: { occurredAt: "asc" },
       select: { id: true, externalId: true, subject: true, body: true, occurredAt: true, meta: true, contact: { select: { firstName: true, lastName: true } } },
     });

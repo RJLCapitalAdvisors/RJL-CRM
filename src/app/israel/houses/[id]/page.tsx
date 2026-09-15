@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { SelectField } from "@/components/select-field";
 import { usdIls } from "@/lib/fx";
+import { IlExtraCard } from "@/components/il-extra-card";
+import { loadIlRequired } from "@/lib/required-items";
 import { houseMissing, ilFullName, nis, parseJsonList, pricePerMeter, sqm, usdFmt } from "@/lib/israel";
 import { addIlNote, approveHouse, deleteHouse, linkHouse, updateHouse } from "../../actions";
 import { HouseForm } from "../house-form";
@@ -24,7 +26,7 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
     prisma.ilHouse.findUnique({
       where: { id },
       select: {
-        id: true, name: true, houseType: true, projectId: true, project: { select: { id: true, name: true } }, street: true, city: true, neighborhood: true, rooms: true, floors: true, ceilingCms: true, completionDate: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpesetDirection: true, mirpasot: true, migrashSqm: true, pool: true, poolSqm: true, parkingSpots: true, sellerType: true, renovationYear: true, mamad: true, priceNis: true, description: true,
+        id: true, name: true, extra: true, houseType: true, projectId: true, project: { select: { id: true, name: true } }, street: true, city: true, neighborhood: true, rooms: true, floors: true, ceilingCms: true, completionDate: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpesetDirection: true, mirpasot: true, migrashSqm: true, pool: true, poolSqm: true, parkingSpots: true, sellerType: true, renovationYear: true, mamad: true, priceNis: true, description: true,
         pendingApproval: true, source: true, floorplanType: true, floorplanName: true, updatedAt: true, developerId: true, agentContactId: true, sellerContactId: true,
         developer: { select: { id: true, name: true, roles: true, city: true, phone: true } },
         agent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } },
@@ -39,6 +41,7 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
   ]);
   if (!h) notFound();
   const ppm = pricePerMeter(h.priceNis, h.internalSqm, h.mirpesetSqm);
+  await loadIlRequired();
   const missing = houseMissing(h as unknown as Record<string, unknown>);
   const agents = people.filter((p) => parseJsonList(p.roles).includes("Broker"));
   const sellers = people.filter((p) => parseJsonList(p.roles).includes("Seller"));
@@ -86,6 +89,7 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
               )}
             </div>
           )}
+          <IlExtraCard kind="houses" id={h.id} extra={h.extra} />
           <AboutCard title="About this house">
             <HouseForm h={h} fx={fx} projects={projects} action={updateHouse.bind(null, h.id)} autosave />
           </AboutCard>

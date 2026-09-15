@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect } from "react";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home } from "lucide-react";
+import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks } from "lucide-react";
 import { NavLink } from "@/components/nav-link";
 import { DealContextNav } from "@/components/deal-context-nav";
 import { ApartmentContextNav } from "@/components/apartment-context-nav";
@@ -32,6 +32,8 @@ const IL_NAV = [
   { href: "/israel/companies", label: "Companies", icon: Building2 },
   { href: "/israel/contacts", label: "Contacts", icon: Users },
   { href: "/israel/deals", label: "Deals", icon: KanbanSquare },
+  { href: "/israel/required-items", label: "Required Items Lists", icon: ListChecks },
+  { href: "/israel/settings", label: "Settings", icon: Settings },
 ];
 
 /**
@@ -96,6 +98,8 @@ function Nav({ items, dealSteps = false, apartmentSteps = false }: { items: { hr
             <n.icon className="h-4 w-4" />
             {n.label}
           </NavLink>
+          {dealSteps && n.href === "/templates" && <TemplatesSubnav />}
+          {dealSteps && n.href === "/settings" && <SettingsSubnav />}
           {dealSteps && n.href === "/deals" && (
             <Suspense fallback={null}>
               <DealContextNav />
@@ -114,5 +118,47 @@ function Nav({ items, dealSteps = false, apartmentSteps = false }: { items: { hr
         </div>
       ))}
     </nav>
+  );
+}
+
+/** Under Templates: the two things kept there. Shows while you are on either page. */
+function TemplatesSubnav() {
+  const pathname = usePathname();
+  if (!pathname.startsWith("/templates")) return null;
+  const onLists = pathname.startsWith("/templates/required-items");
+  const items = [
+    { href: "/templates", label: "Email templates", icon: Mail, on: !onLists },
+    { href: "/templates/required-items", label: "Required Items Lists", icon: ListChecks, on: onLists },
+  ];
+  return (
+    <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
+      {items.map((s) => (
+        <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${s.on ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
+          <s.icon className="h-3.5 w-3.5" />
+          {s.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/** Under Settings: your own settings, and the people who use the CRM. Shows while you are on either page. */
+function SettingsSubnav() {
+  const pathname = usePathname();
+  if (!pathname.startsWith("/settings")) return null;
+  const onUsers = pathname.startsWith("/settings/users");
+  const items = [
+    { href: "/settings", label: "Settings", icon: Settings, on: !onUsers },
+    { href: "/settings/users", label: "Users", icon: Users, on: onUsers },
+  ];
+  return (
+    <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
+      {items.map((s) => (
+        <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${s.on ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
+          <s.icon className="h-3.5 w-3.5" />
+          {s.label}
+        </Link>
+      ))}
+    </div>
   );
 }

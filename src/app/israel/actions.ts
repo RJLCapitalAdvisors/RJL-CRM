@@ -162,6 +162,7 @@ export async function linkHouse(id: string, fd: FormData) {
   revalidatePath(`/israel/houses/${id}`);
 }
 export async function approveHouse(id: string) {
+  await (await import("@/lib/required-items")).loadIlRequired();
   const { houseMissing } = await import("@/lib/israel");
   const h = await prisma.ilHouse.findUnique({ where: { id } });
   if (!h || houseMissing(h as unknown as Record<string, unknown>).length) return;
@@ -352,6 +353,7 @@ export async function deleteIlProject(id: string) {
 
 /** Approve a ticket that came in by email: it leaves Deals to be approved and joins the Apartments list. Only when the data is complete. */
 export async function approveApartment(id: string) {
+  await (await import("@/lib/required-items")).loadIlRequired();
   const { apartmentMissing } = await import("@/lib/israel");
   const a = await prisma.ilApartment.findUnique({ where: { id } });
   if (!a) return;
@@ -362,4 +364,23 @@ export async function approveApartment(id: string) {
   revalidatePath("/israel");
   revalidatePath("/israel/apartments");
   revalidatePath(`/israel/apartments/${id}`);
+}
+
+/** "Other items" on a ticket: the answers to Required Items List questions with no field of their own. */
+export async function saveIlExtra(kind: "projects" | "apartments" | "houses", id: string, fd: FormData) {
+  const { loadIlRequired } = await import("@/lib/required-items");
+  const { IL_REQUIRED, isCustomKey } = await import("@/lib/israel");
+  await loadIlRequired();
+  const o: Record<string, string> = {};
+  for (const i of IL_REQUIRED[kind]) {
+    if (!isCustomKey(i.key)) continue;
+    const v = fd.get(i.key);
+    if (typeof v === "string" && v.trim()) o[i.key] = v.trim();
+  }
+  const data = { extra: Object.keys(o).length ? JSON.stringify(o) : null };
+  if (kind === "apartments") await prisma.ilApartment.update({ where: { id }, data });
+  else if (kind === "houses") await prisma.ilHouse.update({ where: { id }, data });
+  else await prisma.ilProject.update({ where: { id }, data });
+  revalidatePath(`/israel/${kind}/${id}`);
+  revalidatePath("/israel");
 }

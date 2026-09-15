@@ -144,6 +144,7 @@ const showVal = (k: string, v: unknown) => (v == null || v === "" ? "blank" : ["
  */
 export async function mergeIntoDeal(dealId: string, rawText: string, subject: string, opts: { modelAttached?: boolean; attachments?: string[] } = {}): Promise<MergeResult> {
   const { extractWithClaude } = await import("@/lib/intake");
+  await (await import("@/lib/required-items")).loadChecklist();
   const none: MergeResult = { filled: 0, changes: [], model: null };
   const deal = await prisma.deal.findUnique({ where: { id: dealId } });
   if (!deal) return none;

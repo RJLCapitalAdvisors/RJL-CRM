@@ -8,6 +8,7 @@ import { kickIsraelMailSync } from "@/lib/israel-mail";
 import { IL_MENTIONED } from "@/lib/israel-mentions";
 import { dismissIlMention } from "./actions";
 import { Item, ItemForm } from "@/app/dash-item";
+import { loadIlRequired } from "@/lib/required-items";
 
 export const metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
@@ -15,14 +16,19 @@ export const dynamic = "force-dynamic";
 /**
  * RJL Israel dashboard. Deals to be approved: apartments that came in by email with data missing. They sit here,
  * not in the Apartments list, until the data is chased down and Jonathan approves them. Deals mentioned carries
- * properties people floated by email without ever sending the listing.
+ * properties people floated by email without ever sending the listing. Data updates lists tickets a later message
+ * added data to. Three windows, none replacing another.
  */
 export default async function IsraelDashboard() {
   kickIsraelMailSync(); // emails from the RJL Israel mailboxes land on contacts and companies in the background
-  const [pendingApts, pendingHouses, mentions] = await Promise.all([
+  await loadIlRequired(); // Still needed reads the Required Items Lists as Jonathan last edited them
+  const since = new Date(Date.now() - 14 * 86_400_000);
+  const [pendingApts, pendingHouses, mentions, updates] = await Promise.all([
     prisma.ilApartment.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
     prisma.ilHouse.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
     prisma.ilDeal.findMany({ where: { stage: IL_MENTIONED }, orderBy: { updatedAt: "desc" }, include: { agent: { select: { id: true, firstName: true, lastName: true, email: true, company: { select: { name: true } } } } } }),
+    // tickets a later email or WhatsApp message added data to (the intake writes an "Updated from ..." note)
+    prisma.ilNote.findMany({ where: { body: { startsWith: "Updated from" }, createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 30, include: { apartment: { select: { id: true, name: true } }, house: { select: { id: true, name: true } } } }),
   ]);
   // apartments and houses in one list, newest first
   const pending = [
@@ -80,6 +86,31 @@ export default async function IsraelDashboard() {
         </div>
         <div className="card self-start">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <div className="text-sm font-semibold">Data updates</div>
+            <span className="text-xs text-muted">{updates.length}</span>
+          </div>
+          {updates.length === 0 ? (
+            <div className="px-4 py-8 text-center text-sm text-muted">Nothing in the last two weeks. When a second email or WhatsApp message about a unit we already have adds data to its ticket, it shows here.</div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {updates.map((u) => {
+                const unit = u.apartment ? { href: `/israel/apartments/${u.apartment.id}`, name: u.apartment.name, kind: "Apartment" } : u.house ? { href: `/israel/houses/${u.house.id}`, name: u.house.name, kind: "House" } : null;
+                if (!unit) return null;
+                return (
+                  <li key={u.id} className="px-4 py-3 text-sm">
+                    <Link href={unit.href} className="font-medium hover:underline">
+                      {unit.name}
+                    </Link>
+                    <span className="ml-2 chip bg-cream text-[10px]">{unit.kind}</span>
+                    <div className="mt-0.5 text-xs text-muted">{u.body.replace(/^Updated from /, "Updated from ")} · {fmtDate(u.createdAt)}</div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+        <div className="card self-start">
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <div className="text-sm font-semibold">Deals mentioned</div>
             <span className="text-xs text-muted">{mentions.length}</span>
           </div>
@@ -99,7 +130,7 @@ export default async function IsraelDashboard() {
                         {[m.agent ? `from ${ilFullName(m.agent)}` : null, m.agent?.company?.name, m.offerNis ? nis(m.offerNis) : null, `mentioned ${fmtDate(m.updatedAt)}`].filter(Boolean).join(" · ")}
                       </div>
                     </div>
-                    <ItemForm action={dismissIlMention.bind(null, m.id)} className="btn-grey act shrink-0" title="Not something we are looking at; takes it off this list and out of the funnel">
+                    <ItemForm action={dismissIlMention.bind(null, m.id)} className="btn-grey shrink-0 px-3 py-1.5 text-xs" title="Not something we are looking at; takes it off this list and out of the funnel">
                       Dismiss
                     </ItemForm>
                   </div>

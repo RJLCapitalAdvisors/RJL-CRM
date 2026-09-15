@@ -20,7 +20,7 @@ export type ChecklistItem = {
 
 const RESIDENTIAL = ["Multifamily", "Build-For-Rent (SFR)", "Student Housing", "Senior Housing", "Mixed Use"];
 
-export const CHECKLIST: ChecklistItem[] = [
+export const DEFAULT_CHECKLIST: ChecklistItem[] = [
   { key: "proforma", label: "Excel underwriting model (proforma)", devLabel: "Excel underwriting model (proforma, with equity-broker fee included)", question: "Has the sponsor provided the Excel underwriting model?", kind: "doc", strategy: ["Acquisitions", "Development"] },
   { key: "rentRollT12", label: "Rent roll and T12", question: "Current rent roll and trailing-12 operating statement", kind: "doc", strategy: ["Acquisitions"], excludeAssetClasses: ["Land"] },
   { key: "occupancy", label: "Current occupancy", question: "Current physical/economic occupancy (%)", kind: "number", strategy: ["Acquisitions"], excludeAssetClasses: ["Land"], core: "occupancy" },
@@ -47,6 +47,15 @@ export const CHECKLIST: ChecklistItem[] = [
   { key: "lender", label: "Who is the lender?", question: "Lender type or name: Fannie/Freddie, life co, bank, debt fund, credit union", kind: "short", strategy: ["Acquisitions", "Development"] },
   { key: "affordable", label: "Any affordable housing component?", question: "Does the property qualify as affordable housing to any extent (LIHTC, income restrictions)?", kind: "short", strategy: ["Acquisitions"], onlyAssetClasses: RESIDENTIAL },
 ];
+
+/**
+ * The live list. It starts as DEFAULT_CHECKLIST and becomes Jonathan's Required Items List once loadChecklist()
+ * (src/lib/required-items.ts) has read it from the database; every function below reads this array.
+ */
+export const CHECKLIST: ChecklistItem[] = [...DEFAULT_CHECKLIST];
+export function setChecklist(items: ChecklistItem[]) {
+  CHECKLIST.splice(0, CHECKLIST.length, ...items);
+}
 
 export function itemLabel(item: ChecklistItem, strategy?: string | null) {
   return strategy === "Development" && item.devLabel ? item.devLabel : item.label;

@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/db";
 import { fmtMoney } from "@/lib/format";
 import { missingFor, itemLabel } from "@/lib/checklist";
+import { loadChecklist } from "@/lib/required-items";
 import { fmtReportDate, investorLabel } from "@/lib/tracker";
 
 /** Everything the progress report needs, shared by the in-app tracker, the sponsor view, and the export. */
 export async function loadReport(dealId: string) {
+  await loadChecklist();
   const { ensureTrackerSummary } = await import("@/lib/tracker-summary");
   await ensureTrackerSummary(dealId).catch(() => null);
   const deal = await prisma.deal.findUnique({

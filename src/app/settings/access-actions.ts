@@ -3,29 +3,85 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireCriteriaAdmin } from "@/lib/current-user";
-import { workspacesByDomain } from "@/lib/access";
+import { workspacesByDomain, type Workspace } from "@/lib/access";
+import { mailConfigured, sendEmail } from "@/lib/mailer";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
   return typeof v === "string" && v.trim() ? v.trim() : null;
 };
+const PAGES = ["/settings", "/settings/users", "/israel/settings"];
+const refresh = () => PAGES.forEach((p) => revalidatePath(p));
 
 /** Jonathan sets who opens which business, and the RJL Israel mailbox a person uses there. */
 export async function updateUserAccessAction(userId: string, fd: FormData) {
   await requireCriteriaAdmin();
   const ws = fd.getAll("workspaces").map(String).filter((x) => x === "CA" || x === "IL");
   await prisma.user.update({ where: { id: userId }, data: { workspaces: JSON.stringify(ws), israelEmail: s(fd, "israelEmail")?.toLowerCase() ?? null, active: fd.get("active") === "on" } });
-  revalidatePath("/settings");
+  refresh();
 }
 
-/** A new person: their sign-in email decides the business unless Jonathan ticks otherwise. */
+/**
+ * A new person: their sign-in email decides the business unless Jonathan ticks otherwise. With "Send an invite"
+ * ticked, they get an email with the sign-in link for each business they were given.
+ */
 export async function addUserAction(fd: FormData) {
-  await requireCriteriaAdmin();
+  const me = await requireCriteriaAdmin();
   const email = s(fd, "email")?.toLowerCase();
-  const name = s(fd, "name");
-  if (!email || !name) return;
-  const ws = fd.getAll("workspaces").map(String).filter((x) => x === "CA" || x === "IL");
+  const name = s(fd, "name") ?? email?.split("@")[0] ?? "";
+  if (!email) return;
+  const ws = fd.getAll("workspaces").map(String).filter((x): x is Workspace => x === "CA" || x === "IL");
+  const granted = ws.length ? ws : workspacesByDomain(email);
   const israelEmail = s(fd, "israelEmail")?.toLowerCase() ?? (email.endsWith("@rjlisrael.com") ? email : null);
-  await prisma.user.upsert({ where: { email }, create: { name, email, active: true, workspaces: JSON.stringify(ws.length ? ws : workspacesByDomain(email)), israelEmail }, update: { name, active: true, workspaces: JSON.stringify(ws.length ? ws : workspacesByDomain(email)), israelEmail } });
-  revalidatePath("/settings");
+  const user = await prisma.user.upsert({
+    where: { email },
+    create: { name, email, active: true, workspaces: JSON.stringify(granted), israelEmail },
+    update: { name, active: true, workspaces: JSON.stringify(granted), israelEmail },
+  });
+  if (fd.get("invite") === "on") await sendInvite(user.id, granted, me.name).catch((e) => console.error("invite:", String(e).slice(0, 200)));
+  refresh();
+}
+
+/** Send (or send again) the invite for one business. */
+export async function sendInviteAction(userId: string, workspace: Workspace) {
+  const me = await requireCriteriaAdmin();
+  await sendInvite(userId, [workspace], me.name);
+  refresh();
+}
+
+const NAMES: Record<Workspace, string> = { CA: "RJL Capital Advisors", IL: "RJL Israel" };
+const DOMAIN_HINT: Record<Workspace, string> = { CA: "@rjlcapadvisors.com", IL: "@rjlisrael.com" };
+
+async function sendInvite(userId: string, workspaces: Workspace[], fromName: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user?.email) throw new Error("No email on file");
+  if (!mailConfigured()) throw new Error("Email sending is not configured (RESEND_API_KEY and MAIL_FROM)");
+  const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
+  const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#111;";
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const first = user.name.split(/\s+/)[0] || "there";
+  const sides = workspaces.length ? workspaces : (["CA"] as Workspace[]);
+  const blocks = sides
+    .map((w) => {
+      const account = w === "IL" ? user.israelEmail ?? user.email : user.email;
+      const link = `${base}/login?business=${w}&next=${encodeURIComponent(w === "IL" ? "/israel" : "/")}`;
+      return `<p style="margin:0 0 6pt 0;${F}"><b>${NAMES[w]}</b></p>
+<ol style="margin:0 0 12pt 18pt;${F}">
+<li style="margin-bottom:4pt;">Open <a href="${link}" style="color:#1d4ed8;">${link}</a></li>
+<li style="margin-bottom:4pt;">Click <b>Sign in with Microsoft</b> and use your ${esc(account ?? "")} account${account && !account.endsWith(DOMAIN_HINT[w]) ? "" : ` (the ${DOMAIN_HINT[w]} one)`}.</li>
+<li>That is it. Your name is already on the list, so the door opens on the first sign-in.</li>
+</ol>`;
+    })
+    .join("");
+  const both = sides.length > 1 ? `<p style="margin:0 0 10pt 0;${F}">You have both businesses. Sign in twice, once with each account; both logos light up at the top of the sidebar once you have.</p>` : "";
+  const outlook = sides.includes("CA") ? `<p style="margin:0 0 10pt 0;${F}">Once you are in, open Settings and run the small Outlook link so the CRM can hand its drafts to your Outlook. The page walks you through it.</p>` : "";
+  const html = `<div style="${F}">
+<p style="margin:0 0 10pt 0;${F}">Hi ${esc(first)},</p>
+<p style="margin:0 0 10pt 0;${F}">${esc(fromName)} set you up on the ${sides.map((w) => NAMES[w]).join(" and ")} CRM. Here is how to get in:</p>
+${blocks}${both}${outlook}
+<p style="margin:0 0 10pt 0;${F}">Reply to this email if anything does not work.</p>
+<p style="margin:0;${F}">${esc(fromName)}</p>
+</div>`;
+  await sendEmail({ to: user.email, subject: `Your ${sides.map((w) => NAMES[w]).join(" and ")} CRM login`, html, replyTo: process.env.MAIL_REPLY_TO ?? "jonathan@rjlcapadvisors.com" });
+  await prisma.user.update({ where: { id: userId }, data: { invitedAt: new Date() } });
 }

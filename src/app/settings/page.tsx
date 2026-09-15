@@ -4,7 +4,7 @@ import { currentUser } from "@/lib/current-user";
 import { saveSignature } from "../todo-actions";
 import { SignatureEditor } from "./signature-editor";
 import { OnboardingChecklist } from "./onboarding-checklist";
-import { AccessCard } from "./access-card";
+import Link from "next/link";
 import { ADMIN_STEPS, YOUR_STEPS } from "@/lib/onboarding";
 
 export const metadata = { title: "Settings" };
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 /** Per-person settings: the Outlook connection on this computer (with a self-check) and email signatures. */
 export default async function SettingsPage() {
-  const [users, everyone, me] = await Promise.all([prisma.user.findMany({ where: { active: true, email: { not: null } }, orderBy: { name: "asc" } }), prisma.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }), currentUser()]);
+  const [users, me] = await Promise.all([prisma.user.findMany({ where: { active: true, email: { not: null } }, orderBy: { name: "asc" } }), currentUser()]);
   return (
     <>
       <PageHeader title="Settings" subtitle="Outlook on this computer, and the email signatures the CRM puts under what it drafts for you" />
@@ -81,7 +81,15 @@ export default async function SettingsPage() {
           </div>
         )}
 
-        {me?.canEditCriteria && <AccessCard users={everyone} />}
+        {me?.canEditCriteria && (
+          <div id="access" className="card px-5 py-4 text-sm">
+            <span className="font-semibold">Users.</span> Who opens the CRM, invitations and access live under{" "}
+            <Link href="/settings/users" className="font-medium text-sky-700 hover:underline">
+              Settings &gt; Users
+            </Link>
+            .
+          </div>
+        )}
 
         <h2 className="pt-2 text-base font-semibold">Email signatures</h2>
         {users.map((u) => (
