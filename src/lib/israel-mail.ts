@@ -203,6 +203,9 @@ export function kickIsraelMailSync(minMinutes = 3) {
     await syncIsraelMailboxes().catch(() => ({}));
     const { processIsraelInbox } = await import("@/lib/israel-intake");
     await processIsraelInbox().catch(() => ({}));
+    const { detectIsraelMentions, closeLandedMentions } = await import("@/lib/israel-mentions");
+    await detectIsraelMentions().catch(() => ({}));
+    await closeLandedMentions().catch(() => 0);
   };
   import("next/server")
     .then(({ after }) => after(run))

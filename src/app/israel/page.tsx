@@ -2,23 +2,27 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
-import { apartmentLine, apartmentMissing, houseLine, houseMissing, nis } from "@/lib/israel";
+import { apartmentLine, apartmentMissing, houseLine, houseMissing, ilFullName, nis } from "@/lib/israel";
 import { approveApartment, approveHouse } from "./actions";
 import { kickIsraelMailSync } from "@/lib/israel-mail";
+import { IL_MENTIONED } from "@/lib/israel-mentions";
+import { dismissIlMention } from "./actions";
+import { Item, ItemForm } from "@/app/dash-item";
 
 export const metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
 
 /**
  * RJL Israel dashboard. Deals to be approved: apartments that came in by email with data missing. They sit here,
- * not in the Apartments list, until the data is chased down and Jonathan approves them. Data updates is still
- * blank until Jonathan defines it.
+ * not in the Apartments list, until the data is chased down and Jonathan approves them. Deals mentioned carries
+ * properties people floated by email without ever sending the listing.
  */
 export default async function IsraelDashboard() {
   kickIsraelMailSync(); // emails from the RJL Israel mailboxes land on contacts and companies in the background
-  const [pendingApts, pendingHouses] = await Promise.all([
+  const [pendingApts, pendingHouses, mentions] = await Promise.all([
     prisma.ilApartment.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
     prisma.ilHouse.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
+    prisma.ilDeal.findMany({ where: { stage: IL_MENTIONED }, orderBy: { updatedAt: "desc" }, include: { agent: { select: { id: true, firstName: true, lastName: true, email: true, company: { select: { name: true } } } } } }),
   ]);
   // apartments and houses in one list, newest first
   const pending = [
@@ -76,10 +80,33 @@ export default async function IsraelDashboard() {
         </div>
         <div className="card self-start">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <div className="text-sm font-semibold">Data updates</div>
-            <span className="text-xs text-muted">0</span>
+            <div className="text-sm font-semibold">Deals mentioned</div>
+            <span className="text-xs text-muted">{mentions.length}</span>
           </div>
-          <div className="px-4 py-8 text-center text-sm text-muted">Nothing to review.</div>
+          {mentions.length === 0 ? (
+            <div className="px-4 py-8 text-center text-sm text-muted">Nothing yet. A property someone mentions in an email to an RJL Israel mailbox, without sending the listing, shows up here and in the Mentioned column under Deals.</div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {mentions.map((m) => (
+                <Item key={m.id} className="px-4 py-3 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link href={`/israel/deals/${m.id}`} className="font-medium hover:underline">
+                        {m.name}
+                      </Link>
+                      <div className="mt-0.5 text-xs text-ink-soft">{m.description}</div>
+                      <div className="mt-1 text-xs text-muted">
+                        {[m.agent ? `from ${ilFullName(m.agent)}` : null, m.agent?.company?.name, m.offerNis ? nis(m.offerNis) : null, `mentioned ${fmtDate(m.updatedAt)}`].filter(Boolean).join(" · ")}
+                      </div>
+                    </div>
+                    <ItemForm action={dismissIlMention.bind(null, m.id)} className="btn-grey act shrink-0" title="Not something we are looking at; takes it off this list and out of the funnel">
+                      Dismiss
+                    </ItemForm>
+                  </div>
+                </Item>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </>

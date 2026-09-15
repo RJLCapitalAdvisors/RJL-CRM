@@ -28,7 +28,8 @@ export function IlBoard({ deals: initial }: { deals: IlBoardDeal[] }) {
     });
   };
   const active = activeId ? deals.find((d) => d.id === activeId) : null;
-  const order = ["Lost", ...IL_DEAL_STAGES.filter((s) => s !== "Lost")];
+  // Lost first, then Mentioned (properties floated by email), then the funnel proper
+  const order = ["Lost", "Mentioned", ...IL_DEAL_STAGES.filter((s) => s !== "Lost" && s !== "Mentioned")];
   return (
     <DndContext id={dndId} sensors={sensors} onDragStart={(e: DragStartEvent) => setActiveId(String(e.active.id))} onDragEnd={onDragEnd}>
       <div className="flex h-[calc(100vh-88px)] gap-3 overflow-x-auto px-6 py-4">
@@ -44,6 +45,7 @@ export function IlBoard({ deals: initial }: { deals: IlBoardDeal[] }) {
 function Column({ stage, deals }: { stage: string; deals: IlBoardDeal[] }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const terminal = stage === "Closed" || stage === "Lost";
+  const mentioned = stage === "Mentioned";
   const sum = deals.reduce((n, d) => n + (d.price ?? 0), 0);
   return (
     <div ref={setNodeRef} className={`flex w-64 shrink-0 flex-col rounded-lg border ${isOver ? "border-sky-600 bg-sky-50" : "border-line bg-cream/60"} ${terminal ? "opacity-90" : ""}`}>
@@ -58,7 +60,7 @@ function Column({ stage, deals }: { stage: string; deals: IlBoardDeal[] }) {
         {deals.map((d) => (
           <Card key={d.id} deal={d} />
         ))}
-        {deals.length === 0 && <div className="rounded-md border border-dashed border-line px-3 py-4 text-center text-xs text-muted">Drop here</div>}
+        {deals.length === 0 && <div className="rounded-md border border-dashed border-line px-3 py-4 text-center text-xs text-muted">{mentioned ? "Properties people mention by email land here" : "Drop here"}</div>}
       </div>
     </div>
   );

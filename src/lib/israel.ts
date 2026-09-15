@@ -6,7 +6,7 @@
 
 /** Roles, the same word as in RJL Capital Advisors. A company's roles flow to its contacts; Seller is a person-only role. */
 export const IL_SPONSOR = "Sponsor (Yazam)";
-export const IL_COMPANY_ROLES = [IL_SPONSOR, "Kablan", "Broker", "Buyer", "Attorneys", "Mortgage Broker", "Other"] as const;
+export const IL_COMPANY_ROLES = [IL_SPONSOR, "Kablan", "Broker", "Buyer", "Lender", "Attorneys", "Mortgage Broker", "Other"] as const;
 export const IL_SPONSOR_FOCUS = ["Development", "Acquisitions", "Both"] as const;
 export const IL_ROLES = [...IL_COMPANY_ROLES, "Seller"] as const;
 export function ilRoleColor(role: string): string {
@@ -25,6 +25,8 @@ export function ilRoleColor(role: string): string {
       return "bg-amber-200 text-ink";
     case "Mortgage Broker":
       return "bg-emerald-200 text-ink";
+    case "Lender":
+      return "bg-violet-200 text-ink";
     default:
       return "bg-stone-100 text-ink";
   }
@@ -113,7 +115,8 @@ export function houseLine(h: IlHouseLike) {
 }
 export const ilFullName = (c: { firstName: string | null; lastName: string | null; email: string | null }) => [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "(no name)";
 
-export const IL_DEAL_STAGES = ["Lead", "Viewing Scheduled", "Offer Made", "Negotiation", "Under Contract", "Closed", "Lost"] as const;
+/** Mentioned: a property someone floated by email that never came in as a listing (src/lib/israel-mentions.ts). */
+export const IL_DEAL_STAGES = ["Mentioned", "Lead", "Viewing Scheduled", "Offer Made", "Negotiation", "Under Contract", "Closed", "Lost"] as const;
 export function ilStageTone(stage: string): string {
   switch (stage) {
     case "Closed":
@@ -125,6 +128,8 @@ export function ilStageTone(stage: string): string {
       return "bg-sky text-white border-sky";
     case "Offer Made":
       return "bg-sky-50 text-ink border-sky";
+    case "Mentioned":
+      return "bg-amber-100 text-amber-900 border-amber-200";
     default:
       return "bg-cream text-ink border-line";
   }

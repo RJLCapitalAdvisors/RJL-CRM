@@ -170,6 +170,13 @@ export async function approveHouse(id: string) {
   revalidatePath("/israel/houses");
   revalidatePath(`/israel/houses/${id}`);
 }
+/** A mentioned property we are not chasing: out of the Deals mentioned window and the funnel. */
+export async function dismissIlMention(id: string) {
+  await prisma.ilDeal.update({ where: { id }, data: { stage: "Lost", lostReason: "Mentioned, not pursued" } });
+  revalidatePath("/israel");
+  revalidatePath("/israel/deals");
+}
+
 export async function deleteHouse(id: string) {
   await prisma.ilHouse.delete({ where: { id } });
   revalidatePath("/israel/houses");

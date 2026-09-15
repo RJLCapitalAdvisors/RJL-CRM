@@ -13,13 +13,14 @@ export default async function IlDealsPage() {
     orderBy: { updatedAt: "desc" },
     include: { apartment: { select: { name: true, city: true, priceNis: true } }, buyer: { select: { firstName: true, lastName: true, email: true } }, agent: { select: { firstName: true, lastName: true, email: true } } },
   });
-  const live = deals.filter((d) => d.stage !== "Closed" && d.stage !== "Lost").length;
+  const live = deals.filter((d) => d.stage !== "Closed" && d.stage !== "Lost" && d.stage !== "Mentioned").length;
+  const mentioned = deals.filter((d) => d.stage === "Mentioned").length;
   return (
     <>
       <PageHeader
         compact
         title="Deals"
-        subtitle={`${live} in the funnel · ${deals.length - live} closed or lost`}
+        subtitle={`${live} in the funnel · ${mentioned} mentioned · ${deals.length - live - mentioned} closed or lost`}
         actions={
           <Link href="/israel/deals/new" className="btn-primary">
             New deal
