@@ -32,6 +32,7 @@ const IL_NAV = [
   { href: "/israel/companies", label: "Companies", icon: Building2 },
   { href: "/israel/contacts", label: "Contacts", icon: Users },
   { href: "/israel/deals", label: "Deals", icon: KanbanSquare },
+  { href: "/israel/campaigns", label: "Email blasts", icon: Mail },
   { href: "/israel/required-items", label: "Required Items Lists", icon: ListChecks },
   { href: "/israel/settings", label: "Settings", icon: Settings },
 ];

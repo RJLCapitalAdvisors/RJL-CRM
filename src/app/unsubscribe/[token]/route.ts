@@ -16,6 +16,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const id = verifyContactToken(token);
   if (!id) return page("Link not valid", "This unsubscribe link is not valid.");
+  if (id.startsWith("il:")) {
+    // an RJL Israel contact: off the Israel blasts
+    const ilId = id.slice(3);
+    const il = await prisma.ilContact.findUnique({ where: { id: ilId }, select: { id: true, unsubscribed: true } });
+    if (!il) return page("Link not valid", "We could not find this subscription.");
+    if (!il.unsubscribed) {
+      await prisma.ilContact.update({ where: { id: ilId }, data: { unsubscribed: true } });
+      await prisma.ilCampaignRecipient.updateMany({ where: { contactId: ilId, status: "PENDING" }, data: { status: "UNSUBSCRIBED" } });
+      await prisma.ilNote.create({ data: { contactId: ilId, body: "Unsubscribed from email blasts via link" } }).catch(() => null);
+    }
+    return page("You're unsubscribed", "You will no longer receive emails from us.");
+  }
   const contact = await prisma.contact.findUnique({ where: { id }, select: { id: true, unsubscribed: true } });
   if (!contact) return page("Link not valid", "We could not find this subscription.");
   if (!contact.unsubscribed) {

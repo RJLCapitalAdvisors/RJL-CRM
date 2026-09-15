@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 /** New blast: segment, template, schedule, follow-ups. Deal emails go through Send deal on the ticket, not here. */
 export default async function NewCampaignPage() {
-  const templates = await prisma.emailTemplate.findMany({ where: { kind: "BLAST" }, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, subject: true, bodyHtml: true } });
+  const templates = await prisma.emailTemplate.findMany({ where: { kind: "BLAST", workspace: "CA" }, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, subject: true, bodyHtml: true } });
   const me = await currentUser();
   const from = process.env.MAIL_FROM ?? "RJL Capital Advisors";
   return (

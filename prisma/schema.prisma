@@ -293,6 +293,7 @@ model EmailTemplate {
   id        String   @id @default(cuid())
   name      String
   kind      String   @default("DEAL") // DEAL (one-to-one deal outreach) | BLAST (marketing blast)
+  workspace String   @default("CA") // CA | IL: which business's pages offer it
   subject   String
   bodyHtml  String
   createdAt DateTime @default(now())
@@ -696,6 +697,8 @@ model IlContact {
   ilNotes      IlNote[]
   activities   IlActivity[]
   lastActivityAt DateTime?
+  unsubscribed Boolean       @default(false) // asked off the RJL Israel email blasts
+  blastRows    IlCampaignRecipient[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -881,6 +884,37 @@ model IlActivity {
   @@index([contactId, occurredAt])
   @@index([companyId, occurredAt])
   @@index([dealId, occurredAt])
+}
+
+/// RJL Israel email blasts: one email to a group of Israel contacts, through Resend, each send logged on the contact.
+model IlCampaign {
+  id         String   @id @default(cuid())
+  name       String
+  status     String   @default("DRAFT") // DRAFT | SENDING | SENT | PARTIAL
+  subject    String
+  bodyHtml   String
+  segment    String   @default("{}") // JSON { roles: [], city }
+  templateId String?
+  replyTo    String?
+  sentAt     DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  recipients IlCampaignRecipient[]
+}
+
+model IlCampaignRecipient {
+  id         String     @id @default(cuid())
+  campaignId String
+  campaign   IlCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId  String
+  contact    IlContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status     String     @default("PENDING") // PENDING | SENT | FAILED | SKIPPED | UNSUBSCRIBED
+  providerId String?
+  error      String?
+  sentAt     DateTime?
+
+  @@unique([campaignId, contactId])
 }
 
 // Last pass per RJL Israel shared mailbox (deals@); people's mailboxes keep theirs on User
