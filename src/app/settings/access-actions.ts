@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireCriteriaAdmin } from "@/lib/current-user";
-import { signInAllowed, workspacesByDomain, type Workspace } from "@/lib/access";
+import { domainAllowed, workspacesByDomain, type Workspace } from "@/lib/access";
 import { mailConfigured, sendEmail } from "@/lib/mailer";
 
 const s = (fd: FormData, k: string) => {
@@ -13,27 +13,33 @@ const s = (fd: FormData, k: string) => {
 const PAGES = ["/settings", "/settings/users", "/israel/settings"];
 const refresh = () => PAGES.forEach((p) => revalidatePath(p));
 
-/** Jonathan sets who opens which business, and the RJL Israel mailbox a person uses there. */
+/** What a person opens follows from their addresses: the sign-in email's domain, plus the Israel side when an Israel-side address is on file. */
+const grantsFor = (email: string | null, israelEmail: string | null): Workspace[] => [...new Set<Workspace>([...workspacesByDomain(email), ...(israelEmail ? workspacesByDomain(israelEmail) : [])])];
+
+/** Active on or off, and (on the RJL CA page) the Israel-side address a person also uses. */
 export async function updateUserAccessAction(userId: string, fd: FormData) {
   await requireCriteriaAdmin();
-  const ws = fd.getAll("workspaces").map(String).filter((x) => x === "CA" || x === "IL");
-  await prisma.user.update({ where: { id: userId }, data: { workspaces: JSON.stringify(ws), israelEmail: s(fd, "israelEmail")?.toLowerCase() ?? null, active: fd.get("active") === "on" } });
+  const cur = await prisma.user.findUnique({ where: { id: userId } });
+  if (!cur) return;
+  const israelEmail = fd.has("israelEmail") ? (s(fd, "israelEmail")?.toLowerCase() ?? null) : cur.israelEmail;
+  if (israelEmail && !domainAllowed(israelEmail)) throw new Error(`${israelEmail} is not an allowed address.`);
+  await prisma.user.update({ where: { id: userId }, data: { israelEmail, workspaces: JSON.stringify(grantsFor(cur.email, israelEmail)), active: fd.get("active") === "on" } });
   refresh();
 }
 
 /**
- * A new person: their sign-in email decides the business unless Jonathan ticks otherwise. With "Send an invite"
- * ticked, they get an email with the sign-in link for each business they were given.
+ * A new person: the email's domain decides the business (an Israel-side address on the RJL CA page adds that side).
+ * With "Send an invite" ticked, they get an email with the sign-in link for each business they were given.
  */
 export async function addUserAction(fd: FormData) {
   const me = await requireCriteriaAdmin();
   const email = s(fd, "email")?.toLowerCase();
   const name = s(fd, "name") ?? email?.split("@")[0] ?? "";
   if (!email) return;
-  if (!signInAllowed(email)) throw new Error(`${email} cannot be added: only @rjlcapadvisors.com, @rjlisrael.com and the listed @liviemisrael.com people can open the CRM for now.`);
-  const ws = fd.getAll("workspaces").map(String).filter((x): x is Workspace => x === "CA" || x === "IL");
-  const granted = ws.length ? ws : workspacesByDomain(email);
+  if (!domainAllowed(email)) throw new Error(`${email} cannot be added: only @rjlcapadvisors.com, @rjlisrael.com and @liviemisrael.com addresses open the CRM for now.`);
   const israelEmail = s(fd, "israelEmail")?.toLowerCase() ?? (email.endsWith("@rjlisrael.com") ? email : null);
+  if (israelEmail && !domainAllowed(israelEmail)) throw new Error(`${israelEmail} is not an allowed address.`);
+  const granted = grantsFor(email, israelEmail);
   const user = await prisma.user.upsert({
     where: { email },
     create: { name, email, active: true, workspaces: JSON.stringify(granted), israelEmail },

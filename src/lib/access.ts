@@ -15,7 +15,13 @@ export const IL_DOMAINS = [IL_MAIL_DOMAIN, "rjlisrael.com", PARTNER_DOMAIN].filt
 export const domainOf = (email: string | null | undefined) => (email ?? "").toLowerCase().split("@")[1] ?? "";
 export const localPartOf = (email: string | null | undefined) => (email ?? "").toLowerCase().split("@")[0] ?? "";
 
-/** Whether an address may sign in or be added at all: RJL CA, RJL Israel, or a listed person at the partner company. No other domains for now. */
+/** Whether Jonathan may add an address under Users: one of the three domains, nobody else for now. */
+export function domainAllowed(email: string | null | undefined): boolean {
+  const d = domainOf(email);
+  return CA_DOMAINS.includes(d) || IL_DOMAINS.includes(d);
+}
+
+/** Whether an address that was never added may still sign in and get a user made for it: RJL CA, RJL Israel, or a listed person at the partner company. */
 export function signInAllowed(email: string | null | undefined): boolean {
   const d = domainOf(email);
   if (CA_DOMAINS.includes(d)) return true;

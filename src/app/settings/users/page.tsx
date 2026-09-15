@@ -11,7 +11,7 @@ export default async function UsersPage() {
   const [users, me] = await Promise.all([prisma.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }), currentUser()]);
   return (
     <>
-      <PageHeader title="Users" subtitle="Who opens RJL Capital Advisors. Add a person by email and the invite goes out with the sign-in link." />
+      <PageHeader title="Users" subtitle="Who uses the CRM. Add a person by email and the invite goes out with the sign-in link." />
       <div className="mx-auto max-w-5xl space-y-4 px-8 py-6">
         <UsersCard users={users} workspace="CA" canEdit={Boolean(me?.canEditCriteria)} />
       </div>
