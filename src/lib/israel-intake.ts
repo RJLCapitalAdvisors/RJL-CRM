@@ -246,6 +246,39 @@ async function attachFloorplan(files: IntakeFile[], unitId: string, kind: "apart
   else await prisma.ilApartment.update({ where: { id: unitId }, data });
 }
 
+/**
+ * One property, one ticket. A second email about the same apartment or house (the agent answering our questions,
+ * a brochure following the teaser) updates the ticket we have: every value the new email states overwrites the
+ * old one, blanks stay as they were, the floorplan lands if there was none, and the reply lists what is still
+ * missing on the merged ticket. Same unit = same city (or unknown) and names sharing most of their words, unless
+ * the names carry different unit numbers ("Apt 12" vs "Apt 15" in one project are two apartments).
+ */
+const unitWords = (t: string) => new Set(t.toLowerCase().replace(/[^a-z0-9\u0590-\u05FF ]+/g, " ").split(/\s+/).filter((w) => w.length > 2 && !/^(the|apt|apartment|unit|by|of|in|st|street|rd|road|house|villa|cottage)$/.test(w)));
+const unitNumbers = (t: string) => new Set((t.match(/\d+[a-z]?/gi) ?? []).map((x) => x.toLowerCase()));
+export function sameUnit(a: { name: string; street?: string | null; city?: string | null }, b: { name: string; street?: string | null; city?: string | null }): boolean {
+  if (a.city && b.city && a.city.trim().toLowerCase() !== b.city.trim().toLowerCase()) return false;
+  const na = unitNumbers(a.name), nb = unitNumbers(b.name);
+  if (na.size && nb.size && ![...na].some((n) => nb.has(n))) return false; // different unit numbers
+  if (a.street && b.street && a.street.trim().toLowerCase() === b.street.trim().toLowerCase()) return true;
+  const A = unitWords(`${a.name} ${a.street ?? ""}`), B = unitWords(`${b.name} ${b.street ?? ""}`);
+  if (!A.size || !B.size) return false;
+  let hit = 0;
+  for (const w of A) if (B.has(w)) hit++;
+  return hit > 0 && hit >= Math.min(A.size, B.size) * 0.5;
+}
+/** New values win; blanks and empty lists never erase what the ticket already has. */
+function fillFrom<T extends Record<string, unknown>>(data: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const [k, v] of Object.entries(data) as [keyof T, unknown][]) {
+    if (v == null) continue;
+    if (typeof v === "string" && (v.trim() === "" || v === "[]")) continue;
+    if (typeof v === "boolean" && v === false) continue; // mamad: only a stated yes moves it
+    if (k === "name" || k === "source" || k === "sourceMessageId" || k === "pendingApproval") continue;
+    out[k] = v as T[keyof T];
+  }
+  return out;
+}
+
 /** The shared core: read, extract, create tickets, link people. Returns the rows for whichever reply the channel writes. */
 export async function intakeApartments(input: IntakeInput): Promise<IntakeResult> {
   if (await prisma.ilInbound.findUnique({ where: { messageId: input.key } })) return { skipped: "already processed" };
@@ -274,8 +307,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
       if (a.projectName?.trim()) {
         houseProject = (await prisma.ilProject.findFirst({ where: { name: { equals: a.projectName.trim(), mode: "insensitive" } } })) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, completionDate: a.completionDate } }));
       }
-      const house = await prisma.ilHouse.create({
-        data: {
+      const houseData = {
           name: stripDashes(a.name) || a.street || "House",
           houseType: a.houseType,
           projectId: houseProject?.id ?? null,
@@ -300,19 +332,23 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
           source: input.sourceLabel,
           sourceMessageId: input.key,
           pendingApproval: true,
-        },
-      });
-      await prisma.ilNote.create({ data: { houseId: house.id, body: origin } });
-      if (extracted.apartments.length === 1) await attachFloorplan(input.files, house.id, "houses").catch(() => null);
-      rows.push({ id: house.id, kind: "houses", name: house.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, a.migrashSqm ? `${sqm(a.migrashSqm)} migrash` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: missingForHouse(a, Boolean(developer)) });
+      };
+      const candidates = await prisma.ilHouse.findMany({ select: { id: true, name: true, street: true, city: true, floorplanType: true } });
+      const found = candidates.find((h) => sameUnit({ name: houseData.name, street: a.street, city: a.city }, h));
+      const house = found
+        ? await prisma.ilHouse.update({ where: { id: found.id }, data: fillFrom(houseData) })
+        : await prisma.ilHouse.create({ data: houseData });
+      await prisma.ilNote.create({ data: { houseId: house.id, body: found ? origin.replace(/^Created from/, "Updated from") : origin } });
+      if (extracted.apartments.length === 1 && !(found?.floorplanType)) await attachFloorplan(input.files, house.id, "houses").catch(() => null);
+      const { houseMissing } = await import("@/lib/israel");
+      rows.push({ id: house.id, kind: "houses", name: house.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, a.migrashSqm ? `${sqm(a.migrashSqm)} migrash` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: found ? houseMissing((await prisma.ilHouse.findUnique({ where: { id: house.id } })) as unknown as Record<string, unknown>) : missingForHouse(a, Boolean(developer)) });
       continue;
     }
     let project = null as { id: string } | null;
     if (a.projectName?.trim()) {
       project = (await prisma.ilProject.findFirst({ where: { name: { equals: a.projectName.trim(), mode: "insensitive" } } })) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, stories: a.buildingStories, totalUnits: a.buildingUnits, completionDate: a.completionDate } }));
     }
-    const created = await prisma.ilApartment.create({
-      data: {
+    const aptData = {
         name: stripDashes(a.name) || a.street || "Apartment",
         apartmentType: a.apartmentType,
         street: a.street,
@@ -344,11 +380,15 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         source: input.sourceLabel,
         sourceMessageId: input.key,
         pendingApproval: true,
-      },
-    });
-    await prisma.ilNote.create({ data: { apartmentId: created.id, body: origin } });
-    if (extracted.apartments.length === 1) await attachFloorplan(input.files, created.id).catch(() => null);
-    rows.push({ id: created.id, kind: "apartments", name: created.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: missingFor(a, Boolean(developer)) });
+    };
+    const aptCandidates = await prisma.ilApartment.findMany({ select: { id: true, name: true, street: true, city: true, floorplanType: true } });
+    const foundApt = aptCandidates.find((x) => sameUnit({ name: aptData.name, street: a.street, city: a.city }, x));
+    const created = foundApt
+      ? await prisma.ilApartment.update({ where: { id: foundApt.id }, data: fillFrom(aptData) })
+      : await prisma.ilApartment.create({ data: aptData });
+    await prisma.ilNote.create({ data: { apartmentId: created.id, body: foundApt ? origin.replace(/^Created from/, "Updated from") : origin } });
+    if (extracted.apartments.length === 1 && !(foundApt?.floorplanType)) await attachFloorplan(input.files, created.id).catch(() => null);
+    rows.push({ id: created.id, kind: "apartments", name: created.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: foundApt ? (await import("@/lib/israel")).apartmentMissing((await prisma.ilApartment.findUnique({ where: { id: created.id } })) as unknown as Record<string, unknown>) : missingFor(a, Boolean(developer)) });
   }
   await mark(`created ${rows.length}`);
   const note = agent ? `Agent on file: ${[agent.firstName, agent.lastName].filter(Boolean).join(" ") || agent.email || agent.phone}.` : null;
@@ -366,7 +406,7 @@ ${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still needed to complete th
     )
     .join("");
   return `<div style="${font}">
-<p>${rows.length === 1 ? (rows[0].kind === "houses" ? "House ticket created" : "Apartment ticket created") : `${rows.length} tickets created`} in RJL Israel. ${rows.some((r) => r.missing.length) ? "Tickets with data missing wait under Deals to be approved on the dashboard until the data is in and Jonathan approves them." : ""}</p>
+<p>${rows.length === 1 ? (rows[0].kind === "houses" ? "House ticket updated in" : "Apartment ticket updated in") : `${rows.length} tickets updated in`} RJL Israel (a new listing gets a new ticket; a second email about the same unit updates the one we have). ${rows.some((r) => r.missing.length) ? "Tickets with data missing wait under Deals to be approved on the dashboard until the data is in and Jonathan approves them." : ""}</p>
 ${blocks}
 ${note ? `<p style="color:#6b716e;">${note}</p>` : ""}
 <p style="color:#6b716e;font-size:9pt;">Reply to the agent for the missing items and forward their answer here; edit anything on the ticket in the CRM. A floorplan attached to the email is saved on the ticket.</p>
