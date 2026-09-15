@@ -5,13 +5,16 @@ import { CompanyLogo } from "@/components/company-logo";
 import { REPORT_STAGES } from "@/lib/taxonomy";
 import { AWAITING_RESPONSE, TRACKER_STATUSES } from "@/lib/tracker";
 import { fmtDate } from "@/lib/format";
+import { reportActive, reportQualifies } from "@/lib/report-active";
+import { Item, ItemForm } from "@/app/dash-item";
+import { markReportInactive } from "./actions";
 
 export const metadata = { title: "Progress reports" };
 
 export const dynamic = "force-dynamic";
 const DAY = 86_400_000;
 
-/** Every deal that has a progress report, most in need of attention first. */
+/** Every deal with a live progress report (full investor list out, not an intro, not marked Not active), most in need of attention first. */
 async function loadRows() {
   const deals = await prisma.deal.findMany({
     where: { stage: { in: [...REPORT_STAGES] }, investors: { some: {} } },
@@ -20,6 +23,7 @@ async function loadRows() {
 
   const now = Date.now();
   const rows = deals
+    .filter((d) => reportQualifies(d.name, d.investors) && reportActive(d.reportInactiveAt, d.investors))
     .map((d) => {
       const counts = new Map<number, number>();
       for (const r of d.investors) counts.set(r.status, (counts.get(r.status) ?? 0) + 1);
@@ -37,7 +41,7 @@ export default async function ReportsPage() {
   const rows = await loadRows();
   return (
     <>
-      <PageHeader title="Active progress reports" subtitle={`${rows.length} deals out to investors. Sorted by who has been waiting longest.`} />
+      <PageHeader title="Active progress reports" subtitle={`${rows.length} deals out to their investor lists. Sorted by who has been waiting longest. Not active takes a report off this page until the deal moves again.`} />
       <div className="mx-8 my-6 flex h-[calc(100vh-150px)] min-h-[420px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <div className="min-h-0 flex-1 overflow-auto">
           <table className="table dense w-full min-w-[900px]">
@@ -55,7 +59,7 @@ export default async function ReportsPage() {
             </thead>
             <tbody>
               {rows.map(({ d, counts, awaiting, staleDays, lastUpdated, responded }) => (
-                <tr key={d.id}>
+                <Item key={d.id} as="tr">
                   <td>
                     <Link href={`/deals/${d.id}/tracker`} className="flex items-center gap-2 font-medium hover:underline">
                       <CompanyLogo domain={d.sponsorCompany?.domain} name={d.sponsorName ?? d.name} />
@@ -92,18 +96,16 @@ export default async function ReportsPage() {
                     <Link href={`/deals/${d.id}/tracker`} className="btn-secondary px-2 py-1 text-xs">
                       Open report
                     </Link>
-                    {awaiting > 0 && (
-                      <Link href={`/deals/${d.id}/tracker#followup`} className="btn-primary ml-1 px-2 py-1 text-xs">
-                        Follow up {awaiting}
-                      </Link>
-                    )}
+                    <ItemForm action={markReportInactive.bind(null, d.id)} className="btn-grey ml-1 px-2 py-1 text-xs" title="Takes this report off the page until an investor on the deal responds or is written to again">
+                      Not active
+                    </ItemForm>
                   </td>
-                </tr>
+                </Item>
               ))}
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-muted">
-                    No deals are out to investors yet. Send a deal and its progress report appears here.
+                    Nothing here. A deal shows once its full investor list is out (five or more groups sent; intros never count) and until it is marked Not active.
                   </td>
                 </tr>
               )}

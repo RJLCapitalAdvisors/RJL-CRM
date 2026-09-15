@@ -9,16 +9,17 @@ import { createContext, useContext, useState, useTransition } from "react";
  */
 const Ctx = createContext<{ vanish: () => void; revive: (err: string) => void }>({ vanish: () => {}, revive: () => {} });
 
-export function Item({ className, children }: { className?: string; children: React.ReactNode }) {
+export function Item({ className, children, as = "li" }: { className?: string; children: React.ReactNode; as?: "li" | "tr" | "div" }) {
   const [gone, setGone] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (gone) return null;
+  const Tag = as;
   return (
     <Ctx.Provider value={{ vanish: () => setGone(true), revive: (e) => { setGone(false); setErr(e); } }}>
-      <li className={className}>
+      <Tag className={className} title={err ?? undefined}>
         {children}
-        {err && <div className="mt-1 text-xs text-red-700">{err}</div>}
-      </li>
+        {err && as !== "tr" && <div className="mt-1 text-xs text-red-700">{err}</div>}
+      </Tag>
     </Ctx.Provider>
   );
 }

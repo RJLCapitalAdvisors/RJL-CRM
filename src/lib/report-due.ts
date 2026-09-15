@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { reportActive, reportQualifies } from "@/lib/report-active";
 import { REPORT_STAGES } from "@/lib/taxonomy";
 import { addAttachment, createDraft, createReplyAllDraft, getMessage, graph, graphConfigured, listAttachments, outlookDesktopLink, sentMessagesTo, updateDraftBody } from "@/lib/graph";
 import { signatureFor, type FollowUpResult } from "@/lib/followup";
@@ -32,12 +33,13 @@ export type ReportDue = { id: string; name: string; sponsorName: string | null; 
 export async function reportsDue(): Promise<ReportDue[]> {
   const now = new Date();
   const thursday = lastThursdaySlot(now);
-  const deals = await prisma.deal.findMany({ where: { stage: { in: LIVE_STAGES }, parentDealId: null, investors: { some: {} } }, select: { id: true, name: true, propertyName: true, sponsorName: true, reportSentAt: true, reportDraftAt: true, _count: { select: { investors: true } } } });
+  const deals = await prisma.deal.findMany({ where: { stage: { in: LIVE_STAGES }, parentDealId: null, investors: { some: {} } }, select: { id: true, name: true, propertyName: true, sponsorName: true, reportSentAt: true, reportDraftAt: true, reportInactiveAt: true, investors: { select: { status: true, updatedAt: true } }, _count: { select: { investors: true } } } });
   if (!deals.length) return [];
   const changes = await prisma.dealInvestor.groupBy({ by: ["dealId"], where: { dealId: { in: deals.map((d) => d.id) } }, _max: { updatedAt: true } });
   const lastChange = new Map(changes.map((c) => [c.dealId, c._max.updatedAt]));
   const out: ReportDue[] = [];
   for (const d of deals) {
+    if (!reportQualifies(d.name, d.investors) || !reportActive(d.reportInactiveAt, d.investors)) continue; // intros and Not active reports are nobody's business here
     if (d.reportDraftAt && now.getTime() - d.reportDraftAt.getTime() < 2 * DAY) continue; // a report draft is open in Outlook; wait for it to go
     const changed = lastChange.get(d.id);
     if (!changed) continue;
