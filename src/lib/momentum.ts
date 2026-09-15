@@ -186,6 +186,9 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
     await upsert(ask.dealId, "LP_ASK", ask.lpName, { companyId: d?.sponsorCompanyId ?? null, contactId: ask.contactId, summary: `${ask.lpName} asks: ${merged.asks.join("; ")}${merged.answered.length ? ` | Already on the ticket: ${merged.answered.join(" / ")}` : ""}`, waitingSince: ask.at, lastMessageId: ask.messageId });
   }
 
+  // 3c) the sponsor answered an LP's questions: an item to pass the answers back to that LP
+  await import("@/lib/sponsor-answers").then((m) => m.detectSponsorAnswers()).catch(() => ({ emails: 0, items: 0 }));
+
   // 4) open action items older than QUIET_DAYS (Fireflies will feed these once connected)
   const actions = await prisma.dealAction.findMany({ where: { done: false, createdAt: { lte: new Date(now - QUIET_DAYS * DAY) }, deal: { stage: { in: [...ACTIVE_STAGES] } } }, include: { deal: { select: { id: true, sponsorCompanyId: true, sponsorName: true } } } });
   for (const a of actions) await upsert(a.deal.id, "ACTION", a.text.slice(0, 120), { companyId: a.deal.sponsorCompanyId, summary: a.text, waitingSince: a.createdAt });
@@ -204,7 +207,7 @@ export async function listMomentum(since?: Date) {
   // One matter, one item. The same party can surface several ways (an LP request, a sponsor item, an intro, a
   // "mentioned, never sent"): keep the most actionable one when they are about the same deal, or when one item
   // talks about the deal of the other (Sierra asking Marble to see Core & Main, and the Core & Main mention).
-  const RANK: Record<string, number> = { LP_ASK: 0, SPONSOR_ITEMS: 1, ENGAGEMENT: 1, INTRO: 2, ACTION: 3, MENTIONED: 4 };
+  const RANK: Record<string, number> = { SPONSOR_ANSWER: 0, LP_ASK: 0, SPONSOR_ITEMS: 1, ENGAGEMENT: 1, INTRO: 2, ACTION: 3, MENTIONED: 4 };
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\b(the|llc|group|capital|partners|club|inc)\b/g, " ").replace(/\s+/g, " ").trim();
   const dealWords = (d: { name: string; propertyName: string | null }) => norm(d.propertyName ?? d.name).split(" ").filter((w) => w.length > 3);
   const sameMatter = (x: (typeof live)[number], y: (typeof live)[number]) => {
@@ -229,7 +232,8 @@ export async function listMomentum(since?: Date) {
     kept.push(r);
   }
   // LP requests first (newest on top), then everything else oldest-waiting first
-  return kept.sort((a, b) => (a.kind === "LP_ASK") === (b.kind === "LP_ASK") ? (a.kind === "LP_ASK" ? b.waitingSince.getTime() - a.waitingSince.getTime() : a.waitingSince.getTime() - b.waitingSince.getTime()) : a.kind === "LP_ASK" ? -1 : 1);
+  const top = (k: string) => k === "LP_ASK" || k === "SPONSOR_ANSWER";
+  return kept.sort((a, b) => (top(a.kind) === top(b.kind) ? (top(a.kind) ? b.waitingSince.getTime() - a.waitingSince.getTime() : a.waitingSince.getTime() - b.waitingSince.getTime()) : top(a.kind) ? -1 : 1));
 }
 
 export const isInternal = (addr: string) => INTERNAL.test(addr);

@@ -409,6 +409,7 @@ model Momentum {
   summary       String // one line: what is outstanding
   waitingSince  DateTime
   lastMessageId String? // Internet Message-ID of the latest email in that thread (Handle replies to it)
+  refMessageId  String? // SPONSOR_ANSWER: the sponsor's email that carries the answers (quoted, files carried over)
   status        String   @default("OPEN") // OPEN | DONE | DISMISSED
   handledAt     DateTime? // Handle clicked; the item closes once an email to the party goes out
   handledBy     String?   // whose mailbox to watch
@@ -448,6 +449,13 @@ model MentionScan {
 }
 
 /// Inbound LP emails already read for requests (each email is sent to Claude once).
+/// Sponsor emails already read for answers to LP questions (each once).
+model SponsorAnswerScan {
+  externalId String   @id
+  result     String?
+  scannedAt  DateTime @default(now())
+}
+
 model LpAskScan {
   externalId String   @id
   result     String?

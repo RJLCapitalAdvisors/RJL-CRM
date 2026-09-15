@@ -82,6 +82,66 @@ async function openMomentumDraftInner(momentumId: string) {
   if (!m) return { ok: false as const, reason: "Gone." };
   const { createThreadReplyDraft, createFollowUpDraft, replyToLatestWith, replyViaTeammateCopy, signatureFor } = await import("@/lib/followup");
   try {
+    // Sponsor answered: reply-all on the LP's own thread (their email with the questions), the answers written on
+    // top, the sponsor's words quoted, the sponsor's files carried over. Never a word about any other LP.
+    if (m.kind === "SPONSOR_ANSWER") {
+      const { createDraft, createReplyAllDraft, getMessage, outlookDesktopLink, updateDraftBody, addAttachment, listAttachments, graph: g } = await import("@/lib/graph");
+      const { findMessageCopy, lpOwnWords } = await import("@/lib/lp-message");
+      const { parseAnswers } = await import("@/lib/sponsor-answers");
+      const deal = await prisma.deal.findUnique({ where: { id: m.dealId }, select: { name: true, propertyName: true, sponsorName: true } });
+      if (!deal) return { ok: false as const, reason: "Deal not found." };
+      const dealName = deal.propertyName ?? deal.name;
+      const lpContact = m.contactId ? await prisma.contact.findUnique({ where: { id: m.contactId }, select: { firstName: true, email: true, company: { select: { name: true } } } }) : null;
+      const pairs = parseAnswers(m.summary);
+      const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
+      const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      // the sponsor's own words, with every other investor's name taken out
+      const sp = m.refMessageId ? await findMessageCopy(m.refMessageId, me.email).catch(() => null) : null;
+      let spText = sp ? lpOwnWords(sp.body) : "";
+      if (spText) {
+        const others = await prisma.company.findMany({ where: { roles: { contains: "Investor" }, NOT: { name: lpContact?.company?.name ?? "" } }, select: { name: true } });
+        for (const o of others) if (o.name.length >= 4) spText = spText.replace(new RegExp(o.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "another group");
+      }
+      const spWhen = sp?.receivedDateTime ? new Date(sp.receivedDateTime).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
+      const sponsor = deal.sponsorName ?? "the sponsor";
+      const opening = `Hi${lpContact?.firstName ? ` ${lpContact.firstName}` : ""} - please see ${sponsor}'s responses to your questions on ${dealName}:`;
+      const list = pairs.map((p) => `<li style="margin:0 0 6pt 0;${F}"><b>${esc(p.ask)}</b><br>${esc(p.answer)}</li>`).join("");
+      const quote = spText ? `<p style="margin:0 0 4pt 0;${F}"><i>From ${esc(sponsor)}${spWhen ? `, ${spWhen}` : ""}:</i></p><div style="margin:0 0 10pt 0;padding:4pt 10pt;border-left:3px solid #b7cfe8;${F}white-space:pre-wrap;">${esc(spText)}</div>` : "";
+      const closing = "Let me know if anything else would be helpful.";
+      const block = `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">${opening}</p><ul style="margin:0 0 10pt 18pt;">${list}</ul>${quote}<p style="margin:0 0 10pt 0;${F}">${closing}</p>`;
+      const carry = async (draftId: string) => {
+        if (!sp?.hasAttachments) return 0;
+        const atts = await listAttachments(sp.box, sp.id).catch(() => []);
+        let n = 0;
+        for (const a of atts) {
+          if (a.isInline || a["@odata.type"] !== "#microsoft.graph.fileAttachment" || /\.(png|jpe?g|gif|bmp)$/i.test(a.name)) continue;
+          try {
+            const bytes = new Uint8Array(await g<ArrayBuffer>(`/users/${encodeURIComponent(sp.box)}/messages/${encodeURIComponent(sp.id)}/attachments/${encodeURIComponent(a.id)}/$value`, { raw: true }));
+            await addAttachment(me.email, draftId, { name: a.name, contentType: a.contentType ?? "application/octet-stream", bytes });
+            n++;
+          } catch {
+            /* one file failing does not stop the draft */
+          }
+        }
+        return n;
+      };
+      // the LP's email with the questions: reply-all on it
+      const lp = m.lastMessageId ? await findMessageCopy(m.lastMessageId, me.email).catch(() => null) : null;
+      const replyDraft = lp ? await createReplyAllDraft(me.email, lp.id).catch(() => null) : null;
+      if (lp && replyDraft) {
+        const body = replyDraft.body?.content ?? "";
+        const at = body.search(/<body[^>]*>/i);
+        await updateDraftBody(me.email, replyDraft.id, at >= 0 ? body.replace(/(<body[^>]*>)/i, `$1${block}${await signatureFor(me.email)}<br></div>`) : `${block}${await signatureFor(me.email)}</div>${body}`);
+        const attachments = await carry(replyDraft.id);
+        const fresh = await getMessage(me.email, replyDraft.id, "id,webLink,internetMessageId");
+        return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, replyDraft.id), messageId: fresh.internetMessageId ?? null, mode: "replyAll" as const, attachments };
+      }
+      if (!lpContact?.email) return { ok: false as const, reason: `No email on file for ${m.party}.` };
+      const draft = await createDraft(me.email, { subject: `${dealName} | responses to your questions`, toRecipients: [lpContact.email], bodyHtml: `<html><body>${block}${await signatureFor(me.email)}</div></body></html>` });
+      const attachments = await carry(draft.id);
+      const fresh = await getMessage(me.email, draft.id, "id,webLink,internetMessageId");
+      return { ok: true as const, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(me.email, draft.id), messageId: fresh.internetMessageId ?? null, mode: "new" as const, attachments };
+    }
     // LP request: reply-all on my latest thread with the sponsor about this deal, the asks written on top
     if (m.kind === "LP_ASK") {
       const { createDraft, createReplyAllDraft, getMessage, outlookDesktopLink, updateDraftBody } = await import("@/lib/graph");
