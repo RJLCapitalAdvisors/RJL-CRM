@@ -26,7 +26,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         )}
         <h1 className="mb-1 text-center text-lg font-semibold">{israel ? "RJL Israel" : business === "CA" ? "RJL Capital Advisors" : "RJL CRM"}</h1>
         <p className="mb-6 text-center text-sm text-muted">
-          {israel ? "Sign in with your @rjlisrael.com Microsoft account to open RJL Israel." : business === "CA" ? "Sign in with your @rjlcapadvisors.com Microsoft account to open RJL Capital Advisors." : "Sign in with your RJL Microsoft account. Each business opens with its own account; sign in to both, one at a time, to use both."}
+          {israel ? "Sign in with your @rjlisrael.com (or @liviemisrael.com) Microsoft account to open RJL Israel." : business === "CA" ? "Sign in with your @rjlcapadvisors.com Microsoft account to open RJL Capital Advisors." : "Sign in with your RJL Microsoft account. Each business opens with its own account; sign in to both, one at a time, to use both."}
         </p>
         {error && <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error === "1" ? "That password isn't right." : error}</div>}
         {microsoft && (

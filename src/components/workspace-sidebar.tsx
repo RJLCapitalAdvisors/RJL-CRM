@@ -61,7 +61,7 @@ export function WorkspaceSidebar({ user }: { user: { name: string; workspaces?: 
         <a href={openCA ? "/" : signIn("CA", "/")} aria-current={!israel && openCA ? "page" : undefined} title={openCA ? "RJL Capital Advisors" : "Sign in with your @rjlcapadvisors.com account to open RJL Capital Advisors"} className={`${tile(!israel, openCA)} bg-white`}>
           <Image src="/logo.png" alt="RJL Capital Advisors" width={180} height={64} priority className="h-auto w-full" />
         </a>
-        <a href={openIL ? "/israel" : signIn("IL", "/israel")} aria-current={israel && openIL ? "page" : undefined} title={openIL ? "RJL Israel" : "Sign in with your @rjlisrael.com account to open RJL Israel"} className={`${tile(israel, openIL)} bg-[#161b21]`}>
+        <a href={openIL ? "/israel" : signIn("IL", "/israel")} aria-current={israel && openIL ? "page" : undefined} title={openIL ? "RJL Israel" : "Sign in with your @rjlisrael.com or @liviemisrael.com account to open RJL Israel"} className={`${tile(israel, openIL)} bg-[#161b21]`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/israel-logo.svg" alt="RJL Israel" className="h-auto w-full" />
         </a>

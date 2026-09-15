@@ -12,6 +12,8 @@ type U = { id: string; name: string; email: string | null; active: boolean; work
 export function UsersCard({ users, workspace, canEdit }: { users: U[]; workspace: Workspace; canEdit: boolean }) {
   const name = workspace === "IL" ? "RJL Israel" : "RJL Capital Advisors";
   const rows = users.filter((u) => parseWorkspaces(u.workspaces, u.email).includes(workspace) || (workspace === "IL" && u.israelEmail));
+  // on the RJL Israel page a person is listed by the address they open RJL Israel with
+  const signInFor = (u: U) => (workspace === "IL" ? u.israelEmail ?? u.email : u.email);
   const status = (u: U) => (u.lastSignInAt ? `Signed in ${fmtDate(u.lastSignInAt)}` : u.invitedAt ? `Invited ${fmtDate(u.invitedAt)}, not in yet` : "Not invited yet");
   return (
     <div id="users" className="card">
@@ -50,8 +52,8 @@ export function UsersCard({ users, workspace, canEdit }: { users: U[]; workspace
                       <span className="truncate font-medium" title={u.name}>
                         {u.name}
                       </span>
-                      <span className="truncate text-xs text-muted" title={u.email ?? ""}>
-                        {u.email}
+                      <span className="truncate text-xs text-muted" title={signInFor(u) ?? ""}>
+                        {signInFor(u)}
                       </span>
                       <span className="text-center">
                         <input type="checkbox" name="workspaces" value="CA" defaultChecked={ws.includes("CA")} disabled={!canEdit} className="accent-ink" />
@@ -104,7 +106,7 @@ export function UsersCard({ users, workspace, canEdit }: { users: U[]; workspace
           <button type="submit" className="btn-primary">
             Add
           </button>
-          <span className="w-full text-xs text-muted">The invite email carries the sign-in link and which Microsoft account to use. Someone with both businesses signs in twice, once with each account.</span>
+          <span className="w-full text-xs text-muted">The invite email carries the sign-in link and which Microsoft account to use. Someone with both businesses signs in twice, once with each account. Only @rjlcapadvisors.com, @rjlisrael.com and the listed @liviemisrael.com people can be added for now.</span>
         </form>
       )}
     </div>

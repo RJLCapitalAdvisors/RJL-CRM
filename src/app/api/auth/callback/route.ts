@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, SESSION_DAYS, signSession, verifySession } from "@/lib/session";
-import { homeFor, parseWorkspaces, workspacesByDomain, type Workspace } from "@/lib/access";
+import { aliasesOf, homeFor, parseWorkspaces, signInAllowed, workspacesByDomain, type Workspace } from "@/lib/access";
 import { isIsraelPath } from "@/lib/workspace";
 
 /** Step 2 of Microsoft sign-in: exchange the code, confirm who it is, match to a CRM user, set the session. */
@@ -29,10 +29,12 @@ export async function GET(req: NextRequest) {
   const email = (me.mail ?? me.userPrincipalName ?? "").toLowerCase();
   if (!email) return fail("Could not read your Microsoft account");
 
-  // the sign-in email, or a person's registered RJL Israel mailbox, finds the CRM user
-  let user = await prisma.user.findFirst({ where: { OR: [{ email: { equals: email, mode: "insensitive" } }, { israelEmail: { equals: email, mode: "insensitive" } }] } });
+  // the sign-in email, a person's registered RJL Israel mailbox, or the same name at the partner company finds the CRM user
+  const candidates = [email, ...aliasesOf(email)];
+  let user = await prisma.user.findFirst({ where: { OR: [{ email: { in: candidates, mode: "insensitive" } }, { israelEmail: { in: candidates, mode: "insensitive" } }] }, orderBy: { createdAt: "asc" } });
   const byDomain = workspacesByDomain(email);
-  if (!user && byDomain.length) user = await prisma.user.create({ data: { name: me.displayName ?? email, email, active: true, workspaces: JSON.stringify(byDomain), israelEmail: byDomain.includes("IL") ? email : null } });
+  if (!signInAllowed(email) && !user) return fail(`${email} is not a CRM user. Ask Jonathan to add you.`);
+  if (!user && byDomain.length && signInAllowed(email)) user = await prisma.user.create({ data: { name: me.displayName ?? email, email, active: true, workspaces: JSON.stringify(byDomain), israelEmail: byDomain.includes("IL") ? email : null } });
   if (!user || !user.active) return fail(`${email} is not a CRM user. Ask Jonathan to add you.`);
   await prisma.user.update({ where: { id: user.id }, data: { lastSignInAt: new Date() } }).catch(() => null);
   // this sign-in unlocks the business its email belongs to (an @rjlcapadvisors.com account opens RJL Capital

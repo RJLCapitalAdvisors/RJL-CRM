@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { isCaMailbox } from "@/lib/access";
 import { houseSubjectMatches, subjectLooselyMatchesDeal, subjectMatchesDeal } from "@/lib/deal-match";
 import { noteDealSent } from "@/lib/deal-outbound";
 import { DEPARTURE_SUBJECT, HUMAN_DEPARTURE, noteDepartureIfAny } from "@/lib/departures";
@@ -216,7 +217,8 @@ export async function syncRecentSent(mailbox: string, hours = 6): Promise<number
 /** Every active team mailbox. Skips quietly when Microsoft is not configured. */
 export async function syncAllMailboxes(opts: { sinceDays?: number } = {}): Promise<Record<string, { scanned: number; logged: number; created: number } | string>> {
   if (!graphConfigured()) return {};
-  const users = await prisma.user.findMany({ where: { active: true, email: { not: null } } });
+  // RJL Capital Advisors mailboxes only: an @rjlisrael.com or partner address on a user is RJL Israel's business
+  const users = (await prisma.user.findMany({ where: { active: true, email: { not: null } } })).filter((u) => isCaMailbox(u.email));
   const out: Record<string, { scanned: number; logged: number; created: number } | string> = {};
   for (const u of users) {
     try {

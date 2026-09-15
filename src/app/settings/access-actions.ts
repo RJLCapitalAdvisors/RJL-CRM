@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireCriteriaAdmin } from "@/lib/current-user";
-import { workspacesByDomain, type Workspace } from "@/lib/access";
+import { signInAllowed, workspacesByDomain, type Workspace } from "@/lib/access";
 import { mailConfigured, sendEmail } from "@/lib/mailer";
 
 const s = (fd: FormData, k: string) => {
@@ -30,6 +30,7 @@ export async function addUserAction(fd: FormData) {
   const email = s(fd, "email")?.toLowerCase();
   const name = s(fd, "name") ?? email?.split("@")[0] ?? "";
   if (!email) return;
+  if (!signInAllowed(email)) throw new Error(`${email} cannot be added: only @rjlcapadvisors.com, @rjlisrael.com and the listed @liviemisrael.com people can open the CRM for now.`);
   const ws = fd.getAll("workspaces").map(String).filter((x): x is Workspace => x === "CA" || x === "IL");
   const granted = ws.length ? ws : workspacesByDomain(email);
   const israelEmail = s(fd, "israelEmail")?.toLowerCase() ?? (email.endsWith("@rjlisrael.com") ? email : null);
