@@ -58,8 +58,9 @@ async function close(dealId: string, kind: string, party: string) {
 /** The asks an LP_ASK item carries: outstanding ones, and the ones already answered from the ticket. */
 export function parseAsks(summary: string | null): { asks: string[]; answered: string[] } {
   if (!summary) return { asks: [], answered: [] };
-  const [open, done] = summary.replace(/^.*?asks:\s*/, "").split(" | Already on the ticket:");
-  return { asks: (open ?? "").split(";").map((x) => x.trim()).filter(Boolean), answered: (done ?? "").split(" / ").map((x) => x.trim()).filter(Boolean) };
+  const [open, done] = summary.replace(/^.*?asks:\s*/, "").split(/\s*\|\s*Already on the ticket:\s*/);
+  const clean = (x: string) => x.replace(/^\s*\|?\s*(Already on the ticket:\s*)+/i, "").trim();
+  return { asks: (open ?? "").split(";").map(clean).filter((x) => x && !/^already on the ticket/i.test(x)), answered: (done ?? "").split(" / ").map(clean).filter(Boolean) };
 }
 /** Earlier open asks plus the new ones (no repeats); an ask now answered from the ticket moves to the answered list. */
 export function mergeAsks(existingSummary: string | null, asks: string[], answered: { ask: string; answer: string }[]): { asks: string[]; answered: string[] } {

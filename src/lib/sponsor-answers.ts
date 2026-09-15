@@ -33,6 +33,8 @@ const Out = z.object({
 const SYSTEM = `You read an email from a deal sponsor to RJL Capital Advisors, a real estate capital advisor. RJL had passed the sponsor questions from investors (LPs). Decide which of the listed open questions this email actually answers: the sponsor gives the information, a number, an explanation, or attaches the document asked for. Scheduling, thanks, "we will get back to you", and questions the email does not address answer nothing. When the email answers a question for one firm in a way that also answers the same question listed under another firm, list both. Return only real answers.`;
 
 type Pair = { ask: string; answer: string };
+/** "Confirm the call time", "which timezone": logistics, not something the LP is waiting on the sponsor for. */
+const SCHEDULING = /\b(call time|time works|timezone|time zone|calendar invite|send an invite|schedule (a |the )?call|confirm (the )?(call|meeting)|availability|reschedule)\b/i;
 const key = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 /** "Sponsor answered X: Q -> A; Q -> A" */
@@ -102,6 +104,7 @@ export async function detectSponsorAnswers(): Promise<{ emails: number; items: n
       for (const ans of out.answers) {
         const ask = dealAsks.find((a) => key(a.party) === key(ans.lpFirm));
         if (!ask) continue;
+        if (SCHEDULING.test(ans.ask) || /^already on the ticket/i.test(ans.ask)) continue; // call times are not answers an LP is waiting on
         const list = byFirm.get(ask.party) ?? [];
         if (!list.some((p) => key(p.ask) === key(ans.ask))) list.push({ ask: stripDashes(ans.ask), answer: stripDashes(ans.answer) });
         byFirm.set(ask.party, list);
