@@ -168,8 +168,8 @@ export async function createDealFromIntake(id: string): Promise<string> {
       holdPeriod: d.holdPeriod,
       expectedClose: d.expectedClose,
       amortization: d.amortization,
-      // developments are quoted on cost, not value
-      ltc: d.strategy === "Development" ? d.ltv : null,
+      // LTV (debt over price) and LTC (debt over total capitalization) are separate figures; a development is quoted on cost
+      ltc: d.ltc ?? (d.strategy === "Development" ? d.ltv : null),
       ltv: d.strategy === "Development" ? null : d.ltv,
     },
   });

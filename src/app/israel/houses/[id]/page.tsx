@@ -108,9 +108,11 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
       }
       center={
         <>
+          <div className="grid gap-4 xl:grid-cols-2 xl:[&>*]:h-[68vh]">
+            <IlSummaryCard email={summary} sendHref={`/israel/send/houses/${h.id}`} notes={h.notes} />
+            <FloorplanWindow apartmentId={h.id} kind="houses" has={Boolean(h.floorplanType)} type={h.floorplanType} name={h.floorplanName} version={h.updatedAt.getTime()} compact />
+          </div>
           <PhotosWindow kind="houses" id={h.id} photos={full.photos} />
-          <FloorplanWindow apartmentId={h.id} kind="houses" has={Boolean(h.floorplanType)} type={h.floorplanType} name={h.floorplanName} version={h.updatedAt.getTime()} />
-          <IlSummaryCard email={summary} sendHref={`/israel/send/houses/${h.id}`} notes={h.notes} />
         </>
       }
       right={

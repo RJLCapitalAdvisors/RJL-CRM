@@ -47,3 +47,30 @@ export async function deleteTemplate(id: string) {
   revalidatePath("/templates");
   redirect("/templates");
 }
+
+/** The windows on the templates page: a template saves itself as you type. */
+export async function saveTemplateInline(id: string, patch: { name?: string; subject?: string; bodyHtml?: string }) {
+  const data: Record<string, string> = {};
+  if (patch.name != null) data.name = patch.name.trim() || "Untitled template";
+  if (patch.subject != null) data.subject = patch.subject;
+  if (patch.bodyHtml != null) data.bodyHtml = patch.bodyHtml;
+  await prisma.emailTemplate.update({ where: { id }, data });
+  revalidatePath("/templates");
+  revalidatePath(`/templates/${id}`);
+}
+
+/** The plus square: a new template that opens with a greeting, ready to type into. */
+export async function createBlankTemplate() {
+  await prisma.emailTemplate.create({ data: { name: "New template", kind: "DEAL", workspace: "CA", subject: "{{deal.subjectLine}}", bodyHtml: "Hi {{contact.firstName|there}},\n\n" } });
+  revalidatePath("/templates");
+}
+
+/** The x on a window. A template that sent campaigns is kept under an archived name so their history still reads. */
+export async function deleteTemplateInline(id: string) {
+  const used = await prisma.campaign.count({ where: { templateId: id } });
+  if (used > 0) {
+    const t = await prisma.emailTemplate.findUniqueOrThrow({ where: { id } });
+    await prisma.emailTemplate.update({ where: { id }, data: { name: t.name.startsWith("(archived)") ? t.name : `(archived) ${t.name}` } });
+  } else await prisma.emailTemplate.delete({ where: { id } });
+  revalidatePath("/templates");
+}

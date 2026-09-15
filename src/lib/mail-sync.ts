@@ -17,9 +17,10 @@ import { ACTIVE_STAGES, isBlindIntro, isLegacyIntroTicket } from "@/lib/taxonomy
 
 const INTERNAL = new Set(["rjlcapadvisors.com", "rjlequities.com"]);
 /**
- * People we write to become contacts. An email we send to someone the CRM does not know creates them (and their
- * company from the domain, which then reads its own website); a reply from an unknown person to one of our emails
- * does the same. A stranger's first email does not: newsletters, listings blasts and notifications stay out.
+ * People we write to become contacts, every one of them: an email we send to people the CRM does not know creates
+ * each of them (and their company from the domain, which then reads its own website); on a reply thread with us,
+ * the sender and everyone copied. A stranger's first email does not: newsletters, listings blasts and notifications
+ * stay out. The person whose mailbox it is owns the contacts and companies made from it.
  */
 const MAILER = /^(no-?reply|noreply|donotreply|do-not-reply|notifications?|notify|mailer-daemon|postmaster|bounces?|newsletters?|marketing|news|updates?|digest|hello|team|community|alerts?|calendar-notification|invitations?|receipts?|billing|security|account|welcome|feedback|survey|promo|offers?|unsubscribe|reply|\d+)[@._+-]/i;
 const BULK_HOSTS = ["bcc.hubspot.com", "hubspot.com", "hubspotemail.net", "instagram.com", "facebookmail.com", "linkedin.com", "google.com", "microsoft.com", "microsoftonline.com", "office.com", "apple.com", "amazon.com", "amazonses.com", "paypal.com", "stripe.com", "zoom.us", "calendly.com", "docusign.net", "docusign.com", "dropbox.com", "dropboxmail.com", "mailchimp.com", "mcsv.net", "sendgrid.net", "constantcontact.com", "substack.com", "fireflies.ai", "otter.ai", "slack.com", "atlassian.com", "github.com", "vercel.com", "resend.com", "anthropic.com"];
@@ -79,6 +80,65 @@ async function fillContactName(contactId: string, displayName: string | undefine
   await prisma.contact.update({ where: { id: contactId }, data: { firstName: parts[0], lastName: parts.length > 1 ? parts.slice(1).join(" ") : c.lastName } }).catch(() => null);
 }
 
+/**
+ * Everyone on an email who is not us. Every external person becomes (or already is) a contact when the email is a
+ * conversation: one we sent to up to ten outside people, or a reply thread with us on it. The first of them is the
+ * Activity's contact; the rest are its parties, so the email shows on each person's page and their company's
+ * page. A stranger's first email creates nobody (newsletters, blasts, notifications stay out). New contacts and
+ * companies belong to the person whose mailbox this is. Before Sep 15, 2026 only one person per email was ever
+ * created, and none when any recipient or their company was already known; that is why the second person at a
+ * firm and everyone on CC went missing.
+ */
+type Resolved = { contactId: string | null; companyId: string | null; parties: { contactId: string; companyId: string | null; role: string }[]; created: number };
+export async function resolveParticipants(subject: string | null | undefined, outbound: boolean, from: Party | undefined, to: Party[], cc: Party[], ownerId: string | null): Promise<Resolved> {
+  const everyone = [from, ...to, ...cc].filter((p): p is Party => Boolean(p?.address));
+  const external = everyone.filter((p) => !isInternal(p.address));
+  const conversation = outbound ? external.length <= 10 : REPLY.test(subject ?? "") && [...to, ...cc].some((p) => isInternal(p.address));
+  const roleOf = (p: Party) => (p === from ? "from" : to.includes(p) ? "to" : "cc");
+  const ordered = outbound ? external : [...(from && !isInternal(from.address) ? [from] : []), ...external.filter((p) => p !== from)];
+  const seen = new Set<string>();
+  const found: Resolved["parties"] = [];
+  let created = 0;
+  for (const p of ordered) {
+    const addr = p.address.toLowerCase();
+    if (seen.has(addr)) continue;
+    seen.add(addr);
+    let c: { id: string; companyId: string | null; ownerId?: string | null } | null = await prisma.contact.findUnique({ where: { email: addr }, select: { id: true, companyId: true, ownerId: true } });
+    if (c) {
+      await fillContactName(c.id, p.name);
+      if (ownerId && !c.ownerId) await prisma.contact.update({ where: { id: c.id }, data: { ownerId } }).catch(() => null);
+    } else if (conversation && !isSystemAddress(addr)) {
+      const made = await contactForEmail(addr, { name: p.name && !p.name.includes("@") ? p.name : null, ownerId }).catch(() => null);
+      if (made) {
+        c = { id: made.id, companyId: made.companyId };
+        created++;
+      }
+    }
+    if (c) found.push({ contactId: c.id, companyId: c.companyId, role: roleOf(p) });
+  }
+  const primary = found[0] ?? null;
+  let companyId = primary?.companyId ?? null;
+  if (!primary) {
+    for (const p of ordered) {
+      const d = domainOf(p.address);
+      if (!d) continue;
+      const co = await prisma.company.findFirst({ where: { domain: d }, select: { id: true } });
+      if (co) {
+        companyId = co.id;
+        break;
+      }
+    }
+  }
+  return { contactId: primary?.contactId ?? null, companyId, parties: found.slice(1), created };
+}
+
+/** The other people on a logged email: rows for each, and Last activity moves for them and their companies. */
+export async function attachParties(activityId: string, parties: Resolved["parties"], when: Date) {
+  if (!parties.length) return;
+  await prisma.activityParty.createMany({ data: parties.map((x) => ({ activityId, contactId: x.contactId, companyId: x.companyId, role: x.role })), skipDuplicates: true });
+  for (const x of parties) await bumpLastActivity(x.contactId, x.companyId, when);
+}
+
 export async function dealResolver() {
   // legacy HubSpot intro records are not tickets: an email is never filed on one
   const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, parentDealId: true, propertyAddress: true, sponsorCompany: { select: { roles: true } }, investors: { select: { contactId: true } }, _count: { select: { files: true, facts: true } } } })).filter((d) => !isLegacyIntroTicket({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, investorCount: d.investors.length }) && !isBlindIntro({ ...d, fileCount: d._count.files, factCount: d._count.facts }));
@@ -118,48 +178,19 @@ export async function syncMailbox(mailbox: string, opts: { sinceDays?: number } 
     if (!external.length) continue; // internal chatter
     const outbound = from ? isInternal(from.address) : false;
 
-    // who is this about: the first external address we know (prefer the sender on inbound, the recipients on outbound)
-    const ordered = outbound ? external : [from!, ...external.filter((p) => p !== from)];
-    let contactId: string | null = null;
-    let companyId: string | null = null;
-    for (const p of ordered) {
-      const c = await prisma.contact.findUnique({ where: { email: p.address.toLowerCase() }, select: { id: true, companyId: true } });
-      if (c) {
-        contactId = c.id;
-        companyId = c.companyId;
-        await fillContactName(c.id, p.name);
-        break;
-      }
-    }
-    if (!contactId) {
-      for (const p of ordered) {
-        const d = domainOf(p.address);
-        if (!d) continue;
-        const co = await prisma.company.findFirst({ where: { domain: d }, select: { id: true } });
-        if (co) {
-          companyId = co.id;
-          break;
-        }
-      }
-    }
-    if (!contactId && !companyId) {
+    const r = await resolveParticipants(m.subject, outbound, from, to, cc, user?.id ?? null);
+    created += r.created;
+    if (!r.contactId && !r.companyId) {
       // a bounce or auto-reply from a mail system about someone we know: "so-and-so is no longer with the firm"
       if (!outbound && departureHint(m)) await noteDepartureIfAny({ subject: m.subject ?? null, text: await departureText(mailbox, m), fromAddress: from?.address ?? null, contactId: null, messageId: m.internetMessageId ?? null }).catch(() => 0);
-      // someone new: created when we wrote to them, or when they replied to us; never from a stranger's first email
-      const person = ordered[0];
-      const conversation = outbound ? external.length <= 6 : REPLY.test(m.subject ?? "") && [...to, ...cc].some((p) => isInternal(p.address));
-      if (!person || !conversation || isSystemAddress(person.address)) continue; // nobody we track
-      const c = await contactForEmail(person.address, { name: person.name && !person.name.includes("@") ? person.name : null }).catch(() => null);
-      if (!c) continue;
-      contactId = c.id;
-      companyId = c.companyId;
-      created++;
+      continue; // nobody we track
     }
+    const contactId = r.contactId, companyId = r.companyId;
     if (!outbound && departureHint(m)) await noteDepartureIfAny({ subject: m.subject ?? null, text: await departureText(mailbox, m), fromAddress: from?.address ?? null, contactId, messageId: m.internetMessageId ?? null }).catch(() => 0);
 
     const when = new Date(m.sentDateTime ?? m.receivedDateTime ?? Date.now());
     const sentDeal = dealFor(m.subject ?? "", contactId, companyId);
-    await prisma.activity.create({
+    const act = await prisma.activity.create({
       data: {
         type: "EMAIL",
         direction: outbound ? "OUTBOUND" : "INBOUND",
@@ -175,6 +206,7 @@ export async function syncMailbox(mailbox: string, opts: { sinceDays?: number } 
     });
     if (outbound && sentDeal) await noteDealSent({ dealId: sentDeal, contactId, companyId, mailbox, graphId: m.id, hasAttachments: m.hasAttachments ?? false, when, toEmails: to.map((p) => p.address) }).catch(() => false);
     await bumpLastActivity(contactId, companyId, when);
+    await attachParties(act.id, r.parties, when);
     logged++;
   }
   if (user) await prisma.user.update({ where: { id: user.id }, data: { mailSyncedAt: startedAt } });
@@ -190,6 +222,7 @@ export async function syncRecentSent(mailbox: string, hours = 6): Promise<number
   const since = new Date(Date.now() - hours * 3600_000);
   const msgs = await pageThrough(mailbox, "sentitems", since).catch(() => [] as Msg[]);
   const dealFor = await dealResolver();
+  const owner = await prisma.user.findFirst({ where: { email: { equals: mailbox, mode: "insensitive" } }, select: { id: true } });
   let logged = 0;
   for (const msg of msgs) {
     const ext = msg.internetMessageId ?? msg.id;
@@ -198,17 +231,15 @@ export async function syncRecentSent(mailbox: string, hours = 6): Promise<number
     const cc = (msg.ccRecipients ?? []).map((r) => r.emailAddress);
     const external = [...to, ...cc].filter((p) => p?.address && !isInternal(p.address));
     if (!external.length) continue;
-    let contactId: string | null = null, companyId: string | null = null;
-    for (const p of external) {
-      const c = await prisma.contact.findUnique({ where: { email: p.address.toLowerCase() }, select: { id: true, companyId: true } });
-      if (c) { contactId = c.id; companyId = c.companyId; await fillContactName(c.id, p.name); break; }
-    }
-    if (!contactId) continue;
+    const r = await resolveParticipants(msg.subject, true, msg.from?.emailAddress, to, cc, owner?.id ?? null);
+    if (!r.contactId) continue;
+    const contactId = r.contactId, companyId = r.companyId;
     const when = new Date(msg.sentDateTime ?? msg.receivedDateTime ?? Date.now());
     const sentDeal = dealFor(msg.subject ?? "", contactId, companyId);
-    await prisma.activity.create({ data: { type: "EMAIL", direction: "OUTBOUND", subject: msg.subject ?? "(no subject)", body: msg.bodyPreview ?? null, occurredAt: when, externalId: ext, contactId, companyId, dealId: sentDeal ?? null, meta: JSON.stringify({ from: msg.from?.emailAddress, to, cc, mailbox, hasAttachments: msg.hasAttachments ?? false }) } }).catch(() => null);
+    const act = await prisma.activity.create({ data: { type: "EMAIL", direction: "OUTBOUND", subject: msg.subject ?? "(no subject)", body: msg.bodyPreview ?? null, occurredAt: when, externalId: ext, contactId, companyId, dealId: sentDeal ?? null, meta: JSON.stringify({ from: msg.from?.emailAddress, to, cc, mailbox, hasAttachments: msg.hasAttachments ?? false }) } }).catch(() => null);
     if (sentDeal) await noteDealSent({ dealId: sentDeal, contactId, companyId, mailbox, graphId: msg.id, hasAttachments: msg.hasAttachments ?? false, when, toEmails: to.map((p) => p.address) }).catch(() => false);
     await bumpLastActivity(contactId, companyId, when); // this pass used to log without bumping, so Last activity lagged the email log
+    if (act) await attachParties(act.id, r.parties, when);
     logged++;
   }
   return logged;

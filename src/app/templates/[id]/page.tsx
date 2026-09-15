@@ -2,18 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
-import { TemplateForm } from "@/components/template-form";
+import { TemplateWindow } from "@/components/template-windows";
 import { findUnknownFields } from "@/lib/merge";
-import { deleteTemplate, duplicateTemplate, updateTemplate } from "../actions";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const t = await prisma.emailTemplate.findUnique({ where: { id }, select: { name: true } }).catch(() => null);
   return { title: t?.name ?? "Template" };
 }
-
 export const dynamic = "force-dynamic";
 
+/** One template on its own, the same window as on the templates page, for links that land on a template. */
 export default async function TemplatePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const t = await prisma.emailTemplate.findUnique({ where: { id }, include: { campaigns: { orderBy: { createdAt: "desc" }, take: 10, include: { deal: true } } } });
@@ -25,25 +24,13 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
         title={t.name}
         subtitle={unknown.length ? <span className="text-amber-700">Unknown merge fields: {unknown.join(", ")}</span> : "Template"}
         actions={
-          <>
-            <form action={duplicateTemplate.bind(null, t.id)}>
-              <button className="btn-secondary" type="submit">
-                Duplicate
-              </button>
-            </form>
-            <form action={deleteTemplate.bind(null, t.id)}>
-              <button className="btn-ghost" type="submit">
-                Delete
-              </button>
-            </form>
-            <Link href={`/campaigns/new?templateId=${t.id}`} className="btn-primary">
-              Start campaign
-            </Link>
-          </>
+          <Link href="/templates" className="btn-secondary">
+            All templates
+          </Link>
         }
       />
-      <div className="px-8 py-6">
-        <TemplateForm template={t} action={updateTemplate.bind(null, t.id)} />
+      <div className="mx-auto max-w-3xl px-8 py-6">
+        <TemplateWindow t={{ id: t.id, name: t.name, kind: t.kind, subject: t.subject, bodyHtml: t.bodyHtml }} tall />
         {t.campaigns.length > 0 && (
           <div className="mt-8">
             <h2 className="mb-2 font-semibold">Recent sends using this template</h2>

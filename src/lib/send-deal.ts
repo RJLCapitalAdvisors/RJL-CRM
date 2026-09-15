@@ -392,7 +392,7 @@ export async function draftDealToOne(dealId: string, contactId: string, mailbox:
     subject = state.general.subject;
     html = withFirstName(state.general.html, contact.firstName);
   } else {
-    const templates = await prisma.emailTemplate.findMany({ where: { kind: "DEAL", NOT: { name: { contains: "Engagement" } } }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+    const templates = await prisma.emailTemplate.findMany({ where: { kind: "DEAL", workspace: "CA", NOT: { OR: [{ name: { contains: "Engagement" } }, { name: { startsWith: "(archived)" } }] } }, select: { id: true, name: true }, orderBy: { name: "asc" } });
     const tpl = (state.templateId && templates.find((t) => t.id === state.templateId)) || templates.find((t) => t.name.startsWith("Deal email (house")) || templates[0];
     if (!tpl) return { ok: false, reason: "No deal email template on file" };
     const r = await renderDealEmail({ templateId: tpl.id, deal: deal as unknown as Record<string, unknown>, contact, company: contact.company, openingLine: null, bodyOverride: null, senderName, mailbox });

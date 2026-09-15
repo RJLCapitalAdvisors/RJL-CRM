@@ -1,16 +1,6 @@
-import { PageHeader } from "@/components/ui";
-import { TemplateForm } from "@/components/template-form";
-import { createTemplate } from "../actions";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "New template" };
-
+/** New templates start from the plus square on the templates page. */
 export default function NewTemplatePage() {
-  return (
-    <>
-      <PageHeader title="New template" />
-      <div className="px-8 py-6">
-        <TemplateForm template={null} action={createTemplate} submitLabel="Create template" />
-      </div>
-    </>
-  );
+  redirect("/templates");
 }

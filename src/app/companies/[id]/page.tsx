@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
 export default async function CompanyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   kickMailSync();
-  const [company, users, investorRows] = await Promise.all([
+  const [company, users, investorRows, activities] = await Promise.all([
     prisma.company.findUnique({
       where: { id },
       include: {
@@ -33,11 +33,12 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
         criteria: true,
         contacts: { orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }], include: { owner: true } },
         deals: { orderBy: { updatedAt: "desc" } },
-        activities: { orderBy: { occurredAt: "desc" }, take: 100, include: { contact: { select: { id: true, firstName: true, lastName: true } }, deal: { select: { id: true, name: true, propertyName: true } } } },
       },
     }),
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.dealInvestor.findMany({ where: { contact: { companyId: id } }, include: { deal: { select: { id: true, name: true, propertyName: true } } }, orderBy: [{ status: "desc" }, { updatedAt: "desc" }] }),
+    // emails with anyone here, including the ones where a person here was only copied
+    prisma.activity.findMany({ where: { OR: [{ companyId: id }, { parties: { some: { companyId: id } } }] }, orderBy: { occurredAt: "desc" }, take: 100, include: { contact: { select: { id: true, firstName: true, lastName: true } }, deal: { select: { id: true, name: true, propertyName: true } } } }),
   ]);
   if (!company) notFound();
   // one row per deal this company has been sent (highest status wins)
@@ -113,7 +114,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
           )}
         </>
       }
-      center={<EmailLog rows={company.activities} title="Activity" empty="No emails or notes with this company yet. Emails any of the team sends or receives show up here." />}
+      center={<EmailLog rows={activities} title="Activity" empty="No emails or notes with this company yet. Emails any of the team sends or receives show up here." />}
       right={
         <>
           <AssocCard title="Contacts" count={company.contacts.length} addHref={`/contacts/new?companyId=${company.id}`} empty="No contacts linked yet.">

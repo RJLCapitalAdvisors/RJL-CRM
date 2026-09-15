@@ -109,9 +109,11 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
       }
       center={
         <>
+          <div className="grid gap-4 xl:grid-cols-2 xl:[&>*]:h-[68vh]">
+            <IlSummaryCard email={summary} sendHref={`/israel/send/apartments/${a.id}`} notes={a.notes} />
+            <FloorplanWindow apartmentId={a.id} has={hasPlan} type={a.floorplanType} name={a.floorplanName} version={a.updatedAt.getTime()} compact />
+          </div>
           <PhotosWindow kind="apartments" id={a.id} photos={full.photos} />
-          <FloorplanWindow apartmentId={a.id} has={hasPlan} type={a.floorplanType} name={a.floorplanName} version={a.updatedAt.getTime()} />
-          <IlSummaryCard email={summary} sendHref={`/israel/send/apartments/${a.id}`} notes={a.notes} />
         </>
       }
       right={

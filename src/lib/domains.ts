@@ -28,7 +28,7 @@ export function nameFromDomain(domain: string): string {
  * The company a contact with this email belongs to: match on domain, then on website,
  * otherwise create one named after the domain. Returns null for free-mail addresses.
  */
-export async function companyForEmail(email: string | null | undefined, nameHint?: string | null) {
+export async function companyForEmail(email: string | null | undefined, nameHint?: string | null, ownerId?: string | null) {
   const domain = domainOf(email);
   if (!domain) return null;
   const existing =
@@ -38,7 +38,7 @@ export async function companyForEmail(email: string | null | undefined, nameHint
     if (!existing.domain) await prisma.company.update({ where: { id: existing.id }, data: { domain } });
     return existing;
   }
-  const created = await prisma.company.create({ data: { name: nameHint?.trim() || nameFromDomain(domain), domain, website: `https://${domain}` } });
+  const created = await prisma.company.create({ data: { name: nameHint?.trim() || nameFromDomain(domain), domain, website: `https://${domain}`, ownerId: ownerId ?? null } });
   // Read their website in the background so the record fills itself in (name, description, city, roles…).
   import("@/lib/enrich").then((m) => m.enrichCompany(created.id)).catch(() => {});
   return created;
@@ -48,22 +48,22 @@ export async function companyForEmail(email: string | null | undefined, nameHint
  * Find or create the contact for an email address, attach it to its domain company,
  * and give it the company's roles (plus any extra roles passed in).
  */
-export async function contactForEmail(email: string, opts: { name?: string | null; companyNameHint?: string | null; extraRoles?: string[] } = {}) {
+export async function contactForEmail(email: string, opts: { name?: string | null; companyNameHint?: string | null; extraRoles?: string[]; ownerId?: string | null } = {}) {
   const clean = email.trim().toLowerCase();
   const existing = await prisma.contact.findUnique({ where: { email: clean }, include: { company: true } });
-  const company = existing?.company ?? (await companyForEmail(clean, opts.companyNameHint));
+  const company = existing?.company ?? (await companyForEmail(clean, opts.companyNameHint, opts.ownerId));
   const [firstName, ...rest] = (opts.name ?? "").trim().split(/\s+/).filter(Boolean);
   const inherited = parseList(company?.roles);
   const roles = toJson([...(existing ? parseList(existing.roles) : []), ...inherited, ...(opts.extraRoles ?? [])]);
   if (existing) {
     return prisma.contact.update({
       where: { id: existing.id },
-      data: { companyId: existing.companyId ?? company?.id ?? null, roles, firstName: existing.firstName ?? firstName ?? null, lastName: existing.lastName ?? (rest.join(" ") || null) },
+      data: { companyId: existing.companyId ?? company?.id ?? null, roles, firstName: existing.firstName ?? firstName ?? null, lastName: existing.lastName ?? (rest.join(" ") || null), ownerId: existing.ownerId ?? opts.ownerId ?? null },
       include: { company: true },
     });
   }
   return prisma.contact.create({
-    data: { email: clean, firstName: firstName ?? null, lastName: rest.join(" ") || null, companyId: company?.id ?? null, roles, marketingContact: false },
+    data: { email: clean, firstName: firstName ?? null, lastName: rest.join(" ") || null, companyId: company?.id ?? null, roles, marketingContact: false, ownerId: opts.ownerId ?? null },
     include: { company: true },
   });
 }

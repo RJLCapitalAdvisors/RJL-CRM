@@ -19,18 +19,19 @@ export const dynamic = "force-dynamic";
 
 export default async function ContactPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [contact, users] = await Promise.all([
+  const [contact, users, activities] = await Promise.all([
     prisma.contact.findUnique({
       where: { id },
       include: {
         owner: true,
         company: { include: { criteria: true, _count: { select: { contacts: true } } } },
         criteria: true,
-        activities: { orderBy: { occurredAt: "desc" }, take: 50, include: { deal: true } },
         dealRows: { include: { deal: true }, orderBy: { updatedAt: "desc" } },
       },
     }),
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    // emails this person sent, received or was copied on
+    prisma.activity.findMany({ where: { OR: [{ contactId: id }, { parties: { some: { contactId: id } } }] }, orderBy: { occurredAt: "desc" }, take: 50, include: { deal: true } }),
   ]);
   if (!contact) notFound();
   const update = updateContact.bind(null, contact.id);
@@ -70,7 +71,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
       }
       center={
         <EmailLog
-          rows={contact.activities}
+          rows={activities}
           title="Activity"
           empty={`No activity logged yet. Created ${fmtDate(contact.createdAt)}. Emails any of the team sends or receives with this person show up here.`}
           toolbar={

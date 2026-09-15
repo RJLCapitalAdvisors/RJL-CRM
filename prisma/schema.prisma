@@ -55,6 +55,7 @@ model Company {
   contacts   Contact[]
   deals      Deal[]
   activities Activity[]
+  partyOf       ActivityParty[]
 
   lastActivityAt DateTime?
   createdAt      DateTime  @default(now())
@@ -91,6 +92,7 @@ model Contact {
 
   criteria   InvestorCriteria?
   activities Activity[]
+  partyOf          ActivityParty[]
   recipients CampaignRecipient[]
   dealRows   DealInvestor[]
 
@@ -281,11 +283,29 @@ model Activity {
   company   Company? @relation(fields: [companyId], references: [id])
   dealId    String?
   deal      Deal?    @relation(fields: [dealId], references: [id])
+  parties   ActivityParty[] // everyone else on the email (the other recipients, the CCs)
 
   createdAt DateTime @default(now())
 
   @@index([contactId, occurredAt])
   @@index([dealId, occurredAt])
+}
+
+/// The other people on an email: an Activity carries one primary contact; every other external person on it is a
+/// party, so the email shows on each of their pages and their companies' pages, and Last activity moves for all.
+model ActivityParty {
+  id         String   @id @default(cuid())
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  contactId  String
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyId  String?
+  company    Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  role       String   @default("to") // from | to | cc
+
+  @@unique([activityId, contactId])
+  @@index([contactId])
+  @@index([companyId])
 }
 
 // Mail-merge templates. Merge fields use {{deal.propertyName}}, {{contact.firstName}}, etc.

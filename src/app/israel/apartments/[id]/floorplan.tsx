@@ -76,10 +76,10 @@ export function FloorplanWindow({ apartmentId, kind = "apartments", endpoint, ti
             Drop {title === "Brochure" ? "the PDF" : "an image or PDF"} here, or click Upload.
           </div>
         ) : type === "application/pdf" ? (
-          <iframe src={src} title={title} className={`${compact ? "h-[420px]" : "h-[70vh]"} w-full rounded-md border border-line bg-white`} />
+          <iframe src={src} title={title} className={`${compact ? "h-full min-h-[280px]" : "h-[70vh]"} w-full rounded-md border border-line bg-white`} />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={src} alt={title} className={`${compact ? "max-h-[420px]" : "max-h-[75vh]"} w-auto max-w-full rounded-md`} />
+          <img src={src} alt={title} className={`${compact ? "max-h-full" : "max-h-[75vh]"} w-auto max-w-full rounded-md`} />
         )}
       </div>
     </div>

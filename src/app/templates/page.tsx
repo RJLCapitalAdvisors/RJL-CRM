@@ -1,58 +1,21 @@
-import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { PageHeader, Empty } from "@/components/ui";
-import { fmtDate } from "@/lib/format";
+import { PageHeader } from "@/components/ui";
+import { TemplateWindows } from "@/components/template-windows";
 
-export const metadata = { title: "Templates" };
-
+export const metadata = { title: "Email templates" };
 export const dynamic = "force-dynamic";
 
+/**
+ * Templates > Email templates: every template as a window, shown the way the email goes out, merge fields in
+ * light blue. Type in place and it saves; x deletes; the plus square starts a new one. Send deal picks from these.
+ */
 export default async function TemplatesPage() {
-  const templates = await prisma.emailTemplate.findMany({ orderBy: { updatedAt: "desc" }, include: { _count: { select: { campaigns: true } } } });
+  const templates = await prisma.emailTemplate.findMany({ where: { workspace: "CA" }, orderBy: [{ kind: "asc" }, { updatedAt: "desc" }], select: { id: true, name: true, kind: true, subject: true, bodyHtml: true } });
   return (
     <>
-      <PageHeader
-        title="Email templates"
-        subtitle="Reusable emails with deal and contact merge fields"
-        actions={
-          <Link href="/templates/new" className="btn-primary">
-            New template
-          </Link>
-        }
-      />
-      <div className="px-8 py-6">
-        {templates.length === 0 ? (
-          <Empty>No templates yet. Create one to start a deal campaign.</Empty>
-        ) : (
-          <div className="overflow-hidden rounded-lg border border-line bg-paper">
-            <table className="table w-full">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Used for</th>
-                  <th>Subject</th>
-                  <th className="text-right">Sends</th>
-                  <th>Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {templates.map((t) => (
-                  <tr key={t.id}>
-                    <td>
-                      <Link href={`/templates/${t.id}`} className="font-medium hover:underline">
-                        {t.name}
-                      </Link>
-                    </td>
-                    <td className="text-xs">{t.kind === "BLAST" ? "Blast" : "Deal outreach"}</td>
-                    <td className="text-muted">{t.subject}</td>
-                    <td className="text-right">{t._count.campaigns}</td>
-                    <td className="whitespace-nowrap text-muted">{fmtDate(t.updatedAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <PageHeader title="Email templates" subtitle="Each window is one template, shown the way the email goes out. The light blue fields fill in from the deal and the person when it is sent. Changes save as you type." />
+      <div className="px-8 py-5">
+        <TemplateWindows templates={templates} />
       </div>
     </>
   );

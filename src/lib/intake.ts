@@ -19,7 +19,8 @@ export const ExtractedDealSchema = z.object({
   requestedAmount: z.number().nullable().describe("US dollars, e.g. 12000000"),
   purchasePrice: z.number().nullable().describe("Purchase price or total project cost in USD"),
   totalEquity: z.number().nullable(),
-  ltv: z.number().nullable().describe("Percent, e.g. 65 (LTV or LTC)"),
+  ltv: z.number().nullable().describe("Percent: total debt over purchase price"),
+  ltc: z.number().nullable().describe("Percent: total debt over total capitalization"),
   loanTerm: z.string().nullable(),
   equityMultiple: z.number().nullable(),
   occupancy: z.number().nullable().describe("Percent"),
@@ -53,7 +54,7 @@ export type ExtractedDeal = z.infer<typeof ExtractedDealSchema>;
 
 export const EMPTY: ExtractedDeal = {
   sponsorName: null, propertyName: null, propertyAddress: null, city: null, state: null, assetClass: null, strategy: null,
-  requestType: null, requestedAmount: null, purchasePrice: null, totalEquity: null, ltv: null, loanTerm: null, equityMultiple: null,
+  requestType: null, requestedAmount: null, purchasePrice: null, totalEquity: null, ltv: null, ltc: null, loanTerm: null, equityMultiple: null,
   occupancy: null, onMarket: null, sponsorExperience: null, summary: null,
   details: {} as ExtractedDeal["details"],
   units: null, squareFeet: null, yearBuilt: null, unitMix: null, totalCapitalization: null, totalDebt: null, executionType: null, interestRate: null,
@@ -91,7 +92,8 @@ const claudeOutput = () => z.object({
   requestedAmount: str("Requested amount in US dollars, digits only (12500000)."),
   purchasePrice: str("Acquisitions: purchase price. Developments: the LAND price only (never the total project cost). US dollars, digits only."),
   totalEquity: str("Total equity in US dollars, digits only."),
-  ltv: str("LTV or LTC percent as a number (65)."),
+  ltv: str("LTV percent as a number: total debt over purchase price (65). Never the LTC."),
+  ltc: str("LTC percent as a number: total debt over total capitalization. Computed on its own from the model's numbers; almost never equal to the LTV."),
   loanTerm: z.enum([...LOAN_TERMS, ""]).describe("Loan term, snapped to the closest option. Empty if not stated."),
   amortization: z.enum([...AMORTIZATIONS, ""]).describe("Interest-only period / amortization, snapped to the closest option. Empty if not stated."),
   expectedClose: str("Expected closing date or month as written (e.g. 'November 2026', 'Q1 2027', '45 days after PSA')."),
@@ -135,7 +137,7 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     sponsorName: t(o.sponsorName), propertyName: t(o.propertyName), propertyAddress: t(o.propertyAddress), city: t(o.city),
     state: t(o.state)?.toUpperCase() ?? null, assetClass: t(o.assetClass), strategy: (t(o.strategy) as ExtractedDeal["strategy"]) ?? null,
     requestType: (t(o.requestType) as ExtractedDeal["requestType"]) ?? null, requestedAmount: n(o.requestedAmount), purchasePrice: n(o.purchasePrice),
-    totalEquity: n(o.totalEquity), ltv: n(o.ltv), loanTerm: t(o.loanTerm), equityMultiple: n(o.equityMultiple), occupancy: n(o.occupancy),
+    totalEquity: n(o.totalEquity), ltv: n(o.ltv), ltc: n(o.ltc), loanTerm: t(o.loanTerm), equityMultiple: n(o.equityMultiple), occupancy: n(o.occupancy),
     onMarket: o.onMarket === "on" ? true : o.onMarket === "off" ? false : null, sponsorExperience: t(o.sponsorExperience), summary: cleanBusinessPlan(t(o.summary)),
     details, contactName: t(o.contactName), contactEmail: t(o.contactEmail), confidenceNotes: t(o.confidenceNotes),
     units: n(o.units), squareFeet: n(o.squareFeet), yearBuilt: t(o.yearBuilt), unitMix: t(o.unitMix), totalCapitalization: n(o.totalCapitalization),
@@ -158,6 +160,16 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
   // any equity raise that is the majority of the total equity is JV Equity
   if (out.executionType === "LP Equity" && out.requestedAmount && out.totalEquity && out.requestedAmount / out.totalEquity >= 0.5) out.executionType = "JV Equity";
   if (out.requestType === "Equity" && !out.executionType) out.executionType = "JV Equity";
+  // Sep 15 underwriting instructions: the requested amount is 90% of total equity, rounded to the nearest $500,000
+  const equity = out.totalEquity ?? (out.totalCapitalization != null && out.totalDebt != null && out.totalCapitalization > out.totalDebt ? out.totalCapitalization - out.totalDebt : null);
+  if (out.requestType !== "Debt" && equity && equity > 0) {
+    out.requestedAmount = Math.max(500_000, Math.round((equity * 0.9) / 500_000) * 500_000);
+    if (out.totalEquity == null) out.totalEquity = equity;
+  }
+  // LTV is debt over price, LTC is debt over total capitalization, each on its own when the model left it out
+  const pct = (a: number, b: number) => Math.round((a / b) * 10000) / 100;
+  if (out.ltv == null && out.totalDebt && out.purchasePrice && out.strategy !== "Development") out.ltv = pct(out.totalDebt, out.purchasePrice);
+  if (out.ltc == null && out.totalDebt && out.totalCapitalization) out.ltc = pct(out.totalDebt, out.totalCapitalization);
   // developments: occupancy, year built and cap rates do not apply; a "price" equal to total cost is not a land price
   if (out.strategy === "Development") {
     if (out.purchasePrice != null && out.totalCapitalization != null && Math.abs(out.purchasePrice - out.totalCapitalization) < 1000) out.purchasePrice = null;
@@ -195,7 +207,17 @@ Read the email (including quoted/forwarded content) and fill the schema. Rules:
 - assetClass must be one of the listed values; map synonyms (apartments -> Multifamily, BTR -> Build-For-Rent (SFR), hotel -> Hospitality, warehouse -> Industrial, shopping center -> Retail).
 - state is the two-letter code. If only a metro is given, infer the state and note it in confidenceNotes.
 - For each checklist item in details: quote or closely paraphrase what the sponsor said. For documents (proforma, rent roll/T12, trade-out report, capex budget, comps) answer "Received" only if the document is attached or explicitly provided; otherwise empty.
-- summary is the business plan paragraph for the investor email: lead with location and market context, then anchor/key tenants, the value-add opportunity, notable physical attributes. 4-6 sentences, flowing prose, no dashes as punctuation. Never put in the summary what has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count.`;
+- summary is the business plan paragraph for the investor email: lead with location and market context, then anchor/key tenants, the value-add opportunity, notable physical attributes. 4-6 sentences, flowing prose, no dashes as punctuation. Never put in the summary what has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count.
+- Requested amount: the CRM sets it to 90% of total equity (total capitalization minus total debt) rounded to the nearest $500,000; leave it blank unless the sponsor names the raise in so many words.
+- LTV is total debt over purchase price; LTC is total debt over total capitalization. Compute each on its own from the model; they are almost never equal.
+- Total capitalization comes from the Sources and Uses tab (total sources), not from adding debt and equity found on another tab, unless there is no Sources and Uses.
+- Year 1 cap rate is always Year 1 proforma NOI over purchase price, never a later year, even when the deal stabilizes later. T12 cap rate is trailing or in-place NOI over purchase price.
+- Stabilized cash-on-cash: levered cash flow after debt service in the stabilized year over total equity, from the model, never from sponsor materials.
+- Interest rate: when the model shows more than one scenario (a fixed rate and a floating spread), write both as the model shows them; never pick one.
+- Position in the capital stack: JV Equity unless the documents clearly say otherwise.
+- expectedClose reads "Month Year" or "Q# Year" ("November 2026", "Q1 2027").
+- Closest-match fields (how the deal was sourced, seller profile, lender type): when the documents state it in words that do not match an option, pick the closest option and say in confidenceNotes that it is an approximation, quoting the original wording. Exact-match fields (asset class, loan term, I/O and amortization, position in the capital stack): only when the documents clearly support that exact value; otherwise blank and flagged in confidenceNotes.
+- The sponsor bio runs in this order: when and by whom the firm was founded; its focus (asset classes, geography, deal type); its scale or track record. No return figures, no dollar figures, no specific states beyond general geography.`;
 
 export async function extractWithClaude(rawText: string, subject?: string | null, attachments: string[] = []): Promise<ExtractedDeal> {
   await loadChecklist(); // the Required Items List as Jonathan last edited it
