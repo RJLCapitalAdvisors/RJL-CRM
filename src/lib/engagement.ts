@@ -115,10 +115,12 @@ export async function syncEngagementDrafts(): Promise<number> {
       const m = await getMessage(mailbox, draftId, "id,isDraft,sentDateTime,subject");
       let sentAt: Date | null = m.isDraft ? null : m.sentDateTime ? new Date(m.sentDateTime) : new Date();
       if (m.isDraft) {
-        // sent from desktop Outlook as its own message: the Graph draft stays a draft, so look for the letter in Sent Items
+        // sent from desktop Outlook as its own message: the Graph draft stays a draft, so look for the letter in Sent Items.
+        // The filter is URL-encoded: an ampersand in the subject ("RJL Capital Advisors & Carderock Investments") used to
+        // cut the query short and the letter was never seen as sent (Carderock Gateway, Sep 15).
         const draftedAt = typeof det.engagementDraftedAt === "string" ? det.engagementDraftedAt : new Date(Date.now() - 14 * 86_400_000).toISOString();
         const subj = (m.subject ?? "").replace(/'/g, "''").slice(0, 60);
-        const sent = subj ? await graph<{ value: { sentDateTime: string }[] }>(`/users/${encodeURIComponent(mailbox)}/mailFolders/sentitems/messages?$filter=sentDateTime ge ${draftedAt} and startswith(subject,'${subj}')&$top=5&$select=sentDateTime`).catch(() => ({ value: [] })) : { value: [] };
+        const sent = subj ? await graph<{ value: { sentDateTime: string }[] }>(`/users/${encodeURIComponent(mailbox)}/mailFolders/sentitems/messages?$filter=${encodeURIComponent(`sentDateTime ge ${draftedAt} and startswith(subject,'${subj}')`)}&$top=5&$select=sentDateTime`).catch(() => ({ value: [] })) : { value: [] };
         if (sent.value[0]) sentAt = new Date(sent.value[0].sentDateTime);
       }
       if (!sentAt) continue;
