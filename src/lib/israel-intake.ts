@@ -270,7 +270,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   const mirpasot = (a: ExtractedApartment) => {
     const list = a.mirpasot.filter((m) => m.sqm != null || m.direction.length || m.sukka).slice(0, 3);
     const total = list.length > 1 ? list.reduce((t, m) => t + (m.sqm ?? 0), 0) : null;
-    const single = { sqm: a.mirpesetSqm ?? null, direction: a.mirpesetDirection, sukka: a.sukka ?? null, sukkaSqm: a.sukkaSqm ?? null, pool: a.pool ?? null, poolSqm: a.poolSqm ?? null };
+    const single = { sqm: a.mirpesetSqm ?? null, direction: a.mirpesetDirection, sukka: a.sukka ?? null, sukkaSqm: a.sukkaSqm ?? null, pool: null, poolSqm: null };
     return { mirpesetCount: list.length > 1 ? list.length : a.mirpesetSqm != null ? 1 : null, mirpesetSqm: a.mirpesetSqm ?? (total || null), mirpesetDirection: JSON.stringify(list.length > 1 ? [...new Set(list.flatMap((m) => m.direction))] : a.mirpesetDirection), mirpasot: JSON.stringify(list.length > 1 ? list : single.sqm != null || single.direction.length || single.sukka || single.pool ? [single] : []) };
   };
   for (const a of extracted.apartments) {
@@ -302,6 +302,8 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
           mamad: a.mamad ?? false,
           priceNis: a.priceNis,
           description: a.description ? stripDashes(a.description) : null,
+          pool: a.pool ?? (a.mirpasot.some((m) => m.pool === "Yes") ? "Yes" : null),
+          poolSqm: a.poolSqm ?? null,
           extra: extraJson(a.extra),
           source: input.sourceLabel,
           sourceMessageId: input.key,
@@ -351,6 +353,8 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         sellerType: a.sellerType,
         renovationYear: a.sellerType?.startsWith("Second hand") ? a.renovationYear : null,
         description: a.description ? stripDashes(a.description) : null,
+        pool: a.pool ?? (a.mirpasot.some((m) => m.pool === "Yes") ? "Yes" : null),
+        poolSqm: a.poolSqm ?? a.mirpasot.find((m) => m.poolSqm != null)?.poolSqm ?? null,
         extra: extraJson(a.extra),
         source: input.sourceLabel,
         sourceMessageId: input.key,

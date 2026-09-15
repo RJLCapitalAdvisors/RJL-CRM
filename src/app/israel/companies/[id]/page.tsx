@@ -23,6 +23,7 @@ export default async function IlCompanyPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const c = await prisma.ilCompany.findUnique({ where: { id }, include: { contacts: { orderBy: [{ lastName: "asc" }, { firstName: "asc" }] }, apartments: { orderBy: { updatedAt: "desc" } }, ilNotes: { orderBy: { createdAt: "desc" } }, activities: { orderBy: { occurredAt: "desc" }, take: 200, include: { contact: { select: { id: true, firstName: true, lastName: true } } } } } });
   if (!c) notFound();
+  const deals = await prisma.ilDeal.findMany({ where: { OR: [{ buyer: { companyId: c.id } }, { agent: { companyId: c.id } }, { apartment: { developerId: c.id } }] }, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, stage: true, offerNis: true, apartment: { select: { name: true } } } });
   const site = c.website?.replace(/^https?:\/\//, "").replace(/\/$/, "");
   return (
     <RecordLayout
@@ -88,6 +89,19 @@ export default async function IlCompanyPage({ params }: { params: Promise<{ id: 
                   {ilFullName(k)}
                 </Link>
                 <div className="truncate text-xs text-muted">{[parseJsonList(k.roles).join(", "), k.phone, k.email].filter(Boolean).join(" · ")}</div>
+              </div>
+            ))}
+          </AssocCard>
+          <AssocCard title="Deals" count={deals.length} addHref="/israel/deals/new" empty="Deals with this company's people, or on its apartments, will show here.">
+            {deals.map((d) => (
+              <div key={d.id} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                <div className="min-w-0">
+                  <Link href={`/israel/deals/${d.id}`} className="truncate hover:underline">
+                    {d.name}
+                  </Link>
+                  <div className="truncate text-xs text-muted">{[d.stage, d.apartment?.name].filter(Boolean).join(" · ")}</div>
+                </div>
+                {d.offerNis && <span className="shrink-0 text-xs tabular-nums">{nis(d.offerNis)}</span>}
               </div>
             ))}
           </AssocCard>

@@ -1,12 +1,12 @@
 "use client";
 
 import { AutoSaveForm } from "@/components/autosave-form";
-import { Group, Row, Text } from "@/components/form-rows";
+import { Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
 import { SelectField } from "@/components/select-field";
 import { IL_CITIES } from "@/lib/israel";
 
-type Proj = Partial<{ name: string; developerId: string | null; street: string | null; city: string | null; neighborhood: string | null; totalUnits: number | null; parkingSpaces: number | null; stories: number | null; completionDate: string | null; description: string | null }>;
+type Proj = Partial<{ pool: string | null; name: string; developerId: string | null; street: string | null; city: string | null; neighborhood: string | null; totalUnits: number | null; parkingSpaces: number | null; stories: number | null; completionDate: string | null; description: string | null }>;
 
 /** A whole project: the building or development, not one apartment in it. */
 export function IlProjectForm({ p = {}, developers, action, autosave = false, submitLabel = "Create project" }: { p?: Proj; developers: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
@@ -46,6 +46,9 @@ export function IlProjectForm({ p = {}, developers, action, autosave = false, su
         </Row>
         <Row label="Total stories">
           <NumberInput name="stories" defaultValue={p.stories} decimals={false} />
+        </Row>
+        <Row label="Project pool" hint="A shared pool in the project. A private pool on a unit is asked on the unit.">
+          <Select name="pool" value={p.pool ?? ""} options={["Yes", "No"]} />
         </Row>
         <Row label="Year of construction / expected date of delivery" hint="Month and year for a new build, e.g. 06/2027.">
           <Text name="completionDate" value={p.completionDate} placeholder="06/2027" />

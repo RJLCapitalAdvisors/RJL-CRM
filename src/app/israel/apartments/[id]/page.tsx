@@ -1,4 +1,8 @@
 import Link from "next/link";
+import { PhotosWindow } from "@/components/il-photos";
+import { IlSummaryCard } from "@/components/il-summary-card";
+import { IlMapCard } from "@/components/il-map-card";
+import { apartmentSummary } from "@/lib/israel-summary";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
@@ -40,6 +44,8 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
     prisma.ilProject.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, city: true } }),
   ]);
   if (!a) notFound();
+  const full = (await prisma.ilApartment.findUnique({ where: { id }, omit: { floorplan: true }, include: { developer: { select: { name: true } }, photos: { select: { id: true, name: true }, orderBy: { createdAt: "asc" } } } }))!;
+  const summary = apartmentSummary(full as unknown as Record<string, unknown>, full.developer?.name ?? null, [full.floorplanType ? "the floorplan" : "", full.photos.length ? "pictures" : ""].filter(Boolean));
   const hasPlan = Boolean(a.floorplanType);
   const ppm = pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm);
   await loadIlRequired();
@@ -70,11 +76,16 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
               a.internalSqm ? <span key="size">{[sqm(a.internalSqm), a.mirpesetSqm ? `${sqm(a.mirpesetSqm)} mirpeset` : null, a.rooms ? `${a.rooms} rooms` : null].filter(Boolean).join(" · ")}</span> : null,
             ].filter(Boolean)}
             actions={
-              <form action={deleteApartment.bind(null, a.id)}>
+              <>
+                <Link href={`/israel/send/apartments/${a.id}`} className="btn-primary text-xs">
+                  Send apartment
+                </Link>
+                <form action={deleteApartment.bind(null, a.id)}>
                 <button type="submit" className="btn-ghost text-xs">
                   Delete
                 </button>
-              </form>
+                </form>
+              </>
             }
           />
           {a.pendingApproval && (
@@ -98,28 +109,9 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
       }
       center={
         <>
+          <PhotosWindow kind="apartments" id={a.id} photos={full.photos} />
           <FloorplanWindow apartmentId={a.id} has={hasPlan} type={a.floorplanType} name={a.floorplanName} version={a.updatedAt.getTime()} />
-          <div className="card">
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <h2 className="text-sm font-semibold">Notes</h2>
-              <span className="text-xs text-muted">{a.notes.length}</span>
-            </div>
-            <form action={addIlNote.bind(null, { apartmentId: a.id })} className="flex gap-2 border-b border-line p-3">
-              <input name="body" placeholder="Log a note, a viewing, an offer…" className="input" />
-              <button className="btn-secondary" type="submit">
-                Add
-              </button>
-            </form>
-            <ul className="divide-y divide-line">
-              {a.notes.map((nt) => (
-                <li key={nt.id} className="px-4 py-3 text-sm">
-                  <div className="text-xs text-muted">{nt.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
-                  <div className="whitespace-pre-wrap">{nt.body}</div>
-                </li>
-              ))}
-              {a.notes.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted">Nothing yet.</li>}
-            </ul>
-          </div>
+          <IlSummaryCard email={summary} sendHref={`/israel/send/apartments/${a.id}`} notes={a.notes} />
         </>
       }
       right={
@@ -204,6 +196,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
               </button>
             </form>
           </AssocCard>
+          <IlMapCard kind="apartments" id={a.id} row={full} />
         </>
       }
     />

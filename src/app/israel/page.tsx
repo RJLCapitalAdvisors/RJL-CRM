@@ -6,7 +6,7 @@ import { apartmentLine, apartmentMissing, houseLine, houseMissing, ilFullName, n
 import { approveApartment, approveHouse } from "./actions";
 import { kickIsraelMailSync } from "@/lib/israel-mail";
 import { IL_MENTIONED } from "@/lib/israel-mentions";
-import { dismissIlMention } from "./actions";
+import { dismissIlMention, snoozeIlMention } from "./actions";
 import { Item, ItemForm } from "@/app/dash-item";
 import { loadIlRequired } from "@/lib/required-items";
 
@@ -26,7 +26,7 @@ export default async function IsraelDashboard() {
   const [pendingApts, pendingHouses, mentions, updates] = await Promise.all([
     prisma.ilApartment.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
     prisma.ilHouse.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
-    prisma.ilDeal.findMany({ where: { stage: IL_MENTIONED }, orderBy: { updatedAt: "desc" }, include: { agent: { select: { id: true, firstName: true, lastName: true, email: true, company: { select: { name: true } } } } } }),
+    prisma.ilDeal.findMany({ where: { stage: IL_MENTIONED, OR: [{ snoozedUntil: null }, { snoozedUntil: { lt: new Date() } }] }, orderBy: { updatedAt: "desc" }, include: { agent: { select: { id: true, firstName: true, lastName: true, email: true, company: { select: { name: true } } } } } }),
     // tickets a later email or WhatsApp message added data to (the intake writes an "Updated from ..." note)
     prisma.ilNote.findMany({ where: { body: { startsWith: "Updated from" }, createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 30, include: { apartment: { select: { id: true, name: true } }, house: { select: { id: true, name: true } } } }),
   ]);
@@ -130,9 +130,14 @@ export default async function IsraelDashboard() {
                         {[m.agent ? `from ${ilFullName(m.agent)}` : null, m.agent?.company?.name, m.offerNis ? nis(m.offerNis) : null, `mentioned ${fmtDate(m.updatedAt)}`].filter(Boolean).join(" · ")}
                       </div>
                     </div>
-                    <ItemForm action={dismissIlMention.bind(null, m.id)} className="btn-grey shrink-0 px-3 py-1.5 text-xs" title="Not something we are looking at; takes it off this list and out of the funnel">
-                      Dismiss
-                    </ItemForm>
+                    <div className="flex shrink-0 flex-col gap-1">
+                      <ItemForm action={snoozeIlMention.bind(null, m.id)} className="btn-grey px-3 py-1.5 text-xs" title="Out of sight for a week, then back here">
+                        Snooze a week
+                      </ItemForm>
+                      <ItemForm action={dismissIlMention.bind(null, m.id)} className="btn-grey px-3 py-1.5 text-xs" title="Not something we are looking at; takes it off this list and out of the funnel">
+                        Dismiss
+                      </ItemForm>
+                    </div>
                   </div>
                 </Item>
               ))}

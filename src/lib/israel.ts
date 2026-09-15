@@ -180,7 +180,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
     { key: "mirpesetDirection", label: "Mirpeset direction" },
     { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
-    { key: "pool", label: "Pool (yes or no)" },
+    { key: "pool", label: "Private pool (yes or no)" },
     { key: "ceilingCm", label: "Ceiling height (cm)" },
     { key: "parkingSpots", label: "Parking spots" },
     { key: "machsanSqm", label: "Machsan size (m²)" },
@@ -203,7 +203,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
     { key: "mirpesetDirection", label: "Mirpeset direction" },
     { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
-    { key: "pool", label: "Pool (yes or no)" },
+    { key: "pool", label: "Private pool (yes or no)" },
     { key: "migrashSqm", label: "Migrash size (m²)" },
     { key: "priceNis", label: "Asking price" },
   ],
@@ -249,9 +249,7 @@ function commonMissing(a: Record<string, unknown>, apartment: boolean): string[]
   const garden = a.apartmentType === "Garden apartment";
   if (listHas(cat, "sukka") && a.mirpesetSqm != null && (list.length === 0 || list.some((m) => !m.sukka))) out.push(list.length > 1 ? `Sukka (yes, partial or no) for each ${garden ? "garden" : "mirpeset"}` : "Sukka (yes, partial or no)");
   if (list.some((m) => m.sukka && m.sukka !== "No" && m.sukkaSqm == null)) out.push("Sukka area (m²)");
-  if (apartment && listHas(cat, "pool") && list.length && list.some((m) => !m.pool)) out.push("Pool (yes or no)");
-  if (list.some((m) => m.pool === "Yes" && m.poolSqm == null)) out.push("Pool size (m²)");
-  if (!apartment && a.pool === "Yes" && a.poolSqm == null) out.push("Pool size (m²)");
+  if (a.pool === "Yes" && a.poolSqm == null) out.push("Pool size (m²)"); // the private pool is one question on the unit (the list's "pool" line covers yes or no)
   if (isSecondHand(typeof a.sellerType === "string" ? a.sellerType : null) && a.renovationYear == null) out.push("Year of renovation (or never renovated)");
   if (apartment && typeof a.sellerType === "string" && a.sellerType.startsWith("Yad Rishona") && !a.projectId && !a.projectName) out.push("Project name");
   return out;

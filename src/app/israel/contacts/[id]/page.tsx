@@ -24,6 +24,7 @@ export default async function IlContactPage({ params }: { params: Promise<{ id: 
     prisma.ilCompany.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   if (!c) notFound();
+  const deals = await prisma.ilDeal.findMany({ where: { OR: [{ buyerContactId: c.id }, { agentContactId: c.id }] }, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, stage: true, offerNis: true, apartment: { select: { name: true } } } });
   const name = ilFullName(c);
   const roles = parseJsonList(c.roles);
   const apartments = [...c.agentOf.map((a) => ({ ...a, as: "agent" })), ...c.sellerOf.map((a) => ({ ...a, as: "seller" }))];
@@ -93,6 +94,19 @@ export default async function IlContactPage({ params }: { params: Promise<{ id: 
                 </div>
               </div>
             )}
+          </AssocCard>
+          <AssocCard title="Deals" count={deals.length} addHref="/israel/deals/new" empty="Deals this contact is the buyer or the agent on will show here.">
+            {deals.map((d) => (
+              <div key={d.id} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                <div className="min-w-0">
+                  <Link href={`/israel/deals/${d.id}`} className="truncate hover:underline">
+                    {d.name}
+                  </Link>
+                  <div className="truncate text-xs text-muted">{[d.stage, d.apartment?.name].filter(Boolean).join(" · ")}</div>
+                </div>
+                {d.offerNis && <span className="shrink-0 text-xs tabular-nums">{nis(d.offerNis)}</span>}
+              </div>
+            ))}
           </AssocCard>
           <AssocCard title="Apartments" count={apartments.length} empty="Apartments this contact sells or represents will show here.">
             {apartments.map((a) => (

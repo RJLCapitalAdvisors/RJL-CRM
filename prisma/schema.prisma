@@ -621,6 +621,13 @@ model IlApartment {
   priceNis       Float?
   pendingApproval Boolean  @default(false) // came in by email with data missing; waits on the dashboard until approved
   extra          String?   // JSON answers to Required Items List questions that have no field of their own
+  pool           String?   // Private pool: Yes | No
+  poolSqm        Float?
+  lat            Float?    // the pin for the address, looked up once per address
+  lng            Float?
+  geoQuery       String?   // the address the pin was looked up from
+  geoLabel       String?   // what it resolved to, and how precisely
+  photos         IlPhoto[]
   sellerType     String?   // Yad Rishona (developer), Second hand, never occupied, Second hand, occupied
   renovationYear Int?
   builtYear      Int?
@@ -717,6 +724,25 @@ model IlNote {
 }
 
 // RJL Israel pipeline: a buyer pursuing an apartment, moving through the funnel
+/// Renderings and photos of a unit or project: above the floorplan on the ticket, attachable to the send-out.
+model IlPhoto {
+  id          String       @id @default(cuid())
+  name        String
+  type        String
+  bytes       Bytes
+  apartmentId String?
+  apartment   IlApartment? @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  houseId     String?
+  house       IlHouse?     @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     IlProject?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+
+  @@index([apartmentId])
+  @@index([houseId])
+  @@index([projectId])
+}
+
 model IlDeal {
   id             String       @id @default(cuid())
   name           String
@@ -731,6 +757,7 @@ model IlDeal {
   agreedPriceNis Float?
   expectedClose  String?
   lostReason     String?
+  snoozedUntil   DateTime?    // Deals mentioned: off the dashboard until then
   description    String?
   notes          IlNote[]
   activities     IlActivity[]
@@ -756,6 +783,12 @@ model IlProject {
   completionDate String?
   description    String?
   extra          String?       // JSON answers to Required Items List questions that have no field of their own
+  pool           String?       // Project pool (shared): Yes | No
+  lat            Float?
+  lng            Float?
+  geoQuery       String?
+  geoLabel       String?
+  photos         IlPhoto[]
   brochure       Bytes?
   brochureType   String?
   brochureName   String?
@@ -880,6 +913,11 @@ model IlHouse {
   poolSqm         Float?
   pendingApproval Boolean   @default(false) // came in by email or WhatsApp with data missing
   extra           String?   // JSON answers to Required Items List questions that have no field of their own
+  lat             Float?
+  lng             Float?
+  geoQuery        String?
+  geoLabel        String?
+  photos          IlPhoto[]
   source          String?
   sourceMessageId String?
   floorplan       Bytes?

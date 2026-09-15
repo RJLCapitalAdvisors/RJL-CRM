@@ -50,7 +50,8 @@ function matchLine<T>(line: string, pool: T[], labelsOf: (t: T) => string[]): T 
       for (const w of L) if (P.has(w)) hit++;
       const union = new Set([...L, ...P]).size;
       const jaccard = hit / union;
-      const contained = hit === Math.min(L.size, P.size) && Math.min(L.size, P.size) >= 2;
+      const smaller = Math.min(L.size, P.size);
+      const contained = hit === smaller && (smaller >= 2 || jaccard >= 0.5);
       const score = jaccard >= 0.6 || contained ? jaccard + (contained ? 0.5 : 0) : 0;
       if (score > bestScore) { bestScore = score; best = it; }
     }

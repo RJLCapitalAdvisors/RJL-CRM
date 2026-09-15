@@ -112,13 +112,13 @@ export function HouseForm({ h = {}, fx, projects = [], action, autosave = false,
           <NumberInput name="internalSqm" defaultValue={h.internalSqm} onValue={setInternal} />
         </Row>
         <Calc label="Internal square feet" value={internal != null ? sqft(internal) : dash} />
-        <MirpasotFields count={h.mirpesetCount} sqm={h.mirpesetSqm} directions={parseJsonList(h.mirpesetDirection)} mirpasot={parseMirpasot(h.mirpasot)} onTotal={setMirpeset} showPool={false} />
+        <MirpasotFields count={h.mirpesetCount} sqm={h.mirpesetSqm} directions={parseJsonList(h.mirpesetDirection)} mirpasot={parseMirpasot(h.mirpasot)} onTotal={setMirpeset} />
         <Row label="Migrash size (m²)" hint="The plot the house sits on.">
           <NumberInput name="migrashSqm" defaultValue={h.migrashSqm} onValue={setMigrash} />
         </Row>
         <Calc label="Migrash in dunam" value={migrash != null ? `${(migrash / 1000).toLocaleString("en-US", { maximumFractionDigits: 3 })} dunam` : dash} hint="1 dunam = 1,000 m²" />
         <Calc label="Migrash in acres" value={migrash != null ? `${(migrash * ACRES_PER_SQM).toLocaleString("en-US", { maximumFractionDigits: 3 })} acres` : dash} hint="1 acre = 4,046.86 m²" />
-        <Row label="Pool?">
+        <Row label="Private pool?">
           <Select name="housePool" value={pool} options={["Yes", "No"]} onChange={setPool} />
         </Row>
         {pool === "Yes" && (

@@ -1,4 +1,8 @@
 import Link from "next/link";
+import { PhotosWindow } from "@/components/il-photos";
+import { IlSummaryCard } from "@/components/il-summary-card";
+import { IlMapCard } from "@/components/il-map-card";
+import { projectSummary } from "@/lib/israel-summary";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
@@ -43,6 +47,8 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
     usdIls(),
   ]);
   if (!p) notFound();
+  const full = (await prisma.ilProject.findUnique({ where: { id }, omit: { brochure: true }, include: { developer: { select: { name: true } }, photos: { select: { id: true, name: true }, orderBy: { createdAt: "asc" } }, _count: { select: { apartments: true, houses: true } } } }))!;
+  const summary = projectSummary(full as unknown as Record<string, unknown>, full.developer?.name ?? null, full._count, [full.brochureType ? "the brochure" : "", full.photos.length ? "pictures" : ""].filter(Boolean));
   await loadIlRequired();
   const missing = projectMissing(p as unknown as Record<string, unknown>);
 
@@ -89,6 +95,9 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
             lines={[<span key="b">{[p.totalUnits ? `${p.totalUnits} units` : null, p.stories ? `${p.stories} stories` : null, p.parkingSpaces ? `${p.parkingSpaces} parking spaces` : null, p.completionDate].filter(Boolean).join(" · ")}</span>]}
             actions={
               <>
+                <Link href={`/israel/send/projects/${p.id}`} className="btn-primary">
+                  Send project
+                </Link>
                 <Link href={`/israel/apartments/new?projectId=${p.id}`} className="btn-secondary">
                   Add apartment
                 </Link>
@@ -130,19 +139,15 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
         </>
       }
       center={
-        <IlActivityLog
+        <>
+          <PhotosWindow kind="projects" id={p.id} photos={full.photos} />
+          <IlSummaryCard email={summary} sendHref={`/israel/send/projects/${p.id}`} notes={[]} />
+          <IlActivityLog
           activities={activities}
           notes={p.notes}
           empty={`No activity yet. Emails with ${p.developer?.name ?? "the developer"}, with the brokers and sellers of units here, or naming "${p.name}" will appear here.`}
-          form={
-            <form action={addIlNote.bind(null, { projectId: p.id })} className="flex gap-2 border-b border-line p-3">
-              <input name="body" placeholder="Log a note…" className="input" />
-              <button className="btn-secondary" type="submit">
-                Add
-              </button>
-            </form>
-          }
         />
+        </>
       }
       right={
         <>
@@ -159,6 +164,7 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
               </div>
             )}
           </AssocCard>
+          <IlMapCard kind="projects" id={p.id} row={full} />
           <FloorplanWindow apartmentId={p.id} endpoint={`/api/israel/projects/${p.id}/brochure`} title="Brochure" compact has={Boolean(p.brochureType)} type={p.brochureType} name={p.brochureName} version={p.updatedAt.getTime()} />
           <AssocCard title="Apartments in this project" count={p.apartments.length} addHref={`/israel/apartments/new?projectId=${p.id}`} empty="No apartments listed in this project yet.">
             {p.apartments.map((a) => (

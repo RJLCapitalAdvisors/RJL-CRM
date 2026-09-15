@@ -123,6 +123,11 @@ export async function createDraft(mailbox: string, msg: { subject: string; toRec
   });
 }
 
+/** Send a draft as it stands (attachments already added). */
+export async function sendDraft(mailbox: string, messageId: string) {
+  await graph(`/users/${q(mailbox)}/messages/${q(messageId)}/send`, { method: "POST" });
+}
+
 export async function updateDraftBody(mailbox: string, messageId: string, html: string) {
   await graph(`/users/${q(mailbox)}/messages/${q(messageId)}`, { method: "PATCH", body: JSON.stringify({ body: { contentType: "html", content: html } }) });
 }

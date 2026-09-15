@@ -16,7 +16,7 @@ const STORIES = Array.from({ length: 100 }, (_, k) => String(k + 1));
 export type IlApartmentForm = Partial<{
   name: string; apartmentType: string | null; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
   internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpasot: string | null; levels: number | null; ceilingCms: string | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean;
-  priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null;
+  priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null; pool: string | null; poolSqm: number | null;
 }>;
 
 /** The apartment ticket, laid out like a deal ticket: one straight column of fields with the conversions computed beside them. */
@@ -41,6 +41,7 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
   const [machsan, setMachsan] = useState<number | null>(a.machsanSqm ?? null);
   const [price, setPrice] = useState<number | null>(a.priceNis ?? null);
   const [sellerType, setSellerType] = useState(a.sellerType ?? "");
+  const [pool, setPool] = useState(a.pool ?? "");
   const perSqft = usdPerSqft(price, internal, mirpeset, fx?.ilsPerUsd);
   const ppm = pricePerMeter(price, internal, mirpeset);
   const usd = (v: number | null) => (v != null && fx ? usdFmt(v / fx.ilsPerUsd) : null);
@@ -119,6 +120,14 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         </Row>
         <Calc label="Internal square feet" value={internal != null ? sqft(internal) : dash} />
         <MirpasotFields count={a.mirpesetCount} sqm={a.mirpesetSqm} directions={mDirs} mirpasot={parseMirpasot(a.mirpasot)} onTotal={setMirpeset} noun={garden ? "Garden" : "Mirpeset"} plural={garden ? "gardens" : "mirpasot"} />
+        <Row label="Private pool?">
+          <Select name="pool" value={pool} options={["Yes", "No"]} onChange={setPool} />
+        </Row>
+        {pool === "Yes" && (
+          <Row label="Pool size (m²)">
+            <NumberInput name="poolSqm" defaultValue={a.poolSqm ?? null} />
+          </Row>
+        )}
         {levelCount > 1 ? (
           Array.from({ length: levelCount }, (_, k) => (
             <div key={k} className="contents">

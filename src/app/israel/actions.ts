@@ -31,9 +31,8 @@ function mirpasotFrom(fd: FormData) {
   const count = i(fd, "mirpesetCount");
   if (!count || count <= 1) {
     const sukka = s(fd, "sukka");
-    const pool = s(fd, "pool");
-    const single = { sqm: n(fd, "mirpesetSqm"), direction: fd.getAll("mirpesetDirection").map(String).filter(Boolean), sukka, sukkaSqm: sukka && sukka !== "No" ? n(fd, "sukkaSqm") : null, pool, poolSqm: pool === "Yes" ? n(fd, "poolSqm") : null };
-    return { mirpesetCount: count ?? (single.sqm != null ? 1 : null), mirpesetSqm: single.sqm, mirpesetDirection: JSON.stringify(single.direction), mirpasot: JSON.stringify(single.sqm != null || single.direction.length || single.sukka || single.pool ? [single] : []) };
+    const single = { sqm: n(fd, "mirpesetSqm"), direction: fd.getAll("mirpesetDirection").map(String).filter(Boolean), sukka, sukkaSqm: sukka && sukka !== "No" ? n(fd, "sukkaSqm") : null, pool: null, poolSqm: null };
+    return { mirpesetCount: count ?? (single.sqm != null ? 1 : null), mirpesetSqm: single.sqm, mirpesetDirection: JSON.stringify(single.direction), mirpasot: JSON.stringify(single.sqm != null || single.direction.length || single.sukka ? [single] : []) };
   }
   const sizes = fd.getAll("mirpasotSqm").map((v) => {
     const x = Number(String(v).replace(/[^0-9.]/g, ""));
@@ -41,8 +40,7 @@ function mirpasotFrom(fd: FormData) {
   });
   const items = Array.from({ length: Math.min(count, 3) }, (_, k) => {
     const sukka = s(fd, `mirpasotSukka_${k}`);
-    const pool = s(fd, `mirpasotPool_${k}`);
-    return { sqm: sizes[k] ?? null, direction: fd.getAll(`mirpasotDir_${k}`).map(String).filter(Boolean), sukka, sukkaSqm: sukka && sukka !== "No" ? n(fd, `mirpasotSukkaSqm_${k}`) : null, pool, poolSqm: pool === "Yes" ? n(fd, `mirpasotPoolSqm_${k}`) : null };
+    return { sqm: sizes[k] ?? null, direction: fd.getAll(`mirpasotDir_${k}`).map(String).filter(Boolean), sukka, sukkaSqm: sukka && sukka !== "No" ? n(fd, `mirpasotSukkaSqm_${k}`) : null, pool: null, poolSqm: null };
   });
   const total = items.reduce((a, m) => a + (m.sqm ?? 0), 0);
   const dirs = [...new Set(items.flatMap((m) => m.direction))];
@@ -75,6 +73,8 @@ function apartmentData(fd: FormData) {
     buildingUnits: i(fd, "buildingUnits"),
     internalSqm: n(fd, "internalSqm"),
     ...mirpasotFrom(fd),
+    pool: s(fd, "pool"),
+    poolSqm: s(fd, "pool") === "Yes" ? n(fd, "poolSqm") : null,
     // one level keeps the single ceiling; a duplex or triplex stores one per level and the first stands in for the single field
     levels,
     ceilingCms: JSON.stringify(levels && levels > 1 ? ceilings : []),
@@ -332,6 +332,7 @@ function projectData(fd: FormData) {
     parkingSpaces: i(fd, "parkingSpaces"),
     stories: i(fd, "stories"),
     completionDate: s(fd, "completionDate"),
+    pool: s(fd, "pool"),
     description: s(fd, "description"),
   };
 }
@@ -383,4 +384,17 @@ export async function saveIlExtra(kind: "projects" | "apartments" | "houses", id
   else await prisma.ilProject.update({ where: { id }, data });
   revalidatePath(`/israel/${kind}/${id}`);
   revalidatePath("/israel");
+}
+
+/** Deals mentioned: out of sight for a week, then back on the dashboard (Dismiss is for good). */
+export async function snoozeIlMention(id: string) {
+  await prisma.ilDeal.update({ where: { id }, data: { snoozedUntil: new Date(Date.now() + 7 * 86_400_000) } });
+  revalidatePath("/israel");
+}
+
+/** The map card's "check again": forget the pin so the next page load looks the address up afresh. */
+export async function recheckIlLocation(kind: "apartments" | "houses" | "projects", id: string) {
+  const { forgetGeo } = await import("@/lib/geocode");
+  await forgetGeo(kind, id);
+  revalidatePath(`/israel/${kind}/${id}`);
 }
