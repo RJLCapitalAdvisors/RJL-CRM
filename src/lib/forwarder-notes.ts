@@ -3,7 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { isSponsorSide } from "@/lib/report-guard";
-import { DEAL_STAGES } from "@/lib/taxonomy";
+import { ASSET_CLASSES, DEAL_STAGES } from "@/lib/taxonomy";
 import { bestContactForCompany } from "@/lib/engagement";
 import { logActivity } from "@/lib/activity";
 
@@ -17,6 +17,8 @@ import { logActivity } from "@/lib/activity";
 const Out = z.object({
   stage: z.enum([...DEAL_STAGES, ""]).describe("Pipeline stage the note asks for, mapped to the closest stage. 'intro made' / 'introduced to the sponsor' -> Intro To Capital Made; 'engagement letter sent/signed' -> that stage; 'underwriting' -> Deal Underwritten; 'taken out' / 'in market' -> Deal Taken To Market. Empty if the note does not say."),
   investorsIntroduced: z.array(z.string()).describe("Names of investor groups the note says were already introduced to the sponsor / copied on the deal (e.g. 'UFUND')."),
+  strategy: z.enum(["Acquisitions", "Development", ""]).describe("When the note says what kind of deal this is: 'acquisition', 'existing asset', 'recap', 'refi' -> Acquisitions; 'development', 'ground-up', 'construction' -> Development. Empty when the note does not say (Jonathan, Sep 16: 'This is an acquisition. Please treat it as such.' must land)."),
+  assetClass: z.enum([...ASSET_CLASSES, ""]).describe("When the note names the property type ('this is retail', 'a multifamily deal'), the matching listed value; otherwise empty."),
   note: z.string().describe("The instruction in the forwarder's words, trimmed. Empty if there was no note."),
 });
 
@@ -69,9 +71,11 @@ export async function applyForwarderInstructions(dealId: string, bodyText: strin
     where: { id: dealId },
     data: {
       ...(stage && STAGE_ORDER.indexOf(stage) > STAGE_ORDER.indexOf(deal.stage) ? { stage } : {}),
+      ...(out.strategy ? { strategy: out.strategy } : {}), // the teammate's word beats the extractor's guess
+      ...(out.assetClass ? { assetClass: out.assetClass } : {}),
       details: JSON.stringify({ ...details, forwarderNote: out.note || note }),
     },
   });
-  if (out.note || stage || introduced.length) await logActivity({ type: "NOTE", body: `Forwarder's instructions: ${out.note || note}${stage ? ` -> ${stage}` : ""}${introduced.length ? ` -> ${introduced.join(", ")} marked Intro Made` : ""}`, dealId, companyId: deal.sponsorCompanyId });
+  if (out.note || stage || introduced.length || out.strategy || out.assetClass) await logActivity({ type: "NOTE", body: `Forwarder's instructions: ${out.note || note}${stage ? ` -> ${stage}` : ""}${out.strategy ? ` -> ${out.strategy}` : ""}${out.assetClass ? ` -> ${out.assetClass}` : ""}${introduced.length ? ` -> ${introduced.join(", ")} marked Intro Made` : ""}`, dealId, companyId: deal.sponsorCompanyId });
   return { stage, introduced };
 }

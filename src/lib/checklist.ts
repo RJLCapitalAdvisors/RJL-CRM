@@ -73,9 +73,12 @@ export function labelFor(key: string, strategy?: string | null) {
 
 /** Items that apply to a deal given its strategy and asset class. Unknown strategy = show everything. */
 export function applicableItems(strategy: string | null | undefined, assetClass: string | null | undefined): ChecklistItem[] {
+  // no strategy on the ticket yet: the acquisitions list, never both. Development only when someone said so
+  // (Bethesda, Sep 16: a null strategy handed the sponsor the development questions).
+  const strat = strategy || "Acquisitions";
   return uniqueChecklist(
     CHECKLIST.filter((it) => {
-      if (strategy && !it.strategy.includes(strategy as "Acquisitions" | "Development")) return false;
+      if (!it.strategy.includes(strat as "Acquisitions" | "Development")) return false;
       if (assetClass && it.onlyAssetClasses && !it.onlyAssetClasses.includes(assetClass)) return false;
       if (assetClass && it.excludeAssetClasses?.includes(assetClass)) return false;
       return true;
