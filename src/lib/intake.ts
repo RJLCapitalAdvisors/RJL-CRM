@@ -172,10 +172,10 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
 /** House rules applied after extraction, whichever extractor ran. */
 /**
  * The requested equity amount is always a round number, the way it is said out loud: "$12MM", "$3.5MM". Whole
- * millions from $5MM up, half millions between $1MM and $5MM, hundred thousands below that (Jonathan, Sep 16).
+ * millions from $5MM up, half millions below (Jonathan's underwriting rules, Sep 16).
  */
 export function roundAsk(amount: number): number {
-  const step = amount >= 5_000_000 ? 1_000_000 : amount >= 1_000_000 ? 500_000 : 100_000;
+  const step = amount >= 5_000_000 ? 1_000_000 : 500_000;
   return Math.max(step, Math.round(amount / step) * step);
 }
 
