@@ -68,7 +68,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
     <>
       <PageHeader
         title={`Send ${name}`}
-        subtitle={`${firms.filter((f) => f.status <= 1).length} firms to send · ${firms.filter((f) => f.status >= 2).length} already sent`}
+        subtitle={`${firms.filter((f) => f.status <= 1).length} firms not yet sent · ${firms.filter((f) => f.status >= 2).length} sent earlier (turn one on with + to send it the current email again)`}
         actions={
           <>
             <SendToOne dealId={deal.id} />

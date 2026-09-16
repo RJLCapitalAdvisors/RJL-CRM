@@ -41,7 +41,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   const [chosenFiles, setChosenFiles] = useState<Set<string>>(new Set(saved?.chosenFiles?.filter((k) => files.some((f) => f.key === k)) ?? files.slice(0, 6).map((f) => f.key))); // the FAQ, OM and model first; a whole data room is not the default
   const [templateId, setTemplateId] = useState(saved?.templateId && templates.some((t) => t.id === saved.templateId) ? saved.templateId : defaultTemplateId);
   const [pickOpen, setPickOpen] = useState(!saved?.templateId); // the template list is open until one has been chosen for this deal
-  const savedInclude = saved?.include?.filter((id) => firms.some((f) => f.rowId === id && f.status <= 1)) ?? [];
+  const savedInclude = saved?.include?.filter((id) => firms.some((f) => f.rowId === id)) ?? [];
   const [include, setInclude] = useState<Set<string>>(new Set(savedInclude.length ? savedInclude : firms.filter((f) => f.status <= 1).map((f) => f.rowId)));
   const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((saved?.to?.[f.rowId] ?? (f.extraContactIds.length ? [f.primaryContactId, ...f.extraContactIds] : f.defaultContactIds)).filter((id) => f.people.some((p) => p.id === id)))])));
   const [general, setGeneral] = useState<Draft | null>(saved?.general ?? null);
@@ -162,7 +162,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
 
   const itemsToSend = () =>
     firms
-      .filter((f) => include.has(f.rowId) && f.status <= 1)
+      .filter((f) => include.has(f.rowId))
       .map((f) => {
         const d = draftFor(f);
         return { rowId: f.rowId, toContactIds: [...(to[f.rowId] ?? [])], subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() };
@@ -341,14 +341,14 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
             </button>
           </div>
           {firms.map((f) => {
-            const on = include.has(f.rowId) && f.status <= 1;
+            const on = include.has(f.rowId);
             const chosen = f.people.filter((p) => (to[f.rowId] ?? new Set()).has(p.id));
             const res = results[f.rowId];
             const selected = current === f.rowId;
             return (
               <div key={f.rowId} className="relative">
                 <div className={`${pill(selected, on)} ${res?.ok ? "border-emerald-500" : ""}`}>
-                  <button type="button" className="flex items-center gap-1.5" onClick={() => setCurrent(f.rowId)} title={f.status >= 2 ? "Already sent" : "Show this firm's email"}>
+                  <button type="button" className="flex items-center gap-1.5" onClick={() => setCurrent(f.rowId)} title={f.status >= 2 ? "Sent earlier; the + sends it again with the current email" : "Show this firm's email"}>
                     <CompanyLogo domain={f.domain} name={f.company} size={18} />
                     <span className="font-medium">{f.company}</span>
                     <span className="text-xs text-muted">{chosen.length ? chosen.map((p) => p.name.split(" ")[0]).join(", ") : "nobody picked"}</span>
@@ -356,9 +356,9 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
                     {res?.ok && <span className="text-xs text-emerald-700">sent</span>}
                     {res?.pending && <span className="text-xs text-sky-700">queued</span>}
                     {res && !res.ok && !res.pending && <span className="text-xs text-red-700" title={res.error}>failed</span>}
-                    {f.status >= 2 && !res && <span className="text-xs text-muted">sent earlier</span>}
+                    {f.status >= 2 && !res && <span className="text-xs text-muted">{on ? "sending again" : "sent earlier"}</span>}
                   </button>
-                  {f.status <= 1 && (
+                  {(
                     <>
                       <button type="button" className="rounded-full px-1 text-xs text-muted hover:bg-cream" onClick={() => setPicker(picker === f.rowId ? null : f.rowId)} title="Pick who at this firm gets it">
                         ▾
