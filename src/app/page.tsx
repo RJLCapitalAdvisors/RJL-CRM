@@ -202,7 +202,7 @@ export default async function Dashboard() {
                     </div>
                   </div>
                   <div className="act-col">
-                    <DraftButton block label="Handle" action={openReportDraftAction.bind(null, r.id)} title="Reply all on your latest exchange with the sponsor, the fresh progress report attached" />
+                    <DraftButton block label={r.draftOpen ? "Open" : "Handle"} action={openReportDraftAction.bind(null, r.id)} title={r.draftOpen ? "The draft is in your Outlook Drafts; this opens it (with today's report if the tracker moved)" : "Reply all on your latest exchange with the sponsor, the fresh progress report attached"} />
                     <ItemForm action={markReportSentAction.bind(null, r.id)} className="btn-grey act" title="You already sent it another way; restart the clock">Sent already</ItemForm>
                     <ItemForm action={markDealLostFromLaunchAction.bind(null, r.id)} className="act-lost" title="Clears the deal from the pipeline and the dashboard (intros to reconsider stay)">Mark as deal lost</ItemForm>
                   </div>

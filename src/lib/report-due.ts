@@ -27,7 +27,7 @@ function lastThursdaySlot(now = new Date()): Date {
   return new Date(slot);
 }
 
-export type ReportDue = { id: string; name: string; sponsorName: string | null; groups: number; changedSince: number; lastSentAt: Date | null; reason: string };
+export type ReportDue = { id: string; name: string; sponsorName: string | null; groups: number; changedSince: number; lastSentAt: Date | null; reason: string; draftOpen: boolean };
 
 /** Deals whose progress report changed since it was last sent, and whose next send is due. */
 export async function reportsDue(): Promise<ReportDue[]> {
@@ -40,15 +40,19 @@ export async function reportsDue(): Promise<ReportDue[]> {
   const out: ReportDue[] = [];
   for (const d of deals) {
     if (!reportQualifies(d.name, d.investors) || !reportActive(d.reportInactiveAt, d.investors)) continue; // intros and Not active reports are nobody's business here
-    if (d.reportDraftAt && now.getTime() - d.reportDraftAt.getTime() < 2 * DAY) continue; // a report draft is open in Outlook; wait for it to go
+    // a report draft is open in Outlook: the row stays, with Open instead of Handle, until the draft goes (Sep 16: hiding it left
+    // Jonathan with a draft he could not find; the row vanished the moment Handle finished)
+    const draftOpen = Boolean(d.reportDraftAt && now.getTime() - d.reportDraftAt.getTime() < 2 * DAY);
     const changed = lastChange.get(d.id);
-    if (!changed) continue;
-    if (d.reportSentAt && changed <= d.reportSentAt) continue; // nothing new to report
     const everyOtherDay = !d.reportSentAt || now.getTime() - d.reportSentAt.getTime() >= 2 * DAY;
     const thursdayDue = now >= thursday && (!d.reportSentAt || d.reportSentAt < thursday);
-    if (!everyOtherDay && !thursdayDue) continue;
+    if (!draftOpen) {
+      if (!changed) continue;
+      if (d.reportSentAt && changed <= d.reportSentAt) continue; // nothing new to report
+      if (!everyOtherDay && !thursdayDue) continue;
+    }
     const changedSince = d.reportSentAt ? await prisma.dealInvestor.count({ where: { dealId: d.id, updatedAt: { gt: d.reportSentAt } } }) : d._count.investors;
-    out.push({ id: d.id, name: d.propertyName ?? d.name, sponsorName: d.sponsorName, groups: d._count.investors, changedSince, lastSentAt: d.reportSentAt, reason: thursdayDue && !everyOtherDay ? "Thursday 4:30 report" : d.reportSentAt ? `${Math.floor((now.getTime() - d.reportSentAt.getTime()) / DAY)} days since the last report` : "never sent" });
+    out.push({ draftOpen, id: d.id, name: d.propertyName ?? d.name, sponsorName: d.sponsorName, groups: d._count.investors, changedSince, lastSentAt: d.reportSentAt, reason: draftOpen ? "draft waiting in your Outlook Drafts" : thursdayDue && !everyOtherDay ? "Thursday 4:30 report" : d.reportSentAt ? `${Math.floor((now.getTime() - d.reportSentAt.getTime()) / DAY)} days since the last report` : "never sent" });
   }
   return out.sort((a, b) => b.changedSince - a.changedSince);
 }
