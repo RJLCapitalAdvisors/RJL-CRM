@@ -1,4 +1,5 @@
 import { renderTemplate, toHtml, toText, UNSUBSCRIBE_FOOTER, type MergeContext } from "@/lib/merge";
+import { FONT, outlookHtml } from "@/lib/email-html";
 import { unsubscribeUrl } from "@/lib/tokens";
 
 type CampaignLike = { mode: string; subject: string; bodyHtml: string; fromName: string | null; replyTo: string | null; deal: Record<string, unknown> | null };
@@ -26,7 +27,7 @@ export function renderForRecipient(campaign: CampaignLike, r: RecipientLike) {
   let body = r.bodyOverride ?? campaign.bodyHtml;
   if (campaign.mode === "BLAST" && !body.includes("{{unsubscribeUrl}}")) body += `\n${UNSUBSCRIBE_FOOTER}`;
   const subject = renderTemplate(campaign.subject, ctx);
-  const html = toHtml(renderTemplate(body, ctx));
+  const html = `<div style="${FONT}">${outlookHtml(toHtml(renderTemplate(body, ctx)))}</div>`;
   const text = toText(renderTemplate(body, ctx));
   return { subject, html, text };
 }
