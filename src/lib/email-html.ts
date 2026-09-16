@@ -27,6 +27,15 @@ export function cleanTemplateHtml(html: string): string {
     .replace(/<br\s+class="hs-trailingbreak"\s*\/?>/gi, "<br>")
     .replace(/<p style="margin:\s*0;?">/gi, "<p>")
     .replace(/&nbsp;/g, " ");
+  // artifacts of the browser's own font commands: a <strong> stretched around a list bolds every value in it
+  s = s
+    .replace(/<(strong|b)(?:\s[^>]*)?>\s*(<(?:ul|ol)\b)/gi, "$2")
+    .replace(/(<\/(?:ul|ol)>)\s*<\/(?:strong|b)>/gi, "$1")
+    .replace(/<(strong|b)\s+style="[^"]*">/gi, "<$1>")
+    .replace(/\sstyle="([^"]*)"/gi, (_m, v: string) => {
+      const kept = v.replace(/(?:^|;)\s*font-weight:\s*(?:bolder|normal|400)\s*(?=;|$)/gi, "").replace(/^;+|;+$/g, "").trim();
+      return kept ? ` style="${kept}"` : "";
+    });
   // bare spans (the HubSpot ones, now styleless) unwrap from the inside out
   let prev = "";
   while (prev !== s) {

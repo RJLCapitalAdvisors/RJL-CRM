@@ -259,25 +259,32 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   const SIZES = ["9", "10", "11", "12", "14", "16", "18"];
   const [fontName, setFontName] = useState("Calibri");
   const [fontSize, setFontSize] = useState("11");
+  // the paragraphs and bullets the selection touches (the one at the caret when nothing is selected); styling those
+  // leaves the bold lead-ins and the rest of the inline markup exactly as the template had them
+  const blocksInSelection = (): HTMLElement[] => {
+    const root = editor.current;
+    const sel = window.getSelection();
+    if (!root || !sel || sel.rangeCount === 0) return [];
+    const range = sel.getRangeAt(0);
+    const blocks = [...root.querySelectorAll<HTMLElement>("p, li, h1, h2, h3, h4")].filter((el) => range.intersectsNode(el) && !el.querySelector("p, li"));
+    if (blocks.length) return blocks;
+    let node: Node | null = range.startContainer;
+    while (node && node !== root) {
+      if (node instanceof HTMLElement && /^(P|LI|DIV|H[1-6])$/.test(node.tagName)) return [node];
+      node = node.parentNode;
+    }
+    return root ? [root] : [];
+  };
   const applyFontName = (name: string) => {
     setFontName(name);
     editor.current?.focus();
-    document.execCommand("styleWithCSS", false, "true");
-    document.execCommand("fontName", false, name);
-    document.execCommand("styleWithCSS", false, "false");
+    for (const el of blocksInSelection()) el.style.fontFamily = `${name}, Arial, sans-serif`;
     commitEdit();
   };
   const applyFontSize = (pt: string) => {
     setFontSize(pt);
     editor.current?.focus();
-    document.execCommand("styleWithCSS", false, "false");
-    document.execCommand("fontSize", false, "7");
-    editor.current?.querySelectorAll('font[size="7"]').forEach((f) => {
-      const span = document.createElement("span");
-      span.style.fontSize = `${pt}pt`;
-      span.innerHTML = f.innerHTML;
-      f.replaceWith(span);
-    });
+    for (const el of blocksInSelection()) el.style.fontSize = `${pt}pt`;
     commitEdit();
   };
   // the toolbar shows the font and size at the caret
