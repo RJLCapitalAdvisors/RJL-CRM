@@ -133,8 +133,47 @@ export function renderTemplate(text: string, ctx: MergeContext): string {
   });
 }
 
-/** Turn a plain-text body into simple HTML; pass HTML through unchanged. */
+/**
+ * The template editor stores one <div> per line (what contentEditable produces) and an empty <div><br></div> for
+ * a blank line. In the email those become paragraphs: each non-empty top-level div is a <p>, empty ones are
+ * dropped (the paragraph margin is the spacing). Anything that is not editor output passes through untouched.
+ */
+export function editorBlocksToParagraphs(html: string): string {
+  const t = html.trim();
+  if (!/^<div[\s>]/i.test(t)) return html;
+  const blocks: string[] = [];
+  let depth = 0, start = -1;
+  const re = /<\/?div\b[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  let last = 0;
+  while ((m = re.exec(t))) {
+    const closing = m[0].startsWith("</");
+    if (!closing) {
+      if (depth === 0) {
+        if (m.index > last && t.slice(last, m.index).trim()) blocks.push(t.slice(last, m.index)); // stray text between blocks
+        start = m.index + m[0].length;
+      }
+      depth++;
+    } else {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        blocks.push(t.slice(start, m.index));
+        last = m.index + m[0].length;
+        start = -1;
+      }
+    }
+  }
+  if (last < t.length && t.slice(last).trim()) blocks.push(t.slice(last));
+  return blocks
+    .map((b) => b.replace(/^(\s|&nbsp;|<br\s*\/?>)+|(\s|&nbsp;|<br\s*\/?>)+$/gi, ""))
+    .filter((b) => b.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, "").trim() || /<(img|ul|ol|table)/i.test(b))
+    .map((b) => (/^<(p|ul|ol|table|h[1-6])\b/i.test(b) ? b : `<p>${b}</p>`))
+    .join("\n");
+}
+
+/** Turn a plain-text body into simple HTML; editor output into paragraphs; other HTML passes through unchanged. */
 export function toHtml(body: string): string {
+  if (/^\s*<div[\s>]/i.test(body)) return editorBlocksToParagraphs(body);
   if (/<[a-z][\s\S]*>/i.test(body)) return body;
   const esc = body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return esc

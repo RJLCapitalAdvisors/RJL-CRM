@@ -28,6 +28,7 @@ const GENERAL = "general";
 export function SendClient({ dealId, firms, templates, defaultTemplateId, files, saved, team = [], initialLaunch = null }: { dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[]; initialLaunch?: LaunchStatus | null }) {
   const [chosenFiles, setChosenFiles] = useState<Set<string>>(new Set(saved?.chosenFiles?.filter((k) => files.some((f) => f.key === k)) ?? files.slice(0, 6).map((f) => f.key))); // the FAQ, OM and model first; a whole data room is not the default
   const [templateId, setTemplateId] = useState(saved?.templateId && templates.some((t) => t.id === saved.templateId) ? saved.templateId : defaultTemplateId);
+  const [pickOpen, setPickOpen] = useState(!saved?.templateId); // the template list is open until one has been chosen for this deal
   const [include, setInclude] = useState<Set<string>>(new Set(saved?.include?.filter((id) => firms.some((f) => f.rowId === id && f.status <= 1)) ?? firms.filter((f) => f.status <= 1).map((f) => f.rowId)));
   const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((saved?.to?.[f.rowId] ?? (f.extraContactIds.length ? [f.primaryContactId, ...f.extraContactIds] : f.defaultContactIds)).filter((id) => f.people.some((p) => p.id === id)))])));
   const [general, setGeneral] = useState<Draft | null>(saved?.general ?? null);
@@ -254,13 +255,6 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
           </span>
           <div className="flex items-center gap-3">
             {saveLabel && <span className={saveState === "dirty" ? "text-amber-700" : "text-muted"}>{saveLabel}</span>}
-            <select value={templateId} onChange={(e) => { setTemplateId(e.target.value); setDrafts({}); }} className="input w-64 py-1 text-xs" title="Template">
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -334,6 +328,40 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
             <span className="text-xs text-muted">{f.size >= 1_000_000 ? `${(f.size / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1000))} KB`}</span>
           </label>
         ))}
+      </div>
+
+      {/* the template: the General email is that exact template with the deal's facts filled in */}
+      <div className="card px-4 py-2.5 text-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-muted">Template</span>
+          <span className="font-medium">{templates.find((t) => t.id === templateId)?.name ?? "none chosen yet"}</span>
+          <button type="button" className="btn-secondary px-2.5 py-1 text-xs" onClick={() => setPickOpen((o) => !o)}>
+            {pickOpen ? "Close" : "Change template"}
+          </button>
+          <span className="text-xs text-muted">The email below is this template with the deal filled in; every firm's copy follows it.</span>
+          <a href="/templates" className="ml-auto text-xs text-sky-700 hover:underline">
+            Edit templates
+          </a>
+        </div>
+        {pickOpen && (
+          <div className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+            {templates.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  setTemplateId(t.id);
+                  setDrafts({});
+                  setPickOpen(false);
+                }}
+                className={`rounded-md border px-3 py-2 text-left text-sm ${t.id === templateId ? "border-sky-600 bg-sky font-medium" : "border-line bg-paper hover:bg-cream"}`}
+              >
+                {t.name}
+              </button>
+            ))}
+            {templates.length === 0 && <div className="text-xs text-muted">No deal templates yet. Add one under Templates.</div>}
+          </div>
+        )}
       </div>
 
       {/* the email: General (with the ask-the-CRM box alongside), or the selected firm's */}

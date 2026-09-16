@@ -77,7 +77,8 @@ export type SendItem = { rowId: string; toContactIds: string[]; openingLine: str
 export type SendResult = { rowId: string; firm: string; to: string[]; result: FollowUpResult };
 
 function stripTemplateSignoff(html: string) {
-  return html.replace(/<p>\s*\{\{sender\.name\}\}\s*<br\s*\/?>\s*RJL Capital Advisors\s*<\/p>\s*$/i, "").replace(/<p>\s*\{\{sender\.name\}\}\s*<br\s*\/?>\s*RJL Capital Advisors\s*<\/p>/i, "");
+  // the Outlook signature carries the name; a "{{sender.name}} / RJL Capital Advisors" sign-off typed into the template would double it
+  return html.replace(/<(?:p|div)>\s*\{\{sender\.name\}\}\s*<br\s*\/?>\s*RJL Capital Advisors\s*<\/(?:p|div)>\s*$/i, "").replace(/<(?:p|div)>\s*\{\{sender\.name\}\}\s*<br\s*\/?>\s*RJL Capital Advisors\s*<\/(?:p|div)>/i, "");
 }
 
 /** Render subject and HTML body for one recipient, house style, ready for Outlook. */
@@ -86,7 +87,7 @@ export async function renderDealEmail(opts: { templateId: string; deal: Record<s
   const ctx: MergeContext = { contact: opts.contact, company: opts.company, deal: opts.deal, sender: { name: opts.senderName }, unsubscribeUrl: unsubscribeUrl(opts.contact.id), openingLine: opts.openingLine };
   const subject = renderTemplate(tpl.subject, ctx);
   const body = renderTemplate(stripTemplateSignoff(opts.bodyOverride ?? tpl.bodyHtml), ctx);
-  const html = `<div style="${FONT}">${toHtml(body).replace(/<p>/g, `<p style="margin:0 0 10pt 0;${FONT}">`)}${await signatureFor(opts.mailbox)}</div>`;
+  const html = `<div style="${FONT}">${toHtml(body).replace(/<p>/g, `<p style="margin:0 0 10pt 0;${FONT}">`).replace(/<(ul|ol)>/g, `<$1 style="margin:0 0 10pt 18pt;${FONT}">`)}${await signatureFor(opts.mailbox)}</div>`;
   return { subject, html, text: body };
 }
 
