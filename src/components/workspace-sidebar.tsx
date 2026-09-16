@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect } from "react";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks } from "lucide-react";
+import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks, BookOpen } from "lucide-react";
 import { NavLink } from "@/components/nav-link";
 import { DealContextNav } from "@/components/deal-context-nav";
 import { ApartmentContextNav } from "@/components/apartment-context-nav";
@@ -149,9 +149,11 @@ function SettingsSubnav() {
   const pathname = usePathname();
   if (!pathname.startsWith("/settings")) return null;
   const onUsers = pathname.startsWith("/settings/users");
+  const onRules = pathname.startsWith("/settings/underwriting");
   const items = [
-    { href: "/settings", label: "Settings", icon: Settings, on: !onUsers },
+    { href: "/settings", label: "Settings", icon: Settings, on: !onUsers && !onRules },
     { href: "/settings/users", label: "Users", icon: Users, on: onUsers },
+    { href: "/settings/underwriting", label: "Underwriting rules", icon: BookOpen, on: onRules },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">

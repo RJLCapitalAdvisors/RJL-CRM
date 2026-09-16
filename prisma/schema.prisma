@@ -498,6 +498,13 @@ model RequiredItem {
 
 /// Required Items Lists as windows: one bulleted list each, with a heading saying what it is for (RJL CA: Acquisitions or
 /// Development plus asset classes; RJL Israel: apartments or houses). The default windows cover whatever has no window.
+/// Key/value settings edited in the CRM. underwritingRules: the house rules the deals@ extractor reads (one per line).
+model Setting {
+  key       String   @id
+  value     String   @default("")
+  updatedAt DateTime @updatedAt
+}
+
 model RequiredList {
   id           String   @id @default(cuid())
   workspace    String   // CA | IL
