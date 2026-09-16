@@ -78,7 +78,7 @@ export type SendResult = { rowId: string; firm: string; to: string[]; result: Fo
 
 /** Templates imported from HubSpot carry <span style="font-size:14.6667px; font-family: sans-serif; color: rgb(0,0,0)"> wrappers; the email is Calibri 11 throughout, so those styles go. */
 function stripFontSpans(html: string) {
-  return html.replace(/<span style="[^"]*(?:font-size|font-family|color: rgb(0, 0, 0))[^"]*">/gi, "<span>");
+  return html.replace(/<span style="s*(?:color: rgb(0, 0, 0);|font-size: 14.6667px;|font-family: sans-serif;|font-size: 14.6667px; font-family: sans-serif;)s*">/gi, "<span>");
 }
 
 function stripTemplateSignoff(html: string) {

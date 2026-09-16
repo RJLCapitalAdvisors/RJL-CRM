@@ -254,6 +254,45 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
     }
   };
 
+  // font and size for the selected words (or what you type next). Size goes in as a span with a pt value, which Outlook honors; the browser's own size command only knows 1 to 7.
+  const FONTS = ["Calibri", "Arial", "Georgia", "Tahoma", "Times New Roman", "Verdana"];
+  const SIZES = ["9", "10", "11", "12", "14", "16", "18"];
+  const [fontName, setFontName] = useState("Calibri");
+  const [fontSize, setFontSize] = useState("11");
+  const applyFontName = (name: string) => {
+    setFontName(name);
+    editor.current?.focus();
+    document.execCommand("styleWithCSS", false, "true");
+    document.execCommand("fontName", false, name);
+    document.execCommand("styleWithCSS", false, "false");
+    commitEdit();
+  };
+  const applyFontSize = (pt: string) => {
+    setFontSize(pt);
+    editor.current?.focus();
+    document.execCommand("styleWithCSS", false, "false");
+    document.execCommand("fontSize", false, "7");
+    editor.current?.querySelectorAll('font[size="7"]').forEach((f) => {
+      const span = document.createElement("span");
+      span.style.fontSize = `${pt}pt`;
+      span.innerHTML = f.innerHTML;
+      f.replaceWith(span);
+    });
+    commitEdit();
+  };
+  // the toolbar shows the font and size at the caret
+  const readCaretFont = () => {
+    const sel = window.getSelection();
+    const node = sel?.anchorNode;
+    const el = node ? (node.nodeType === 1 ? (node as Element) : node.parentElement) : null;
+    if (!el || !editor.current?.contains(el)) return;
+    const cs = window.getComputedStyle(el);
+    const fam = cs.fontFamily.split(",")[0].replace(/["']/g, "").trim();
+    setFontName(FONTS.includes(fam) ? fam : "Calibri");
+    const pt = Math.round((parseFloat(cs.fontSize) * 72) / 96).toString();
+    setFontSize(SIZES.includes(pt) ? pt : "11");
+  };
+
   const pill = (selected: boolean, on = true) => `flex items-center gap-1.5 rounded-full border py-1 pl-1.5 pr-1 text-sm ${selected ? "border-sky-600 bg-sky" : on ? "border-line bg-paper" : "border-line bg-cream-50 opacity-60"}`;
   const saveLabel = saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "dirty" ? "Unsaved changes" : saved?.savedAt ? `Saved ${new Date(saved.savedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "";
 
@@ -463,7 +502,21 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
                     <Icon className="h-3.5 w-3.5" />
                   </button>
                 ))}
-                <span className="ml-auto text-[11px] text-muted">Calibri 11, as it goes out</span>
+                <select value={fontName} onChange={(e) => applyFontName(e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="ml-2 h-6 rounded border border-line bg-white px-1 text-xs" title="Font">
+                  {FONTS.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+                <select value={fontSize} onChange={(e) => applyFontSize(e.target.value)} className="h-6 rounded border border-line bg-white px-1 text-xs" title="Size (pt)">
+                  {SIZES.map((z) => (
+                    <option key={z} value={z}>
+                      {z}
+                    </option>
+                  ))}
+                </select>
+                <span className="ml-auto text-[11px] text-muted">Calibri 11 unless you change it here</span>
               </div>
               <div
                 ref={editor}
@@ -471,6 +524,8 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
                 suppressContentEditableWarning
                 onBlur={commitEdit}
                 onInput={commitEdit}
+                onKeyUp={readCaretFont}
+                onMouseUp={readCaretFont}
                 className="min-h-[420px] p-4 text-[11pt] outline-none [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-[10pt] [&_p]:mt-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-[10pt] [&_li]:mb-[2pt]"
                 style={{ fontFamily: "Calibri, Arial, sans-serif" }}
               />
