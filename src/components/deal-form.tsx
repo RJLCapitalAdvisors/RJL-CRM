@@ -206,11 +206,9 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
             <NumberInput name="squareFeet" defaultValue={d?.squareFeet} decimals={false} onValue={setSf} />
           </Row>
         )}
-        {p.perAcre && (
-          <Row label="Acres">
-            <NumberInput name="detail.acres" defaultValue={acres} onValue={setAcres} />
-          </Row>
-        )}
+        <Row label="Total acres">
+          <NumberInput name="detail.acres" defaultValue={acres} onValue={setAcres} />
+        </Row>
         {p.showOccupancy && !isDev && (
           <Row label="Occupancy %">
             <NumberInput name="occupancy" defaultValue={d?.occupancy} />

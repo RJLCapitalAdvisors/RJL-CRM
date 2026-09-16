@@ -179,8 +179,25 @@ export function roundAsk(amount: number): number {
   return Math.max(step, Math.round(amount / step) * step);
 }
 
+/**
+ * Acreage as one number: "38.6 acres" -> "38.6", "3.1 acres, approximately 134,000 SF of land" -> "3.1", ".73" -> "0.73",
+ * "730,371 sq ft" -> "16.77" (43,560 SF to the acre). Words without a number come back blank.
+ */
+export function acresNumber(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const text = String(raw).replace(/,(?=\d{3}\b)/g, "");
+  const num = "(\\d*\\.\\d+|\\d+)";
+  const withUnit = text.match(new RegExp(num + "\\s*-?\\s*(?:acres?|ac\\b)", "i"));
+  if (withUnit) return String(parseFloat(withUnit[1]));
+  const sqft = text.match(new RegExp(num + "\\s*(?:sq\\.?\\s*ft|square feet|sf\\b)", "i"));
+  if (sqft) return (parseFloat(sqft[1]) / 43560).toFixed(2);
+  const m = text.match(new RegExp(num));
+  return m ? String(parseFloat(m[1])) : null;
+}
+
 export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
   const out = { ...d };
+  if (out.details && typeof out.details.acres === "string" && out.details.acres.trim()) out.details = { ...out.details, acres: acresNumber(out.details.acres) };
   // any equity raise that is the majority of the total equity is JV Equity
   if (out.executionType === "LP Equity" && out.requestedAmount && out.totalEquity && out.requestedAmount / out.totalEquity >= 0.5) out.executionType = "JV Equity";
   if (out.requestType === "Equity" && !out.executionType) out.executionType = "JV Equity";
