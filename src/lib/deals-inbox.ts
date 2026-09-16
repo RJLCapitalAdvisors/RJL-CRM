@@ -328,9 +328,17 @@ export async function sendDealsReply(dealId: string): Promise<boolean> {
   await loadChecklist();
   const it = await prisma.dealIntake.findFirst({ where: { dealId, messageId: { not: null } } });
   const deal = await prisma.deal.findUnique({ where: { id: dealId } });
-  if (!it?.messageId || !deal) return false;
-  const found = await graph<{ value: Msg[] }>(`/users/${q(MAILBOX())}/messages?$filter=internetMessageId eq '${it.messageId.replace(/'/g, "''")}'&$select=id,subject,from,receivedDateTime`);
-  const msg = found.value[0];
+  if (!deal) return false;
+  let msg: Msg | undefined;
+  if (it?.messageId) {
+    const found = await graph<{ value: Msg[] }>(`/users/${q(MAILBOX())}/messages?$filter=internetMessageId eq '${it.messageId.replace(/'/g, "''")}'&$select=id,subject,from,receivedDateTime`).catch(() => ({ value: [] as Msg[] }));
+    msg = found.value[0];
+  }
+  if (!msg) {
+    // no intake of its own (a ticket that arrived as a follow-up, or predates deals@): the latest recorded email on the deal is the thread
+    const last = await prisma.dealEmail.findFirst({ where: { dealId, graphId: { not: null } }, orderBy: { receivedAt: "desc" }, select: { graphId: true } });
+    if (last?.graphId) msg = await graph<Msg>(`/users/${q(MAILBOX())}/messages/${q(last.graphId)}?$select=id,subject,from,receivedDateTime`).catch(() => undefined);
+  }
   if (!msg) return false;
   const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
   // every file the ticket knows (the forward itself, later follow-ups, pulled cloud files) rides on the re-sent summary
