@@ -169,16 +169,27 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
 }
 
 /** House rules applied after extraction, whichever extractor ran. */
+/**
+ * The requested equity amount is always a round number, the way it is said out loud: "$12MM", "$3.5MM". Whole
+ * millions from $5MM up, half millions between $1MM and $5MM, hundred thousands below that (Jonathan, Sep 16).
+ */
+export function roundAsk(amount: number): number {
+  const step = amount >= 5_000_000 ? 1_000_000 : amount >= 1_000_000 ? 500_000 : 100_000;
+  return Math.max(step, Math.round(amount / step) * step);
+}
+
 export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
   const out = { ...d };
   // any equity raise that is the majority of the total equity is JV Equity
   if (out.executionType === "LP Equity" && out.requestedAmount && out.totalEquity && out.requestedAmount / out.totalEquity >= 0.5) out.executionType = "JV Equity";
   if (out.requestType === "Equity" && !out.executionType) out.executionType = "JV Equity";
-  // Sep 15 underwriting instructions: the requested amount is 90% of total equity, rounded to the nearest $500,000
+  // Underwriting rule (Jonathan, Sep 15 and 16): the requested equity amount is 90% of the total equity in the deal, as a round number
   const equity = out.totalEquity ?? (out.totalCapitalization != null && out.totalDebt != null && out.totalCapitalization > out.totalDebt ? out.totalCapitalization - out.totalDebt : null);
   if (out.requestType !== "Debt" && equity && equity > 0) {
-    out.requestedAmount = Math.max(500_000, Math.round((equity * 0.9) / 500_000) * 500_000);
+    out.requestedAmount = roundAsk(equity * 0.9);
     if (out.totalEquity == null) out.totalEquity = equity;
+  } else if (out.requestType !== "Debt" && out.requestedAmount) {
+    out.requestedAmount = roundAsk(out.requestedAmount); // no equity figure to work from: at least make the stated ask a round number
   }
   // LTV is debt over price, LTC is debt over total capitalization, each on its own when the model left it out
   const pct = (a: number, b: number) => Math.round((a / b) * 10000) / 100;
@@ -222,7 +233,7 @@ Read the email (including quoted/forwarded content) and fill the schema. Rules:
 - state is the two-letter code. If only a metro is given, infer the state and note it in confidenceNotes.
 - For each checklist item in details: quote or closely paraphrase what the sponsor said. For documents (proforma, rent roll/T12, trade-out report, capex budget, comps) answer "Received" only if the document is attached or explicitly provided; otherwise empty.
 - summary is the business plan paragraph for the investor email: lead with location and market context, then anchor/key tenants, the value-add opportunity, notable physical attributes. 4-6 sentences, flowing prose, no dashes as punctuation. Never put in the summary what has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count.
-- Requested amount: the CRM sets it to 90% of total equity (total capitalization minus total debt) rounded to the nearest $500,000; leave it blank unless the sponsor names the raise in so many words.
+- Requested amount: the CRM sets it to 90% of total equity (total capitalization minus total debt) as a round number (whole millions from $5MM up, e.g. 12000000; half millions below). Report total equity and total debt accurately from the model; leave requestedAmount blank unless the sponsor names the raise in so many words, and even then the 90% rule decides.
 - LTV is total debt over purchase price; LTC is total debt over total capitalization. Compute each on its own from the model; they are almost never equal.
 - Total capitalization comes from the Sources and Uses tab (total sources), not from adding debt and equity found on another tab, unless there is no Sources and Uses.
 - Year 1 cap rate is always Year 1 proforma NOI over purchase price, never a later year, even when the deal stabilizes later. T12 cap rate is trailing or in-place NOI over purchase price.
