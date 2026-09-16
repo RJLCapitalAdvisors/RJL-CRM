@@ -168,6 +168,19 @@ export function normalizeCheckSizes(raw: string | undefined | null): string[] {
   return mapWith(values, CHECK_SIZES, {});
 }
 
+/** "Core+; Light Value-Add; Opportunistic" (HubSpot) -> the CRM's return profiles; "value add" and "value-add" both land. */
+export function normalizeReturnProfiles(raw: string | undefined | null): string[] {
+  return mapWith(splitMulti(raw), RETURN_PROFILES, {
+    "Light Value-Add": "Light value-add",
+    "Light Value Add": "Light value-add",
+    "Heavy Value-Add": "Heavy value-add",
+    "Heavy Value Add": "Heavy value-add",
+    "Value-Add": "Light value-add",
+    "Value Add": "Light value-add",
+    "Core Plus": "Core+",
+  }).filter((v) => (RETURN_PROFILES as readonly string[]).includes(v));
+}
+
 export function normalizeDealSizes(raw: string | undefined | null): string[] {
   const values = splitMulti(raw).map((v) => v.replace(/\s+/g, "").replace(/^(?!\$)/, "$"));
   return mapWith(values, DEAL_SIZES, {});

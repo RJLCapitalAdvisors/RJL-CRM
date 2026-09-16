@@ -15,7 +15,7 @@ import {
   normalizeCheckSizes,
   normalizeDealSizes,
   normalizeGeographies,
-  normalizeInvestmentTypes,
+  normalizeInvestmentTypes, normalizeReturnProfiles,
   normalizeRoles,
   normalizeStrategy,
   normalizeVintages,
@@ -149,6 +149,8 @@ function criteriaFrom(r: Rec, isCompany: boolean) {
     checkSizes: toJson(normalizeCheckSizes(r["Check Sizes"])),
     dealSizes: toJson(normalizeDealSizes(r["Deal Sizes"])),
     investmentTypes: toJson(normalizeInvestmentTypes(r["Type Of Investments"])),
+    // Return Profile was missing from the Sep 3 companies export, so the first import never carried it (Jonathan, Sep 16)
+    ...(r["Return Profile"] !== undefined ? { returnProfile: toJson(normalizeReturnProfiles(r["Return Profile"])) } : {}),
     strategy: normalizeStrategy(r["Development or Acquisitions?"] ?? r["Development Or Acquisitions?"]),
     geographies: toJson(normalizeGeographies(geoRaw)),
     geographyNotes: geoRaw,
