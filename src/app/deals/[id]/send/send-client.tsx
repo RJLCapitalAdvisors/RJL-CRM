@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { PenLine } from "lucide-react";
+import { Bold, File, FileImage, FileSpreadsheet, FileText, Italic, List, ListOrdered, PenLine, Presentation, Underline } from "lucide-react";
 import { CompanyLogo } from "@/components/company-logo";
 import { hasMarker, withFirstName, withoutName } from "@/lib/first-name-marker";
 import { launchAction, previewGeneralEmail, previewToMeAction, pumpLaunchAction, reviseGeneralEmailAction, saveSendStateAction } from "./actions";
@@ -16,6 +16,18 @@ type Draft = { subject: string; html: string; touched: boolean };
 export type SendState = { templateId?: string; general?: Draft | null; drafts?: Record<string, Draft>; include?: string[]; to?: Record<string, string[]>; chosenFiles?: string[]; cc?: string; savedAt?: string };
 
 const GENERAL = "general";
+
+/** The icon a file gets in the attachments row: Excel green, PDF red, Word blue, PowerPoint orange, pictures, anything else grey. */
+function FileIcon({ name }: { name: string }) {
+  const ext = (name.split(".").pop() ?? "").toLowerCase();
+  const cls = "h-4 w-4 shrink-0";
+  if (["xlsx", "xlsm", "xls", "csv"].includes(ext)) return <FileSpreadsheet className={`${cls} text-emerald-700`} aria-label="Excel" />;
+  if (ext === "pdf") return <FileText className={`${cls} text-red-700`} aria-label="PDF" />;
+  if (["doc", "docx"].includes(ext)) return <FileText className={`${cls} text-sky-700`} aria-label="Word" />;
+  if (["ppt", "pptx"].includes(ext)) return <Presentation className={`${cls} text-orange-600`} aria-label="PowerPoint" />;
+  if (["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(ext)) return <FileImage className={`${cls} text-violet-700`} aria-label="Picture" />;
+  return <File className={`${cls} text-muted`} />;
+}
 
 /**
  * Send deal. Top: the General token, then one token per firm (logo, name, the people it goes to).
@@ -324,6 +336,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
         {files.map((f) => (
           <label key={f.key} className="flex cursor-pointer items-center gap-1.5">
             <input type="checkbox" className="accent-ink" checked={chosenFiles.has(f.key)} onChange={() => setChosenFiles((s) => { const n = new Set(s); if (n.has(f.key)) n.delete(f.key); else n.add(f.key); return n; })} />
+            <FileIcon name={f.name} />
             <span>{f.name}</span>
             <span className="text-xs text-muted">{f.size >= 1_000_000 ? `${(f.size / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1000))} KB`}</span>
           </label>
@@ -424,15 +437,44 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
               <span className="w-14 text-xs text-muted">Subject</span>
               <input value={shown?.subject ?? ""} onChange={(e) => setSubject(e.target.value)} className="input py-1" />
             </div>
-            <div
-              ref={editor}
-              contentEditable
-              suppressContentEditableWarning
-              onBlur={commitEdit}
-              onInput={commitEdit}
-              className="min-h-[420px] rounded-md border border-line bg-white p-4 text-[11pt] outline-none focus:border-sky-600"
-              style={{ fontFamily: "Calibri, Arial, sans-serif" }}
-            />
+            <div className="rounded-md border border-line bg-white focus-within:border-sky-600">
+              <div className="flex items-center gap-0.5 border-b border-line bg-cream-50 px-2 py-1">
+                {(
+                  [
+                    ["bold", "Bold", Bold],
+                    ["italic", "Italic", Italic],
+                    ["underline", "Underline", Underline],
+                    ["insertUnorderedList", "Bulleted list", List],
+                    ["insertOrderedList", "Numbered list", ListOrdered],
+                  ] as const
+                ).map(([c, title, Icon]) => (
+                  <button
+                    key={c}
+                    type="button"
+                    title={title}
+                    className="btn-ghost p-1"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      editor.current?.focus();
+                      document.execCommand(c);
+                      commitEdit();
+                    }}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                  </button>
+                ))}
+                <span className="ml-auto text-[11px] text-muted">Calibri 11, as it goes out</span>
+              </div>
+              <div
+                ref={editor}
+                contentEditable
+                suppressContentEditableWarning
+                onBlur={commitEdit}
+                onInput={commitEdit}
+                className="min-h-[420px] p-4 text-[11pt] outline-none [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-[10pt] [&_p]:mt-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-[10pt] [&_li]:mb-[2pt]"
+                style={{ fontFamily: "Calibri, Arial, sans-serif" }}
+              />
+            </div>
             {rendering && <div className="mt-1 text-xs text-muted">Rendering…</div>}
           </div>
         </div>

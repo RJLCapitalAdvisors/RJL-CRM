@@ -3,7 +3,10 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { houseText, cleanBusinessPlan } from "@/lib/style";
 import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
-import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LOAN_TERMS, UNIT_MIXES } from "@/lib/taxonomy";
+import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES } from "@/lib/taxonomy";
+
+/** Detail fields that are dropdowns on the deal ticket: the extractor picks one of the options or leaves the field blank. Sentences about sourcing or the seller belong in the notes, not here. */
+const ENUM_DETAILS: Record<string, readonly string[]> = { sourcing: SOURCING_OPTIONS, sellerProfile: SELLER_PROFILES };
 import { uniqueChecklist, missingFor, type DealLikeForChecklist } from "@/lib/checklist";
 import { loadChecklist } from "@/lib/required-items";
 
@@ -102,7 +105,18 @@ const claudeOutput = () => z.object({
   onMarket: z.enum(["on", "off", ""]).describe("on if marketed/listed, off if off-market."),
   sponsorExperience: str("Sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes."),
   summary: str("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), the value-add opportunity, notable physical attributes. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
-  details: z.object(Object.fromEntries(uniqueChecklist().filter((it) => !it.core).map((it) => [it.key, str(`${it.label}. ${it.question}${it.kind === "doc" ? " Answer Received only if the document is attached or explicitly provided." : ""}`)]))),
+  details: z.object(
+    Object.fromEntries(
+      uniqueChecklist()
+        .filter((it) => !it.core)
+        .map((it) => [
+          it.key,
+          ENUM_DETAILS[it.key]
+            ? z.enum(["", ...ENUM_DETAILS[it.key]] as [string, ...string[]]).describe(`${it.label}: exactly one of the listed options, only when the documents say so plainly. Otherwise "". Never a sentence.`)
+            : str(`${it.label}. ${it.question}${it.kind === "doc" ? " Answer Received only if the document is attached or explicitly provided." : ""}`),
+        ]),
+    ),
+  ),
   units: str("Number of units, keys (hotel) or beds (student housing), digits only."),
   squareFeet: str("Net rentable square feet (NRSF / rentable area / GLA for retail), digits only. Never gross building area, gross SF, land or site area, or lot size; if only a gross figure is given, leave this blank and say so in confidenceNotes."),
   yearBuilt: str("Year built or vintage range."),
@@ -318,11 +332,10 @@ export function extractHeuristic(rawText: string, subject?: string | null, fromN
   det.lender = lineAfter(text, /(?:lender|financing (?:from|by)|loan from)[:\s-]+(?:an?\s+)?([^\n,.]{2,60})/i);
   const debtLine = lineAfter(text, /((?:\d{2}%\s*(?:LTV|LTC)|(?:bridge|construction|senior|agency|permanent) loan|debt:)[^\n]{0,160})/i);
   det.debtTerms = debtLine ?? (d.ltv != null ? `${d.ltv}% LTV${d.loanTerm ? ", " + d.loanTerm : ""}` : null);
-  det.sellerProfile = lineAfter(text, /seller(?: profile| is| type)?[:\s-]+([^\n]{2,80})/i);
   det.acres = lineAfter(text, /([\d.]+)\s*(?:acres?|ac\b)/i);
   det.opportunityZone = /opportunity zone|\boz\b/.test(lower) ? "Yes" : null;
   det.affordable = /affordable|lihtc|income[- ]restricted|section 8/.test(lower) ? "Yes – mentioned" : null;
-  det.sourcing = d.onMarket == null ? null : d.onMarket ? "On market" : "Off market";
+  det.sourcing = d.onMarket == null ? null : d.onMarket ? "on-market" : "completely off-market";
   const docs: [string, RegExp][] = [
     ["proforma", /pro ?forma|underwriting model|\.xlsx?/i],
     ["rentRollT12", /rent roll|t-?12|trailing[- ]12/i],

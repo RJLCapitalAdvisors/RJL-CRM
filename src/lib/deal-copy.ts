@@ -185,12 +185,12 @@ export function metricsHtml(d: D): string {
     return kids
       .map((c) => {
         const m = metrics({ ...c, strategy: c.strategy ?? d.strategy, executionType: c.executionType ?? d.executionType, assetClass: c.assetClass ?? d.assetClass });
-        return m.length ? `<p><b><u>Deal Metrics: ${s(c.propertyName) ?? c.name}${[s(c.city), s(c.state)].filter(Boolean).length ? ` (${[s(c.city), s(c.state)].filter(Boolean).join(", ")})` : ""}</u></b></p><ul style="margin:0 0 12pt 18pt;">${m.map(li).join("")}</ul>` : "";
+        return m.length ? `<p><b><u>Deal Metrics: ${s(c.propertyName) ?? c.name}${[s(c.city), s(c.state)].filter(Boolean).length ? ` (${[s(c.city), s(c.state)].filter(Boolean).join(", ")})` : ""}</u></b></p><ul style="margin:0 0 12pt 18pt;list-style-type:disc;">${m.map(li).join("")}</ul>` : "";
       })
       .join("");
   }
   const m = metrics(d);
-  return m.length ? `<p><b><u>Deal Metrics</u></b></p><ul style="margin:0 0 12pt 18pt;">${m.map(li).join("")}</ul>` : "";
+  return m.length ? `<p><b><u>Deal Metrics</u></b></p><ul style="margin:0 0 12pt 18pt;list-style-type:disc;">${m.map(li).join("")}</ul>` : "";
 }
 export function metricsText(d: D): string {
   const kids = childrenOf(d);

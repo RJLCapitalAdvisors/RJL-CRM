@@ -191,7 +191,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
           <Select name="state" value={d?.state ?? ""} options={Object.keys(US_STATES)} />
         </Row>
         <Row label="How the deal was sourced">
-          <Select name="detail.sourcing" value={details.sourcing ?? (d?.onMarket == null ? "" : d.onMarket ? "On-market, full marketing process" : "Completely off-market, direct with seller")} options={SOURCING_OPTIONS} />
+          <Select name="detail.sourcing" value={details.sourcing ?? (d?.onMarket == null ? "" : d.onMarket ? "on-market" : "completely off-market")} options={SOURCING_OPTIONS} />
         </Row>
         <Row label="Seller profile">
           <Select name="detail.sellerProfile" value={details.sellerProfile ?? ""} options={SELLER_PROFILES} />

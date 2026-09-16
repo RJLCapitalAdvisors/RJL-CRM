@@ -266,31 +266,31 @@ export function stageTone(stage: string): string {
 }
 
 // ---------- deal ticket dropdowns (seeded from HubSpot values) ----------
+// "On or Off Market?" and "What kind of seller?" are HubSpot's own option lists, word for word (Jonathan, Sep 16: they are
+// dropdowns for a reason; nothing gets added here). The extractor picks from these or leaves the field blank.
 export const SOURCING_OPTIONS = [
-  "Completely off-market, direct with seller",
-  "Off-market through a broker relationship",
-  "Off-market through a relationship with the developer",
-  "On-market, quiet bidding process",
-  "On-market, lightly marketed",
-  "On-market, full marketing process",
-  "Bank / lender REO",
-  "Note purchase",
-  "Sale-leaseback",
-  "Recapitalization of existing ownership",
+  "completely off-market",
+  "off-market through a broker relationship",
+  "on-market but through a quiet bidding process",
+  "on-market but",
+  "on-market",
+  "on-market through a broken process",
 ] as const;
 export const SELLER_PROFILES = [
-  "Mom and pop owner",
-  "Long-term private owner",
-  "Institutional owner",
-  "Fund exiting / closing out",
-  "Family office",
-  "Original developer / merchant builder",
-  "REIT",
-  "Trust or estate liquidating",
-  "Distressed seller",
-  "Lender / REO",
-  "Government or municipality",
-  "Partnership dispute / recap",
+  "a long-term mom n' pop owner who's looking to retire",
+  "a mom n' pop owner",
+  "an institutional owner",
+  "an institutional owner who's exiting the deal to close out a fund",
+  "a seller in distress who is taking a loss on the sale",
+  "an overseas seller",
+  "a mid-sized owner who is having distress in other parts of his portfolio",
+  "a trust that is looking to liquidate assets",
+  "the original developer who needs liquidity for other projects in their pipeline",
+  "an institutional owner that is having problems in other parts of their portfolio and is looking to source liquidity",
+  "the buyer has a massive portfolio in the market, giving them market data other buyers don't have",
+  "from a very distressed seller",
+  "from a seller who has grossly mismanaged the property",
+  "a large family office that has taken exceptional care of the properties",
 ] as const;
 export const UNIT_MIXES = [
   "studios and one-bedroom",
