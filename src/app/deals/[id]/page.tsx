@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CA_TEAM } from "@/lib/access";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { DealForm } from "@/components/deal-form";
@@ -43,7 +44,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
         parent: { select: { id: true, name: true, propertyName: true } },
       },
     }),
-    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.user.findMany({ where: { active: true, ...CA_TEAM }, orderBy: { name: "asc" } }),
   ]);
   if (!deal) notFound();
   const showEngagement = deal.stage === "Engagement Letter Sent" || deal.stage === "Engagement Letter Signed";

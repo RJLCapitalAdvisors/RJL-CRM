@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { CA_TEAM } from "@/lib/access";
 import { PageHeader } from "@/components/ui";
 import { ContactForm } from "@/components/contact-form";
 import { createContact } from "../actions";
@@ -10,7 +11,7 @@ export default async function NewContactPage({ searchParams }: { searchParams: P
   const sp = await searchParams;
   const companyId = str(sp.companyId);
   const [users, company] = await Promise.all([
-    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.user.findMany({ where: { active: true, ...CA_TEAM }, orderBy: { name: "asc" } }),
     companyId ? prisma.company.findUnique({ where: { id: companyId }, select: { id: true, name: true, city: true, state: true } }) : null,
   ]);
   const seed = company

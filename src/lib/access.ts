@@ -12,6 +12,11 @@ export const PARTNER_PEOPLE = ["farshid", "elisheva", "fariba", "ohad", "leon", 
 const IL_MAIL_DOMAIN = process.env.ISRAEL_DEALS_MAILBOX?.split("@")[1]?.toLowerCase() ?? "rjlisrael.com";
 export const IL_DOMAINS = [IL_MAIL_DOMAIN, "rjlisrael.com", PARTNER_DOMAIN].filter((d, i, a) => a.indexOf(d) === i);
 
+/** The RJL Capital Advisors team as a Prisma filter on User: people with an RJL CA address. RJL Israel and partner people never appear on RJL CA pages (owners, CCs, mailboxes to read). */
+export const CA_TEAM = { OR: CA_DOMAINS.map((d) => ({ email: { endsWith: "@" + d, mode: "insensitive" as const } })) };
+/** The RJL Israel side's people: an @rjlisrael.com mailbox on file, or a partner address. */
+export const IL_TEAM = { OR: [{ israelEmail: { not: null } }, ...IL_DOMAINS.map((d) => ({ email: { endsWith: "@" + d, mode: "insensitive" as const } }))] };
+
 export const domainOf = (email: string | null | undefined) => (email ?? "").toLowerCase().split("@")[1] ?? "";
 export const localPartOf = (email: string | null | undefined) => (email ?? "").toLowerCase().split("@")[0] ?? "";
 

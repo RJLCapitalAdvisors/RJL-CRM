@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { CA_TEAM } from "@/lib/access";
 import { DEAL_STAGES, introParties, isBlindIntro } from "@/lib/taxonomy";
 import { graph, graphConfigured, sentMessagesTo } from "@/lib/graph";
 
@@ -85,7 +86,7 @@ export async function scanIntros(mailbox: string): Promise<{ found: number; upda
 
 export async function scanAllIntros(): Promise<Record<string, { found: number; updated: number } | string>> {
   if (!graphConfigured()) return {};
-  const users = await prisma.user.findMany({ where: { active: true, email: { not: null } } });
+  const users = await prisma.user.findMany({ where: { active: true, ...CA_TEAM, email: { not: null } } });
   const out: Record<string, { found: number; updated: number } | string> = {};
   for (const u of users) out[u.email!] = await scanIntros(u.email!).catch((e) => String(e).slice(0, 120));
   return out;

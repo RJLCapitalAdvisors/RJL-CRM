@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CA_TEAM } from "@/lib/access";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { stageTone } from "@/lib/taxonomy";
@@ -35,7 +36,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
         deals: { orderBy: { updatedAt: "desc" } },
       },
     }),
-    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.user.findMany({ where: { active: true, ...CA_TEAM }, orderBy: { name: "asc" } }),
     prisma.dealInvestor.findMany({ where: { contact: { companyId: id } }, include: { deal: { select: { id: true, name: true, propertyName: true } } }, orderBy: [{ status: "desc" }, { updatedAt: "desc" }] }),
     // emails with anyone here, including the ones where a person here was only copied
     prisma.activity.findMany({ where: { OR: [{ companyId: id }, { parties: { some: { companyId: id } } }] }, orderBy: { occurredAt: "desc" }, take: 100, include: { contact: { select: { id: true, firstName: true, lastName: true } }, deal: { select: { id: true, name: true, propertyName: true } } } }),

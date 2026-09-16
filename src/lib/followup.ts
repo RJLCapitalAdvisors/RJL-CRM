@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { CA_TEAM } from "@/lib/access";
 import { houseSubjectMatches, subjectMatchesDeal } from "@/lib/deal-match";
 import { graph, copyAttachment, createDraft, createReplyAllDraft, getMessage, graphConfigured, listAttachments, outlookDesktopLink, recentSent, sentMessagesTo, sentMessagesToDomain, updateDraftBody, type GraphMessage } from "@/lib/graph";
 import { domainOf } from "@/lib/domains";
@@ -105,7 +106,7 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
   const original = toPerson.find(aboutDeal) ?? toFirm.find(aboutDeal);
   if (!original) {
     // a teammate may have sent this LP the deal: reply from their copy, in my mailbox
-    const users = (await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { email: true } }).catch(() => [] as { email: string | null }[])).filter((u) => u.email!.toLowerCase() !== mailbox.toLowerCase());
+    const users = (await prisma.user.findMany({ where: { active: true, ...CA_TEAM, email: { not: null } }, select: { email: true } }).catch(() => [] as { email: string | null }[])).filter((u) => u.email!.toLowerCase() !== mailbox.toLowerCase());
     for (const u of users) {
       const theirs = await sentMessagesTo(u.email!, email, 15).catch(() => [] as GraphMessage[]);
       const hit = theirs.find(aboutDeal);
@@ -245,7 +246,7 @@ export async function replyToLatestWith(mailbox: string, email: string, subjectH
  */
 export async function replyViaTeammateCopy(mailbox: string, internetMessageId: string): Promise<FollowUpResult | null> {
   if (!graphConfigured()) return null;
-  const users = await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { email: true } });
+  const users = await prisma.user.findMany({ where: { active: true, ...CA_TEAM, email: { not: null } }, select: { email: true } });
   const boxes = [...users.map((u) => u.email!), process.env.DEALS_MAILBOX ?? "deals@rjlcapadvisors.com"].filter((b) => b.toLowerCase() !== mailbox.toLowerCase());
   for (const box of boxes) {
     let found: { value: (GraphMessage & { body?: { content: string } })[] };

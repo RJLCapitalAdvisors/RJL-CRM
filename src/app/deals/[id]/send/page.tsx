@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CA_TEAM } from "@/lib/access";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/current-user";
@@ -35,7 +36,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   // a launch still going (or left behind when the tab closed): the page resumes pacing it and pumps in the background
   const launch = await launchStatus(deal.id).catch(() => null);
   if (launch && launch.queued > 0 && me) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
-  const team = (await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { name: true, email: true }, orderBy: { name: "asc" } })).filter((u) => u.email && u.email.toLowerCase() !== me?.email?.toLowerCase()).map((u) => ({ name: u.name, email: u.email! }));
+  const team = (await prisma.user.findMany({ where: { active: true, ...CA_TEAM, email: { not: null } }, select: { name: true, email: true }, orderBy: { name: "asc" } })).filter((u) => u.email && u.email.toLowerCase() !== me?.email?.toLowerCase()).map((u) => ({ name: u.name, email: u.email! }));
   const sendState = ((): SendState | null => {
     try {
       const st = (JSON.parse(deal.details || "{}") as { sendState?: SendState }).sendState;

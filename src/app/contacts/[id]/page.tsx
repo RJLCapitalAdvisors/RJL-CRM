@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CA_TEAM } from "@/lib/access";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { RoleChips, Chips } from "@/components/ui";
@@ -29,7 +30,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
         dealRows: { include: { deal: true }, orderBy: { updatedAt: "desc" } },
       },
     }),
-    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.user.findMany({ where: { active: true, ...CA_TEAM }, orderBy: { name: "asc" } }),
     // emails this person sent, received or was copied on
     prisma.activity.findMany({ where: { OR: [{ contactId: id }, { parties: { some: { contactId: id } } }] }, orderBy: { occurredAt: "desc" }, take: 50, include: { deal: true } }),
   ]);

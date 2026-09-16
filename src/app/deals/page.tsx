@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CA_TEAM } from "@/lib/access";
 import { prisma } from "@/lib/db";
 import { ACTIVE_STAGES, isBlindIntro } from "@/lib/taxonomy";
 import { PageHeader } from "@/components/ui";
@@ -49,7 +50,7 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
     prisma.deal.findMany({ where: { stage: "Deal Lost", ...ownerFilter }, orderBy: { updatedAt: "desc" }, take: closedTake, select }),
     prisma.deal.count({ where: { stage: "Deal Closed", ...ownerFilter } }),
     prisma.deal.count({ where: { stage: "Deal Lost", ...ownerFilter } }),
-    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.user.findMany({ where: { active: true, ...CA_TEAM }, orderBy: { name: "asc" } }),
   ]);
 
   const toBoard = (d: (typeof active)[number]): BoardDeal => ({

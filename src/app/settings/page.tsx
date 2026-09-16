@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { CA_TEAM } from "@/lib/access";
 import { PageHeader } from "@/components/ui";
 import { currentUser } from "@/lib/current-user";
 import { saveSignature } from "../todo-actions";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 /** Per-person settings: the Outlook connection on this computer (with a self-check) and email signatures. */
 export default async function SettingsPage() {
-  const [users, me] = await Promise.all([prisma.user.findMany({ where: { active: true, email: { not: null } }, orderBy: { name: "asc" } }), currentUser()]);
+  const [users, me] = await Promise.all([prisma.user.findMany({ where: { active: true, ...CA_TEAM, email: { not: null } }, orderBy: { name: "asc" } }), currentUser()]);
   return (
     <>
       <PageHeader title="Settings" subtitle="Outlook on this computer, and the email signatures the CRM puts under what it drafts for you" />
