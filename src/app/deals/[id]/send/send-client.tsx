@@ -41,7 +41,8 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   const [chosenFiles, setChosenFiles] = useState<Set<string>>(new Set(saved?.chosenFiles?.filter((k) => files.some((f) => f.key === k)) ?? files.slice(0, 6).map((f) => f.key))); // the FAQ, OM and model first; a whole data room is not the default
   const [templateId, setTemplateId] = useState(saved?.templateId && templates.some((t) => t.id === saved.templateId) ? saved.templateId : defaultTemplateId);
   const [pickOpen, setPickOpen] = useState(!saved?.templateId); // the template list is open until one has been chosen for this deal
-  const [include, setInclude] = useState<Set<string>>(new Set(saved?.include?.filter((id) => firms.some((f) => f.rowId === id && f.status <= 1)) ?? firms.filter((f) => f.status <= 1).map((f) => f.rowId)));
+  const savedInclude = saved?.include?.filter((id) => firms.some((f) => f.rowId === id && f.status <= 1)) ?? [];
+  const [include, setInclude] = useState<Set<string>>(new Set(savedInclude.length ? savedInclude : firms.filter((f) => f.status <= 1).map((f) => f.rowId)));
   const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((saved?.to?.[f.rowId] ?? (f.extraContactIds.length ? [f.primaryContactId, ...f.extraContactIds] : f.defaultContactIds)).filter((id) => f.people.some((p) => p.id === id)))])));
   const [general, setGeneral] = useState<Draft | null>(saved?.general ?? null);
   const [cc, setCc] = useState<string>(saved?.cc ?? ""); // copied on every firm's email (teammates, usually)
@@ -563,7 +564,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
           <button type="button" className="btn-secondary" disabled={pending || !shown?.html} onClick={previewToMe} title={cur ? "Emails you the exact message this firm would get" : "Emails you the General email, with no name in the greeting"}>
             Send preview email to me
           </button>
-          <button type="button" className="btn-primary px-5" disabled={pending || launching || itemsToSend().length === 0 || !general} onClick={launch}>
+          <button type="button" className="btn-primary px-5" disabled={pending || launching} onClick={launch}>
             {pending ? "Working…" : launching ? "Sending…" : armed && Date.now() - armed <= 10_000 ? "LAUNCH: click again to send" : "LAUNCH"}
           </button>
         </div>
