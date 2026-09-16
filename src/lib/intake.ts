@@ -4,7 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { houseText, cleanBusinessPlan } from "@/lib/style";
 import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
-import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES } from "@/lib/taxonomy";
+import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES } from "@/lib/taxonomy";
 
 /** Detail fields that are dropdowns on the deal ticket: the extractor picks one of the options or leaves the field blank. Sentences about sourcing or the seller belong in the notes, not here. */
 const ENUM_DETAILS: Record<string, readonly string[]> = { sourcing: SOURCING_OPTIONS, sellerProfile: SELLER_PROFILES };
@@ -126,7 +126,7 @@ const claudeOutput = () => z.object({
   totalDebt: str("Total debt in US dollars, digits only."),
   executionType: z.enum(["JV Equity", "LP Equity", "Co-GP Equity", "Preferred Equity", "Senior Debt", "Mezz Debt", "Fund Investment", ""]).describe("Position in the capital stack being raised. Any equity raise that is the majority of total equity is JV Equity; LP Equity only for a minority slice."),
   interestRate: str("Debt interest rate as written (6.1% fixed, SOFR + 300)."),
-  lenderType: str("Lender or lender type (agency/Freddie/Fannie, bank, debt fund, life co, CMBS) ONLY when the documents state it; never inferred."),
+  lenderType: z.enum([...LENDER_TYPES, ""]).describe("The kind of lender, one of the listed options, ONLY when the documents state it (a debt fund or bridge loan is \"(Bridge)\"; a bank loan is \"(Bank Execution)\"); never inferred. The lender's own name (BridgeInvest, WesBanco) goes in details.lender, never here."),
   irr: str("Projected IRR percent as a number (18.4)."),
   capRateT12: str("T12 / trailing / going-in cap rate percent as a number."),
   capRateY1: str("Year 1 cap rate percent as a number."),

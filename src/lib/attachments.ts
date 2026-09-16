@@ -21,13 +21,22 @@ export async function attachmentToText(name: string, contentType: string | null,
     if (/\.(xlsx|xlsm|xls|csv)$/.test(lower) || ct.includes("spreadsheet") || ct.includes("excel")) {
       const XLSX = await import("xlsx");
       const wb = XLSX.read(bytes, { type: "array", cellDates: true });
+      // Carderock, Sep 16: the model's Building Information block (year built, site size) never reached the extractor because
+      // each sheet stopped at 400 rows and the monthly cash flows ate the budget. Sheets that carry the property's facts and
+      // the assumptions go first, cash flows last, and a sheet is read whole (up to 3,000 rows); long runs of empty cells collapse.
+      const SHEET_FIRST = /summary|assumption|input|overview|sources|uses|property|building|info|deal|acq|return|debt|loan|rent ?roll|unit ?mix/i;
+      const SHEET_LAST = /cash ?flow|monthly|month|cf\b|schedule|amort|waterfall|calc/i;
+      const rank = (n: string) => (SHEET_FIRST.test(n) && !SHEET_LAST.test(n) ? 0 : SHEET_LAST.test(n) ? 2 : 1);
+      const names = [...wb.SheetNames].sort((a, b) => rank(a) - rank(b));
       const parts: string[] = [];
-      for (const sheetName of wb.SheetNames) {
+      for (const sheetName of names) {
         const ws = wb.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, blankrows: false, raw: false });
-        const lines = rows.map((r) => (r as unknown[]).map((c) => (c == null ? "" : String(c).trim())).join("\t").replace(/\t+$/, "")).filter((l) => l.replace(/\t/g, "").trim());
+        const lines = rows
+          .map((r) => (r as unknown[]).map((c) => (c == null ? "" : String(c).trim())).join("\t").replace(/\t{3,}/g, "\t\t").replace(/\t+$/, ""))
+          .filter((l) => l.replace(/\t/g, "").trim());
         if (!lines.length) continue;
-        parts.push(`--- Sheet: ${sheetName} ---\n${lines.slice(0, 400).join("\n")}`);
+        parts.push(`--- Sheet: ${sheetName} ---\n${lines.slice(0, 3000).join("\n")}${lines.length > 3000 ? "\n…(sheet continues)" : ""}`);
       }
       return parts.join("\n\n");
     }
@@ -42,15 +51,25 @@ export async function attachmentToText(name: string, contentType: string | null,
 /** Keep the extractor input within reason: the email first, then attachments, biggest ones trimmed. */
 const isModelFile = (n: string) => /\.(xlsx|xlsm|xls|csv)$/i.test(n);
 
-export function assembleDealText(body: string, attachmentsIn: { name: string; text: string }[], cap = 180_000): string {
+export function assembleDealText(body: string, attachmentsIn: { name: string; text: string }[], cap = 600_000): string {
   // Excel models first: they are the current numbers; the OM / deck is narrative and comes after
   const attachments = [...attachmentsIn].sort((x, y) => Number(isModelFile(y.name)) - Number(isModelFile(x.name)));
   const modelsFirst = attachments.some((x) => isModelFile(x.name));
   let out = body.trim() + (modelsFirst ? "\n\n[An Excel underwriting model is attached. Every number comes from the model; the PDF / OM is for the narrative and physical description. Where they disagree, the model wins and the difference is noted.]" : "");
   const remaining = () => cap - out.length;
-  // each file gets an equal share of what is left, so the third model is read as well as the first
-  const share = attachments.length ? Math.max(15_000, Math.floor((cap - out.length - 400 * attachments.length) / attachments.length)) : 0;
-  for (const a of attachments) {
+  // models are read whole (they share up to 70% of the room when they would not all fit); the OMs and decks share what is left
+  const models = attachments.filter((a) => isModelFile(a.name));
+  const others = attachments.filter((a) => !isModelFile(a.name));
+  const modelTotal = models.reduce((t, a) => t + a.text.length, 0);
+  const modelRoom = Math.min(modelTotal, Math.floor(remaining() * 0.7));
+  for (const a of models) {
+    if (remaining() < 2000) break;
+    const budget = Math.min(modelTotal > modelRoom ? Math.floor((modelRoom * a.text.length) / modelTotal) : a.text.length, remaining() - 200);
+    const slice = a.text.length > budget ? a.text.slice(0, budget) + "\n…(truncated)" : a.text;
+    out += `\n\n===== ATTACHMENT: ${a.name} =====\n${slice}`;
+  }
+  const share = others.length ? Math.max(15_000, Math.floor((remaining() - 400 * others.length) / others.length)) : 0;
+  for (const a of others) {
     if (remaining() < 2000) break;
     const budget = Math.min(share, remaining() - 200);
     const slice = a.text.length > budget ? a.text.slice(0, budget) + "\n…(truncated)" : a.text;

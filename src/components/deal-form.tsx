@@ -64,6 +64,7 @@ function parseDetailsSafe(raw: string | undefined): Record<string, string | null
     return {};
   }
 }
+const pctOf = (a: number | null, b: number | null) => (a != null && b ? `${((a / b) * 100).toFixed(2)}%` : "—");
 const money = (n: number | null) => (n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }));
 const num = (v: unknown) => {
   if (v == null) return null;
@@ -253,14 +254,8 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
       </Group>
 
       <Group title="Debt terms">
-        {!isDev && (
-          <Row label="LTV %">
-            <NumberInput name="ltv" defaultValue={d?.ltv} />
-          </Row>
-        )}
-        <Row label="LTC %">
-          <NumberInput name="ltc" defaultValue={d?.ltc} />
-        </Row>
+        {!isDev && <Calc label="LTV %" value={pctOf(debt, price)} hint="total debt ÷ purchase price" />}
+        <Calc label="LTC %" value={pctOf(debt, cap)} hint="total debt ÷ total capitalization" />
         <Row label="Interest rate">
           <Text name="interestRate" value={d?.interestRate} placeholder="6.75% fixed or SOFR + 300" />
         </Row>

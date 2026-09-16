@@ -1,5 +1,8 @@
 "use server";
 
+/** LTV = total debt / purchase price, LTC = total debt / total capitalization, two decimals; null when a side is missing. */
+const pctCalc = (a: number | null, b: number | null) => (a != null && b ? Math.round((a / b) * 10000) / 100 : null);
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -63,7 +66,7 @@ async function dealData(fd: FormData) {
     // Total equity is derived: total capitalization minus total debt (falls back to a typed value if only that exists).
     totalEquity: num(fd, "totalCapitalization") != null && num(fd, "totalDebt") != null ? num(fd, "totalCapitalization")! - num(fd, "totalDebt")! : num(fd, "totalEquity"),
     purchasePrice: num(fd, "purchasePrice"),
-    ltv: num(fd, "ltv"),
+    ltv: fd.has("totalDebt") ? pctCalc(num(fd, "totalDebt"), num(fd, "purchasePrice")) : num(fd, "ltv"),
     loanTerm: s(fd, "loanTerm"),
     amortization: s(fd, "amortization"),
     equityMultiple: num(fd, "equityMultiple"),
@@ -75,7 +78,7 @@ async function dealData(fd: FormData) {
     executionType: s(fd, "executionType"),
     totalDebt: num(fd, "totalDebt"),
     totalCapitalization: num(fd, "totalCapitalization"),
-    ltc: num(fd, "ltc"),
+    ltc: fd.has("totalDebt") ? pctCalc(num(fd, "totalDebt"), num(fd, "totalCapitalization")) : num(fd, "ltc"),
     interestRate: s(fd, "interestRate"),
     lenderType: s(fd, "lenderType"),
     irr: num(fd, "irr"),
