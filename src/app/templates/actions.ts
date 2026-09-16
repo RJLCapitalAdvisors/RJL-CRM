@@ -28,13 +28,16 @@ export async function updateTemplate(id: string, fd: FormData) {
   await prisma.emailTemplate.update({ where: { id }, data: data(fd) });
   revalidatePath("/templates");
   revalidatePath(`/templates/${id}`);
+  revalidatePath(`/israel/templates/${id}`);
 }
 
 export async function duplicateTemplate(id: string) {
   const t = await prisma.emailTemplate.findUniqueOrThrow({ where: { id } });
-  const copy = await prisma.emailTemplate.create({ data: { name: `${t.name} (copy)`, kind: t.kind, subject: t.subject, bodyHtml: t.bodyHtml } });
+  const copy = await prisma.emailTemplate.create({ data: { name: `${t.name} (copy)`, kind: t.kind, workspace: t.workspace, subject: t.subject, bodyHtml: t.bodyHtml } });
   revalidatePath("/templates");
-  redirect(`/templates/${copy.id}`);
+  revalidatePath("/israel/templates");
+  revalidatePath("/campaigns/new");
+  redirect(t.workspace === "IL" ? `/israel/templates/${copy.id}` : `/templates/${copy.id}`);
 }
 
 export async function deleteTemplate(id: string) {
@@ -59,6 +62,7 @@ export async function saveTemplateInline(id: string, patch: { name?: string; sub
   revalidatePath("/israel/templates");
   revalidatePath("/campaigns/new");
   revalidatePath(`/templates/${id}`);
+  revalidatePath(`/israel/templates/${id}`);
 }
 
 /** The plus square: a new template that opens with a greeting, ready to type into. */
@@ -102,5 +106,5 @@ export async function createTemplateAndOpen(workspace: "CA" | "IL", kind: string
     },
   });
   revalidatePath(il ? "/israel/templates" : kind === "BLAST" ? "/campaigns/new" : "/templates");
-  redirect(`/templates/${t.id}`);
+  redirect(il ? `/israel/templates/${t.id}` : `/templates/${t.id}`);
 }

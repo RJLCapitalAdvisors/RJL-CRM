@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { TemplateWindow } from "@/components/template-windows";
@@ -20,7 +20,8 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
   await loadChecklist();
   const t = await prisma.emailTemplate.findUnique({ where: { id }, include: { campaigns: { orderBy: { createdAt: "desc" }, take: 10, include: { deal: true } } } });
   if (!t) notFound();
-  const il = t.workspace === "IL";
+  if (t.workspace === "IL") redirect(`/israel/templates/${t.id}`); // the Israel side has its own page; the two never show each other's
+  const il = false;
   const tokens = il ? ilTokens((["projects", "apartments", "houses"].includes(t.kind) ? t.kind : "apartments") as "projects" | "apartments" | "houses") : caTokens();
   const back = il ? `/israel/templates?kind=${t.kind}` : t.kind === "BLAST" ? "/campaigns/new" : "/templates";
   return (

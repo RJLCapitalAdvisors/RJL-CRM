@@ -61,7 +61,7 @@ export default async function IlTemplatesPage({ searchParams }: { searchParams: 
                 {templates.map((t) => (
                   <tr key={t.id}>
                     <td>
-                      <Link href={`/templates/${t.id}`} className="font-medium text-sky-800 hover:underline">
+                      <Link href={`/israel/templates/${t.id}`} className="font-medium text-sky-800 hover:underline">
                         {t.name}
                       </Link>
                     </td>
