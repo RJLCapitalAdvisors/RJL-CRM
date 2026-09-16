@@ -352,3 +352,24 @@ ${still.length ? `<p style="margin:0 0 4pt 0;${F}"><b>Still missing:</b></p><ul 
 ${linkNotes.length ? `<p style="margin:0 0 4pt 0;${F}"><b>Links I could not open:</b></p><ul style="margin:0 0 10pt 18pt;">${linkNotes.map(li).join("")}</ul>` : ""}
 </div>`;
 }
+
+/**
+ * Read the deals@ email behind a ticket again, with the extractor and the model reading as they are today, and
+ * merge the result (a model's numbers replace what an OM said; narrative fills blanks). For tickets extracted before
+ * a fix landed (Carderock, Sep 16: the model was truncated and total capitalization came from the OM).
+ */
+export async function rereadDealFromIntake(dealId: string): Promise<{ changes: { field: string; from: unknown; to: unknown }[]; filled: number; attachments: string[] } | { skipped: string }> {
+  const intake = await prisma.dealIntake.findFirst({ where: { dealId }, orderBy: { createdAt: "desc" }, select: { messageId: true, subject: true } });
+  if (!intake?.messageId) return { skipped: "no deals@ email on file for this deal" };
+  if (!graphConfigured()) return { skipped: "Graph not configured" };
+  await loadChecklist();
+  const found = await graph<{ value: Msg[] }>(`/users/${q(MAILBOX())}/messages?$filter=internetMessageId eq '${q(intake.messageId).replace(/'/g, "''")}'&$select=id,subject,hasAttachments,body`);
+  const msg = found.value?.[0];
+  if (!msg) return { skipped: "the email is no longer in the deals@ mailbox" };
+  const bodyText = msg.body?.contentType === "html" ? emailHtmlToText(msg.body.content) : (msg.body?.content ?? "");
+  const { names, texts } = msg.hasAttachments ? await readAttachments(msg.id) : { names: [] as string[], texts: [] as { name: string; text: string }[] };
+  const rawText = assembleDealText(bodyText, texts);
+  const subject = (msg.subject ?? intake.subject ?? "").replace(/^\s*((fw|fwd|re):\s*)+/i, "");
+  const r = await mergeIntoDeal(dealId, rawText, subject, { modelAttached: names.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: names });
+  return { changes: r.changes.map((c) => ({ field: c.field, from: c.from, to: c.to })), filled: r.filled, attachments: names };
+}

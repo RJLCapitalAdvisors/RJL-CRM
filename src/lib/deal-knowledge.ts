@@ -188,6 +188,15 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   maybe("sponsorExperience", d.sponsorExperience); maybe("expectedClose", (d as { expectedClose?: string | null }).expectedClose ?? null);
   const fileNames = (await prisma.dealFile.findMany({ where: { dealId }, select: { name: true } })).map((f) => f.name);
   const reconciled = reconcileDocuments(details as Record<string, string | null | undefined>, fileNames);
+  // recomputed ltv/ltc: debt over price and debt over total capitalization follow whatever dollars the merge brought (Jonathan's rule, Sep 16)
+  const debt = (core.totalDebt as number | undefined) ?? deal.totalDebt;
+  const price = (core.purchasePrice as number | undefined) ?? deal.purchasePrice;
+  const cap = (core.totalCapitalization as number | undefined) ?? deal.totalCapitalization;
+  const pctOf = (a: number | null, b: number | null) => (a != null && b ? Math.round((a / b) * 10000) / 100 : null);
+  if ("totalDebt" in core || "purchasePrice" in core || "totalCapitalization" in core) {
+    core.ltc = pctOf(debt, cap);
+    core.ltv = deal.strategy === "Development" ? null : pctOf(debt, price);
+  }
   await prisma.deal.update({ where: { id: dealId }, data: { ...core, details: JSON.stringify(reconciled) } });
   if (model && changes.length) {
     const body = `Re-underwritten from ${model}: ${changes.map((c) => `${c.label} ${showVal(c.field, c.from)} to ${showVal(c.field, c.to)}`).join("; ")}.`;
