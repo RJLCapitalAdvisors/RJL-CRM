@@ -83,7 +83,7 @@ function apartmentData(fd: FormData) {
     machsanLocation: s(fd, "machsanLocation"),
     parkingSpots: s(fd, "parkingSpots"),
     direction: list(fd, "direction"),
-    mamad: yesNo(fd, "mamad") ?? false,
+    mamad: yesNo(fd, "mamad") ?? null,
     priceNis: n(fd, "priceNis"),
     sellerType: s(fd, "sellerType"),
     renovationYear: s(fd, "sellerType")?.startsWith("Second hand") ? i(fd, "renovationYear") : null,
@@ -136,7 +136,7 @@ function houseData(fd: FormData) {
     parkingSpots: s(fd, "parkingSpots"),
     sellerType: s(fd, "sellerType"),
     renovationYear: s(fd, "sellerType")?.startsWith("Second hand") ? i(fd, "renovationYear") : null,
-    mamad: yesNo(fd, "mamad") ?? false,
+    mamad: yesNo(fd, "mamad") ?? null,
     priceNis: n(fd, "priceNis"),
     description: s(fd, "description"),
   };

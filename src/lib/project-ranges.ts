@@ -18,7 +18,7 @@ export type Unit = {
   parkingSpots: string | null;
   sellerType: string | null;
   completionDate: string | null;
-  mamad: boolean;
+  mamad: boolean | null;
   direction?: string | null;
   levels?: number | null;
   machsanSqm?: number | null;

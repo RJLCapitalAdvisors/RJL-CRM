@@ -12,12 +12,12 @@ export const dynamic = "force-dynamic";
  * itself is there to edit, with tokens as light blue chips. New template opens a blank one.
  */
 export default async function TemplatesPage() {
-  const templates = await prisma.emailTemplate.findMany({ where: { workspace: "CA", NOT: { name: { startsWith: "(archived)" } } }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, createdAt: true, updatedAt: true, _count: { select: { campaigns: true } } } });
+  const templates = await prisma.emailTemplate.findMany({ where: { workspace: "CA", kind: "DEAL", NOT: { name: { startsWith: "(archived)" } } }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, createdAt: true, updatedAt: true, _count: { select: { campaigns: true } } } });
   return (
     <>
       <PageHeader
         title="Email templates"
-        subtitle="Open a template and the email is there to edit, with tokens that fill in from the deal and the person. Send deal picks from these."
+        subtitle="The one-at-a-time deal emails. Open a template and the email is there to edit, with tokens that fill in from the deal and the person. Send deal picks from these; blast templates live under Email blasts."
         actions={
           <form action={createTemplateAndOpen.bind(null, "CA", "DEAL")}>
             <button type="submit" className="btn-primary">
@@ -35,7 +35,6 @@ export default async function TemplatesPage() {
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Used for</th>
                   <th className="text-right">Sends</th>
                   <th>Created</th>
                   <th>Modified</th>
@@ -50,7 +49,6 @@ export default async function TemplatesPage() {
                         {t.name}
                       </Link>
                     </td>
-                    <td className="text-xs text-muted">{t.kind === "BLAST" ? "Email blasts" : "Deal emails"}</td>
                     <td className="text-right text-muted">{t._count.campaigns || ""}</td>
                     <td className="whitespace-nowrap text-muted">{fmtDate(t.createdAt)}</td>
                     <td className="whitespace-nowrap text-muted">{fmtDate(t.updatedAt)}</td>

@@ -57,6 +57,7 @@ export async function saveTemplateInline(id: string, patch: { name?: string; sub
   await prisma.emailTemplate.update({ where: { id }, data });
   revalidatePath("/templates");
   revalidatePath("/israel/templates");
+  revalidatePath("/campaigns/new");
   revalidatePath(`/templates/${id}`);
 }
 
@@ -84,6 +85,7 @@ export async function deleteTemplateInline(id: string, then?: string) {
   } else await prisma.emailTemplate.delete({ where: { id } });
   revalidatePath("/templates");
   revalidatePath("/israel/templates");
+  revalidatePath("/campaigns/new");
   if (then) redirect(then);
 }
 
@@ -93,12 +95,12 @@ export async function createTemplateAndOpen(workspace: "CA" | "IL", kind: string
   const t = await prisma.emailTemplate.create({
     data: {
       name: il ? `New ${kind === "projects" ? "project" : kind === "houses" ? "house" : "apartment"} template` : "New template",
-      kind: il ? kind : "DEAL",
+      kind: il ? kind : kind === "BLAST" ? "BLAST" : "DEAL",
       workspace,
-      subject: il ? "{{unit.name}} in {{unit.place}}" : "{{deal.subjectLine}}",
+      subject: il ? "{{unit.name}} in {{unit.place}}" : kind === "BLAST" ? "" : "{{deal.subjectLine}}",
       bodyHtml: "<div>Hi {{contact.firstName|there}},</div><div><br></div>",
     },
   });
-  revalidatePath(il ? "/israel/templates" : "/templates");
+  revalidatePath(il ? "/israel/templates" : kind === "BLAST" ? "/campaigns/new" : "/templates");
   redirect(`/templates/${t.id}`);
 }

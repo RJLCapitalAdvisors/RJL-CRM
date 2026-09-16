@@ -15,7 +15,7 @@ const STORIES = Array.from({ length: 100 }, (_, k) => String(k + 1));
 
 export type IlApartmentForm = Partial<{
   name: string; apartmentType: string | null; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
-  internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpasot: string | null; levels: number | null; ceilingCms: string | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean;
+  internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpasot: string | null; levels: number | null; ceilingCms: string | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean | null;
   priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null; pool: string | null; poolSqm: number | null;
 }>;
 

@@ -638,7 +638,7 @@ model IlApartment {
   sourceMessageId String?  // the email to deals@rjlisrael this ticket came from
   storage        Boolean   @default(false)
   elevator       Boolean   @default(false)
-  mamad          Boolean   @default(false)
+  mamad          Boolean?  // Yes, No, or not stated yet (asked for while null)
   priceNis       Float?
   pendingApproval Boolean  @default(false) // came in by email with data missing; waits on the dashboard until approved
   extra          String?   // JSON answers to Required Items List questions that have no field of their own
@@ -980,7 +980,7 @@ model IlHouse {
   parkingSpots    String?
   sellerType      String?
   renovationYear  Int?
-  mamad           Boolean   @default(false)
+  mamad           Boolean?  // Yes, No, or not stated yet
   priceNis        Float?
   description     String?
   developerId     String?

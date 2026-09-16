@@ -60,7 +60,21 @@ const Apartment = z.object({
   description: z.string().nullish().default(null).describe("Two to four plain English sentences about the apartment from the documents. No prices or numbers already captured in fields."),
   extra: z.record(z.string(), z.string().nullable()).nullish().default(null).describe("Answers to the extra questions listed in the message, by their keys; only what the documents state"),
 });
+const Project = z.object({
+  name: z.string().nullish().default(null).describe("The project's name in English"),
+  developerName: z.string().nullish().default(null),
+  street: z.string().nullish().default(null),
+  city: z.string().nullish().default(null),
+  neighborhood: z.string().nullish().default(null),
+  totalUnits: z.number().nullish().default(null).describe("Units in the whole project"),
+  stories: z.number().nullish().default(null),
+  parkingSpaces: z.number().nullish().default(null).describe("Parking spaces in the whole project"),
+  completionDate: z.string().nullish().default(null).describe("Expected delivery as MM/YYYY, or the year built"),
+  pool: z.enum(["Yes", "No"]).nullish().default(null).describe("A shared pool in the project: Yes or No; null when not stated"),
+  description: z.string().nullish().default(null).describe("Two to four plain English sentences about the project. No numbers already captured in fields."),
+});
 const Output = z.object({
+  project: Project.nullish().default(null).describe("The whole project (a building or development with several units for sale) when the documents describe one, with or without specific units listed"),
   apartments: z.array(Apartment).default([]),
   agent: z.object({ name: z.string().nullish().default(null), email: z.string().nullish().default(null), phone: z.string().nullish().default(null), company: z.string().nullish().default(null) }).nullish().default(null).describe("The agent or seller who sent the listing, if the message says"),
 });
@@ -83,7 +97,23 @@ export type IntakeInput = {
   sourceLabel: string; // "Email from Yael Tzur" / "WhatsApp from +972 52 300 1122"
   mailbox: string; // where it arrived (address or WhatsApp number)
 };
-export type IntakeRow = { id: string; kind: "apartments" | "houses"; name: string; line: string; price: string; missing: string[] };
+export type IntakeRow = { id: string; kind: "apartments" | "houses" | "projects"; name: string; line: string; price: string; missing: string[] };
+type Kind = "projects" | "apartments" | "houses";
+const kindWord = (k: Kind) => (k === "houses" ? "House" : k === "projects" ? "Project" : "Apartment");
+
+/**
+ * Instructions from the team above a forwarded email: "project and apartments", "make a house list". Only the
+ * forwarder's own words count (the quoted email below the marker is the agent's). Empty when there is none; the
+ * documents then decide on their own.
+ */
+function wantedKinds(body: string): Set<Kind> {
+  const own = body.split(/\n\s*(?:From:|-----Original Message-----|On .{5,80} wrote:|מאת:)/i)[0].slice(0, 1500);
+  const out = new Set<Kind>();
+  if (/\bprojects?\b|פרויקט/i.test(own)) out.add("projects");
+  if (/\bapartments?\b|\bapts?\b|\bunits?\b|דיר(ה|ות)/i.test(own)) out.add("apartments");
+  if (/\bhouses?\b|\bvillas?\b|\bcottages?\b|בית פרטי|וילה|קוטג/i.test(own)) out.add("houses");
+  return out;
+}
 export type IntakeResult = { rows: IntakeRow[]; note: string | null } | { skipped: string };
 
 async function readAttachments(messageId: string): Promise<IntakeFile[]> {
@@ -135,7 +165,7 @@ async function extract(subject: string | null, body: string, files: IntakeFile[]
   } catch (e) {
     console.error("israel intake: answer was not JSON", String(e).slice(0, 200));
   }
-  return { apartments: [], agent: null };
+  return { project: null, apartments: [], agent: null };
 }
 
 /** Asked only when they apply: the project on a yad rishona apartment, the renovation year on a second-hand unit, a ceiling per level on a duplex. */
@@ -156,8 +186,9 @@ const gardenWords = (a: ExtractedApartment, labels: string[]) => (a.apartmentTyp
 /** The extracted field that answers a list key when the ticket column is named differently. */
 const EXTRACT_KEY: Record<string, keyof ExtractedApartment> = { totalFloors: "buildingStories" };
 /** Whether a Required Items List entry is still blank on what was extracted. */
-function blankExtracted(a: ExtractedApartment, key: string, hasDeveloper: boolean): boolean {
+function blankExtracted(a: ExtractedApartment, key: string, hasDeveloper: boolean, hasPlan = false): boolean {
   if (isCustomKey(key)) return !(a.extra?.[key] ?? "").trim();
+  if (key === "floorplanName") return !hasPlan;
   if (key === "developerId") return !hasDeveloper;
   if (key === "brochureName") return false;
   if (key === "ceilingCms") return a.ceilingCms.length === 0 || (a.floors != null && a.ceilingCms.length < a.floors);
@@ -169,14 +200,14 @@ function blankExtracted(a: ExtractedApartment, key: string, hasDeveloper: boolea
   const v = a[k];
   return v == null || (Array.isArray(v) && v.length === 0);
 }
-function missingForHouse(a: ExtractedApartment, hasDeveloper: boolean): string[] {
-  const base = IL_REQUIRED.houses.filter(({ key }) => blankExtracted(a, key, hasDeveloper)).map((r) => r.label);
+function missingForHouse(a: ExtractedApartment, hasDeveloper: boolean, hasPlan = false): string[] {
+  const base = IL_REQUIRED.houses.filter(({ key }) => blankExtracted(a, key, hasDeveloper, hasPlan)).map((r) => r.label);
   const extra = conditionalMissing(a).filter((x) => x !== "Project name");
   if (a.sellerType?.startsWith("Yad Rishona") && !hasDeveloper && !IL_REQUIRED.houses.some((i) => i.key === "developerId")) extra.unshift("Developer");
   return [...base, ...extra];
 }
-function missingFor(a: ExtractedApartment, hasDeveloper: boolean): string[] {
-  const base = IL_REQUIRED.apartments.filter(({ key }) => blankExtracted(a, key, hasDeveloper)).map((r) => r.label);
+function missingFor(a: ExtractedApartment, hasDeveloper: boolean, hasPlan = false): string[] {
+  const base = IL_REQUIRED.apartments.filter(({ key }) => blankExtracted(a, key, hasDeveloper, hasPlan)).map((r) => r.label);
   return gardenWords(a, [...base, ...conditionalMissing(a)]);
 }
 /** The extra answers as stored on a ticket: JSON, or null when there are none; a later email's answers merge in. */
@@ -218,6 +249,13 @@ async function attachFloorplan(files: IntakeFile[], unitId: string, kind: "apart
   else await prisma.ilApartment.update({ where: { id: unitId }, data });
 }
 
+/** The largest PDF that came with the message becomes the project's brochure. */
+async function attachBrochure(files: IntakeFile[], projectId: string) {
+  const pdf = files.filter((f) => f.bytes && f.size < 20 * 1024 * 1024 && (f.type === "application/pdf" || /\.pdf$/i.test(f.name))).sort((a, b) => b.size - a.size)[0];
+  if (!pdf?.bytes) return;
+  await prisma.ilProject.update({ where: { id: projectId }, data: { brochure: Buffer.from(pdf.bytes), brochureType: pdf.type ?? "application/pdf", brochureName: pdf.name } });
+}
+
 /**
  * One property, one ticket. A second email about the same apartment or house (the agent answering our questions,
  * a brochure following the teaser) updates the ticket we have: every value the new email states overwrites the
@@ -244,7 +282,6 @@ function fillFrom<T extends Record<string, unknown>>(data: T): Partial<T> {
   for (const [k, v] of Object.entries(data) as [keyof T, unknown][]) {
     if (v == null) continue;
     if (typeof v === "string" && (v.trim() === "" || v === "[]")) continue;
-    if (typeof v === "boolean" && v === false) continue; // mamad: only a stated yes moves it
     if (k === "name" || k === "source" || k === "sourceMessageId" || k === "pendingApproval") continue;
     out[k] = v as T[keyof T];
   }
@@ -257,16 +294,44 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   const mark = (result: string) => prisma.ilInbound.create({ data: { messageId: input.key, mailbox: input.mailbox, subject: input.subject, fromEmail: input.sender?.email ?? input.sender?.phone ?? null, result } }).catch(() => null);
   await loadIlRequired(); // the Required Items Lists as Jonathan last edited them
   const extracted = await extract(input.subject, input.body, input.files);
-  if (!extracted.apartments.length) {
+  const senderIsInternal = input.sender?.email ? INTERNAL.test(input.sender.email) : false;
+  // the team's instructions above a forwarded email decide what lists come back; one kind named for the units forces it
+  const wants = senderIsInternal ? wantedKinds(input.body) : new Set<Kind>();
+  if (wants.size && !wants.has("projects") && (wants.has("apartments") !== wants.has("houses"))) for (const a of extracted.apartments) a.kind = wants.has("houses") ? "house" : "apartment";
+  if (wants.size === 2 && wants.has("projects") && (wants.has("apartments") !== wants.has("houses"))) for (const a of extracted.apartments) a.kind = wants.has("houses") ? "house" : "apartment";
+  const first = extracted.apartments[0];
+  const proj = extracted.project?.name
+    ? extracted.project
+    : wants.has("projects")
+      ? { name: first?.projectName ?? (input.subject ?? "Project").replace(/^\s*(fwd?|re|fw)\s*:\s*/i, ""), developerName: first?.developerName ?? null, street: first?.street ?? null, city: first?.city ?? null, neighborhood: first?.neighborhood ?? null, totalUnits: first?.buildingUnits ?? null, stories: first?.buildingStories ?? null, parkingSpaces: null, completionDate: first?.completionDate ?? null, pool: null, description: null }
+      : null;
+  if (!extracted.apartments.length && !proj) {
     await mark("skipped: no apartment or house found");
     return { skipped: "no apartments" };
   }
-  const senderIsInternal = input.sender?.email ? INTERNAL.test(input.sender.email) : false;
   const agentCompany = await findOrCreateCompany(extracted.agent?.company ?? null, "Broker");
   const agent = await findOrCreateAgent(extracted.agent, senderIsInternal ? null : input.sender, agentCompany?.id ?? null);
   const rows: IntakeRow[] = [];
   const fileNames = input.files.map((f) => f.name);
   const origin = `Created from ${input.channel === "WHATSAPP" ? "a WhatsApp message" : `an email to ${input.mailbox}`}${input.subject ? `: "${input.subject}"` : ""}${fileNames.length ? ` with ${fileNames.join(", ")}` : ""}`;
+  // a floorplan among the files satisfies the Floorplan line when there is one unit to give it to
+  const planFile = extracted.apartments.length === 1 && input.files.some((f) => (f.type ?? "").startsWith("image/") || f.type === "application/pdf" || /\.(png|jpe?g|webp|pdf)$/i.test(f.name));
+  // the project ticket: the whole building or development, when the documents describe one or the team asked for it
+  let projectRow: { id: string; name: string } | null = null;
+  if (proj?.name) {
+    const pname = stripDashes(proj.name).trim();
+    const existing =
+      (await prisma.ilProject.findFirst({ where: { name: { equals: pname, mode: "insensitive" } } })) ??
+      (proj.street && proj.city ? await prisma.ilProject.findFirst({ where: { street: { equals: proj.street, mode: "insensitive" }, city: { equals: proj.city, mode: "insensitive" } } }) : null);
+    const dev = await findOrCreateCompany(proj.developerName ?? null, "Sponsor (Yazam)");
+    const pdata = { name: pname, developerId: dev?.id ?? null, street: proj.street ?? null, city: proj.city ?? null, neighborhood: proj.neighborhood ?? null, totalUnits: proj.totalUnits ?? null, stories: proj.stories ?? null, parkingSpaces: proj.parkingSpaces ?? null, completionDate: proj.completionDate ?? null, pool: proj.pool ?? null, description: proj.description ? stripDashes(proj.description) : null };
+    projectRow = existing ? await prisma.ilProject.update({ where: { id: existing.id }, data: fillFrom(pdata) }) : await prisma.ilProject.create({ data: pdata });
+    await prisma.ilNote.create({ data: { projectId: projectRow.id, body: existing ? origin.replace(/^Created from/, "Updated from") : origin } });
+    if (!existing?.brochureType) await attachBrochure(input.files, projectRow.id).catch(() => null);
+    const fresh = await prisma.ilProject.findUnique({ where: { id: projectRow.id }, omit: { brochure: true } });
+    const { projectMissing } = await import("@/lib/israel");
+    rows.push({ id: projectRow.id, kind: "projects", name: projectRow.name, line: [proj.totalUnits ? `${proj.totalUnits} units` : null, proj.stories ? `${proj.stories} stories` : null, [proj.neighborhood, proj.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: "", missing: fresh ? projectMissing(fresh as unknown as Record<string, unknown>) : [] });
+  }
   const mirpasot = (a: ExtractedApartment) => {
     const list = a.mirpasot.filter((m) => m.sqm != null || m.direction.length || m.sukka).slice(0, 3);
     const total = list.length > 1 ? list.reduce((t, m) => t + (m.sqm ?? 0), 0) : null;
@@ -283,7 +348,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
       const houseData = {
           name: stripDashes(a.name) || a.street || "House",
           houseType: a.houseType,
-          projectId: houseProject?.id ?? null,
+          projectId: houseProject?.id ?? projectRow?.id ?? null,
           street: a.street,
           city: a.city,
           neighborhood: a.neighborhood,
@@ -299,7 +364,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
           parkingSpots: a.parkingSpots && (IL_PARKING as readonly string[]).includes(a.parkingSpots) ? a.parkingSpots : null,
           sellerType: a.sellerType,
           renovationYear: a.sellerType?.startsWith("Second hand") ? a.renovationYear : null,
-          mamad: a.mamad ?? false,
+          mamad: a.mamad ?? null,
           priceNis: a.priceNis,
           description: a.description ? stripDashes(a.description) : null,
           pool: a.pool ?? (a.mirpasot.some((m) => m.pool === "Yes") ? "Yes" : null),
@@ -317,7 +382,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
       await prisma.ilNote.create({ data: { houseId: house.id, body: found ? origin.replace(/^Created from/, "Updated from") : origin } });
       if (extracted.apartments.length === 1 && !(found?.floorplanType)) await attachFloorplan(input.files, house.id, "houses").catch(() => null);
       const { houseMissing } = await import("@/lib/israel");
-      rows.push({ id: house.id, kind: "houses", name: house.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, a.migrashSqm ? `${sqm(a.migrashSqm)} migrash` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: found ? houseMissing((await prisma.ilHouse.findUnique({ where: { id: house.id } })) as unknown as Record<string, unknown>) : missingForHouse(a, Boolean(developer)) });
+      rows.push({ id: house.id, kind: "houses", name: house.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, a.migrashSqm ? `${sqm(a.migrashSqm)} migrash` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: found ? houseMissing((await prisma.ilHouse.findUnique({ where: { id: house.id } })) as unknown as Record<string, unknown>) : missingForHouse(a, Boolean(developer), planFile) });
       continue;
     }
     let project = null as { id: string } | null;
@@ -330,7 +395,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         street: a.street,
         city: a.city,
         neighborhood: a.neighborhood,
-        projectId: project?.id ?? null,
+        projectId: project?.id ?? projectRow?.id ?? null,
         projectName: a.projectName,
         developerId: developer?.id ?? null,
         agentContactId: agent?.id ?? null,
@@ -348,7 +413,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         machsanLocation: a.machsanLocation && (IL_MACHSAN_LOCATIONS as readonly string[]).includes(a.machsanLocation) ? a.machsanLocation : null,
         parkingSpots: a.parkingSpots && (IL_PARKING as readonly string[]).includes(a.parkingSpots) ? a.parkingSpots : null,
         direction: JSON.stringify(a.direction),
-        mamad: a.mamad ?? false,
+        mamad: a.mamad ?? null,
         priceNis: a.priceNis,
         sellerType: a.sellerType,
         renovationYear: a.sellerType?.startsWith("Second hand") ? a.renovationYear : null,
@@ -367,11 +432,13 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
       : await prisma.ilApartment.create({ data: aptData });
     await prisma.ilNote.create({ data: { apartmentId: created.id, body: foundApt ? origin.replace(/^Created from/, "Updated from") : origin } });
     if (extracted.apartments.length === 1 && !(foundApt?.floorplanType)) await attachFloorplan(input.files, created.id).catch(() => null);
-    rows.push({ id: created.id, kind: "apartments", name: created.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: foundApt ? (await import("@/lib/israel")).apartmentMissing((await prisma.ilApartment.findUnique({ where: { id: created.id } })) as unknown as Record<string, unknown>) : missingFor(a, Boolean(developer)) });
+    rows.push({ id: created.id, kind: "apartments", name: created.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: foundApt ? (await import("@/lib/israel")).apartmentMissing((await prisma.ilApartment.findUnique({ where: { id: created.id } })) as unknown as Record<string, unknown>) : missingFor(a, Boolean(developer), planFile) });
   }
   await mark(`created ${rows.length}`);
   const note = agent ? `Agent on file: ${[agent.firstName, agent.lastName].filter(Boolean).join(" ") || agent.email || agent.phone}.` : null;
-  return { rows, note };
+  const asked = [...wants].filter((k) => !rows.some((r) => r.kind === k));
+  const askedNote = asked.length ? `You asked for ${asked.map((k) => (k === "projects" ? "a project" : k === "houses" ? "a house" : "an apartment")).join(" and ")} list too, but the documents describe none; send the material or add it by hand.` : null;
+  return { rows, note: [note, askedNote].filter(Boolean).join(" ") || null };
 }
 
 export const appBase = () => (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
@@ -380,12 +447,12 @@ function replyHtml(rows: IntakeRow[], base: string, note: string | null): string
   const font = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
   const blocks = rows
     .map(
-      (r) => `<p style="margin:10pt 0 4pt 0;"><b><a href="${base}/israel/${r.kind}/${r.id}">${r.name}</a></b>${r.kind === "houses" ? ' <span style="color:#6b716e;">(house)</span>' : ""}${r.line ? ` <span style="color:#6b716e;">${r.line}</span>` : ""}${r.price ? ` <span style="color:#6b716e;">${r.price}</span>` : ""}</p>
+      (r) => `<p style="margin:10pt 0 4pt 0;"><b><a href="${base}/israel/${r.kind}/${r.id}">${r.name}</a></b>${r.kind !== "apartments" ? ` <span style="color:#6b716e;">(${r.kind === "houses" ? "house" : "project"})</span>` : ""}${r.line ? ` <span style="color:#6b716e;">${r.line}</span>` : ""}${r.price ? ` <span style="color:#6b716e;">${r.price}</span>` : ""}</p>
 ${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still needed to complete the ticket (${r.missing.length}):</div><ol style="margin:0 0 6pt 18pt;">${r.missing.map((m) => `<li>${m}</li>`).join("")}</ol>` : `<div style="margin:0 0 6pt 0;">Nothing missing. The ticket is complete.</div>`}`,
     )
     .join("");
   return `<div style="${font}">
-<p>${rows.length === 1 ? (rows[0].kind === "houses" ? "House ticket updated in" : "Apartment ticket updated in") : `${rows.length} tickets updated in`} RJL Israel (a new listing gets a new ticket; a second email about the same unit updates the one we have). ${rows.some((r) => r.missing.length) ? "Tickets with data missing wait under Deals to be approved on the dashboard until the data is in and Jonathan approves them." : ""}</p>
+<p>${rows.length === 1 ? `${kindWord(rows[0].kind)} ticket updated in` : `${rows.length} tickets updated in`} RJL Israel (a new listing gets a new ticket; a second email about the same unit updates the one we have). ${rows.some((r) => r.missing.length) ? "Tickets with data missing wait under Deals to be approved on the dashboard until the data is in and Jonathan approves them." : ""}</p>
 ${blocks}
 ${note ? `<p style="color:#6b716e;">${note}</p>` : ""}
 <p style="color:#6b716e;font-size:9pt;">Reply to the agent for the missing items and forward their answer here; edit anything on the ticket in the CRM. A floorplan attached to the email is saved on the ticket.</p>
@@ -394,9 +461,9 @@ ${note ? `<p style="color:#6b716e;">${note}</p>` : ""}
 
 /** The same reply as plain text, for WhatsApp. */
 export function replyText(rows: IntakeRow[], base: string, note: string | null): string {
-  const lines = [rows.length === 1 ? `${rows[0].kind === "houses" ? "House" : "Apartment"} ticket created in RJL Israel.` : `${rows.length} tickets created in RJL Israel.`];
+  const lines = [rows.length === 1 ? `${kindWord(rows[0].kind)} ticket created in RJL Israel.` : `${rows.length} tickets created in RJL Israel.`];
   for (const r of rows) {
-    lines.push("", `*${r.name}*${r.kind === "houses" ? " (house)" : ""}${r.line ? ` · ${r.line}` : ""}${r.price ? ` · ${r.price}` : ""}`, `${base}/israel/${r.kind}/${r.id}`);
+    lines.push("", `*${r.name}*${r.kind !== "apartments" ? ` (${r.kind === "houses" ? "house" : "project"})` : ""}${r.line ? ` · ${r.line}` : ""}${r.price ? ` · ${r.price}` : ""}`, `${base}/israel/${r.kind}/${r.id}`);
     lines.push(r.missing.length ? `Still missing: ${r.missing.join(", ")}` : "Nothing missing, the ticket is complete.");
   }
   if (rows.some((r) => r.missing.length)) lines.push("", "Tickets with data missing wait under Deals to be approved until the data is in.");

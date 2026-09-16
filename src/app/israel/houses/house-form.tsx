@@ -11,7 +11,7 @@ import type { FxRate } from "@/lib/fx";
 
 export type IlHouseForm = Partial<{
   name: string; houseType: string | null; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; floors: number | null; ceilingCms: string | null; completionDate: string | null;
-  internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpesetDirection: string | null; mirpasot: string | null; migrashSqm: number | null; pool: string | null; poolSqm: number | null; parkingSpots: string | null; mamad: boolean; priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null;
+  internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpesetDirection: string | null; mirpasot: string | null; migrashSqm: number | null; pool: string | null; poolSqm: number | null; parkingSpots: string | null; mamad: boolean | null; priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null;
 }>;
 
 const FLOOR_NAMES = ["Ground floor", "First floor", "Second floor", "Third floor", "Fourth floor", "Fifth floor", "Sixth floor", "Seventh floor"];

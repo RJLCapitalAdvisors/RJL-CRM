@@ -10,11 +10,12 @@ type Template = { id: string; name: string; subject: string; bodyHtml: string };
  * New blast, the HubSpot way: the email is the main thing on the page, shown exactly as it will look and editable
  * in place, with a test send at hand. Who gets it, when, and the follow-up cadence sit in the narrow column.
  */
-export function BlastForm({ templates, assetClasses, defaultFrom, me }: { templates: Template[]; assetClasses: string[]; defaultFrom: string; me: string | null }) {
+export function BlastForm({ templates, initialTemplateId, assetClasses, defaultFrom, me }: { templates: Template[]; initialTemplateId?: string; assetClasses: string[]; defaultFrom: string; me: string | null }) {
+  const first = templates.find((t) => t.id === initialTemplateId) ?? templates[0];
   const [audience, setAudience] = useState<"Investor" | "Sponsor" | "All">("Investor");
   const [classes, setClasses] = useState<string[]>([]);
-  const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
-  const [copy, setCopy] = useState<BlastCopy>({ subject: templates[0]?.subject ?? "", bodyHtml: templates[0]?.bodyHtml ?? "" });
+  const [templateId, setTemplateId] = useState(first?.id ?? "");
+  const [copy, setCopy] = useState<BlastCopy>({ subject: first?.subject ?? "", bodyHtml: first?.bodyHtml ?? "" });
   const [name, setName] = useState("");
   const [when, setWhen] = useState<"now" | "later">("later");
   const [at, setAt] = useState(() => {
@@ -103,7 +104,7 @@ export function BlastForm({ templates, assetClasses, defaultFrom, me }: { templa
               </option>
             ))}
           </select>
-          <div className="mt-1 text-xs text-muted">Picking a template replaces the email on the right. Templates live under Templates (kind: blast).</div>
+          <div className="mt-1 text-xs text-muted">Picking a template replaces the email on the right. Blast templates are kept on the step before this one.</div>
           <label className="label mt-3" htmlFor="blastName">
             Name (for your records)
           </label>

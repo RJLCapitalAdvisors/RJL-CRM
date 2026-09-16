@@ -160,6 +160,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "stories", label: "Building stories" },
     { key: "parkingSpaces", label: "Parking spaces" },
     { key: "completionDate", label: "Expected delivery (month and year)" },
+    { key: "pool", label: "Project pool (yes or no)" },
     { key: "brochureName", label: "Brochure" },
   ],
   apartments: [
@@ -186,6 +187,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "machsanSqm", label: "Machsan size (m²)" },
     { key: "machsanLocation", label: "Machsan location" },
     { key: "priceNis", label: "Asking price" },
+    { key: "floorplanName", label: "Floorplan" },
   ],
   houses: [
     { key: "houseType", label: "House type (villa, semi-attached or cottage)" },
@@ -206,6 +208,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "pool", label: "Private pool (yes or no)" },
     { key: "migrashSqm", label: "Migrash size (m²)" },
     { key: "priceNis", label: "Asking price" },
+    { key: "floorplanName", label: "Floorplan" },
   ],
 };
 /** The live lists (swapped in by loadIlRequired). */

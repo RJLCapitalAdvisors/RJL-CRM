@@ -22,7 +22,7 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
   if (!t) notFound();
   const il = t.workspace === "IL";
   const tokens = il ? ilTokens((["projects", "apartments", "houses"].includes(t.kind) ? t.kind : "apartments") as "projects" | "apartments" | "houses") : caTokens();
-  const back = il ? `/israel/templates?kind=${t.kind}` : "/templates";
+  const back = il ? `/israel/templates?kind=${t.kind}` : t.kind === "BLAST" ? "/campaigns/new" : "/templates";
   return (
     <>
       <PageHeader
@@ -31,8 +31,13 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
         actions={
           <>
             <Link href={back} className="btn-secondary">
-              All templates
+              {t.kind === "BLAST" ? "Blast templates" : "All templates"}
             </Link>
+            {t.kind === "BLAST" && (
+              <Link href={`/campaigns/new?templateId=${t.id}`} className="btn-primary">
+                Start a blast with it
+              </Link>
+            )}
             <form action={duplicateTemplate.bind(null, t.id)}>
               <button type="submit" className="btn-secondary">
                 Duplicate
