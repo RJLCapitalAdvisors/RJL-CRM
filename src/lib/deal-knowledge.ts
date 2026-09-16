@@ -81,12 +81,24 @@ export async function recordDealEmail(dealId: string, m: { messageId: string; gr
 }
 
 /** Register the files on a deals@ message as the deal's attachments (images and signature logos skipped). */
+/**
+ * Attachments on a deals@ message become the ticket's files. One file per name per deal (Jonathan, Sep 16: forwarding
+ * the same deal again was stacking duplicates): a same-named file already on the ticket is pointed at the newest copy
+ * (the bytes come from the latest email) rather than added again.
+ */
 export async function recordDealFiles(dealId: string, mailbox: string, graphId: string, fromEmail: string | null, receivedAt: Date, atts?: GraphAttachment[]) {
   const list = atts ?? (await graph<{ value: GraphAttachment[] }>(`/users/${q(mailbox)}/messages/${q(graphId)}/attachments?$select=id,name,contentType,size,isInline`)).value;
   let n = 0;
   for (const a of list) {
     if (a.isInline || a["@odata.type"] !== "#microsoft.graph.fileAttachment" || IMAGE.test(a.name)) continue;
-    await prisma.dealFile.upsert({ where: { graphId_attachmentId: { graphId, attachmentId: a.id } }, create: { dealId, name: a.name, size: a.size, contentType: a.contentType, mailbox, graphId, attachmentId: a.id, fromEmail, receivedAt }, update: { dealId } });
+    const sameNamed = await prisma.dealFile.findFirst({ where: { dealId, name: { equals: a.name, mode: "insensitive" } }, orderBy: { receivedAt: "desc" } });
+    if (sameNamed) {
+      if (sameNamed.graphId !== graphId || sameNamed.attachmentId !== a.id) {
+        if (receivedAt.getTime() >= sameNamed.receivedAt.getTime()) await prisma.dealFile.update({ where: { id: sameNamed.id }, data: { mailbox, graphId, attachmentId: a.id, size: a.size, contentType: a.contentType, fromEmail, receivedAt, url: null } });
+      }
+      continue;
+    }
+    await prisma.dealFile.upsert({ where: { graphId_attachmentId: { graphId, attachmentId: a.id } }, create: { dealId, name: a.name, size: a.size, contentType: a.contentType, mailbox, graphId, attachmentId: a.id, fromEmail, receivedAt }, update: { dealId, size: a.size, contentType: a.contentType, fromEmail, receivedAt } });
     n++;
   }
   return n;
