@@ -167,18 +167,32 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
         return { rowId: f.rowId, toContactIds: [...(to[f.rowId] ?? [])], subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() };
       });
 
+  // first click arms the launch and says what will go; the second click within ten seconds sends. Browser confirm dialogs
+  // are blocked in some windows and left the button doing nothing (Carderock, Sep 16), so every stop is a visible note.
+  const [armed, setArmed] = useState<number | null>(null);
   const launch = () => {
     commitEdit();
     const items = itemsToSend();
-    if (!items.length) return;
-    if (!general) return setNote("The General email is still rendering.");
-    if (!window.confirm(`Send ${items.length} individual email${items.length === 1 ? "" : "s"} now, each to the people picked?`)) return;
+    if (!items.length) return setNote("Nothing to send: no firm is ticked, or the ticked firms were already sent.");
+    if (!general) return setNote("The General email is still rendering. Give it a moment, or click 'reset to template'.");
+    const noPeople = items.filter((i) => !i.toContactIds.length);
+    if (noPeople.length) return setNote(`${noPeople.length} firm${noPeople.length === 1 ? " has" : "s have"} nobody picked: use the ▾ on the firm to pick who gets it, or x to leave it out.`);
+    if (!armed || Date.now() - armed > 10_000) {
+      setArmed(Date.now());
+      setNote(`Ready: ${items.length} individual email${items.length === 1 ? "" : "s"}, one every 30 seconds, ${chosenFiles.size} attachment${chosenFiles.size === 1 ? "" : "s"} each. Click LAUNCH again to send.`);
+      return;
+    }
+    setArmed(null);
     start(async () => {
-      const r = await launchAction(dealId, items, [...chosenFiles]);
-      if (!r.ok) return setNote(r.reason);
-      applyStatus(r.status);
-      if (r.status.queued > 0) setLaunching(true);
-      else router.refresh();
+      try {
+        const r = await launchAction(dealId, items, [...chosenFiles]);
+        if (!r.ok) return setNote(r.reason);
+        applyStatus(r.status);
+        if (r.status.queued > 0) setLaunching(true);
+        else router.refresh();
+      } catch (e) {
+        setNote(`Launch did not start: ${e instanceof Error ? e.message : String(e)}. Nothing was sent. Try again, or tell Claude what this says.`);
+      }
     });
   };
 
@@ -550,7 +564,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
             Send preview email to me
           </button>
           <button type="button" className="btn-primary px-5" disabled={pending || launching || itemsToSend().length === 0 || !general} onClick={launch}>
-            {pending ? "Working…" : launching ? "Sending…" : "LAUNCH"}
+            {pending ? "Working…" : launching ? "Sending…" : armed && Date.now() - armed <= 10_000 ? "LAUNCH: click again to send" : "LAUNCH"}
           </button>
         </div>
       </div>
