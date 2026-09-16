@@ -49,8 +49,9 @@ export async function finalizeEngagement(dealId: string, keepCompanyIds: string[
   const groups = await engagementGroups(dealId);
   let removed = 0, added = 0;
   for (const g of groups) {
-    if (g.companyId && !keepCompanyIds.includes(g.companyId) && g.status <= 1) {
-      const r = await prisma.dealInvestor.deleteMany({ where: { id: { in: g.rowIds }, status: 1 } });
+    if (g.companyId && !keepCompanyIds.includes(g.companyId)) {
+      // struck by the sponsor: off the deal and the progress report, whatever stage the group had reached
+      const r = await prisma.dealInvestor.deleteMany({ where: { id: { in: g.rowIds } } });
       removed += r.count;
     }
   }

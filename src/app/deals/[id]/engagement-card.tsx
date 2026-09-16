@@ -11,7 +11,8 @@ type Group = { companyId: string; name: string; status: number };
  * add any they asked for, then "Engagement letter signed": the agreed list becomes the progress report and
  * the deal moves to Engagement Letter Signed. The list stays editable after signing (Jonathan, Sep 16: the
  * sponsor crossed groups off after the letter was marked signed): untick or add, then "Save agreed groups".
- * Groups the deal already went to cannot be unticked here; they are handled on the progress report.
+ * Every group can be unticked, including one the deal already went to (Jonathan, Sep 16: having sent it before
+ * does not mean he will not send it again, so nothing is greyed out).
  */
 export function EngagementCard({ dealId, groups, signed }: { dealId: string; groups: Group[]; signed: boolean }) {
   const [keep, setKeep] = useState<Set<string>>(new Set(groups.map((g) => g.companyId)));
@@ -47,7 +48,6 @@ export function EngagementCard({ dealId, groups, signed }: { dealId: string; gro
                 type="checkbox"
                 className="accent-ink"
                 checked={keep.has(g.companyId)}
-                disabled={g.status > 1}
                 onChange={() =>
                   setKeep((s) => {
                     const n = new Set(s);
@@ -58,7 +58,6 @@ export function EngagementCard({ dealId, groups, signed }: { dealId: string; gro
                 }
               />
               <span className={keep.has(g.companyId) ? "" : "line-through text-muted"}>{g.name}</span>
-              {g.status > 1 && <span className="text-[10px] text-muted">already sent</span>}
             </li>
           ))}
           {adds.map((a) => (
