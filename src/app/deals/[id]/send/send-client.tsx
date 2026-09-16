@@ -526,7 +526,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
                 onInput={commitEdit}
                 onKeyUp={readCaretFont}
                 onMouseUp={readCaretFont}
-                className="min-h-[420px] p-4 text-[11pt] outline-none [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-[10pt] [&_p]:mt-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-[10pt] [&_li]:mb-[2pt]"
+                className="min-h-[420px] p-4 text-[11pt] outline-none [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-[10pt] [&_p]:mt-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-[10pt] [&_li]:mb-0 [&_li_p]:m-0"
                 style={{ fontFamily: "Calibri, Arial, sans-serif" }}
               />
             </div>

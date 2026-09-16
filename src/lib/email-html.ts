@@ -34,7 +34,7 @@ export function cleanTemplateHtml(html: string): string {
     s = s.replace(/<span>((?:(?!<\/?span\b)[\s\S])*)<\/span>/gi, "$1");
   }
   return s
-    .replace(/<li([^>]*)>\s*<p>/gi, "<li$1>")
+    .replace(/<li([^>]*)>\s*<p[^>]*>/gi, "<li$1>")
     .replace(/<\/p>\s*<\/li>/gi, "</li>")
     .replace(/<(p|div)>\s*(?:<br\s*\/?>)+\s*<\/\1>/gi, "")
     .replace(/(<\/(?:p|div|ul|ol)>)\s*<br\s*\/?>\s*(?=<(?:p|div|ul|ol)\b)/gi, "$1");
@@ -44,7 +44,7 @@ export function cleanTemplateHtml(html: string): string {
 export function outlookHtml(html: string): string {
   return cleanTemplateHtml(html).replace(/<(p|li|div|td|ul|ol)(\s[^>]*)?>/gi, (_m, tag: string, attrs = "") => {
     const t = tag.toLowerCase();
-    const base = t === "p" ? `margin:0 0 10pt 0;${FONT}` : t === "li" ? `margin:0 0 2pt 0;${FONT}` : t === "ul" ? `margin:0 0 10pt 18pt;list-style-type:disc;${FONT}` : t === "ol" ? `margin:0 0 10pt 18pt;list-style-type:decimal;${FONT}` : FONT;
+    const base = t === "p" ? `margin:0 0 10pt 0;${FONT}` : t === "li" ? `margin:0;${FONT}` : t === "ul" ? `margin:0 0 10pt 18pt;list-style-type:disc;${FONT}` : t === "ol" ? `margin:0 0 10pt 18pt;list-style-type:decimal;${FONT}` : FONT;
     const sm = attrs.match(/\sstyle="([^"]*)"/i);
     if (!sm) return `<${t}${attrs} style="${base}">`;
     const own = sm[1].trim();
