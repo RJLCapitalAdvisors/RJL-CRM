@@ -11,8 +11,28 @@ import { advance, chosenFiles, sendMessage, type LaunchItem } from "@/lib/send-d
  * loads elsewhere pump too, so a launch finishes even if the page is closed.
  */
 export const LAUNCH_GAP_MS = 30_000;
+/**
+ * Microsoft throttles attachment uploads per mailbox ("Application is over its IncomingBytes limit", HTTP 429): on
+ * Sep 16 the Gateway launch carried 9.9 MB per email and 13 of 28 failed after the first fifteen went out. So the gap
+ * between two emails also grows with what they carry (about 40 MB of attachments per five minutes), and a throttled
+ * email goes back in the queue with a wait instead of failing.
+ */
+const BYTES_PER_WINDOW = 40 * 1024 * 1024;
+const WINDOW_MS = 5 * 60_000;
+const MAX_ATTEMPTS = 8;
+export const gapForBytes = (bytes: number) => Math.max(LAUNCH_GAP_MS, Math.ceil((bytes / BYTES_PER_WINDOW) * WINDOW_MS));
+const isThrottle = (msg: string) => /\b429\b|throttl|IncomingBytes|TooManyRequests|MailboxConcurrency/i.test(msg);
+const backoffMs = (attempt: number) => Math.min(30, 5 * attempt) * 60_000;
+const bytesOf = (src: Awaited<ReturnType<typeof chosenFiles>>) => (src ? src.atts.reduce((t, a) => t + ((a as { size?: number }).size ?? (a as { _bytes?: Uint8Array })._bytes?.byteLength ?? 0), 0) : 0);
 
-export type LaunchStatus = { total: number; sent: number; failed: number; queued: number; nextInMs: number; rows: { rowId: string; status: string; error: string | null }[] };
+export type LaunchStatus = { total: number; sent: number; failed: number; queued: number; nextInMs: number; heldUntil: string | null; rows: { rowId: string; status: string; error: string | null }[] };
+
+/** Put a deal's failed emails back in the queue (fresh attempts, no hold). Returns how many. */
+export async function retryFailed(dealId: string): Promise<number> {
+  const since = new Date(Date.now() - 24 * 3_600_000);
+  const r = await prisma.dealLaunch.updateMany({ where: { dealId, status: "FAILED", createdAt: { gte: since } }, data: { status: "QUEUED", attempts: 0, notBefore: null, error: null, claimedAt: null } });
+  return r.count;
+}
 
 /** Put every firm's email in the queue. Nothing is sent here; the first goes out on the first pump. */
 export async function queueDealEmails(dealId: string, items: LaunchItem[], mailbox: string, fileKeys?: string[]): Promise<void> {
@@ -29,12 +49,14 @@ export async function queueDealEmails(dealId: string, items: LaunchItem[], mailb
   }
 }
 
-/** Milliseconds until the mailbox may send again (0 when it may send now). */
-async function waitFor(mailbox: string): Promise<number> {
+/** Milliseconds until the mailbox may send again (0 when it may send now); the gap grows with the attachments the next email carries. */
+async function waitFor(mailbox: string, gapMs = LAUNCH_GAP_MS): Promise<number> {
   const last = await prisma.dealLaunch.findFirst({ where: { mailbox, status: { in: ["SENT", "SENDING"] } }, orderBy: [{ claimedAt: "desc" }], select: { claimedAt: true, sentAt: true } });
   const t = Math.max(last?.claimedAt?.getTime() ?? 0, last?.sentAt?.getTime() ?? 0);
-  return Math.max(0, t + LAUNCH_GAP_MS - Date.now());
+  return Math.max(0, t + gapMs - Date.now());
 }
+/** Queued emails that may go now (none held back by a throttle wait). */
+const ready = (mailbox: string) => ({ mailbox, status: "QUEUED", OR: [{ notBefore: null }, { notBefore: { lte: new Date() } }] });
 
 /**
  * Send what is due from one mailbox, one email per gap, for as long as the time budget allows. Two pumps at once
@@ -46,12 +68,17 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
   const cache = new Map<string, Awaited<ReturnType<typeof chosenFiles>>>();
   if (!graphConfigured()) return { sent: 0, remaining: await prisma.dealLaunch.count({ where: { mailbox, status: "QUEUED" } }) };
   for (;;) {
-    const wait = await waitFor(mailbox);
+    const peek = await prisma.dealLaunch.findFirst({ where: ready(mailbox), orderBy: { createdAt: "asc" } });
+    if (!peek) break;
+    const peekKeys = peek.fileKeys ? (JSON.parse(peek.fileKeys) as string[]) : undefined;
+    const peekCache = `${peek.dealId}:${peek.fileKeys ?? ""}`;
+    if (!cache.has(peekCache)) cache.set(peekCache, await chosenFiles(peek.dealId, peekKeys));
+    const wait = await waitFor(mailbox, gapForBytes(bytesOf(cache.get(peekCache)!)));
     if (wait > 0) {
       if (Date.now() + wait - started > budgetMs) break;
       await new Promise((r) => setTimeout(r, wait));
     }
-    const next = await prisma.dealLaunch.findFirst({ where: { mailbox, status: "QUEUED" }, orderBy: { createdAt: "asc" } });
+    const next = await prisma.dealLaunch.findFirst({ where: ready(mailbox), orderBy: { createdAt: "asc" } });
     if (!next) break;
     const claimed = await prisma.dealLaunch.updateMany({ where: { id: next.id, status: "QUEUED" }, data: { status: "SENDING", claimedAt: new Date() } });
     if (claimed.count === 0) continue; // another pump took it
@@ -72,7 +99,14 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
       await advance(next.dealId, "Deal Taken To Market").catch(() => {});
       sent++;
     } catch (e) {
-      await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "FAILED", error: String(e instanceof Error ? e.message : e).slice(0, 300) } });
+      const msg = String(e instanceof Error ? e.message : e).slice(0, 300);
+      if (isThrottle(msg) && next.attempts + 1 < MAX_ATTEMPTS) {
+        // Microsoft said slow down: back in the queue with a wait, and this pump stops hammering
+        const attempt = next.attempts + 1;
+        await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "QUEUED", attempts: attempt, notBefore: new Date(Date.now() + backoffMs(attempt)), error: msg, claimedAt: null } });
+        break;
+      }
+      await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "FAILED", attempts: next.attempts + 1, error: msg } });
     }
     if (Date.now() - started > budgetMs) break;
   }
@@ -90,11 +124,15 @@ export async function pumpAllLaunches(budgetMs = 45_000): Promise<number> {
 /** Where a deal's launch stands, for the progress note on the Send deal page. */
 export async function launchStatus(dealId: string): Promise<LaunchStatus> {
   const since = new Date(Date.now() - 24 * 3_600_000);
-  const rows = await prisma.dealLaunch.findMany({ where: { dealId, createdAt: { gte: since } }, orderBy: { createdAt: "asc" }, select: { rowId: true, status: true, error: true, mailbox: true } });
+  const rows = await prisma.dealLaunch.findMany({ where: { dealId, createdAt: { gte: since } }, orderBy: { createdAt: "asc" }, select: { rowId: true, status: true, error: true, mailbox: true, notBefore: true } });
   const latest = new Map<string, (typeof rows)[number]>();
   for (const r of rows) latest.set(r.rowId, r);
   const list = [...latest.values()];
   const n = (s: string[]) => list.filter((r) => s.includes(r.status)).length;
   const mailbox = list[0]?.mailbox;
-  return { total: list.length, sent: n(["SENT"]), failed: n(["FAILED"]), queued: n(["QUEUED", "SENDING"]), nextInMs: mailbox ? await waitFor(mailbox) : 0, rows: list.map((r) => ({ rowId: r.rowId, status: r.status, error: r.error })) };
+  const holds = list.filter((r) => r.status === "QUEUED" && r.notBefore && r.notBefore.getTime() > Date.now()).map((r) => r.notBefore!.getTime());
+  const allHeld = holds.length > 0 && holds.length === n(["QUEUED"]);
+  const heldUntil = allHeld ? new Date(Math.min(...holds)).toISOString() : null;
+  const baseWait = mailbox ? await waitFor(mailbox) : 0;
+  return { total: list.length, sent: n(["SENT"]), failed: n(["FAILED"]), queued: n(["QUEUED", "SENDING"]), nextInMs: heldUntil ? Math.max(baseWait, Math.min(...holds) - Date.now()) : baseWait, heldUntil, rows: list.map((r) => ({ rowId: r.rowId, status: r.status, error: r.error })) };
 }

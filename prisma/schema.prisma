@@ -855,6 +855,8 @@ model DealLaunch {
   fileKeys     String?   // JSON keys of the chosen attachments; null = everything the sponsor sent
   status       String    @default("QUEUED") // QUEUED | SENDING | SENT | FAILED
   error        String?
+  notBefore    DateTime? // held back until then (Microsoft throttled the attachment upload); null = ready
+  attempts     Int       @default(0)
   claimedAt    DateTime?
   sentAt       DateTime?
   createdAt    DateTime  @default(now())

@@ -5,7 +5,7 @@ import { after } from "next/server";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/current-user";
 import { createSendDrafts, finalizeEngagement, renderDealEmail, renderGeneralDealEmail, reviseDealEmail, sendPreviewToSelf, type LaunchItem, type SendItem } from "@/lib/send-deal";
-import { launchStatus, pumpLaunches, queueDealEmails, type LaunchStatus } from "@/lib/launch-queue";
+import { launchStatus, pumpLaunches, queueDealEmails, retryFailed, type LaunchStatus } from "@/lib/launch-queue";
 
 export async function finalizeEngagementAction(dealId: string, keepCompanyIds: string[], addCompanyIds: string[]) {
   const r = await finalizeEngagement(dealId, keepCompanyIds, addCompanyIds);
@@ -104,4 +104,15 @@ export async function updateAgreedGroupsAction(dealId: string, keepCompanyIds: s
   const r = await finalizeEngagement(dealId, keepCompanyIds, addCompanyIds, { markSigned: false });
   revalidatePath(`/deals/${dealId}`);
   return r;
+}
+
+/** Failed emails go back in the queue and the sending resumes at the paced rate. */
+export async function retryFailedAction(dealId: string): Promise<{ ok: true; requeued: number; status: LaunchStatus } | { ok: false; reason: string }> {
+  const me = await currentUser();
+  if (!me) return { ok: false, reason: "Sign in with Microsoft (bottom of the sidebar) so the emails go from your own mailbox." };
+  const requeued = await retryFailed(dealId);
+  await pumpLaunches(me.email, 5_000);
+  after(() => pumpLaunches(me.email, 270_000).catch(() => null));
+  revalidatePath(`/deals/${dealId}/send`);
+  return { ok: true, requeued, status: await launchStatus(dealId) };
 }

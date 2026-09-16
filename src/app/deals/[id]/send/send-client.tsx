@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Bold, File, FileImage, FileSpreadsheet, FileText, Italic, List, ListOrdered, PenLine, Presentation, Underline } from "lucide-react";
 import { CompanyLogo } from "@/components/company-logo";
 import { hasMarker, withFirstName, withoutName } from "@/lib/first-name-marker";
-import { launchAction, previewGeneralEmail, previewToMeAction, pumpLaunchAction, reviseGeneralEmailAction, saveSendStateAction } from "./actions";
+import { launchAction, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction } from "./actions";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
 export type Person = { id: string; name: string; email: string; title: string | null };
@@ -200,7 +200,14 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   /** The launch as it stands: which firms are sent, queued or failed, and when the next one goes. */
   const applyStatus = (st: LaunchStatus) => {
     setResults(Object.fromEntries(st.rows.map((x) => [x.rowId, { ok: x.status === "SENT", error: x.status === "FAILED" ? x.error ?? "failed" : undefined, pending: x.status === "QUEUED" || x.status === "SENDING" }])));
-    setNote(st.queued > 0 ? `${st.sent} of ${st.total} sent · ${st.queued} to go, next in ${Math.max(1, Math.ceil(st.nextInMs / 1000))}s. One email every 30 seconds so each lands as an individually sent email. It keeps going if you leave; this page shows progress.` : `${st.sent} of ${st.total} sent${st.failed ? `, ${st.failed} failed` : ""}. Rows are now Deal Sent on the progress report.`);
+    const held = st.heldUntil ? new Date(st.heldUntil) : null;
+    setNote(
+      st.queued > 0
+        ? held
+          ? `${st.sent} of ${st.total} sent · ${st.queued} waiting. Microsoft paused attachment uploads from your mailbox for a few minutes (too many megabytes in a short time); sending resumes on its own at ${held.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}. Keep this page open or come back later; nothing is lost.`
+          : `${st.sent} of ${st.total} sent · ${st.queued} to go, next in ${Math.max(1, Math.ceil(st.nextInMs / 1000))}s. One email at a time, spaced for the attachments' size, so each lands as an individually sent email. It keeps going if you leave.`
+        : `${st.sent} of ${st.total} sent${st.failed ? `, ${st.failed} failed (hover a firm for the reason; Retry failed sends them again)` : ""}.`,
+    );
   };
   useEffect(() => {
     if (!launching) return;
@@ -561,6 +568,23 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
       <div className="card flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="text-sm text-muted">{note ?? `${itemsToSend().length} email${itemsToSend().length === 1 ? "" : "s"} ready. Each firm gets the General email with its person's name, the ${chosenFiles.size} attachment${chosenFiles.size === 1 ? "" : "s"} ticked above and your signature.`}</div>
         <div className="flex items-center gap-2">
+          {!launching && Object.values(results).some((r) => !r.ok && !r.pending) && (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const r = await retryFailedAction(dealId);
+                  if (!r.ok) return setNote(r.reason);
+                  applyStatus(r.status);
+                  if (r.status.queued > 0) setLaunching(true);
+                })
+              }
+            >
+              Retry failed ({Object.values(results).filter((r) => !r.ok && !r.pending).length})
+            </button>
+          )}
           <button type="button" className="btn-secondary" disabled={pending || !shown?.html} onClick={previewToMe} title={cur ? "Emails you the exact message this firm would get" : "Emails you the General email, with no name in the greeting"}>
             Send preview email to me
           </button>
