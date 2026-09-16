@@ -354,8 +354,18 @@ async function google(url: string): Promise<CloudResult> {
 
 // ---------- OneDrive / SharePoint (through Graph's shares API; falls back to a direct download) ----------
 type DriveItem = { id: string; name: string; size?: number; file?: { mimeType?: string }; folder?: unknown; "@microsoft.graph.downloadUrl"?: string };
+/**
+ * What the reply says when a OneDrive / SharePoint link is shared with specific people only (Microsoft answers the
+ * CRM with a sign-in page or "the sharing link no longer exists"). Sep 16, MLG's folder link: nothing the CRM
+ * can sign in as will open another company's restricted share, so the fix is on the sender's side or by hand.
+ */
+const RESTRICTED_NOTE = (url: string, host: string) =>
+  `${host} link is shared with specific people only, so the CRM cannot open it (Microsoft asks it to sign in). Two ways in: ask the sender for a link set to "Anyone with the link", or open it yourself, download the files and forward them to deals@; the ticket picks them up from the forward. Link: ${url}`;
+
 async function onedrive(url: string): Promise<CloudResult> {
   const out: CloudResult = { files: [], notes: [] };
+  const host = /sharepoint\.com/i.test(url) ? "SharePoint / OneDrive for Business" : "OneDrive";
+  let restricted = false;
   if (graphConfigured()) {
     try {
       const shareId = "u!" + Buffer.from(url).toString("base64").replace(/=+$/, "").replace(/\//g, "_").replace(/\+/g, "-");
@@ -372,15 +382,16 @@ async function onedrive(url: string): Promise<CloudResult> {
         if (!out.files.length) out.notes.push(`OneDrive folder had no PDF / Excel / Word documents: ${url}`);
         return out;
       }
-    } catch {
-      /* fall through to the direct download */
+    } catch (e) {
+      // 403 accessDenied / "the sharing link no longer exists": the link is for specific people, not for us
+      restricted = /accessDenied|sharing link|403|401|unauthenticated/i.test(String(e instanceof Error ? e.message : e));
     }
   }
   const u = new URL(url);
   u.searchParams.set("download", "1");
   const r = await fetchDocumentOrArchive(u.toString(), "OneDrive", "onedrive-file.pdf").catch(() => null);
-  if (!r) return { files: [], notes: [`OneDrive / SharePoint link could not be downloaded: ${url}`] };
-  if (r === "html") return { files: [], notes: [`OneDrive / SharePoint link needs a sign-in or is not shared with anyone: ${url}`] };
+  if (!r) return { files: [], notes: [restricted ? RESTRICTED_NOTE(url, host) : `${host} link could not be downloaded: ${url}`] };
+  if (r === "html") return { files: [], notes: [RESTRICTED_NOTE(url, host)] };
   return r;
 }
 
