@@ -2,14 +2,16 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { finalizeEngagementAction, searchInvestorCompanies } from "./send/actions";
+import { finalizeEngagementAction, searchInvestorCompanies, updateAgreedGroupsAction } from "./send/actions";
 
 type Group = { companyId: string; name: string; status: number };
 
 /**
  * After the engagement letter goes out the sponsor comes back with redlines. Untick the groups they struck,
  * add any they asked for, then "Engagement letter signed": the agreed list becomes the progress report and
- * the deal moves to Engagement Letter Signed.
+ * the deal moves to Engagement Letter Signed. The list stays editable after signing (Jonathan, Sep 16: the
+ * sponsor crossed groups off after the letter was marked signed): untick or add, then "Save agreed groups".
+ * Groups the deal already went to cannot be unticked here; they are handled on the progress report.
  */
 export function EngagementCard({ dealId, groups, signed }: { dealId: string; groups: Group[]; signed: boolean }) {
   const [keep, setKeep] = useState<Set<string>>(new Set(groups.map((g) => g.companyId)));
@@ -37,7 +39,7 @@ export function EngagementCard({ dealId, groups, signed }: { dealId: string; gro
         </span>
       </div>
       <div className="px-4 py-3 text-sm">
-        {!signed && <p className="mb-3 text-xs text-muted">Untick anything the sponsor struck from the letter, add anything they asked for, then mark it signed. The ticked groups become the progress report.</p>}
+        <p className="mb-3 text-xs text-muted">{signed ? "Untick anything the sponsor struck, add anything they asked for, then save. The progress report follows the ticked groups." : "Untick anything the sponsor struck from the letter, add anything they asked for, then mark it signed. The ticked groups become the progress report."}</p>
         <ul className="grid grid-cols-2 gap-x-6 gap-y-1">
           {groups.map((g) => (
             <li key={g.companyId} className="flex items-center gap-2">
@@ -45,7 +47,7 @@ export function EngagementCard({ dealId, groups, signed }: { dealId: string; gro
                 type="checkbox"
                 className="accent-ink"
                 checked={keep.has(g.companyId)}
-                disabled={signed || g.status > 1}
+                disabled={g.status > 1}
                 onChange={() =>
                   setKeep((s) => {
                     const n = new Set(s);
@@ -67,7 +69,7 @@ export function EngagementCard({ dealId, groups, signed }: { dealId: string; gro
             </li>
           ))}
         </ul>
-        {!signed && (
+        {(
           <div className="relative mt-3 max-w-sm">
             <input value={q} onChange={(e) => search(e.target.value)} placeholder="Add a group the sponsor asked for…" className="input text-sm" />
             {opts.length > 0 && (
@@ -91,8 +93,24 @@ export function EngagementCard({ dealId, groups, signed }: { dealId: string; gro
             )}
           </div>
         )}
-        {!signed && (
-          <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex items-center gap-3">
+          {signed ? (
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={pending || (keep.size === groups.length && adds.length === 0)}
+              onClick={() =>
+                start(async () => {
+                  const r = await updateAgreedGroupsAction(dealId, [...keep], adds.map((a) => a.id));
+                  setAdds([]);
+                  setDone(`Saved. ${r.agreed} groups on the progress report${r.removed ? `, ${r.removed} removed` : ""}${r.added ? `, ${r.added} added` : ""}.`);
+                  router.refresh();
+                })
+              }
+            >
+              {pending ? "Saving…" : "Save agreed groups"}
+            </button>
+          ) : (
             <button
               type="button"
               className="btn-primary"
@@ -107,9 +125,9 @@ export function EngagementCard({ dealId, groups, signed }: { dealId: string; gro
             >
               {pending ? "Saving…" : "Engagement letter signed"}
             </button>
-            {done && <span className="text-xs text-muted">{done}</span>}
-          </div>
-        )}
+          )}
+          {done && <span className="text-xs text-muted">{done}</span>}
+        </div>
       </div>
     </div>
   );

@@ -44,7 +44,8 @@ export async function engagementGroups(dealId: string) {
 }
 
 /** Sponsor agreed to these firms (after redlines): drop the rest that were never sent, add any new ones, mark the letter signed. */
-export async function finalizeEngagement(dealId: string, keepCompanyIds: string[], addCompanyIds: string[]) {
+export async function finalizeEngagement(dealId: string, keepCompanyIds: string[], addCompanyIds: string[], opts: { markSigned?: boolean } = {}) {
+  const markSigned = opts.markSigned ?? true;
   const groups = await engagementGroups(dealId);
   let removed = 0, added = 0;
   for (const g of groups) {
@@ -65,9 +66,10 @@ export async function finalizeEngagement(dealId: string, keepCompanyIds: string[
   const deal = await prisma.deal.findUniqueOrThrow({ where: { id: dealId } });
   const details = JSON.parse(deal.details || "{}") as Record<string, unknown>;
   const agreed = (await engagementGroups(dealId)).map((g) => g.name);
-  await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify({ ...details, agreedGroups: agreed, engagementSignedAt: new Date().toISOString() }) } });
-  await advance(dealId, "Engagement Letter Signed");
-  await logActivity({ type: "NOTE", body: `Engagement letter signed. ${agreed.length} groups agreed${removed ? `, ${removed} removed` : ""}${added ? `, ${added} added` : ""}.`, dealId, companyId: deal.sponsorCompanyId });
+  await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify({ ...details, agreedGroups: agreed, ...(markSigned ? { engagementSignedAt: new Date().toISOString() } : {}) }) } });
+  if (markSigned) await advance(dealId, "Engagement Letter Signed");
+  const change = `${agreed.length} groups agreed${removed ? `, ${removed} removed` : ""}${added ? `, ${added} added` : ""}.`;
+  await logActivity({ type: "NOTE", body: markSigned ? `Engagement letter signed. ${change}` : `Agreed groups updated after signing. ${change}`, dealId, companyId: deal.sponsorCompanyId });
   return { agreed: agreed.length, removed, added };
 }
 

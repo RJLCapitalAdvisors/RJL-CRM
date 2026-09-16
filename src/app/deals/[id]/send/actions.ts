@@ -98,3 +98,10 @@ export async function saveSendStateAction(dealId: string, state: Record<string, 
   await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify(details) } });
   return { ok: true as const };
 }
+
+/** After the letter is signed the sponsor can still strike or add a group: the agreed list and the progress report follow, the stage stays. */
+export async function updateAgreedGroupsAction(dealId: string, keepCompanyIds: string[], addCompanyIds: string[]) {
+  const r = await finalizeEngagement(dealId, keepCompanyIds, addCompanyIds, { markSigned: false });
+  revalidatePath(`/deals/${dealId}`);
+  return r;
+}
