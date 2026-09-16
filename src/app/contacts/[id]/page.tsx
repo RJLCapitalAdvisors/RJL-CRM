@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { checkLabel } from "@/lib/ranges";
 import { CA_TEAM } from "@/lib/access";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -107,7 +108,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                     <span className="text-muted">Asset classes:</span> {crit ? <Chips items={crit.assetClasses} max={4} /> : "—"}
                   </div>
                   <div>
-                    <span className="text-muted">Check sizes:</span> {crit ? <Chips items={crit.checkSizes} max={4} /> : "—"}
+                    <span className="text-muted">Check size:</span> {checkLabel(crit)}
                   </div>
                   <div>
                     <span className="text-muted">Contacts here:</span> {contact.company._count.contacts}

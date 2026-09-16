@@ -66,3 +66,19 @@ export function rangeLabel(stops: Stop[], min: number | null | undefined, max: n
   if (min == null || max == null) return any;
   return min === max ? labelFor(stops, min) : `${labelFor(stops, min)} to ${labelFor(stops, max)}`;
 }
+
+/**
+ * The check size as one precise range ("$8MM to $25MM", "$100MM+"), from the slider values, or from the legacy
+ * buckets when a record was never edited on the slider. Jonathan (Sep 16): never the old bucket list.
+ */
+export function checkLabel(c: { checkMinMM?: number | null; checkMaxMM?: number | null; checkSizes?: string | string[] | null } | null | undefined, none = "—"): string {
+  if (!c) return none;
+  let min = c.checkMinMM ?? null, max = c.checkMaxMM ?? null;
+  if (min == null || max == null) {
+    const list = Array.isArray(c.checkSizes) ? c.checkSizes : c.checkSizes ? (JSON.parse(c.checkSizes) as string[]) : [];
+    const r = checkRangeFrom(list);
+    if (!r) return none;
+    [min, max] = r;
+  }
+  return rangeLabel(CHECK_STOPS, min, max, none);
+}

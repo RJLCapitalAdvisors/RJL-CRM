@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { checkLabel } from "@/lib/ranges";
 import type { ReactNode } from "react";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
@@ -63,6 +64,14 @@ function Window({ title, count, children, empty }: { title: string; count: numbe
       <div className="min-h-0 flex-1 overflow-auto text-sm">{count === 0 ? <div className="px-3 py-8 text-center text-xs text-muted">{empty}</div> : children}</div>
     </div>
   );
+}
+
+/** A proposed check size is stored as buckets; on screen it is the range they cover ("$8MM to $20MM"). Everything else shows as written. */
+function showProposalValue(field: string, v: unknown): string {
+  const text = Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v);
+  if (field !== "checkSizes" || !text) return text;
+  const list = Array.isArray(v) ? (v as string[]) : text.split(/,\s*/).map((x) => x.trim()).filter(Boolean);
+  return checkLabel({ checkSizes: list }, text);
 }
 
 export default async function Dashboard() {
@@ -293,7 +302,7 @@ export default async function Dashboard() {
                     <ul className="mt-1 space-y-1">
                       {changes.map((c) => (
                         <Item key={c.field} className="text-xs">
-                          <span className="text-muted">{EXTRA_FIELD_LABELS[c.field] ?? PROPOSAL_FIELDS[c.field as ProposalField]?.label ?? c.field}:</span> <span className="line-through text-muted">{c.from || "blank"}</span> <span className="font-medium">{c.to}</span>
+                          <span className="text-muted">{EXTRA_FIELD_LABELS[c.field] ?? PROPOSAL_FIELDS[c.field as ProposalField]?.label ?? c.field}:</span> <span className="line-through text-muted">{showProposalValue(c.field, c.from) || "blank"}</span> <span className="font-medium">{showProposalValue(c.field, c.to)}</span>
                           {c.evidence && <div className="italic text-muted">“{c.evidence}”</div>}
                         </Item>
                       ))}

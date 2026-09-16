@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { checkLabel } from "@/lib/ranges";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager } from "@/components/ui";
@@ -75,7 +76,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
               <th>Company</th>
               <th>Roles</th>
               <th>Asset classes</th>
-              <th>Check sizes</th>
+              <th>Check size</th>
               <th className="text-right">Contacts</th>
               <th className="text-right">Deals</th>
               <th>Owner</th>
@@ -98,9 +99,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                 <td>
                   <AssetCell companyId={c.id} assetClasses={parseList(c.criteria?.assetClasses)} />
                 </td>
-                <td className="max-w-[220px] truncate" title={parseList(c.criteria?.checkSizes).join(", ")}>
-                  {parseList(c.criteria?.checkSizes).join(", ") || <span className="text-muted">—</span>}
-                </td>
+                <td className="whitespace-nowrap">{c.criteria && checkLabel(c.criteria, "") ? checkLabel(c.criteria) : <span className="text-muted">—</span>}</td>
                 <td className="text-right">{c._count.contacts}</td>
                 <td className="text-right">{c._count.deals}</td>
                 <td className="whitespace-nowrap">{c.owner?.name ?? <span className="text-muted">—</span>}</td>
