@@ -2,41 +2,56 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader, Empty } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
-import { createTemplateAndOpen, deleteTemplateInline, duplicateTemplate } from "./actions";
+import { createTemplateAndOpen, deleteTemplateInline, duplicateTemplate } from "@/app/templates/actions";
 
 export const metadata = { title: "Email templates" };
 export const dynamic = "force-dynamic";
 
+const KINDS = [
+  { key: "projects", label: "Projects", noun: "project" },
+  { key: "apartments", label: "Apartments", noun: "apartment" },
+  { key: "houses", label: "Houses", noun: "house" },
+] as const;
+
 /**
- * Templates > Email templates, the HubSpot way: a list (name, kind, created, modified). Open one and the email
- * itself is there to edit, with tokens as light blue chips. New template opens a blank one.
+ * RJL Israel > Templates > Email templates: a list per kind of ticket. Open one and the email is there to edit,
+ * with that kind's tokens (an apartment's floor, a house's migrash, a project's total units) plus the person and
+ * the sender. Send apartment/house/project starts from the template you pick.
  */
-export default async function TemplatesPage() {
-  const templates = await prisma.emailTemplate.findMany({ where: { workspace: "CA", NOT: { name: { startsWith: "(archived)" } } }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, createdAt: true, updatedAt: true, _count: { select: { campaigns: true } } } });
+export default async function IlTemplatesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
+  const raw = Array.isArray(sp.kind) ? sp.kind[0] : sp.kind;
+  const kind = (KINDS.find((k) => k.key === raw) ?? KINDS[1]);
+  const templates = await prisma.emailTemplate.findMany({ where: { workspace: "IL", kind: kind.key, NOT: { name: { startsWith: "(archived)" } } }, orderBy: { name: "asc" }, select: { id: true, name: true, createdAt: true, updatedAt: true } });
   return (
     <>
       <PageHeader
         title="Email templates"
-        subtitle="Open a template and the email is there to edit, with tokens that fill in from the deal and the person. Send deal picks from these."
+        subtitle="The emails a unit goes out with. Open one and the email is there to edit, with tokens that fill in from the ticket and the person."
         actions={
-          <form action={createTemplateAndOpen.bind(null, "CA", "DEAL")}>
+          <form action={createTemplateAndOpen.bind(null, "IL", kind.key)}>
             <button type="submit" className="btn-primary">
-              New template
+              New {kind.noun} template
             </button>
           </form>
         }
       />
-      <div className="px-8 py-6">
+      <div className="flex flex-col gap-4 px-8 py-5">
+        <div className="flex gap-1">
+          {KINDS.map((k) => (
+            <Link key={k.key} href={`/israel/templates?kind=${k.key}`} className={`rounded-md px-4 py-2 text-sm font-medium ${kind.key === k.key ? "bg-ink text-paper" : "bg-cream text-ink hover:bg-sky/40"}`}>
+              {k.label}
+            </Link>
+          ))}
+        </div>
         {templates.length === 0 ? (
-          <Empty>No templates yet. New template opens a blank one.</Empty>
+          <Empty>No {kind.noun} templates yet. New {kind.noun} template opens a blank one; until there is one, sends use the built-in summary.</Empty>
         ) : (
           <div className="overflow-hidden rounded-lg border border-line bg-paper">
             <table className="table w-full">
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Used for</th>
-                  <th className="text-right">Sends</th>
                   <th>Created</th>
                   <th>Modified</th>
                   <th></th>
@@ -50,8 +65,6 @@ export default async function TemplatesPage() {
                         {t.name}
                       </Link>
                     </td>
-                    <td className="text-xs text-muted">{t.kind === "BLAST" ? "Email blasts" : "Deal emails"}</td>
-                    <td className="text-right text-muted">{t._count.campaigns || ""}</td>
                     <td className="whitespace-nowrap text-muted">{fmtDate(t.createdAt)}</td>
                     <td className="whitespace-nowrap text-muted">{fmtDate(t.updatedAt)}</td>
                     <td className="text-right">

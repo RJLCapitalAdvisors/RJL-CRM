@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { ilMerge } from "@/lib/il-merge";
 import { mailConfigured, sendBatch, sendEmail } from "@/lib/mailer";
 import { signContactToken } from "@/lib/tokens";
 
@@ -44,12 +45,6 @@ export async function ilSegmentContacts(seg: IlSegment): Promise<IlSegmentRow[]>
 
 /** The unsubscribe link for an Israel contact: the same signed token as RJL CA's, with an il: prefix the route understands. */
 export const ilUnsubscribeUrl = (contactId: string) => `${(process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}/unsubscribe/${signContactToken(`il:${contactId}`)}`;
-
-/** {{contact.firstName|there}}, {{contact.lastName}}, {{contact.company}}, {{first}} filled in for one person. */
-export function ilMerge(text: string, c: { firstName: string | null; lastName: string | null; company: string | null }): string {
-  const val = (k: string) => (k === "firstName" || k === "first" ? c.firstName : k === "lastName" ? c.lastName : k === "company" ? c.company : null);
-  return text.replace(/\{\{\s*(?:contact\.)?(firstName|lastName|company|first)\s*(?:\|([^}]*))?\}\}/g, (_, k: string, fb: string | undefined) => (val(k)?.trim() || fb?.trim() || ""));
-}
 
 /** A starter email when there is no RJL Israel blast template yet. */
 export const IL_STARTER = {

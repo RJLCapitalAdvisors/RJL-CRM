@@ -56,21 +56,49 @@ export async function saveTemplateInline(id: string, patch: { name?: string; sub
   if (patch.bodyHtml != null) data.bodyHtml = patch.bodyHtml;
   await prisma.emailTemplate.update({ where: { id }, data });
   revalidatePath("/templates");
+  revalidatePath("/israel/templates");
   revalidatePath(`/templates/${id}`);
 }
 
 /** The plus square: a new template that opens with a greeting, ready to type into. */
-export async function createBlankTemplate() {
-  await prisma.emailTemplate.create({ data: { name: "New template", kind: "DEAL", workspace: "CA", subject: "{{deal.subjectLine}}", bodyHtml: "Hi {{contact.firstName|there}},\n\n" } });
-  revalidatePath("/templates");
+export async function createBlankTemplate(workspace: "CA" | "IL" = "CA", kind = "DEAL") {
+  const il = workspace === "IL";
+  await prisma.emailTemplate.create({
+    data: {
+      name: il ? `New ${kind === "projects" ? "project" : kind === "houses" ? "house" : "apartment"} template` : "New template",
+      kind: il ? kind : "DEAL",
+      workspace,
+      subject: il ? "{{unit.name}} in {{unit.place}}" : "{{deal.subjectLine}}",
+      bodyHtml: "<div>Hi {{contact.firstName|there}},</div><div><br></div>",
+    },
+  });
+  revalidatePath(il ? "/israel/templates" : "/templates");
 }
 
 /** The x on a window. A template that sent campaigns is kept under an archived name so their history still reads. */
-export async function deleteTemplateInline(id: string) {
+export async function deleteTemplateInline(id: string, then?: string) {
   const used = await prisma.campaign.count({ where: { templateId: id } });
   if (used > 0) {
     const t = await prisma.emailTemplate.findUniqueOrThrow({ where: { id } });
     await prisma.emailTemplate.update({ where: { id }, data: { name: t.name.startsWith("(archived)") ? t.name : `(archived) ${t.name}` } });
   } else await prisma.emailTemplate.delete({ where: { id } });
   revalidatePath("/templates");
+  revalidatePath("/israel/templates");
+  if (then) redirect(then);
+}
+
+/** New template: a blank one, opened right away. */
+export async function createTemplateAndOpen(workspace: "CA" | "IL", kind: string) {
+  const il = workspace === "IL";
+  const t = await prisma.emailTemplate.create({
+    data: {
+      name: il ? `New ${kind === "projects" ? "project" : kind === "houses" ? "house" : "apartment"} template` : "New template",
+      kind: il ? kind : "DEAL",
+      workspace,
+      subject: il ? "{{unit.name}} in {{unit.place}}" : "{{deal.subjectLine}}",
+      bodyHtml: "<div>Hi {{contact.firstName|there}},</div><div><br></div>",
+    },
+  });
+  revalidatePath(il ? "/israel/templates" : "/templates");
+  redirect(`/templates/${t.id}`);
 }

@@ -1,17 +1,27 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { TokenEditor, type Token } from "@/components/token-editor";
+import { ilMerge } from "@/lib/il-merge";
 import { launchIlSend, type IlSendResult } from "../actions";
 import type { IlKind, UnitFile } from "../unit";
 
-type R = { id: string; name: string; email: string };
+type R = { id: string; name: string; firstName: string | null; lastName: string | null; company: string | null; email: string };
 const mb = (n: number) => `${(n / 1_048_576).toFixed(n >= 1_048_576 ? 1 : 2)} MB`;
+const PERSON: Token[] = [
+  { key: "contact.firstName|there", label: "First name (or \"there\")", group: "Contact" },
+  { key: "contact.firstName", label: "First name", group: "Contact" },
+  { key: "contact.lastName", label: "Last name", group: "Contact" },
+];
 
-/** The email as it will go, editable; the files to attach; Launch sends one personal copy per person from the RJL Israel mailbox. */
-export function IlSendClient({ kind, id, unitName, recipients, subject: s0, text: t0, files, mailbox, backHref }: { kind: IlKind; id: string; unitName: string; recipients: R[]; subject: string; text: string; files: UnitFile[]; mailbox: string | null; backHref: string }) {
-  const [subject, setSubject] = useState(s0);
-  const [text, setText] = useState(t0);
+/** The email as it will go, editable in place with the person's name as a token; the files to attach; Launch sends one personal copy per person. */
+export function IlSendClient({ kind, id, unitName, recipients, subject: s0, bodyHtml: b0, templates, templateId, files, mailbox, backHref, toParam }: { kind: IlKind; id: string; unitName: string; recipients: R[]; subject: string; bodyHtml: string; templates: { id: string; name: string }[]; templateId: string; files: UnitFile[]; mailbox: string | null; backHref: string; toParam: string }) {
+  const router = useRouter();
+  const subject = useRef(s0);
+  const body = useRef(b0);
+  const [tick, setTick] = useState(0);
   const [picked, setPicked] = useState<Set<string>>(() => new Set(files.map((f) => f.key)));
   const [result, setResult] = useState<IlSendResult | null>(null);
   const [pending, start] = useTransition();
@@ -23,11 +33,9 @@ export function IlSendClient({ kind, id, unitName, recipients, subject: s0, text
       else next.add(k);
       return next;
     });
-  const preview = text.split(/\n{2,}/).map((para, i) => (
-    <p key={i} className="mb-2 whitespace-pre-wrap">
-      {para.replace(/\{\{\s*first\s*\}\}/g, recipients[0]?.name.split(" ")[0] ?? "there")}
-    </p>
-  ));
+  const first = recipients[0];
+  const sample = first ? { firstName: first.firstName, lastName: first.lastName, company: first.company } : { firstName: "there", lastName: null, company: null };
+  void tick;
   if (result) {
     return (
       <div className="card max-w-3xl p-5 text-sm">
@@ -54,23 +62,26 @@ export function IlSendClient({ kind, id, unitName, recipients, subject: s0, text
   }
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
-      <div className="card">
-        <div className="border-b border-line px-4 py-3">
-          <label className="text-xs text-muted" htmlFor="subj">
-            Subject
-          </label>
-          <input id="subj" value={subject} onChange={(e) => setSubject(e.target.value)} className="input mt-1 w-full" />
+      <div className="card overflow-hidden">
+        <div className="flex items-center gap-3 border-b border-line bg-cream px-4 py-2 text-sm">
+          <span className="text-xs text-muted">Template</span>
+          <select value={templateId} onChange={(e) => router.push(`/israel/send/${kind}/${id}/compose?to=${toParam}&template=${e.target.value}`)} className="input py-1 text-xs">
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <Link href="/israel/templates" className="ml-auto text-xs text-sky-700 hover:underline">
+            Edit templates
+          </Link>
         </div>
-        <div className="grid gap-0 md:grid-cols-2">
-          <div className="border-b border-line p-4 md:border-b-0 md:border-r">
-            <div className="mb-1 text-xs text-muted">The email. {"{{first}}"} becomes each person&apos;s first name.</div>
-            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={22} className="input w-full resize-y font-mono text-xs leading-relaxed" />
-          </div>
-          <div className="p-4 text-sm">
-            <div className="mb-1 text-xs text-muted">How {recipients[0]?.name.split(" ")[0] ?? "the first person"} reads it</div>
-            <div className="rounded-md border border-line bg-white px-4 py-3">{preview}</div>
-          </div>
+        <div className="flex items-stretch border-b border-line">
+          <div className="flex shrink-0 items-center border-r border-line bg-cream-50 px-3 text-xs font-semibold text-muted">Subject</div>
+          <TokenEditor key={`s-${templateId}`} value={s0} singleLine tokens={PERSON} className="min-w-0 flex-1 [&>div:first-child]:border-b-0 [&>div:first-child]:bg-transparent" onChange={(v) => { subject.current = v; setTick((t) => t + 1); }} />
         </div>
+        <TokenEditor key={`b-${templateId}`} value={b0} tokens={PERSON} className="bg-white" minHeight={360} onChange={(v) => { body.current = v; setTick((t) => t + 1); }} />
+        <div className="border-t border-line px-4 py-2 text-xs text-muted">Your name and RJL Israel close the email. Each person gets their own copy with their name in place of the token.</div>
       </div>
       <div className="space-y-4">
         <div className="card p-4 text-sm">
@@ -86,6 +97,10 @@ export function IlSendClient({ kind, id, unitName, recipients, subject: s0, text
           <Link href={backHref} className="mt-2 inline-block text-xs text-sky-700 hover:underline">
             Change who gets it
           </Link>
+        </div>
+        <div className="card p-4 text-sm">
+          <div className="font-semibold">How {first?.firstName ?? "the first person"} reads the subject</div>
+          <div className="mt-1 text-xs text-muted" dangerouslySetInnerHTML={{ __html: ilMerge(subject.current, sample).replace(/<[^>]+>/g, "") || "&nbsp;" }} />
         </div>
         <div className="card p-4 text-sm">
           <div className="font-semibold">Files to attach</div>
@@ -112,8 +127,8 @@ export function IlSendClient({ kind, id, unitName, recipients, subject: s0, text
           {!mailbox && <div className="mt-1 text-xs text-amber-700">Click the RJL Israel logo and sign in with your @rjlisrael.com account; the emails go out from that mailbox.</div>}
           <button
             type="button"
-            disabled={pending || !mailbox || !recipients.length || !subject.trim() || !text.trim()}
-            onClick={() => start(async () => setResult(await launchIlSend({ kind, id, to: recipients.map((r) => r.id), subject, text, files: [...picked] })))}
+            disabled={pending || !mailbox || !recipients.length}
+            onClick={() => start(async () => setResult(await launchIlSend({ kind, id, to: recipients.map((r) => r.id), subject: subject.current, html: body.current, files: [...picked] })))}
             className="btn-primary mt-3 w-full justify-center disabled:opacity-50"
           >
             {pending ? `Sending to ${recipients.length}…` : `Launch to ${recipients.length} ${recipients.length === 1 ? "person" : "people"}`}

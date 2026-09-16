@@ -33,7 +33,7 @@ const IL_NAV = [
   { href: "/israel/contacts", label: "Contacts", icon: Users },
   { href: "/israel/deals", label: "Deals", icon: KanbanSquare },
   { href: "/israel/campaigns", label: "Email blasts", icon: Mail },
-  { href: "/israel/required-items", label: "Required Items Lists", icon: ListChecks },
+  { href: "/israel/templates", label: "Templates", icon: FileText },
   { href: "/israel/settings", label: "Settings", icon: Settings },
 ];
 
@@ -106,6 +106,7 @@ function Nav({ items, dealSteps = false, apartmentSteps = false }: { items: { hr
               <DealContextNav />
             </Suspense>
           )}
+          {apartmentSteps && n.href === "/israel/templates" && <IlTemplatesSubnav />}
           {apartmentSteps && n.href === "/israel/apartments" && (
             <Suspense fallback={null}>
               <ApartmentContextNav section="apartments" />
@@ -151,6 +152,27 @@ function SettingsSubnav() {
   const items = [
     { href: "/settings", label: "Settings", icon: Settings, on: !onUsers },
     { href: "/settings/users", label: "Users", icon: Users, on: onUsers },
+  ];
+  return (
+    <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
+      {items.map((s) => (
+        <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${s.on ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
+          <s.icon className="h-3.5 w-3.5" />
+          {s.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/** Under Templates on the Israel side: email templates and the Required Items Lists. Shows while you are on either page. */
+function IlTemplatesSubnav() {
+  const pathname = usePathname();
+  if (!pathname.startsWith("/israel/templates") && !pathname.startsWith("/israel/required-items")) return null;
+  const onLists = pathname.startsWith("/israel/required-items");
+  const items = [
+    { href: "/israel/templates", label: "Email templates", icon: Mail, on: !onLists },
+    { href: "/israel/required-items", label: "Required Items Lists", icon: ListChecks, on: onLists },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
