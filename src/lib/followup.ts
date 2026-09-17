@@ -73,8 +73,22 @@ export async function createFollowUpDraft(rowId: string, mailbox: string): Promi
   if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
   const row = await prisma.dealInvestor.findUnique({ where: { id: rowId }, include: { contact: { include: { company: true } }, deal: true } });
   if (!row) return { ok: false, reason: "row not found" };
-  const email = row.contact.email;
-  if (!email) return { ok: false, reason: `${investorLabel(row.contact)} has no email address on file` };
+  // the row's person cannot be written to (no email, unsubscribed, left the firm): a colleague with an email stands in
+  // for the row, which moves to them (Sep 17: Lokre's row sat on an unsubscribed contact while two colleagues had emails)
+  const blocked = !row.contact.email || row.contact.unsubscribed || Boolean(row.contact.departedAt);
+  if (blocked && row.contact.companyId) {
+    const alt = await prisma.contact.findFirst({ where: { companyId: row.contact.companyId, id: { not: row.contact.id }, email: { not: null }, unsubscribed: false, departedAt: null }, orderBy: { lastActivityAt: { sort: "desc", nulls: "last" } }, include: { company: true } });
+    if (alt) {
+      await prisma.dealInvestor.update({ where: { id: rowId }, data: { contactId: alt.id } });
+      await prisma.activity.create({ data: { type: "NOTE", body: `Follow-up goes to ${investorLabel(alt)} instead of ${investorLabel(row.contact)} (${!row.contact.email ? "no email on file" : row.contact.unsubscribed ? "unsubscribed" : "left the firm"}).`, dealId: row.dealId, contactId: alt.id, companyId: alt.companyId } }).catch(() => null);
+      row.contact = alt;
+    }
+  }
+  const email = row.contact.email && !row.contact.unsubscribed && !row.contact.departedAt ? row.contact.email : null;
+  if (!email) {
+    const firm = row.contact.company?.name ?? investorLabel(row.contact);
+    return { ok: false, reason: row.contact.unsubscribed ? `${investorLabel(row.contact)} unsubscribed and nobody else at ${firm} has an email on file. Add a contact on the company page.` : `Nobody at ${firm} has an email on file. Add a contact on the company page.` };
+  }
 
   // an unsent draft from an earlier click: reopen it instead of making another
   if (row.followUpDraftId && row.followUpMailbox) {

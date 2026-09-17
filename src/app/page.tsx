@@ -41,7 +41,7 @@ async function quietInvestors() {
   const cutoff = new Date(nyMidnight - (QUIET_AFTER_DAYS - 1) * DAY);
   const rows = await prisma.dealInvestor.findMany({
     where: { status: { in: [2, 3] }, followUpDismissedAt: null, updatedAt: { lt: cutoff, gte: HOME_SINCE }, deal: { stage: { in: [...ACTIVE_STAGES] } } },
-    include: { contact: { include: { company: { select: { name: true } } } }, deal: { select: { id: true, name: true, propertyName: true } } },
+    include: { contact: { include: { company: { select: { id: true, name: true, contacts: { where: { email: { not: null }, unsubscribed: false, departedAt: null }, select: { id: true }, take: 1 } } } } }, deal: { select: { id: true, name: true, propertyName: true } } },
     orderBy: { updatedAt: "asc" },
   });
   const byDeal = new Map<string, { deal: (typeof rows)[number]["deal"]; rows: typeof rows }>();
@@ -115,21 +115,35 @@ export default async function Dashboard() {
                   <ItemForm action={dismissFollowUps.bind(null, g.rows.map((r) => r.id))} className="text-[11px] text-muted hover:text-ink hover:underline" title="Take every quiet LP on this deal off the list (they stay on the progress report)">Dismiss all</ItemForm>
                 </div>
                 <ul className="mt-1.5 space-y-1.5">
-                  {g.rows.map((r) => (
+                  {g.rows.map((r) => {
+                    // the row's person, or anyone else at the firm, can be written to; otherwise the row says so (Sep 17: three faded Handles with no explanation)
+                    const ownOk = Boolean(r.contact.email) && !r.contact.unsubscribed && !r.contact.departedAt;
+                    const reachable = ownOk || (r.contact.company?.contacts.length ?? 0) > 0;
+                    return (
                     <Item key={r.id} className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <div className="truncate">{r.contact.company?.name ?? investorLabel(r.contact)}</div>
                         <div className="truncate text-xs text-muted">
                           {days(r.updatedAt)}d{r.status === 3 ? " · followed up" : ""}
                           {r.followUpDraftId ? " · draft in Outlook" : ""}
+                          {!reachable && (
+                            <>
+                              {" · "}
+                              <Link href={r.contact.company ? `/companies/${r.contact.company.id}` : `/contacts/${r.contact.id}`} className="text-red-700 hover:underline" title="Nobody at this firm has an email the CRM may write to">
+                                {r.contact.unsubscribed ? "unsubscribed, no other contact" : "no email on file"} · add a contact
+                              </Link>
+                            </>
+                          )}
+                          {reachable && !ownOk && " · goes to a colleague"}
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         <ItemForm action={dismissFollowUps.bind(null, [r.id])} className="text-[11px] text-muted hover:text-ink" title="Take this LP off the list (they stay on the progress report)">✕</ItemForm>
-                        <DraftButton label={r.followUpDraftId ? "Open" : "Handle"} action={openFollowUp.bind(null, r.id)} disabled={!r.contact.email || r.contact.unsubscribed} title="Reply-all to the deal email with the attachments, your signature" />
+                        <DraftButton label={r.followUpDraftId ? "Open" : "Handle"} action={openFollowUp.bind(null, r.id)} disabled={!reachable} title={reachable ? "Reply-all to the deal email with the attachments, your signature" : "Nobody at this firm has an email the CRM may write to; add a contact on the company page"} />
                       </div>
                     </Item>
-                  ))}
+                    );
+                  })}
                 </ul>
               </Item>
             ))}
