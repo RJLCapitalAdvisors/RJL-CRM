@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
  */
 export default async function IlProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [p, developers, fx, people] = await Promise.all([
+  const [p, developers, fx, brokerPeople] = await Promise.all([
     prisma.ilProject.findUnique({
       where: { id },
       include: {
@@ -49,11 +49,11 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
     }),
     prisma.ilCompany.findMany({ where: { roles: { contains: "Sponsor" } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     usdIls(),
-    prisma.ilContact.findMany({ where: { roles: { contains: "Broker" } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { id: true, firstName: true, lastName: true, roles: true, company: { select: { name: true } } } }),
+    prisma.ilContact.findMany({ where: { roles: { contains: "Broker" } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { id: true, firstName: true, lastName: true, email: true, roles: true, company: { select: { name: true } } } }),
   ]);
   if (!p) notFound();
-  const brokers = people.filter((c) => parseJsonList(c.roles).includes("Broker"));
-  const brokerLabel = (c: (typeof people)[number]) => `${ilFullName(c)}${c.company ? ` (${c.company.name})` : ""}`;
+  const brokers = brokerPeople.filter((c) => parseJsonList(c.roles).includes("Broker"));
+  const brokerLabel = (c: (typeof brokerPeople)[number]) => `${ilFullName(c)}${c.company ? ` (${c.company.name})` : ""}`;
   const full = (await prisma.ilProject.findUnique({ where: { id }, omit: { brochure: true }, include: { developer: { select: { name: true } }, photos: { select: { id: true, name: true }, orderBy: { createdAt: "asc" } }, _count: { select: { apartments: true, houses: true } } } }))!;
   const summary = projectSummary(full as unknown as Record<string, unknown>, full.developer?.name ?? null, full._count, [full.brochureType ? "the brochure" : "", full.photos.length ? "pictures" : ""].filter(Boolean));
   await loadIlRequired();
