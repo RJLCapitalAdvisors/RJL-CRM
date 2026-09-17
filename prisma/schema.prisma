@@ -647,6 +647,7 @@ model IlApartment {
   elevator       Boolean   @default(false)
   mamad          Boolean?  // Yes, No, or not stated yet (asked for while null)
   priceNis       Float?
+  priceCheckedAt DateTime? // pricing last confirmed with the agent or developer; the dashboard asks again after 90 days
   pendingApproval Boolean  @default(false) // came in by email with data missing; waits on the dashboard until approved
   extra          String?   // JSON answers to Required Items List questions that have no field of their own
   pool           String?   // Private pool: Yes | No
@@ -814,6 +815,7 @@ model IlProject {
   description    String?
   extra          String?       // JSON answers to Required Items List questions that have no field of their own
   pool           String?       // Project pool (shared): Yes | No
+  priceCheckedAt DateTime?     // unit pricing last confirmed with the developer; asked again after 90 days
   lat            Float?
   lng            Float?
   geoQuery       String?
@@ -974,6 +976,7 @@ model IlHouse {
   migrashSqm      Float?    // the plot
   pool            String?   // Yes | No
   poolSqm         Float?
+  priceCheckedAt  DateTime? // pricing last confirmed; asked again after 90 days
   pendingApproval Boolean   @default(false) // came in by email or WhatsApp with data missing
   extra           String?   // JSON answers to Required Items List questions that have no field of their own
   lat             Float?

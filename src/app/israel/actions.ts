@@ -98,7 +98,10 @@ export async function createApartment(fd: FormData) {
 }
 
 export async function updateApartment(id: string, fd: FormData) {
-  await prisma.ilApartment.update({ where: { id }, data: apartmentData(fd) });
+  const data = apartmentData(fd);
+  const before = await prisma.ilApartment.findUnique({ where: { id }, select: { priceNis: true } });
+  const priceMoved = before != null && data.priceNis != null && data.priceNis !== before.priceNis;
+  await prisma.ilApartment.update({ where: { id }, data: { ...data, ...(priceMoved ? { priceCheckedAt: new Date() } : {}) } }); // a new asking price is a pricing check
   revalidatePath(`/israel/apartments/${id}`);
   revalidatePath("/israel/apartments");
 }
@@ -148,7 +151,9 @@ export async function createHouse(fd: FormData) {
 }
 export async function updateHouse(id: string, fd: FormData) {
   const data = houseData(fd);
-  await prisma.ilHouse.update({ where: { id }, data });
+  const before = await prisma.ilHouse.findUnique({ where: { id }, select: { priceNis: true } });
+  const priceMoved = before != null && data.priceNis != null && data.priceNis !== before.priceNis;
+  await prisma.ilHouse.update({ where: { id }, data: { ...data, ...(priceMoved ? { priceCheckedAt: new Date() } : {}) } }); // a new asking price is a pricing check
   revalidatePath(`/israel/houses/${id}`);
   revalidatePath("/israel/houses");
   if (data.projectId) revalidatePath(`/israel/projects/${data.projectId}`);
@@ -396,5 +401,23 @@ export async function snoozeIlMention(id: string) {
 export async function recheckIlLocation(kind: "apartments" | "houses" | "projects", id: string) {
   const { forgetGeo } = await import("@/lib/geocode");
   await forgetGeo(kind, id);
+  revalidatePath(`/israel/${kind}/${id}`);
+}
+
+/** Pricing updates window: the pricing on this ticket was checked with the agent or developer today; ask again in three months. */
+export async function markPriceChecked(kind: "apartments" | "houses" | "projects", id: string) {
+  const now = new Date();
+  const body = "Pricing confirmed with the agent or developer; the dashboard asks again in three months.";
+  if (kind === "apartments") {
+    await prisma.ilApartment.update({ where: { id }, data: { priceCheckedAt: now } });
+    await prisma.ilNote.create({ data: { apartmentId: id, body } });
+  } else if (kind === "houses") {
+    await prisma.ilHouse.update({ where: { id }, data: { priceCheckedAt: now } });
+    await prisma.ilNote.create({ data: { houseId: id, body } });
+  } else {
+    await prisma.ilProject.update({ where: { id }, data: { priceCheckedAt: now } });
+    await prisma.ilNote.create({ data: { projectId: id, body } });
+  }
+  revalidatePath("/israel");
   revalidatePath(`/israel/${kind}/${id}`);
 }

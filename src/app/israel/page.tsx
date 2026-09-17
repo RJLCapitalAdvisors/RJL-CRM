@@ -9,6 +9,8 @@ import { IL_MENTIONED } from "@/lib/israel-mentions";
 import { dismissIlMention, snoozeIlMention } from "./actions";
 import { Item, ItemForm } from "@/app/dash-item";
 import { loadIlRequired } from "@/lib/required-items";
+import { pricingDue, PRICE_CHECK_DAYS } from "@/lib/israel-pricing";
+import { markPriceChecked } from "./actions";
 
 export const metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
@@ -17,12 +19,14 @@ export const dynamic = "force-dynamic";
  * RJL Israel dashboard. Deals to be approved: apartments that came in by email with data missing. They sit here,
  * not in the Apartments list, until the data is chased down and Jonathan approves them. Deals mentioned carries
  * properties people floated by email without ever sending the listing. Data updates lists tickets a later message
- * added data to. Three windows, none replacing another.
+ * added data to. Pricing updates asks, every three months per apartment, house and project, for the pricing to be
+ * checked with the agent or developer. Four windows, none replacing another.
  */
 export default async function IsraelDashboard() {
   kickIsraelMailSync(); // emails from the RJL Israel mailboxes land on contacts and companies in the background
   await loadIlRequired(); // Still needed reads the Required Items Lists as Jonathan last edited them
   const since = new Date(Date.now() - 14 * 86_400_000);
+  const pricing = await pricingDue(40);
   const [pendingApts, pendingHouses, mentions, updates] = await Promise.all([
     prisma.ilApartment.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
     prisma.ilHouse.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
@@ -141,6 +145,46 @@ export default async function IsraelDashboard() {
                   </div>
                 </Item>
               ))}
+            </ul>
+          )}
+        </div>
+        <div className="card self-start">
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <div className="text-sm font-semibold">Pricing updates</div>
+            <span className="text-xs text-muted">{pricing.total}</span>
+          </div>
+          {pricing.rows.length === 0 ? (
+            <div className="px-4 py-8 text-center text-sm text-muted">Every apartment, house and project asks for a pricing check every {PRICE_CHECK_DAYS} days. Nothing is due right now.</div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {pricing.rows.map((r) => (
+                <Item key={`${r.kind}-${r.id}`} className="px-4 py-3 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link href={`/israel/${r.kind}/${r.id}`} className="font-medium hover:underline">
+                        {r.name}
+                      </Link>
+                      <span className="ml-2 chip bg-cream text-[10px]">{r.kind === "houses" ? "House" : r.kind === "projects" ? "Project" : "Apartment"}</span>
+                      <div className="mt-0.5 text-xs text-muted">
+                        {[r.place, r.priceNis != null ? `asking ${nis(r.priceNis)}` : r.kind === "projects" ? "unit pricing" : "no asking price on file", r.who ? `ask ${r.who}` : null].filter(Boolean).join(" · ")}
+                      </div>
+                      <div className="mt-1 text-xs text-muted">
+                        {r.lastChecked ? `Last checked ${fmtDate(r.lastChecked)}` : `Never checked; on file since ${fmtDate(r.since)}`}
+                        {r.daysOver > 0 ? ` · ${r.daysOver} day${r.daysOver === 1 ? "" : "s"} overdue` : " · due today"}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col gap-1">
+                      <ItemForm action={markPriceChecked.bind(null, r.kind, r.id)} className="btn-primary px-3 py-1.5 text-xs" title="The pricing was checked and the ticket is right; ask again in three months">
+                        Pricing confirmed
+                      </ItemForm>
+                      <Link href={`/israel/${r.kind}/${r.id}`} className="btn-grey px-3 py-1.5 text-center text-xs" title="Open the ticket to change the asking price; a saved price change counts as a check">
+                        Update price
+                      </Link>
+                    </div>
+                  </div>
+                </Item>
+              ))}
+              {pricing.total > pricing.rows.length && <li className="px-4 py-2 text-xs text-muted">{pricing.total - pricing.rows.length} more after these.</li>}
             </ul>
           )}
         </div>
