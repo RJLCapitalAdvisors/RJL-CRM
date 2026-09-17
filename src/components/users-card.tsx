@@ -1,4 +1,5 @@
 import { addUserAction, sendInviteAction } from "@/app/settings/access-actions";
+import { InviteButton } from "@/components/invite-button";
 import { parseWorkspaces, type Workspace } from "@/lib/access";
 import { fmtDate } from "@/lib/format";
 
@@ -51,11 +52,7 @@ export function UsersCard({ users, workspace, canEdit }: { users: U[]; workspace
                   <td className={`text-xs ${st.tone}`}>{st.text}</td>
                   <td className="text-right">
                     {canEdit && u.email && (
-                      <form action={sendInviteAction.bind(null, u.id, workspace)}>
-                        <button type="submit" className="btn-grey px-2.5 py-1 text-xs" title={`Email ${u.email} the sign-in link`}>
-                          {u.invitedAt || u.lastSignInAt ? "Invite again" : "Send invite"}
-                        </button>
-                      </form>
+                      <InviteButton action={sendInviteAction.bind(null, u.id, workspace)} label={u.invitedAt || u.lastSignInAt ? "Invite again" : "Send invite"} email={emailFor(u) ?? u.email} />
                     )}
                   </td>
                 </tr>

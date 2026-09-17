@@ -1,5 +1,7 @@
 "use server";
 
+import type { InviteResult } from "@/components/invite-button";
+
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireCriteriaAdmin } from "@/lib/current-user";
@@ -50,16 +52,21 @@ export async function addUserAction(fd: FormData) {
 }
 
 /** Send (or send again) the invite for one business. */
-export async function sendInviteAction(userId: string, workspace: Workspace) {
-  const me = await requireCriteriaAdmin();
-  await sendInvite(userId, [workspace], me.name);
-  refresh();
+export async function sendInviteAction(userId: string, workspace: Workspace): Promise<InviteResult> {
+  try {
+    const me = await requireCriteriaAdmin();
+    const to = await sendInvite(userId, [workspace], me.name);
+    refresh();
+    return { ok: true, to };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 const NAMES: Record<Workspace, string> = { CA: "RJL Capital Advisors", IL: "RJL Israel" };
 const DOMAIN_HINT: Record<Workspace, string> = { CA: "@rjlcapadvisors.com", IL: "@rjlisrael.com" };
 
-async function sendInvite(userId: string, workspaces: Workspace[], fromName: string) {
+export async function sendInvite(userId: string, workspaces: Workspace[], fromName: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user?.email) throw new Error("No email on file");
   if (!mailConfigured()) throw new Error("Email sending is not configured (RESEND_API_KEY and MAIL_FROM)");
@@ -89,6 +96,9 @@ ${blocks}${both}${outlook}
 <p style="margin:0 0 10pt 0;${F}">Reply to this email if anything does not work.</p>
 <p style="margin:0;${F}">${esc(fromName)}</p>
 </div>`;
-  await sendEmail({ to: user.email, subject: `Your ${sides.map((w) => NAMES[w]).join(" and ")} CRM login`, html, replyTo: process.env.MAIL_REPLY_TO ?? "jonathan@rjlcapadvisors.com" });
+  // an Israel-only invite goes to the Israel-side address (Sep 17: Shawn's went to his RJL CA inbox); anything else to the sign-in email
+  const to = sides.length === 1 && sides[0] === "IL" ? (user.israelEmail ?? user.email) : user.email;
+  await sendEmail({ to, subject: `Your ${sides.map((w) => NAMES[w]).join(" and ")} CRM login`, html, replyTo: process.env.MAIL_REPLY_TO ?? "jonathan@rjlcapadvisors.com" });
   await prisma.user.update({ where: { id: userId }, data: { invitedAt: new Date() } });
+  return to;
 }
