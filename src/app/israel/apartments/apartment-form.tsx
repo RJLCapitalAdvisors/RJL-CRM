@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { AutoSaveForm } from "@/components/autosave-form";
 import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
+/** Rooms are picked, 1 to 12 in half steps (3.5 rooms is a real Israeli listing), so a count is never mistyped (Jonathan, Sep 17). */
+const ROOMS = Array.from({ length: 23 }, (_, i) => String(1 + i / 2));
+
 import { NumberInput } from "@/components/number-input";
 import { SelectField } from "@/components/select-field";
 import { IL_APARTMENT_LEVELS, IL_APARTMENT_TYPES, IL_CITIES, isGardenApartment, IL_MACHSAN_LOCATIONS, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, parseMirpasot, pricePerMeter, sqft, usdFmt, usdPerSqft } from "@/lib/israel";
@@ -78,7 +81,7 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
           <Text name="neighborhood" value={a.neighborhood} />
         </Row>
         <Row label="Rooms">
-          <NumberInput name="rooms" defaultValue={a.rooms} />
+          <Select name="rooms" value={a.rooms != null ? String(a.rooms) : ""} options={ROOMS} />
         </Row>
         <Row label="Year of construction / expected date of delivery" hint="Month and year for a new build, e.g. 06/2027. Year alone for an existing building.">
           <Text name="completionDate" value={a.completionDate} placeholder="06/2027" />

@@ -326,6 +326,11 @@ export async function deleteIlDeal(id: string) {
 }
 
 // ---------- projects: whole buildings, the apartments hang off them ----------
+/** The month picker posts "2027-06"; the ticket keeps "06/2027", the form the extractor and the templates already use. */
+const monthToTicket = (v: string | null) => {
+  const m = v?.match(/^(\d{4})-(\d{2})$/);
+  return m ? `${m[2]}/${m[1]}` : v;
+};
 function projectData(fd: FormData) {
   return {
     name: s(fd, "name") ?? (s(fd, "street") || "Project"),
@@ -336,7 +341,8 @@ function projectData(fd: FormData) {
     totalUnits: i(fd, "totalUnits"),
     parkingSpaces: i(fd, "parkingSpaces"),
     stories: i(fd, "stories"),
-    completionDate: s(fd, "completionDate"),
+    completionDate: monthToTicket(s(fd, "completionDate")),
+    doorman: s(fd, "doorman"),
     pool: s(fd, "pool"),
     description: s(fd, "description"),
   };

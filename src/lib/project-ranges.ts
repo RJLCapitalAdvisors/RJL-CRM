@@ -11,6 +11,7 @@ export type Unit = {
   mirpesetSqm: number | null;
   mirpasot: string | null;
   priceNis: number | null;
+  apartmentType?: string | null;
   floor?: number | null;
   floors?: number | null;
   ceilingCm?: number | null;
@@ -51,6 +52,7 @@ export function projectRanges(units: Unit[]) {
     mirpesetSqm: range(live.map((u) => u.mirpesetSqm)),
     priceNis: range(live.map((u) => u.priceNis)),
     ppm: range(live.map((u) => pricePerMeter(u.priceNis, u.internalSqm, u.mirpesetSqm))),
+    priceByRooms: priceByRooms(live),
     floor: range(live.map((u) => u.floor ?? null)),
     ceilingCm: range(ceilings),
     years: range(years),
@@ -64,4 +66,29 @@ export function projectRanges(units: Unit[]) {
     withMachsan: live.filter((u) => (u.machsanSqm ?? 0) > 0).length,
     deliveries: counts(live.map((u) => u.completionDate)),
   };
+}
+
+/**
+ * The asking price the way Jonathan quotes a project (Sep 17): "3 rooms starting at X - until 6 room penthouses
+ * starting at Y". The cheapest unit at the fewest rooms, then the cheapest at the most rooms, called penthouses when
+ * every unit at that size is one. One size only: "4 rooms starting at X".
+ */
+export function priceByRooms(units: Unit[]): { minRooms: number; minFrom: number; maxRooms: number; maxFrom: number; maxPenthouse: boolean } | null {
+  const priced = units.filter((u) => u.rooms != null && u.priceNis != null) as (Unit & { rooms: number; priceNis: number })[];
+  if (!priced.length) return null;
+  const byRooms = new Map<number, (typeof priced)[number][]>();
+  for (const u of priced) byRooms.set(u.rooms, [...(byRooms.get(u.rooms) ?? []), u]);
+  const sizes = [...byRooms.keys()].sort((a, b) => a - b);
+  const lo = sizes[0], hi = sizes[sizes.length - 1];
+  const from = (n: number) => Math.min(...byRooms.get(n)!.map((u) => u.priceNis));
+  const top = byRooms.get(hi)!;
+  return { minRooms: lo, minFrom: from(lo), maxRooms: hi, maxFrom: from(hi), maxPenthouse: top.every((u) => /penthouse/i.test(u.apartmentType ?? "")) };
+}
+
+export function priceRangeLine(r: ReturnType<typeof priceByRooms>, fmt: (n: number) => string): string | null {
+  if (!r) return null;
+  const roomsWord = (n: number) => (n === 1 ? "1 room" : `${n} rooms`);
+  if (r.minRooms === r.maxRooms) return `${roomsWord(r.minRooms)} starting at ${fmt(r.minFrom)}`;
+  const top = r.maxPenthouse ? `${r.maxRooms} room penthouses` : roomsWord(r.maxRooms);
+  return `${roomsWord(r.minRooms)} starting at ${fmt(r.minFrom)} - until ${top} starting at ${fmt(r.maxFrom)}`;
 }

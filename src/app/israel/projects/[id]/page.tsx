@@ -13,7 +13,7 @@ import { usdIls } from "@/lib/fx";
 import { apartmentLine, houseLine, nis, nisShort, projectMissing, sqm, usdFmt } from "@/lib/israel";
 import { IlExtraCard } from "@/components/il-extra-card";
 import { loadIlRequired } from "@/lib/required-items";
-import { projectRanges, type Range } from "@/lib/project-ranges";
+import { priceRangeLine, projectRanges, type Range } from "@/lib/project-ranges";
 import { addIlNote, deleteIlProject, updateIlProject } from "../../actions";
 import { IlProjectForm } from "../project-form";
 import { FloorplanWindow } from "../../apartments/[id]/floorplan";
@@ -70,7 +70,7 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
     { label: "Rooms", value: span(r.rooms, (n) => String(n)) },
     { label: "Internal size", value: span(r.internalSqm, (n) => sqm(n)) },
     { label: "Mirpeset", value: span(r.mirpesetSqm, (n) => sqm(n)) },
-    { label: "Asking price", value: span(r.priceNis, (n) => nisShort(n)), sub: r.priceNis ? [usd(r.priceNis.min), usd(r.priceNis.max)].filter(Boolean).join(" to ") : null },
+    { label: "Asking price", value: priceRangeLine(r.priceByRooms, (n) => nisShort(n)) ?? span(r.priceNis, (n) => nisShort(n)), sub: r.priceNis ? [usd(r.priceNis.min), usd(r.priceNis.max)].filter(Boolean).join(" to ") : null },
     { label: "Price per meter", value: span(r.ppm, (n) => nis(n)) },
     { label: "Floors", value: span(r.floor, (n) => (n === 0 ? "Ground" : String(n))), sub: r.duplexes ? `${r.duplexes} duplex or triplex` : null },
     { label: "Ceiling height", value: span(r.ceilingCm, (n) => `${n} cm`) },

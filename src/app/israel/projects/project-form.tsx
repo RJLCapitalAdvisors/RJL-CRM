@@ -6,7 +6,20 @@ import { NumberInput } from "@/components/number-input";
 import { SelectField } from "@/components/select-field";
 import { IL_CITIES } from "@/lib/israel";
 
-type Proj = Partial<{ pool: string | null; name: string; developerId: string | null; street: string | null; city: string | null; neighborhood: string | null; totalUnits: number | null; parkingSpaces: number | null; stories: number | null; completionDate: string | null; description: string | null }>;
+/** 1 to 100, so a story count is picked, never mistyped (Jonathan, Sep 17). */
+const STORIES = Array.from({ length: 100 }, (_, i) => String(i + 1));
+/** "06/2027" or "2027" on the ticket -> "2027-06" / "2027-01" for the month picker. */
+const toMonthInput = (v: string | null | undefined) => {
+  if (!v) return "";
+  const m = v.match(/^(\d{4})-(\d{2})$/);
+  if (m) return v;
+  const my = v.match(/(\d{1,2})\s*\/\s*((?:19|20)\d{2})/);
+  if (my) return `${my[2]}-${my[1].padStart(2, "0")}`;
+  const y = v.match(/(?:19|20)\d{2}/);
+  return y ? `${y[0]}-01` : "";
+};
+
+type Proj = Partial<{ doorman: string | null; pool: string | null; name: string; developerId: string | null; street: string | null; city: string | null; neighborhood: string | null; totalUnits: number | null; parkingSpaces: number | null; stories: number | null; completionDate: string | null; description: string | null }>;
 
 /** A whole project: the building or development, not one apartment in it. */
 export function IlProjectForm({ p = {}, developers, action, autosave = false, submitLabel = "Create project" }: { p?: Proj; developers: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
@@ -45,13 +58,16 @@ export function IlProjectForm({ p = {}, developers, action, autosave = false, su
           <NumberInput name="parkingSpaces" defaultValue={p.parkingSpaces} decimals={false} />
         </Row>
         <Row label="Total stories">
-          <NumberInput name="stories" defaultValue={p.stories} decimals={false} />
+          <Select name="stories" value={p.stories != null ? String(p.stories) : ""} options={STORIES} />
+        </Row>
+        <Row label="Doorman" hint="A doorman or reception in the building.">
+          <Select name="doorman" value={p.doorman ?? ""} options={["Yes", "No"]} />
         </Row>
         <Row label="Project pool" hint="A shared pool in the project. A private pool on a unit is asked on the unit.">
           <Select name="pool" value={p.pool ?? ""} options={["Yes", "No"]} />
         </Row>
-        <Row label="Year of construction / expected date of delivery" hint="Month and year for a new build, e.g. 06/2027.">
-          <Text name="completionDate" value={p.completionDate} placeholder="06/2027" />
+        <Row label="Year of construction / expected date of delivery" hint="Pick the month and year; the day does not matter.">
+          <input type="month" name="completionDate" defaultValue={toMonthInput(p.completionDate)} className="input" />
         </Row>
       </Group>
       <Group title="Notes">

@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { AutoSaveForm } from "@/components/autosave-form";
 import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
+/** Rooms are picked, 1 to 12 in half steps (3.5 rooms is a real Israeli listing), so a count is never mistyped (Jonathan, Sep 17). */
+const ROOMS = Array.from({ length: 23 }, (_, i) => String(1 + i / 2));
+
 import { NumberInput } from "@/components/number-input";
 import { MirpasotFields } from "@/components/mirpasot-fields";
 import { SelectField } from "@/components/select-field";
@@ -75,7 +78,7 @@ export function HouseForm({ h = {}, fx, projects = [], action, autosave = false,
           <Text name="street" value={h.street} placeholder="HaPalmach 8" />
         </Row>
         <Row label="Rooms">
-          <NumberInput name="rooms" defaultValue={h.rooms} />
+          <Select name="rooms" value={h.rooms != null ? String(h.rooms) : ""} options={ROOMS} />
         </Row>
         <Row label="How many floors (miflasim)" hint="Pick the number of floors and a ceiling height appears for each.">
           <NumberInput name="floors" defaultValue={h.floors} decimals={false} onValue={setFloors} />

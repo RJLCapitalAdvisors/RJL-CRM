@@ -71,6 +71,7 @@ const Project = z.object({
   parkingSpaces: z.number().nullish().default(null).describe("Parking spaces in the whole project"),
   completionDate: z.string().nullish().default(null).describe("Expected delivery as MM/YYYY, or the year built"),
   pool: z.enum(["Yes", "No"]).nullish().default(null).describe("A shared pool in the project: Yes or No; null when not stated"),
+  doorman: z.enum(["Yes", "No"]).nullish().default(null).describe("A doorman or reception (שוער, לובי מאויש) in the building: Yes or No; null when not stated"),
   description: z.string().nullish().default(null).describe("Two to four plain English sentences about the project. No numbers already captured in fields."),
 });
 const Output = z.object({
@@ -328,7 +329,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   const proj = extracted.project?.name
     ? extracted.project
     : wants.has("projects")
-      ? { name: first?.projectName ?? (input.subject ?? "Project").replace(/^\s*(fwd?|re|fw)\s*:\s*/i, ""), developerName: first?.developerName ?? null, street: first?.street ?? null, city: first?.city ?? null, neighborhood: first?.neighborhood ?? null, totalUnits: first?.buildingUnits ?? null, stories: first?.buildingStories ?? null, parkingSpaces: null, completionDate: first?.completionDate ?? null, pool: null, description: null }
+      ? { name: first?.projectName ?? (input.subject ?? "Project").replace(/^\s*(fwd?|re|fw)\s*:\s*/i, ""), developerName: first?.developerName ?? null, street: first?.street ?? null, city: first?.city ?? null, neighborhood: first?.neighborhood ?? null, totalUnits: first?.buildingUnits ?? null, stories: first?.buildingStories ?? null, parkingSpaces: null, completionDate: first?.completionDate ?? null, pool: null, doorman: null, description: null }
       : null;
   if (!extracted.apartments.length && !proj) {
     await mark("skipped: no apartment or house found");
@@ -347,7 +348,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     const pname = stripDashes(proj.name).trim();
     const existing = await findProject(pname, proj.city, proj.street);
     const dev = await findOrCreateCompany(proj.developerName ?? null, "Sponsor (Yazam)");
-    const pdata = { name: pname, developerId: dev?.id ?? null, street: proj.street ?? null, city: proj.city ?? null, neighborhood: proj.neighborhood ?? null, totalUnits: proj.totalUnits ?? null, stories: proj.stories ?? null, parkingSpaces: proj.parkingSpaces ?? null, completionDate: proj.completionDate ?? null, pool: proj.pool ?? null, description: proj.description ? stripDashes(proj.description) : null };
+    const pdata = { name: pname, developerId: dev?.id ?? null, street: proj.street ?? null, city: proj.city ?? null, neighborhood: proj.neighborhood ?? null, totalUnits: proj.totalUnits ?? null, stories: proj.stories ?? null, parkingSpaces: proj.parkingSpaces ?? null, completionDate: proj.completionDate ?? null, pool: proj.pool ?? null, doorman: proj.doorman ?? null, description: proj.description ? stripDashes(proj.description) : null };
     projectRow = existing ? await prisma.ilProject.update({ where: { id: existing.id }, data: fillFrom(pdata) }) : await prisma.ilProject.create({ data: pdata });
     await prisma.ilNote.create({ data: { projectId: projectRow.id, body: existing ? origin.replace(/^Created from/, "Updated from") : origin } });
     if (!existing?.brochureType) await attachBrochure(input.files, projectRow.id).catch(() => null);
