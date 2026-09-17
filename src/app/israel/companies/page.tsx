@@ -7,6 +7,9 @@ import { IL_COMPANY_ROLES } from "@/lib/israel";
 import { IlRoleCell } from "@/components/il-role-cell";
 import { setIlCompanyRoles } from "../actions";
 import { CompanyLogo } from "@/components/company-logo";
+import { MultiSelect } from "@/components/multi-select";
+
+const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);
 
 export const metadata = { title: "Companies" };
 export const dynamic = "force-dynamic";
@@ -16,10 +19,10 @@ const PAGE = 50;
 export default async function IlCompaniesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const q = str(sp.q).trim();
-  const role = str(sp.role);
+  const roles = list(sp.role);
   const page = Math.max(1, Number(str(sp.page)) || 1);
   const where: Prisma.IlCompanyWhereInput = {
-    AND: [q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { contacts: { some: { email: { contains: q, mode: "insensitive" } } } }] } : {}, role ? { roles: { contains: `"${role}"` } } : {}],
+    AND: [q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { contacts: { some: { email: { contains: q, mode: "insensitive" } } } }] } : {}, roles.length ? { OR: roles.map((r) => ({ roles: { contains: `"${r}"` } })) } : {}],
   };
   const [total, rows] = await Promise.all([
     prisma.ilCompany.count({ where }),
@@ -28,7 +31,7 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
   const makeHref = (p: number) => {
     const u = new URLSearchParams();
     if (q) u.set("q", q);
-    if (role) u.set("role", role);
+    for (const r of roles) u.append("role", r);
     u.set("page", String(p));
     return `/israel/companies?${u}`;
   };
@@ -45,12 +48,9 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
       />
       <div className="px-8 py-4">
         <SearchForm action="/israel/companies" q={q} placeholder="Search name, city, or contact email">
-          <select name="role" defaultValue={role} className="input w-44">
-            <option value="">Any role</option>
-            {IL_COMPANY_ROLES.map((k) => (
-              <option key={k}>{k}</option>
-            ))}
-          </select>
+          <div className="w-56">
+            <MultiSelect name="role" options={IL_COMPANY_ROLES} selected={roles} placeholder="Any role" />
+          </div>
         </SearchForm>
       </div>
       <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
