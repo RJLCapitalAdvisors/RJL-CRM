@@ -14,7 +14,9 @@ import { apartmentLine, houseLine, nis, nisShort, projectMissing, sqm, usdFmt } 
 import { IlExtraCard } from "@/components/il-extra-card";
 import { loadIlRequired } from "@/lib/required-items";
 import { priceRangeLine, projectRanges, type Range } from "@/lib/project-ranges";
-import { addIlNote, deleteIlProject, updateIlProject } from "../../actions";
+import { addIlNote, deleteIlProject, linkProject, updateIlProject } from "../../actions";
+import { SelectField } from "@/components/select-field";
+import { ilFullName, parseJsonList } from "@/lib/israel";
 import { IlProjectForm } from "../project-form";
 import { FloorplanWindow } from "../../apartments/[id]/floorplan";
 
@@ -34,11 +36,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
  */
 export default async function IlProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [p, developers, fx] = await Promise.all([
+  const [p, developers, fx, people] = await Promise.all([
     prisma.ilProject.findUnique({
       where: { id },
       include: {
         developer: true,
+        agent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } },
         apartments: { orderBy: [{ floor: "desc" }, { name: "asc" }], select: { id: true, name: true, street: true, rooms: true, internalSqm: true, mirpesetSqm: true, mirpasot: true, priceNis: true, floor: true, ceilingCm: true, ceilingCms: true, parkingSpots: true, sellerType: true, completionDate: true, mamad: true, direction: true, levels: true, machsanSqm: true, pendingApproval: true, agentContactId: true, sellerContactId: true, city: true, neighborhood: true } },
         houses: { orderBy: { name: "asc" }, select: { id: true, name: true, street: true, rooms: true, internalSqm: true, mirpesetSqm: true, mirpasot: true, priceNis: true, floors: true, ceilingCms: true, parkingSpots: true, sellerType: true, completionDate: true, mamad: true, migrashSqm: true, pendingApproval: true, agentContactId: true, sellerContactId: true, city: true, neighborhood: true } },
         notes: { orderBy: { createdAt: "desc" } },
@@ -46,8 +49,11 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
     }),
     prisma.ilCompany.findMany({ where: { roles: { contains: "Sponsor" } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     usdIls(),
+    prisma.ilContact.findMany({ where: { roles: { contains: "Broker" } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { id: true, firstName: true, lastName: true, roles: true, company: { select: { name: true } } } }),
   ]);
   if (!p) notFound();
+  const brokers = people.filter((c) => parseJsonList(c.roles).includes("Broker"));
+  const brokerLabel = (c: (typeof people)[number]) => `${ilFullName(c)}${c.company ? ` (${c.company.name})` : ""}`;
   const full = (await prisma.ilProject.findUnique({ where: { id }, omit: { brochure: true }, include: { developer: { select: { name: true } }, photos: { select: { id: true, name: true }, orderBy: { createdAt: "asc" } }, _count: { select: { apartments: true, houses: true } } } }))!;
   const summary = projectSummary(full as unknown as Record<string, unknown>, full.developer?.name ?? null, full._count, [full.brochureType ? "the brochure" : "", full.photos.length ? "pictures" : ""].filter(Boolean));
   await loadIlRequired();
@@ -168,6 +174,29 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
           </AssocCard>
           <IlMapCard kind="projects" id={p.id} row={full} />
           <FloorplanWindow apartmentId={p.id} endpoint={`/api/israel/projects/${p.id}/brochure`} title="Brochure" compact has={Boolean(p.brochureType)} type={p.brochureType} name={p.brochureName} version={p.updatedAt.getTime()} />
+          <AssocCard title="Broker" count={p.agent ? 1 : 0} addHref="/israel/contacts/new" addLabel="New contact" empty="The broker who brought this project. Pick below (contacts marked Broker).">
+            {p.agent && (
+              <div className="px-4 pt-3 text-sm">
+                <Link href={`/israel/contacts/${p.agent.id}`} className="font-semibold hover:underline">
+                  {ilFullName(p.agent)}
+                </Link>
+                <div className="truncate text-xs text-muted">{[p.agent.company?.name, p.agent.phone, p.agent.email].filter(Boolean).join(" · ")}</div>
+              </div>
+            )}
+            <form action={linkProject.bind(null, p.id)} className="flex gap-2 p-3">
+              <SelectField name="agentContactId" defaultValue={p.agentContactId ?? ""} className="input text-xs">
+                <option value="">No broker</option>
+                {brokers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {brokerLabel(c)}
+                  </option>
+                ))}
+              </SelectField>
+              <button className="btn-secondary px-2 text-xs" type="submit">
+                Link
+              </button>
+            </form>
+          </AssocCard>
           <AssocCard title="Apartments in this project" count={p.apartments.length} addHref={`/israel/apartments/new?projectId=${p.id}`} empty="No apartments listed in this project yet.">
             {p.apartments.map((a) => (
               <div key={a.id} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">

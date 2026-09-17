@@ -8,7 +8,7 @@ import { IL_CITIES, toMonthInput } from "@/lib/israel";
 
 /** 1 to 100, so a story count is picked, never mistyped (Jonathan, Sep 17). */
 const STORIES = Array.from({ length: 100 }, (_, i) => String(i + 1));
-type Proj = Partial<{ doorman: string | null; pool: string | null; name: string; developerId: string | null; street: string | null; city: string | null; neighborhood: string | null; totalUnits: number | null; parkingSpaces: number | null; stories: number | null; completionDate: string | null; description: string | null }>;
+type Proj = Partial<{ gym: string | null; doorman: string | null; pool: string | null; name: string; developerId: string | null; street: string | null; city: string | null; neighborhood: string | null; totalUnits: number | null; parkingSpaces: number | null; stories: number | null; completionDate: string | null; description: string | null }>;
 
 /** A whole project: the building or development, not one apartment in it. */
 export function IlProjectForm({ p = {}, developers, action, autosave = false, submitLabel = "Create project" }: { p?: Proj; developers: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
@@ -54,6 +54,9 @@ export function IlProjectForm({ p = {}, developers, action, autosave = false, su
         </Row>
         <Row label="Project pool" hint="A shared pool in the project. A private pool on a unit is asked on the unit.">
           <Select name="pool" value={p.pool ?? ""} options={["Yes", "No"]} />
+        </Row>
+        <Row label="Gym" hint="A gym for the residents.">
+          <Select name="gym" value={p.gym ?? ""} options={["Yes", "No"]} />
         </Row>
         <Row label="Year of construction / expected date of delivery" hint="Pick the month and year; the day does not matter.">
           <input type="month" name="completionDate" defaultValue={toMonthInput(p.completionDate)} className="input" />

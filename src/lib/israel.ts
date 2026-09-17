@@ -162,6 +162,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "completionDate", label: "Expected delivery (month and year)" },
     { key: "doorman", label: "Doorman (yes or no)" },
     { key: "pool", label: "Project pool (yes or no)" },
+    { key: "gym", label: "Gym (yes or no)" },
     { key: "brochureName", label: "Brochure" },
   ],
   apartments: [

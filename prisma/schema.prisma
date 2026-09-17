@@ -717,6 +717,7 @@ model IlContact {
   companyId    String?
   company      IlCompany?    @relation(fields: [companyId], references: [id])
   agentOf      IlApartment[] @relation("IlAgent")
+  projectAgentOf IlProject[]  @relation("IlProjectAgent")
   sellerOf     IlApartment[] @relation("IlSeller")
   houseAgentOf  IlHouse[]    @relation("IlHouseAgent")
   houseSellerOf IlHouse[]    @relation("IlHouseSeller")
@@ -816,6 +817,9 @@ model IlProject {
   extra          String?       // JSON answers to Required Items List questions that have no field of their own
   doorman        String?       // Doorman in the building: Yes | No
   pool           String?       // Project pool (shared): Yes | No
+  gym            String?       // Gym in the project: Yes | No
+  agentContactId String?       // the broker who brought the project
+  agent          IlContact?    @relation("IlProjectAgent", fields: [agentContactId], references: [id])
   priceCheckedAt DateTime?     // unit pricing last confirmed with the developer; asked again after 90 days
   lat            Float?
   lng            Float?

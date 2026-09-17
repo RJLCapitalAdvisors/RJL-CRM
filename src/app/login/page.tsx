@@ -9,7 +9,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const next = str(sp.next) || "/";
   const error = str(sp.error);
-  const business = str(sp.business) === "IL" ? "IL" : str(sp.business) === "CA" ? "CA" : null;
+  // the side named on the link, else inferred from next (an /israel page means RJL Israel), else the generic page
+  const business = str(sp.business) === "IL" ? "IL" : str(sp.business) === "CA" ? "CA" : /^\/israel(\/|$)/.test(next) ? "IL" : next !== "/" ? "CA" : null;
   const israel = business === "IL";
   const microsoft = Boolean(process.env.AZURE_CLIENT_ID && process.env.AZURE_TENANT_ID);
   const password = Boolean(process.env.APP_PASSWORD);

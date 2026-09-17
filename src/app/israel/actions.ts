@@ -341,6 +341,7 @@ function projectData(fd: FormData) {
     completionDate: monthFromForm(s(fd, "completionDate"), s(fd, "completionDateOrig")),
     doorman: s(fd, "doorman"),
     pool: s(fd, "pool"),
+    gym: s(fd, "gym"),
     description: s(fd, "description"),
   };
 }
@@ -371,6 +372,13 @@ export async function updateIlProject(id: string, fd: FormData) {
   revalidatePath("/israel/projects");
   revalidatePath("/israel/apartments");
   revalidatePath("/israel/houses");
+}
+/** The right column of a project: the broker who brought it. */
+export async function linkProject(id: string, fd: FormData) {
+  const data: { agentContactId?: string | null } = {};
+  if (fd.has("agentContactId")) data.agentContactId = s(fd, "agentContactId");
+  await prisma.ilProject.update({ where: { id }, data });
+  revalidatePath(`/israel/projects/${id}`);
 }
 export async function deleteIlProject(id: string) {
   await prisma.ilProject.delete({ where: { id } });

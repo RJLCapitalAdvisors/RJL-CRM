@@ -49,9 +49,16 @@ export async function proxy(req: NextRequest) {
     const expected = await sessionToken(password, process.env.APP_SECRET ?? "dev-secret");
     if (req.cookies.get(COOKIE)?.value === expected) return withPath();
   }
+  // no session at all: send the person to the sign-in for the side they were opening. Before Sep 17 an Israel page
+  // sent people to the generic sign-in, Microsoft picked their RJL CA account, and RJL Israel then asked again,
+  // which read as "you must log in to RJL CA first".
   const url = req.nextUrl.clone();
   url.pathname = "/login";
-  url.search = pathname !== "/" ? `?next=${encodeURIComponent(pathname + req.nextUrl.search)}` : "";
+  const side = isIsraelPath(pathname) ? "IL" : pathname.startsWith("/api/") ? null : "CA";
+  const params = new URLSearchParams();
+  if (side) params.set("business", side);
+  if (pathname !== "/") params.set("next", pathname + req.nextUrl.search);
+  url.search = params.toString() ? `?${params}` : "";
   return NextResponse.redirect(url);
 }
 
