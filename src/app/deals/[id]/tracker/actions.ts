@@ -154,9 +154,13 @@ export async function createFollowUpCampaign(dealId: string, fd: FormData) {
 /** The editor shows "• " in front of each line; the lines are stored bare. */
 const strip = (v: string | null) => (v ? v.split("\n").map((l) => l.replace(/^\s*[•\-*]\s*/, "").trim()).filter(Boolean).join("\n") || null : null);
 export async function saveTrackerMeta(dealId: string, fd: FormData) {
+  const themes = strip(s(fd, "trackerThemes")), items = strip(s(fd, "trackerItemsNote"));
+  const before = await prisma.deal.findUnique({ where: { id: dealId }, select: { trackerThemes: true, trackerItemsNote: true } });
+  const edited = before != null && (before.trackerThemes !== themes || before.trackerItemsNote !== items);
   await prisma.deal.update({
     where: { id: dealId },
-    data: { trackerPreparedFor: s(fd, "trackerPreparedFor"), trackerThemes: strip(s(fd, "trackerThemes")), trackerItemsNote: strip(s(fd, "trackerItemsNote")), trackerSummaryAt: new Date() },
+    // a hand edit is the text from now on: the writer keeps it and only adjusts for new notes, answered or passed groups (Jonathan, Sep 17)
+    data: { trackerPreparedFor: s(fd, "trackerPreparedFor"), trackerThemes: themes, trackerItemsNote: items, trackerSummaryAt: new Date(), ...(edited ? { trackerManualAt: new Date() } : {}) },
   });
   touch(dealId);
   revalidatePath(`/share/tracker`);

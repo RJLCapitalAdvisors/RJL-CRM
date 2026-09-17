@@ -211,6 +211,7 @@ model Deal {
   trackerThemes       String? // notable feedback themes across investor responses
   trackerItemsNote    String? // extra "items needed from sponsor" beyond the checklist
   trackerSummaryAt    DateTime? // themes/items last written; a newer note on any row means they are stale
+  trackerManualAt     DateTime? // themes/items last edited by hand on the tracker page; the writer keeps that text and only adjusts it
 
   closeDate DateTime?
   ownerId   String?
