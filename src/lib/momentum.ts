@@ -182,7 +182,15 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
     // the firm's earlier asks stay on the list until the sponsor answers them: a scheduling note two days later
     // ("Tuesday 9:30 works") must not wipe Monday's seven questions
     const existing = await prisma.momentum.findUnique({ where: { dealId_kind_party: { dealId: ask.dealId, kind: "LP_ASK", party: ask.lpName } }, select: { summary: true, waitingSince: true } });
-    const merged = mergeAsks(existing?.summary ?? null, ask.asks, ask.answered);
+    // a pass wipes the slate: a firm that passed is owed nothing it asked for earlier, so only what the passing email
+    // itself asks for (an intro call, say) stays; with nothing asked, the item closes
+    const merged = ask.stance === "pass"
+      ? { asks: ask.asks.filter((x, i, arr) => arr.findIndex((y) => y.toLowerCase().trim() === x.toLowerCase().trim()) === i), answered: parseAsks(existing?.summary ?? null).answered }
+      : mergeAsks(existing?.summary ?? null, ask.asks, ask.answered);
+    if (ask.stance === "pass" && !merged.asks.length) {
+      if (existing) await close(ask.dealId, "LP_ASK", ask.lpName);
+      continue;
+    }
     if (!merged.asks.length && existing) continue; // nothing new asked and nothing outstanding: leave the item as it is
     await upsert(ask.dealId, "LP_ASK", ask.lpName, { companyId: d?.sponsorCompanyId ?? null, contactId: ask.contactId, summary: `${ask.lpName} asks: ${merged.asks.join("; ")}${merged.answered.length ? ` | Already on the ticket: ${merged.answered.join(" / ")}` : ""}`, waitingSince: ask.at, lastMessageId: ask.messageId });
   }

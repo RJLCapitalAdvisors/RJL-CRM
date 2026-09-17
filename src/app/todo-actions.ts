@@ -163,8 +163,13 @@ async function openMomentumDraftInner(momentumId: string) {
       // the quote is attributed to the firm, never to the individual (their name and signature stay out of the sponsor's inbox)
       const lpFrom = m.party.replace(/\s*\([^)]*\)\s*$/, "");
       const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      const opening = `Hi${firstName ? ` ${firstName}` : ""} - please also see the below requests from ${m.party} on ${dealName}:`;
-      const closing = "Could you send these over when you get a chance and I will pass them along.";
+      // a firm that passed is not asking for materials; the note to the sponsor says so and asks only about what they did request
+      const lpRow = m.contactId ? await prisma.dealInvestor.findFirst({ where: { dealId: m.dealId, contactId: m.contactId }, select: { status: true } }) : null;
+      const lpPassed = (lpRow?.status ?? 0) >= 7;
+      const opening = lpPassed
+        ? `Hi${firstName ? ` ${firstName}` : ""} - ${m.party} is passing on ${dealName}, but asked for the below:`
+        : `Hi${firstName ? ` ${firstName}` : ""} - please also see the below requests from ${m.party} on ${dealName}:`;
+      const closing = lpPassed ? "Let me know if you are open to it and I will make the connection." : "Could you send these over when you get a chance and I will pass them along.";
       const quote = lpText ? `<p style="margin:0 0 4pt 0;${F}"><i>From ${esc(lpFrom)}${lpWhen ? `, ${lpWhen}` : ""}:</i></p><div style="margin:0 0 10pt 0;padding:4pt 10pt;border-left:3px solid #b7cfe8;${F}white-space:pre-wrap;">${esc(lpText)}</div>` : "";
       const block = `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">${opening}</p><ul style="margin:0 0 10pt 18pt;">${asks.map((x) => `<li style="margin:0;${F}">${esc(x)}</li>`).join("")}</ul>${quote}<p style="margin:0 0 10pt 0;${F}">${closing}</p>`;
       const { addAttachment, listAttachments, graph: g } = await import("@/lib/graph");
