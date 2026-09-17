@@ -8,7 +8,7 @@ import { proposeNamingConventions } from "@/lib/naming";
 import { refreshMomentum } from "@/lib/momentum";
 import { scanAllIntros } from "@/lib/intros";
 
-export const maxDuration = 300;
+export const maxDuration = 800; // a forward with three deals and a dozen PDFs needs more than five minutes (Sep 17)
 
 /** Scheduled (vercel.json) and manual: read every team mailbox into the email log. Guarded by CRON_SECRET. */
 export async function GET(req: Request) {

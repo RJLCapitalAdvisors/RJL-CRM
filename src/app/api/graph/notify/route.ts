@@ -3,7 +3,7 @@ import { processDealsInbox } from "@/lib/deals-inbox";
 import { processIsraelInbox } from "@/lib/israel-intake";
 import { syncIsraelMailboxes } from "@/lib/israel-mail";
 
-export const maxDuration = 300;
+export const maxDuration = 800; // a forward with three deals and a dozen PDFs needs more than five minutes (Sep 17)
 
 /** Microsoft Graph change notifications for the deals@ inbox. */
 export async function POST(req: Request) {

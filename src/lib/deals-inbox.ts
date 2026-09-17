@@ -105,9 +105,25 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   await loadChecklist(); // the Required Items List as Jonathan last edited it
   const msg = await graph<Msg>(`/users/${q(MAILBOX())}/messages/${q(messageId)}?$select=id,internetMessageId,subject,receivedDateTime,hasAttachments,isRead,from,body,conversationId`);
   const ext = msg.internetMessageId ?? msg.id;
-  if (await prisma.dealIntake.findUnique({ where: { messageId: ext } })) return { skipped: "already processed" };
   const fromAddr = msg.from?.emailAddress.address?.toLowerCase() ?? "";
   if (fromAddr === MAILBOX().toLowerCase()) return { skipped: "our own reply" };
+  // Sep 17 (Jordan Yarosh's three hotels): a five minute function limit ended the run after the third ticket, before the
+  // reply and the mark-read, and a later sweep saw "already processed" and never replied. So: a claim row goes in first
+  // (a second, parallel run skips), a claim older than eight minutes is a dead run and is resumed (tickets already
+  // made are reused by their keys), and a processed message that is still unread gets its reply sent now.
+  const existing = await prisma.dealIntake.findUnique({ where: { messageId: ext } });
+  if (existing) {
+    const ageMs = Date.now() - existing.createdAt.getTime();
+    if (existing.status === "PROCESSING") {
+      if (ageMs < 8 * 60_000) return { skipped: "in progress" };
+      await prisma.dealIntake.delete({ where: { id: existing.id } }).catch(() => null); // a dead run: start again, reusing what it made
+    } else if (msg.isRead === false && ageMs > 5 * 60_000) {
+      return finishUnreplied(msg, ext);
+    } else return { skipped: "already processed" };
+  }
+  const claimed = await prisma.dealIntake.create({ data: { messageId: ext, status: "PROCESSING", source: "WEBHOOK", subject: msg.subject, fromEmail: fromAddr || null, toEmail: MAILBOX(), rawText: "" } }).catch(() => null);
+  if (!claimed) return { skipped: "in progress" };
+  const releaseClaim = () => prisma.dealIntake.deleteMany({ where: { messageId: ext, status: "PROCESSING" } }).catch(() => null);
 
   const bodyText = msg.body?.contentType === "html" ? emailHtmlToText(msg.body.content) : (msg.body?.content ?? "");
   const { names, texts } = msg.hasAttachments ? await readAttachments(msg.id) : { names: [], texts: [] };
@@ -145,6 +161,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   // Is this about a deal we already have? Then it is a follow-up: files and answers join that ticket.
   const existingId = splitFirst.length > 1 ? null : await matchExistingDeal({ conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: cleanSubject, bodyText, senderEmail: external ? fromAddr : fwd.email, attachmentNames: names, attachmentText: texts.map((t) => `=== ${t.name} ===\n${t.text.slice(0, 1500)}`).join("\n") });
   if (existingId) {
+    await releaseClaim();
     await recordDealEmail(existingId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "FOLLOWUP" });
     const files = (msg.hasAttachments ? await recordDealFiles(existingId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0) : 0) + (await recordPulled(existingId, ext));
     const facts = await extractDealFacts(existingId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, { mayEnterFaq: true }).catch(() => 0);
@@ -181,6 +198,13 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
       const own = texts.filter((t) => part.attachments.some((n) => n.toLowerCase() === t.name.toLowerCase()));
       const text = assembleDealText(`THIS EMAIL CONTAINS ${parts.length} DEALS. Extract ONLY the deal "${part.name}" (${part.hint}). Ignore the others.\n\n${bodyText}`, own.length ? own : []);
       const key = i === 0 ? ext : `${ext}#${i + 1}`;
+      if (i === 0) await releaseClaim();
+      // a resumed run: this part already has its ticket
+      const donePart = await prisma.dealIntake.findFirst({ where: { messageId: key, dealId: { not: null } }, select: { dealId: true } });
+      if (donePart?.dealId) {
+        const dl = await prisma.deal.findUnique({ where: { id: donePart.dealId }, select: { id: true, name: true, propertyName: true } });
+        if (dl) { created.push({ id: dl.id, name: dl.propertyName ?? dl.name }); continue; }
+      }
       // a part that is already a ticket (often one we only heard about) gets this email as its follow-up
       const same = await findSameDeal(part.name, undefined, { sponsorName: fwd.name, text: `${part.hint}
 ${text.slice(0, 2000)}` });
@@ -267,6 +291,7 @@ ${text.slice(0, 2000)}` });
     source: "WEBHOOK",
     attachments: names,
   });
+  await releaseClaim();
   await prisma.dealIntake.update({ where: { id: intake.id }, data: { messageId: ext } });
   await recordDealEmail(intake.dealId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "INTAKE" }).catch(() => null);
   if (msg.hasAttachments) await recordDealFiles(intake.dealId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0);
@@ -291,6 +316,30 @@ ${text.slice(0, 2000)}` });
   }
   await graph(`/users/${q(MAILBOX())}/messages/${q(msg.id)}`, { method: "PATCH", body: JSON.stringify({ isRead: true }) }).catch(() => {});
   return { dealId: deal.id, replied };
+}
+
+/** A message whose tickets exist but whose reply never went (the run died first): send the reply for every ticket it made, then mark it read. */
+async function finishUnreplied(msg: Msg, ext: string): Promise<{ dealId: string; replied: boolean } | { skipped: string }> {
+  await loadChecklist();
+  const intakes = await prisma.dealIntake.findMany({ where: { OR: [{ messageId: ext }, { messageId: { startsWith: `${ext}#` } }], dealId: { not: null } }, orderBy: { createdAt: "asc" }, select: { dealId: true } });
+  const ids = [...new Set(intakes.map((i) => i.dealId!))];
+  if (!ids.length) return { skipped: "processed, nothing to reply about" };
+  const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
+  const sections: string[] = [];
+  for (const id of ids) {
+    const dl = await prisma.deal.findUnique({ where: { id } });
+    if (dl) sections.push(replyHtml(dl as unknown as Record<string, unknown>, `${base}/deals/${dl.id}`));
+  }
+  let replied = false;
+  try {
+    const head = ids.length > 1 ? `<p style="margin:0 0 12pt 0;">This email carried ${ids.length} deals; a ticket was created for each.</p>` : "";
+    await replyOnThread(msg, `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;">${head}${sections.join('<hr style="border:0;border-top:1px solid #d9d9d9;margin:14pt 0;">')}</div>`);
+    replied = true;
+  } catch (e) {
+    console.error("deals@ late reply failed", e);
+  }
+  await graph(`/users/${q(MAILBOX())}/messages/${q(msg.id)}`, { method: "PATCH", body: JSON.stringify({ isRead: true }) }).catch(() => {});
+  return { dealId: ids[0], replied };
 }
 
 /** Everything in the deals@ inbox that has not been turned into a deal yet. */
