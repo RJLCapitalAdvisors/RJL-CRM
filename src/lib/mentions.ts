@@ -46,6 +46,10 @@ function nameContains(a: string, b: string): boolean {
   return new RegExp(`(^| )${short.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`).test(long);
 }
 
+/** Our deal emails read "Retail Acquisitions Opportunity in Fort Lauderdale, FL | $12MM of JV Equity"; a thread carrying that is LPs answering a send, never a sponsor mentioning a new deal. */
+const LAUNCH_SUBJECT = /opportunity in .+\|\s*\$[\d.,]+\s*(?:MM|M|million)\b/i;
+const AUTO_REPLY = /^\s*(automatic reply|auto(matic)?[- ]?reply|out of (the )?office|undeliverable|delivery (status|failure))/i;
+
 export async function detectMentionedDeals(): Promise<{ threads: number; created: string[] }> {
   if (!graphConfigured() || !process.env.ANTHROPIC_API_KEY) return { threads: 0, created: [] };
   const since = new Date(Date.now() - LOOKBACK_DAYS * DAY);
@@ -71,6 +75,17 @@ export async function detectMentionedDeals(): Promise<{ threads: number; created
     const newest = msgs[0];
     if (await prisma.mentionScan.findUnique({ where: { externalId: newest.externalId! } })) continue; // this thread state already read
     const company = newest.company!;
+    // Sep 16: Clarion's out-of-office reply to the Gateway launch became "Clarion Partners LLC | Fort Lauderdale Retail
+    // Acquisition", and six LPs' replies then landed on it. A reply to one of our deal emails, or any auto-reply, is
+    // not a sponsor mentioning a deal: mark the thread read and move on.
+    const subjectsInThread = msgs.map((m) => m.subject ?? "");
+    const ourSend = subjectsInThread.some((x) => LAUNCH_SUBJECT.test(x)) || msgs.some((m) => m.direction === "OUTBOUND" && LAUNCH_SUBJECT.test(m.subject ?? ""));
+    const autoReply = AUTO_REPLY.test(newest.subject ?? "");
+    const isLpOnAnyDeal = (await prisma.dealInvestor.count({ where: { contact: { companyId: company.id }, deal: { stage: { in: ["Deal Taken To Market", "Intro To Capital Made", "Engagement Letter Signed", "Term Sheet Received", "Deal Sent"] } } } })) > 0;
+    if (ourSend || autoReply || (isLpOnAnyDeal && subjectsInThread.some((x) => /\bopportunity\b/i.test(x)))) {
+      await prisma.mentionScan.create({ data: { externalId: newest.externalId!, companyId: company.id } }).catch(() => {});
+      continue;
+    }
     // full bodies from the mailbox that holds them
     const parts: string[] = [];
     for (const m of [...msgs].reverse()) {
