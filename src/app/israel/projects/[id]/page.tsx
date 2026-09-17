@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CompanyLogo } from "@/components/company-logo";
 import { PhotosWindow } from "@/components/il-photos";
 import { IlSummaryCard } from "@/components/il-summary-card";
 import { IlMapCard } from "@/components/il-map-card";
@@ -154,7 +155,8 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
           <AssocCard title="Developer" count={p.developer ? 1 : 0} empty="Pick the developer in the form on the left.">
             {p.developer && (
               <div className="p-4 text-sm">
-                <Link href={`/israel/companies/${p.developer.id}`} className="font-semibold hover:underline">
+                <Link href={`/israel/companies/${p.developer.id}`} className="inline-flex items-center gap-2 font-semibold hover:underline">
+                  <CompanyLogo domain={p.developer.domain ?? p.developer.website?.replace(/^https?:\/\//, "").split("/")[0]} name={p.developer.name} size={24} />
                   {p.developer.name}
                 </Link>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
