@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { IL_COMPANY_ROLES, IL_DEAL_STAGES, IL_ROLES, IL_SPONSOR, IL_SPONSOR_FOCUS, mergeIlRoles } from "@/lib/israel";
+import { IL_COMPANY_ROLES, IL_DEAL_STAGES, IL_ROLES, IL_SPONSOR, IL_SPONSOR_FOCUS, mergeIlRoles, monthFromForm } from "@/lib/israel";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -67,7 +67,7 @@ function apartmentData(fd: FormData) {
     neighborhood: s(fd, "neighborhood"),
     projectId: s(fd, "projectId"),
     rooms: n(fd, "rooms"),
-    completionDate: s(fd, "completionDate"),
+    completionDate: monthFromForm(s(fd, "completionDate"), s(fd, "completionDateOrig")),
     floor: i(fd, "floor"),
     totalFloors: i(fd, "totalFloors"),
     buildingUnits: i(fd, "buildingUnits"),
@@ -102,6 +102,7 @@ export async function updateApartment(id: string, fd: FormData) {
   const before = await prisma.ilApartment.findUnique({ where: { id }, select: { priceNis: true } });
   const priceMoved = before != null && data.priceNis != null && data.priceNis !== before.priceNis;
   await prisma.ilApartment.update({ where: { id }, data: { ...data, ...(priceMoved ? { priceCheckedAt: new Date() } : {}) } }); // a new asking price is a pricing check
+  if (data.projectId) await syncProjectToUnits(data.projectId);
   revalidatePath(`/israel/apartments/${id}`);
   revalidatePath("/israel/apartments");
 }
@@ -130,7 +131,7 @@ function houseData(fd: FormData) {
     rooms: n(fd, "rooms"),
     floors,
     ceilingCms: JSON.stringify(ceilings),
-    completionDate: s(fd, "completionDate"),
+    completionDate: monthFromForm(s(fd, "completionDate"), s(fd, "completionDateOrig")),
     internalSqm: n(fd, "internalSqm"),
     ...mirpasotFrom(fd),
     migrashSqm: n(fd, "migrashSqm"),
@@ -154,6 +155,7 @@ export async function updateHouse(id: string, fd: FormData) {
   const before = await prisma.ilHouse.findUnique({ where: { id }, select: { priceNis: true } });
   const priceMoved = before != null && data.priceNis != null && data.priceNis !== before.priceNis;
   await prisma.ilHouse.update({ where: { id }, data: { ...data, ...(priceMoved ? { priceCheckedAt: new Date() } : {}) } }); // a new asking price is a pricing check
+  if (data.projectId) await syncProjectToUnits(data.projectId);
   revalidatePath(`/israel/houses/${id}`);
   revalidatePath("/israel/houses");
   if (data.projectId) revalidatePath(`/israel/projects/${data.projectId}`);
@@ -326,11 +328,6 @@ export async function deleteIlDeal(id: string) {
 }
 
 // ---------- projects: whole buildings, the apartments hang off them ----------
-/** The month picker posts "2027-06"; the ticket keeps "06/2027", the form the extractor and the templates already use. */
-const monthToTicket = (v: string | null) => {
-  const m = v?.match(/^(\d{4})-(\d{2})$/);
-  return m ? `${m[2]}/${m[1]}` : v;
-};
 function projectData(fd: FormData) {
   return {
     name: s(fd, "name") ?? (s(fd, "street") || "Project"),
@@ -341,11 +338,26 @@ function projectData(fd: FormData) {
     totalUnits: i(fd, "totalUnits"),
     parkingSpaces: i(fd, "parkingSpaces"),
     stories: i(fd, "stories"),
-    completionDate: monthToTicket(s(fd, "completionDate")),
+    completionDate: monthFromForm(s(fd, "completionDate"), s(fd, "completionDateOrig")),
     doorman: s(fd, "doorman"),
     pool: s(fd, "pool"),
     description: s(fd, "description"),
   };
+}
+/**
+ * What the project knows about its building fills the apartments and houses filed under it (Jonathan, Sep 17): total
+ * units and total stories on every apartment, delivery on apartments and houses. Only blanks are filled; a unit's own
+ * value, typed or extracted, stays.
+ */
+export async function syncProjectToUnits(projectId: string) {
+  const p = await prisma.ilProject.findUnique({ where: { id: projectId }, select: { totalUnits: true, stories: true, completionDate: true } });
+  if (!p) return;
+  if (p.totalUnits != null) await prisma.ilApartment.updateMany({ where: { projectId, buildingUnits: null }, data: { buildingUnits: p.totalUnits } });
+  if (p.stories != null) await prisma.ilApartment.updateMany({ where: { projectId, totalFloors: null }, data: { totalFloors: p.stories } });
+  if (p.completionDate) {
+    await prisma.ilApartment.updateMany({ where: { projectId, OR: [{ completionDate: null }, { completionDate: "" }] }, data: { completionDate: p.completionDate } });
+    await prisma.ilHouse.updateMany({ where: { projectId, OR: [{ completionDate: null }, { completionDate: "" }] }, data: { completionDate: p.completionDate } });
+  }
 }
 export async function createIlProject(fd: FormData) {
   const p = await prisma.ilProject.create({ data: projectData(fd) });
@@ -354,8 +366,11 @@ export async function createIlProject(fd: FormData) {
 }
 export async function updateIlProject(id: string, fd: FormData) {
   await prisma.ilProject.update({ where: { id }, data: projectData(fd) });
+  await syncProjectToUnits(id);
   revalidatePath(`/israel/projects/${id}`);
   revalidatePath("/israel/projects");
+  revalidatePath("/israel/apartments");
+  revalidatePath("/israel/houses");
 }
 export async function deleteIlProject(id: string) {
   await prisma.ilProject.delete({ where: { id } });

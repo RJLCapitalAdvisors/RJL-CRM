@@ -4,21 +4,10 @@ import { AutoSaveForm } from "@/components/autosave-form";
 import { Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
 import { SelectField } from "@/components/select-field";
-import { IL_CITIES } from "@/lib/israel";
+import { IL_CITIES, toMonthInput } from "@/lib/israel";
 
 /** 1 to 100, so a story count is picked, never mistyped (Jonathan, Sep 17). */
 const STORIES = Array.from({ length: 100 }, (_, i) => String(i + 1));
-/** "06/2027" or "2027" on the ticket -> "2027-06" / "2027-01" for the month picker. */
-const toMonthInput = (v: string | null | undefined) => {
-  if (!v) return "";
-  const m = v.match(/^(\d{4})-(\d{2})$/);
-  if (m) return v;
-  const my = v.match(/(\d{1,2})\s*\/\s*((?:19|20)\d{2})/);
-  if (my) return `${my[2]}-${my[1].padStart(2, "0")}`;
-  const y = v.match(/(?:19|20)\d{2}/);
-  return y ? `${y[0]}-01` : "";
-};
-
 type Proj = Partial<{ doorman: string | null; pool: string | null; name: string; developerId: string | null; street: string | null; city: string | null; neighborhood: string | null; totalUnits: number | null; parkingSpaces: number | null; stories: number | null; completionDate: string | null; description: string | null }>;
 
 /** A whole project: the building or development, not one apartment in it. */
@@ -68,6 +57,7 @@ export function IlProjectForm({ p = {}, developers, action, autosave = false, su
         </Row>
         <Row label="Year of construction / expected date of delivery" hint="Pick the month and year; the day does not matter.">
           <input type="month" name="completionDate" defaultValue={toMonthInput(p.completionDate)} className="input" />
+          <input type="hidden" name="completionDateOrig" value={p.completionDate ?? ""} />
         </Row>
       </Group>
       <Group title="Notes">

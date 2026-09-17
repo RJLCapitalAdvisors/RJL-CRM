@@ -8,7 +8,7 @@ const ROOMS = Array.from({ length: 23 }, (_, i) => String(1 + i / 2));
 
 import { NumberInput } from "@/components/number-input";
 import { SelectField } from "@/components/select-field";
-import { IL_APARTMENT_LEVELS, IL_APARTMENT_TYPES, IL_CITIES, isGardenApartment, IL_MACHSAN_LOCATIONS, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, parseMirpasot, pricePerMeter, sqft, usdFmt, usdPerSqft } from "@/lib/israel";
+import { IL_APARTMENT_LEVELS, IL_APARTMENT_TYPES, IL_CITIES, isGardenApartment, IL_MACHSAN_LOCATIONS, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, parseMirpasot, pricePerMeter, sqft, usdFmt, usdPerSqft, toMonthInput } from "@/lib/israel";
 import { Directions, MirpasotFields } from "@/components/mirpasot-fields";
 import type { FxRate } from "@/lib/fx";
 
@@ -83,8 +83,9 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         <Row label="Rooms">
           <Select name="rooms" value={a.rooms != null ? String(a.rooms) : ""} options={ROOMS} />
         </Row>
-        <Row label="Year of construction / expected date of delivery" hint="Month and year for a new build, e.g. 06/2027. Year alone for an existing building.">
-          <Text name="completionDate" value={a.completionDate} placeholder="06/2027" />
+        <Row label="Year of construction / expected date of delivery" hint="Pick the month and year. For an existing building the year is what matters; the month can be January.">
+          <input type="month" name="completionDate" defaultValue={toMonthInput(a.completionDate)} className="input" />
+          <input type="hidden" name="completionDateOrig" value={a.completionDate ?? ""} />
         </Row>
         <Row label="Apartment type">
           <Select name="apartmentType" value={aptType} options={IL_APARTMENT_TYPES} onChange={setAptType} />
@@ -95,10 +96,10 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         <Row label={levelCount > 1 ? "Lowest floor" : "Apartment floor"} hint={levelCount > 1 ? `The apartment spans this floor and the ${levelCount - 1} above it.` : undefined}>
           <Select name="floor" value={a.floor == null ? "" : String(a.floor)} options={FLOORS} />
         </Row>
-        <Row label="Building stories">
+        <Row label="Total stories" hint="Filled from the project when the apartment is filed under one.">
           <Select name="totalFloors" value={a.totalFloors == null ? "" : String(a.totalFloors)} options={STORIES} />
         </Row>
-        <Row label="Total building units">
+        <Row label="Total units" hint="Units in the building; filled from the project when the apartment is filed under one.">
           <NumberInput name="buildingUnits" defaultValue={a.buildingUnits} decimals={false} />
         </Row>
         <Row label="Apartment direction">

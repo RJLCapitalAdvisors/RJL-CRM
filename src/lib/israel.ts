@@ -173,8 +173,8 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "rooms", label: "Rooms" },
     { key: "completionDate", label: "Year of construction or expected date of delivery (month and year)" },
     { key: "floor", label: "Apartment floor" },
-    { key: "totalFloors", label: "Building stories" },
-    { key: "buildingUnits", label: "Total building units" },
+    { key: "totalFloors", label: "Total stories" },
+    { key: "buildingUnits", label: "Total units" },
     { key: "direction", label: "Apartment direction" },
     { key: "mamad", label: "Mamad (yes or no)" },
     { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
@@ -277,4 +277,24 @@ export function projectMissing(p: Record<string, unknown>): string[] {
 export const yearOf = (s: string | null | undefined): number | null => {
   const m = s?.match(/(19|20)\d{2}/);
   return m ? Number(m[0]) : null;
+};
+
+/** "06/2027" or "1998" on a ticket -> "2027-06" / "1998-01" for a month picker. */
+export const toMonthInput = (v: string | null | undefined): string => {
+  if (!v) return "";
+  if (/^\d{4}-\d{2}$/.test(v)) return v;
+  const my = v.match(/(\d{1,2})\s*\/\s*((?:19|20)\d{2})/);
+  if (my) return `${my[2]}-${my[1].padStart(2, "0")}`;
+  const y = v.match(/(?:19|20)\d{2}/);
+  return y ? `${y[0]}-01` : "";
+};
+/**
+ * What a month picker posted, back onto the ticket as "MM/YYYY". When the picker still shows what the ticket already
+ * had (a year-only "1998" shows as 1998-01), the ticket's own value is kept, so an untouched field never rewrites itself.
+ */
+export const monthFromForm = (posted: string | null, orig: string | null): string | null => {
+  if (!posted) return null;
+  if (orig && toMonthInput(orig) === posted) return orig;
+  const m = posted.match(/^(\d{4})-(\d{2})$/);
+  return m ? `${m[2]}/${m[1]}` : posted;
 };

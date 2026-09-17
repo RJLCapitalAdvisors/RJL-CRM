@@ -9,7 +9,7 @@ const ROOMS = Array.from({ length: 23 }, (_, i) => String(1 + i / 2));
 import { NumberInput } from "@/components/number-input";
 import { MirpasotFields } from "@/components/mirpasot-fields";
 import { SelectField } from "@/components/select-field";
-import { ACRES_PER_SQM, IL_CITIES, IL_HOUSE_TYPES, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, parseMirpasot, pricePerMeter, sqft, usdFmt, usdPerSqft } from "@/lib/israel";
+import { ACRES_PER_SQM, IL_CITIES, IL_HOUSE_TYPES, IL_PARKING, IL_SELLER_TYPES, PRICE_PER_METER_NOTE, feet, isSecondHand, nis, parseJsonList, parseMirpasot, pricePerMeter, sqft, usdFmt, usdPerSqft, toMonthInput } from "@/lib/israel";
 import type { FxRate } from "@/lib/fx";
 
 export type IlHouseForm = Partial<{
@@ -91,8 +91,9 @@ export function HouseForm({ h = {}, fx, projects = [], action, autosave = false,
             <Calc label={`${floorName(i)} ceiling in feet`} value={ceilings[i] != null ? feet(ceilings[i]) : dash} />
           </div>
         ))}
-        <Row label="Built or expected delivery" hint="Month and year for a new build, e.g. 06/2027. Year alone for an existing house.">
-          <Text name="completionDate" value={h.completionDate} placeholder="06/2027" />
+        <Row label="Built or expected delivery" hint="Pick the month and year. For an existing house the year is what matters; the month can be January.">
+          <input type="month" name="completionDate" defaultValue={toMonthInput(h.completionDate)} className="input" />
+          <input type="hidden" name="completionDateOrig" value={h.completionDate ?? ""} />
         </Row>
         <Row label="Parking">
           <Select name="parkingSpots" value={h.parkingSpots ?? ""} options={IL_PARKING} />

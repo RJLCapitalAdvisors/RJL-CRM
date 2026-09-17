@@ -460,6 +460,8 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   }
   await mark(`created ${rows.length}`);
   const note = agent ? `Agent on file: ${[agent.firstName, agent.lastName].filter(Boolean).join(" ") || agent.email || agent.phone}.` : null;
+  // whatever the project knows (units, stories, delivery) fills blanks on the units filed under it
+  if (projectRow) await (await import("@/app/israel/actions")).syncProjectToUnits(projectRow.id).catch(() => null);
   const asked = [...wants].filter((k) => !rows.some((r) => r.kind === k));
   const askedNote = asked.length ? `You asked for ${asked.map((k) => (k === "projects" ? "a project" : k === "houses" ? "a house" : "an apartment")).join(" and ")} list too, but the documents describe none; send the material or add it by hand.` : null;
   return { rows, note: [note, askedNote].filter(Boolean).join(" ") || null };
