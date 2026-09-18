@@ -49,7 +49,7 @@ function Display({ col, value }: { col: GridColumn; value: unknown }) {
     }
     case "tokens":
       return (
-        <span className="flex flex-wrap gap-1">
+        <span className="flex gap-1 overflow-hidden">
           {asList(value).map((t) => (
             <span key={t} className={`chip text-[10px] ${col.tone ? col.tone(t) : "bg-cream text-ink"}`}>
               {t}
@@ -58,13 +58,7 @@ function Display({ col, value }: { col: GridColumn; value: unknown }) {
         </span>
       );
     case "lines":
-      return (
-        <ul className="list-disc pl-4">
-          {asList(value).map((l, i) => (
-            <li key={i}>{l}</li>
-          ))}
-        </ul>
-      );
+      return <>{asList(value).join("  •  ")}</>;
     case "url":
       return (
         <a href={/^https?:/i.test(String(value)) ? String(value) : `https://${value}`} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline" onClick={(e) => e.stopPropagation()}>
@@ -72,8 +66,20 @@ function Display({ col, value }: { col: GridColumn; value: unknown }) {
         </a>
       );
     default:
-      return <span className="whitespace-pre-line">{String(value)}</span>;
+      return <>{String(value).replace(/\s*\n\s*/g, "  ·  ")}</>;
   }
+}
+
+/** A read-only cell opened by a click: the whole text, lines kept, closes on Escape or a click elsewhere. */
+function Peek({ col, value, onClose }: { col: GridColumn; value: unknown; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => ref.current?.focus(), []);
+  const text = col.type === "lines" ? asList(value).map((l) => `• ${l}`).join("\n") : String(value ?? "");
+  return (
+    <div ref={ref} tabIndex={-1} onBlur={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} className="absolute left-0 top-0 z-30 max-h-80 min-w-[260px] max-w-[480px] overflow-auto whitespace-pre-line rounded-md border border-line bg-paper p-3 text-[13px] leading-relaxed shadow-lg outline-none">
+      {text || <span className="text-muted">Nothing here</span>}
+    </div>
+  );
 }
 
 /** The in-cell editor. Commits a string (JSON for tokens) or null. */
@@ -160,6 +166,7 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
   const [widths, setWidths] = useState<Record<string, number>>({});
   const [rows, setRows] = useState<GridRow[]>(initialRows);
   const [editing, setEditing] = useState<{ rowId: string; key: string } | null>(null);
+  const [peek, setPeek] = useState<{ rowId: string; key: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
@@ -341,14 +348,27 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
                 </td>
                 {ordered.map((c) => {
                   const on = editing?.rowId === r.id && editing.key === c.key;
+                  const open = peek?.rowId === r.id && peek.key === c.key;
                   return (
                     <td
                       key={c.key}
-                      onClick={() => editable(c) && !on && setEditing({ rowId: r.id, key: c.key })}
-                      className={`relative align-top ${editable(c) ? "cursor-text" : "text-muted"} ${on ? "!p-0.5" : ""}`}
+                      onClick={() => {
+                        if (editable(c)) {
+                          if (!on) setEditing({ rowId: r.id, key: c.key });
+                        } else if (r[c.key] != null && r[c.key] !== "" && !open) setPeek({ rowId: r.id, key: c.key });
+                      }}
+                      title={!on && !open && r[c.key] != null && r[c.key] !== "" && typeof r[c.key] === "string" && (r[c.key] as string).length > 24 ? "Click to open" : undefined}
+                      className={`relative h-9 align-middle ${editable(c) ? "cursor-text" : r[c.key] != null && r[c.key] !== "" ? "cursor-pointer text-muted" : "text-muted"} ${on ? "!p-0.5" : ""}`}
                       style={{ maxWidth: widthOf(c) }}
                     >
-                      {on ? <Editor col={c} value={r[c.key]} onCommit={(v) => commit(r.id, c.key, v)} onCancel={() => setEditing(null)} onTab={(back) => moveEdit(r.id, c.key, back)} /> : <div className="overflow-hidden text-ellipsis"><Display col={c} value={r[c.key]} /></div>}
+                      {on ? (
+                        <Editor col={c} value={r[c.key]} onCommit={(v) => commit(r.id, c.key, v)} onCancel={() => setEditing(null)} onTab={(back) => moveEdit(r.id, c.key, back)} />
+                      ) : (
+                        <div className="truncate">
+                          <Display col={c} value={r[c.key]} />
+                        </div>
+                      )}
+                      {open && <Peek col={c} value={r[c.key]} onClose={() => setPeek(null)} />}
                     </td>
                   );
                 })}
