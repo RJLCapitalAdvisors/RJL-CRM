@@ -279,7 +279,7 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
           </colgroup>
           <thead className="sticky top-0 z-20">
             <tr>
-              <th className="bg-cream" />
+              <th className="bg-cream" title="Click a cell to edit; Enter saves, Escape cancels, Tab moves right. Drag a header to reorder, pull its edge to resize (double-click resets). Your layout is remembered on this computer." />
               {ordered.map((c) => (
                 <th
                   key={c.key}
@@ -377,7 +377,6 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
           </tbody>
         </table>
       </div>
-      <div className="border-t border-line px-3 py-1 text-[11px] text-muted">Click a cell to edit; Enter saves, Escape cancels, Tab moves right. Drag a header to reorder, pull its edge to resize (double-click resets). Your layout is remembered on this computer.</div>
     </div>
   );
 }

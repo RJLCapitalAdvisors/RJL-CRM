@@ -86,7 +86,7 @@ export function Pager({
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(total, page * pageSize);
   return (
-    <div className="flex items-center justify-between px-8 py-3 text-sm text-muted">
+    <div className="flex items-center justify-between px-6 py-1 text-xs text-muted [&_.btn-secondary]:py-0.5 [&_.btn-secondary]:text-xs">
       <div>
         {from.toLocaleString()}–{to.toLocaleString()} of {total.toLocaleString()}
       </div>

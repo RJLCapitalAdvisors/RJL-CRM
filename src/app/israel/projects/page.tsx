@@ -112,7 +112,7 @@ export default async function IlProjectsPage({ searchParams }: { searchParams: P
       <div className="grid gap-4 px-8 py-4 xl:grid-cols-[300px_1fr]">
         <ProjectFiltersRail f={f} cities={cities} neighborhoods={neighborhoods} developers={developers} total={total} />
         <div className="min-w-0">
-          <div className="flex h-[calc(100vh-168px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+          <div className="flex h-[calc(100vh-150px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
             <div className="min-h-0 flex-1 overflow-auto">
               <table className="table dense w-full min-w-[1100px]">
                 <thead>

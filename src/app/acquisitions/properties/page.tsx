@@ -172,7 +172,7 @@ export default async function AqPropertiesPage({ searchParams }: { searchParams:
           </div>
         </SearchForm>
       </div>
-      <div className="mx-8 flex h-[calc(100vh-176px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+      <div className="mx-8 flex h-[calc(100vh-150px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <AqGrid kind="property" columns={columns} rows={gridRows} empty="No properties match." />
       </div>
       <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
