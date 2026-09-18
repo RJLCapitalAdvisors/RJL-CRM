@@ -3,7 +3,18 @@
  * and habits as the other two sides; light yellow paper, dark blue accents (globals.css .acquisitions).
  */
 export const AQ_ROLES = ["Seller", "Operator", "Buyer"] as const;
-export const AQ_STAGES = ["Deal", "Call me back", "Not interested", "No answer"] as const;
+/** The Call Result on a property. Callback needs a target date (the dashboard's Call Me Back window); Wrong number asks which number to drop. */
+export const AQ_STAGES = ["Deal", "Callback", "Not interested", "No answer", "Wrong number"] as const;
+export const AQ_ASSET_TYPES = ["Free-standing", "Strip center", "Other"] as const;
+/** Lines of a one-per-line field (Other Phones, Emails), bullets and blanks stripped. */
+export const lines = (s: string | null | undefined): string[] => (s ?? "").split(/\r?\n/).map((l) => l.replace(/^\s*[•\-*]\s*/, "").trim()).filter(Boolean);
+/** "1234 Bedford Ave" becomes "1234 Bedford Ave LLC"; a name that already ends in an entity suffix is left alone. */
+export const ensureLlc = (s: string | null | undefined): string | null => {
+  const t = (s ?? "").trim();
+  if (!t) return null;
+  return /\b(llc|l\.l\.c\.|inc\.?|corp\.?|co\.?|l\.?p\.?|llp|ltd\.?|trust|company|corporation|partners(hip)?|associates|holdings|realty|properties)$/i.test(t) ? t : `${t} LLC`;
+};
+export const digitsOf = (p: string | null | undefined) => (p ?? "").replace(/\D/g, "");
 /** Pipeline columns for properties marked Deal. Placeholders until Jonathan and Shawn settle the stages. */
 export const AQ_DEAL_STAGES = ["New", "Underwriting", "Offer Made", "Under Contract", "Closed", "Dead"] as const;
 
@@ -35,12 +46,14 @@ export function aqStageTone(stage: string): string {
   switch (stage) {
     case "Deal":
       return "bg-ink text-white";
-    case "Call me back":
+    case "Callback":
       return "bg-amber-200 text-ink";
     case "Not interested":
       return "bg-red-100 text-red-800";
     case "No answer":
       return "bg-cream text-muted";
+    case "Wrong number":
+      return "bg-slate-200 text-slate-800";
     default:
       return "bg-cream text-ink";
   }

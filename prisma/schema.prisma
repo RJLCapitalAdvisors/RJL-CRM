@@ -1063,18 +1063,40 @@ model AqProperty {
   neighborhood        String?
   city                String?
   state               String?
-  stages              String   @default("[]") // JSON list: Deal | Call me back | Not interested | No answer
-  callBackAt          DateTime? // required when Call me back is ticked; the dashboard shows it that day until dismissed
+  stages              String   @default("[]") // JSON list, the Call Result: Deal | Callback | Not interested | No answer | Wrong number
+  callBackAt          DateTime? // the Callback target date; the dashboard's Call Me Back window shows the property from that day (followUpAt when set) until dismissed
   callBackDismissedAt DateTime?
-  dealStage           String?  // pipeline column while Deal is ticked (AQ_DEAL_STAGES)
+  followUpAt          DateTime? // Follow Up Date: mirrors the callback target unless typed over
+  lastCallDate        DateTime?
+  callNotes           String?
+  dealStage           String?  // pipeline column while Deal is ticked (Setting aqDealStages)
+  businessName        String?  // the business operating at the property today
+  assetType           String?  // Free-standing | Strip center | Other
+  parcelId            String?
+  ownerEntity         String?  // the entity on title, usually an LLC
+  ownerName           String?  // the person behind it
+  primaryPhone        String?
+  secondaryPhone      String?
+  otherPhones         String?  // one per line
+  primaryEmail        String?
+  emails              String?  // from public record, one per line
+  ownerMailingAddress String?
+  acreage             Float?
+  squareFeet          Int?     // gross SF
+  yearBuilt           Int?
+  lastSaleDate        DateTime?
+  lastSalePrice       Float?
   askingPrice         Float?
   units               Int?
-  squareFeet          Int?
-  assetType           String?
   notes               String?
+  lat                 Float?   // map pin for the address (Nominatim, looked up once per address)
+  lng                 Float?
+  geoQuery            String?
+  geoLabel            String?
   companies           AqPropertyCompany[]
   contacts            AqPropertyContact[]
   aqNotes             AqNote[]
+  transcripts         AqTranscript[]
   activities          AqActivity[]
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -1082,6 +1104,17 @@ model AqProperty {
   @@index([city, state])
   @@index([callBackAt])
 }
+/** A call transcript pasted onto a property. The newest sits on top of the ticket's Transcript card. */
+model AqTranscript {
+  id         String     @id @default(cuid())
+  propertyId String
+  property   AqProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  body       String
+  createdAt  DateTime   @default(now())
+
+  @@index([propertyId, createdAt])
+}
+
 model AqPropertyCompany {
   propertyId String
   property   AqProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)

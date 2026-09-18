@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import type { Workspace } from "@/lib/access";
 import { SYSTEM as CA_SYSTEM, TOOLS as CA_TOOLS, run as runCa } from "@/lib/ask-crm";
 import { IL_SYSTEM, IL_TOOLS, runIl } from "@/lib/ask-israel";
-import { AQ_ROLES, AQ_STAGES, aqFullName, mergeAqRoles, parseJsonList, propertyLine, toJsonList } from "@/lib/acquisitions";
+import { AQ_ASSET_TYPES, AQ_ROLES, AQ_STAGES, aqFullName, ensureLlc, mergeAqRoles, parseJsonList, propertyLine, toJsonList } from "@/lib/acquisitions";
 import { getAqDealStages } from "@/lib/acquisitions-stages";
 import { IL_ROLES, ilFullName } from "@/lib/israel";
 import { ROLES as CA_ROLES } from "@/lib/taxonomy";
@@ -24,7 +24,7 @@ export type Attachment = { name: string; rows: number; sheets: Sheet[]; truncate
 
 export type CompanyRow = { name: string; roles?: string[]; website?: string; phone?: string; city?: string; state?: string; notes?: string };
 export type ContactRow = { firstName?: string; lastName?: string; email?: string; phone?: string; company?: string; roles?: string[]; title?: string; notes?: string };
-export type PropertyRow = { address: string; neighborhood?: string; city?: string; state?: string; stages?: string[]; callBackAt?: string; dealStage?: string; askingPrice?: number; units?: number; squareFeet?: number; assetType?: string; notes?: string; companies?: string[]; contacts?: string[] };
+export type PropertyRow = { address: string; neighborhood?: string; city?: string; state?: string; businessName?: string; assetType?: string; parcelId?: string; ownerEntity?: string; ownerName?: string; primaryPhone?: string; secondaryPhone?: string; otherPhones?: string[]; primaryEmail?: string; emails?: string[]; ownerMailingAddress?: string; acreage?: number; squareFeet?: number; yearBuilt?: number; lastSaleDate?: string; lastSalePrice?: number; lastCallDate?: string; callResult?: string; callBackAt?: string; callNotes?: string; dealStage?: string; askingPrice?: number; units?: number; notes?: string; companies?: string[]; contacts?: string[] };
 export type Proposal = { summary: string; properties?: PropertyRow[]; companies?: CompanyRow[]; contacts?: ContactRow[] };
 export type ImportResult = { created: { properties: number; companies: number; contacts: number }; matched: { properties: number; companies: number; contacts: number }; links: { label: string; href: string }[]; skipped: string[] };
 export type TurnResult = { answer: string; lookups: string[]; proposal: Proposal | null; savedRules: string[] };
@@ -86,7 +86,7 @@ const AQ_LOOKUPS: Anthropic.Tool[] = [
   { name: "search_properties", description: "Find properties in RJL Acquisitions by address, neighborhood, city, state or a linked company or person.", input_schema: { type: "object", properties: { q: { type: "string" } }, required: ["q"] } },
   { name: "search_companies", description: "Find companies (sellers, operators, buyers) in RJL Acquisitions by name or city.", input_schema: { type: "object", properties: { q: { type: "string" } }, required: ["q"] } },
   { name: "search_contacts", description: "Find people in RJL Acquisitions by name, email, phone or company.", input_schema: { type: "object", properties: { q: { type: "string" } }, required: ["q"] } },
-  { name: "call_backs", description: "Properties marked Call me back with their dates and the people to call.", input_schema: { type: "object", properties: {} } },
+  { name: "call_backs", description: "Properties whose Call Result is Callback, with their dates and the people to call.", input_schema: { type: "object", properties: {} } },
   { name: "pipeline", description: "Every property marked Deal, by pipeline stage.", input_schema: { type: "object", properties: {} } },
 ];
 
@@ -95,11 +95,11 @@ async function runAq(name: string, input: Record<string, unknown>): Promise<unkn
   switch (name) {
     case "search_properties": {
       const rows = await prisma.aqProperty.findMany({
-        where: { OR: [{ address: { contains: q, mode: ci } }, { neighborhood: { contains: q, mode: ci } }, { city: { contains: q, mode: ci } }, { state: { contains: q, mode: ci } }, { companies: { some: { company: { name: { contains: q, mode: ci } } } } }, { contacts: { some: { contact: { OR: [{ firstName: { contains: q, mode: ci } }, { lastName: { contains: q, mode: ci } }] } } } }] },
+        where: { OR: [{ address: { contains: q, mode: ci } }, { neighborhood: { contains: q, mode: ci } }, { city: { contains: q, mode: ci } }, { state: { contains: q, mode: ci } }, { businessName: { contains: q, mode: ci } }, { ownerEntity: { contains: q, mode: ci } }, { ownerName: { contains: q, mode: ci } }, { primaryPhone: { contains: q } }, { parcelId: { contains: q, mode: ci } }, { companies: { some: { company: { name: { contains: q, mode: ci } } } } }, { contacts: { some: { contact: { OR: [{ firstName: { contains: q, mode: ci } }, { lastName: { contains: q, mode: ci } }] } } } }] },
         take: 25,
         include: { companies: { include: { company: { select: { name: true } } } }, contacts: { include: { contact: { select: { firstName: true, lastName: true, email: true, phone: true } } } } },
       });
-      return rows.map((p) => ({ address: p.address, where: propertyLine(p), stages: parseJsonList(p.stages), dealStage: p.dealStage, callBackAt: p.callBackAt?.toISOString().slice(0, 10), askingPrice: p.askingPrice, units: p.units, squareFeet: p.squareFeet, assetType: p.assetType, companies: p.companies.map((x) => x.company.name), contacts: p.contacts.map((x) => `${aqFullName(x.contact)}${x.contact.phone ? " " + x.contact.phone : ""}`), notes: p.notes, link: `/acquisitions/properties/${p.id}` }));
+      return rows.map((p) => ({ address: p.address, where: propertyLine(p), businessName: p.businessName, callResult: parseJsonList(p.stages), dealStage: p.dealStage, callBackAt: p.callBackAt?.toISOString().slice(0, 10), followUpAt: p.followUpAt?.toISOString().slice(0, 10), lastCallDate: p.lastCallDate?.toISOString().slice(0, 10), callNotes: p.callNotes, owner: p.ownerEntity, ownerName: p.ownerName, phones: [p.primaryPhone, p.secondaryPhone, p.otherPhones].filter(Boolean).join("; "), emails: [p.primaryEmail, p.emails].filter(Boolean).join("; "), parcelId: p.parcelId, acreage: p.acreage, yearBuilt: p.yearBuilt, lastSale: p.lastSalePrice, lastSaleDate: p.lastSaleDate?.toISOString().slice(0, 10), askingPrice: p.askingPrice, units: p.units, squareFeet: p.squareFeet, assetType: p.assetType, companies: p.companies.map((x) => x.company.name), contacts: p.contacts.map((x) => `${aqFullName(x.contact)}${x.contact.phone ? " " + x.contact.phone : ""}`), notes: p.notes, link: `/acquisitions/properties/${p.id}` }));
     }
     case "search_companies": {
       const rows = await prisma.aqCompany.findMany({ where: { OR: [{ name: { contains: q, mode: ci } }, { city: { contains: q, mode: ci } }] }, take: 25, include: { _count: { select: { contacts: true, properties: true } } } });
@@ -110,7 +110,7 @@ async function runAq(name: string, input: Record<string, unknown>): Promise<unkn
       return rows.map((c) => ({ name: aqFullName(c), email: c.email, phone: c.phone, roles: parseJsonList(c.roles), company: c.company?.name, link: `/acquisitions/contacts/${c.id}` }));
     }
     case "call_backs": {
-      const rows = await prisma.aqProperty.findMany({ where: { stages: { contains: '"Call me back"' }, callBackDismissedAt: null }, orderBy: { callBackAt: "asc" }, take: 50, include: { contacts: { include: { contact: { select: { firstName: true, lastName: true, email: true, phone: true } } } } } });
+      const rows = await prisma.aqProperty.findMany({ where: { stages: { contains: '"Callback"' }, callBackDismissedAt: null }, orderBy: { callBackAt: "asc" }, take: 50, include: { contacts: { include: { contact: { select: { firstName: true, lastName: true, email: true, phone: true } } } } } });
       return rows.map((p) => ({ address: p.address, where: propertyLine(p), callBackAt: p.callBackAt?.toISOString().slice(0, 10), people: p.contacts.map((x) => `${aqFullName(x.contact)}${x.contact.phone ? " " + x.contact.phone : ""}`), link: `/acquisitions/properties/${p.id}` }));
     }
     case "pipeline": {
@@ -123,7 +123,7 @@ async function runAq(name: string, input: Record<string, unknown>): Promise<unkn
   }
 }
 
-const AQ_SYSTEM = `You are the RJL Acquisitions CRM assistant. RJL Acquisitions (Shawn Aziz) buys real estate: it tracks properties (address, neighborhood, city and state kept apart; a Stage of Deal, Call me back with a date, Not interested or No answer; asking price, units, square feet, asset type), the companies behind them (sellers, operators, buyers) and the people at those companies with their phone numbers, plus a Deal Pipeline for every property marked Deal.
+const AQ_SYSTEM = `You are the RJL Acquisitions CRM assistant. RJL Acquisitions (Shawn Aziz) buys real estate: it tracks properties (address, neighborhood, city and state kept apart; the business there, the owner of record (usually an LLC) and the person behind it with their phones and emails, parcel, acreage, gross SF, year built, last sale; a Call Result of Deal, Callback with a target date, Not interested, No answer or Wrong number, with call notes and a follow-up date), the companies around them (sellers, operators, buyers) and the people at those companies with their phone numbers, plus a Deal Pipeline for every property marked Deal.
 Answer questions from the CRM's data using the lookups; never guess. Link every property, company or person you mention the first time as a markdown link using the "link" paths returned, e.g. [123 Main St](/acquisitions/properties/abc).
 Write for Shawn and Jonathan: plain, direct, short. Lead with the answer. Short bullet lists for several items. Dates as "Sep 3". Money as $1.2MM or $850,000. No dashes as punctuation (no em dashes, no " - " between clauses); plain sentences. No headings unless the answer has several distinct parts.`;
 
@@ -131,7 +131,42 @@ Write for Shawn and Jonathan: plain, direct, short. Lead with the answer. Short 
 
 const ROW_COMPANY = { type: "object", properties: { name: { type: "string" }, roles: { type: "array", items: { type: "string" } }, website: { type: "string" }, phone: { type: "string" }, city: { type: "string" }, state: { type: "string" }, notes: { type: "string" } }, required: ["name"] };
 const ROW_CONTACT = { type: "object", properties: { firstName: { type: "string" }, lastName: { type: "string" }, email: { type: "string" }, phone: { type: "string" }, company: { type: "string", description: "company name, matching a row in companies when there is one" }, roles: { type: "array", items: { type: "string" } }, title: { type: "string" }, notes: { type: "string" } } };
-const ROW_PROPERTY = { type: "object", properties: { address: { type: "string", description: "street address only" }, neighborhood: { type: "string" }, city: { type: "string" }, state: { type: "string", description: "two letters" }, stages: { type: "array", items: { type: "string", enum: [...AQ_STAGES] } }, callBackAt: { type: "string", description: "YYYY-MM-DD, only with the Call me back stage" }, dealStage: { type: "string" }, askingPrice: { type: "number" }, units: { type: "integer" }, squareFeet: { type: "integer" }, assetType: { type: "string" }, notes: { type: "string" }, companies: { type: "array", items: { type: "string" }, description: "company names linked to this property" }, contacts: { type: "array", items: { type: "string" }, description: "people linked to this property, by email or 'First Last'" } }, required: ["address"] };
+const ROW_PROPERTY = {
+  type: "object",
+  properties: {
+    address: { type: "string", description: "street address only" },
+    city: { type: "string" },
+    state: { type: "string", description: "two letters" },
+    neighborhood: { type: "string" },
+    businessName: { type: "string", description: "the business operating at the property" },
+    assetType: { type: "string", enum: [...AQ_ASSET_TYPES] },
+    parcelId: { type: "string" },
+    ownerEntity: { type: "string", description: "the owner of record, usually an LLC" },
+    ownerName: { type: "string", description: "the person behind the owner" },
+    primaryPhone: { type: "string" },
+    secondaryPhone: { type: "string" },
+    otherPhones: { type: "array", items: { type: "string" } },
+    primaryEmail: { type: "string" },
+    emails: { type: "array", items: { type: "string" }, description: "other emails, e.g. from public record" },
+    ownerMailingAddress: { type: "string" },
+    acreage: { type: "number" },
+    squareFeet: { type: "integer", description: "gross SF" },
+    yearBuilt: { type: "integer" },
+    lastSaleDate: { type: "string", description: "YYYY-MM-DD" },
+    lastSalePrice: { type: "number" },
+    lastCallDate: { type: "string", description: "YYYY-MM-DD" },
+    callResult: { type: "string", enum: [...AQ_STAGES] },
+    callBackAt: { type: "string", description: "YYYY-MM-DD, only with the Callback result" },
+    callNotes: { type: "string" },
+    dealStage: { type: "string" },
+    askingPrice: { type: "number" },
+    units: { type: "integer" },
+    notes: { type: "string" },
+    companies: { type: "array", items: { type: "string" }, description: "company names linked to this property" },
+    contacts: { type: "array", items: { type: "string" }, description: "people linked to this property, by email or 'First Last'" },
+  },
+  required: ["address"],
+};
 
 function importTool(ws: Workspace): Anthropic.Tool {
   const props: Record<string, unknown> = { summary: { type: "string", description: "one or two plain sentences on what the file held and how it was read" }, companies: { type: "array", items: ROW_COMPANY }, contacts: { type: "array", items: ROW_CONTACT } };
@@ -152,7 +187,7 @@ const SAVE_RULE: Anthropic.Tool = {
 function importGuide(ws: Workspace, rules: string[]): string {
   const fields =
     ws === "AQ"
-      ? `Properties: address (street only), neighborhood, city, state (2 letters), stages (any of ${AQ_STAGES.join(", ")}), callBackAt (YYYY-MM-DD, only with Call me back), dealStage (a pipeline stage name, only with Deal), askingPrice (number), units, squareFeet, assetType, notes, companies (names), contacts (email or "First Last"). Companies: name, roles (${AQ_ROLES.join(", ")}), website, phone, city, state, notes. Contacts: firstName, lastName, email, phone, company (name), roles (${AQ_ROLES.join(", ")}), notes. An owner or seller on a row is a company (Seller) unless it is plainly a person; a person with a phone on a property row is a contact linked to that property, at the row's company when there is one.`
+      ? `Properties (the ticket's own fields; put the owner and their numbers HERE, on the property row): address (street only), city, state (2 letters), neighborhood, businessName (the business operating there), assetType (${AQ_ASSET_TYPES.join(", ")}), parcelId, ownerEntity (owner of record, usually an LLC), ownerName (the person), primaryPhone, secondaryPhone, otherPhones (list), primaryEmail, emails (list), ownerMailingAddress, acreage, squareFeet (gross SF), yearBuilt, lastSaleDate (YYYY-MM-DD), lastSalePrice, lastCallDate, callResult (one of ${AQ_STAGES.join(", ")}), callBackAt (YYYY-MM-DD, only with Callback), callNotes, dealStage (only with Deal), askingPrice, units, notes, companies (names of separate company records to link), contacts (email or "First Last" of separate contact records to link). Only make a separate company or contact record when the row names a firm or person that is not simply the property's owner (a broker, a buyer, an operator with several properties); the owner and their phones belong on the property.`
       : ws === "IL"
         ? `Companies: name, roles (${IL_ROLES.join(", ")}), website, phone, city, notes. Contacts: firstName, lastName, email, phone, company (name), roles (${IL_ROLES.join(", ")}), notes.`
         : `Companies: name, roles (${CA_ROLES.join(", ")}), website, phone, city, state, notes. Contacts: firstName, lastName, email, phone, company (name), roles (${CA_ROLES.join(", ")}), title, notes.`;
@@ -229,6 +264,12 @@ const num = (v: unknown) => {
   }
   return undefined;
 };
+const isoDay = (v: unknown) => {
+  const t = str(v, 30);
+  if (!t) return undefined;
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString().slice(0, 10);
+};
 const list = (v: unknown, allowed?: readonly string[]) => (Array.isArray(v) ? v.map((x) => str(x, 80)).filter((x): x is string => Boolean(x)).filter((x) => !allowed || allowed.includes(x)) : undefined);
 
 /** Only fields we know, only values that are there. */
@@ -244,7 +285,7 @@ function cleanProposal(ws: Workspace, p: Proposal, dealStages: string[]): Propos
   if (contacts.length) out.contacts = contacts;
   if (ws === "AQ") {
     const properties = (Array.isArray(p.properties) ? p.properties : []).flatMap((r): PropertyRow[] => {
-        const stages = list(r.stages, AQ_STAGES) ?? [];
+        const stages = list([r.callResult], AQ_STAGES) ?? [];
         const cb = str(r.callBackAt, 20);
         const address = str(r.address, 200);
         if (!address) return [];
@@ -253,13 +294,29 @@ function cleanProposal(ws: Workspace, p: Proposal, dealStages: string[]): Propos
           neighborhood: str(r.neighborhood, 120),
           city: str(r.city, 120),
           state: str(r.state, 2)?.toUpperCase(),
-          stages: stages.length ? stages : undefined,
-          callBackAt: stages.includes("Call me back") && cb && /^\d{4}-\d{2}-\d{2}$/.test(cb) ? cb : undefined,
+          businessName: str(r.businessName, 160),
+          assetType: (AQ_ASSET_TYPES as readonly string[]).includes(str(r.assetType, 80) ?? "") ? str(r.assetType, 80) : undefined,
+          parcelId: str(r.parcelId, 80),
+          ownerEntity: ensureLlc(str(r.ownerEntity, 160)) ?? undefined,
+          ownerName: str(r.ownerName, 160),
+          primaryPhone: str(r.primaryPhone, 40),
+          secondaryPhone: str(r.secondaryPhone, 40),
+          otherPhones: list(r.otherPhones),
+          primaryEmail: str(r.primaryEmail, 160)?.toLowerCase(),
+          emails: list(r.emails)?.map((e) => e.toLowerCase()),
+          ownerMailingAddress: str(r.ownerMailingAddress, 240),
+          acreage: num(r.acreage),
+          yearBuilt: num(r.yearBuilt) != null ? Math.round(num(r.yearBuilt)!) : undefined,
+          lastSaleDate: isoDay(r.lastSaleDate),
+          lastSalePrice: num(r.lastSalePrice),
+          lastCallDate: isoDay(r.lastCallDate),
+          callResult: stages[0],
+          callBackAt: stages.includes("Callback") && cb && /^\d{4}-\d{2}-\d{2}$/.test(cb) ? cb : undefined,
+          callNotes: str(r.callNotes, 2000),
           dealStage: stages.includes("Deal") ? (dealStages.includes(str(r.dealStage, 80) ?? "") ? str(r.dealStage, 80) : dealStages[0]) : undefined,
           askingPrice: num(r.askingPrice),
           units: num(r.units) != null ? Math.round(num(r.units)!) : undefined,
           squareFeet: num(r.squareFeet) != null ? Math.round(num(r.squareFeet)!) : undefined,
-          assetType: str(r.assetType, 80),
           notes: str(r.notes, 2000),
           companies: list(r.companies),
           contacts: list(r.contacts),
@@ -324,8 +381,29 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
     const dealStages = await getAqDealStages();
     for (const r of p.properties ?? []) {
       const found = await prisma.aqProperty.findFirst({ where: { address: { equals: r.address, mode: ci }, ...(r.city ? { city: { equals: r.city, mode: ci } } : {}) } });
-      const stages = r.stages ?? [];
+      const stages = r.callResult ? [r.callResult] : [];
       const callBackAt = r.callBackAt ? new Date(`${r.callBackAt}T12:00:00`) : null;
+      const day = (v: string | undefined) => (v ? new Date(`${v}T12:00:00`) : null);
+      const extra = {
+        businessName: r.businessName,
+        assetType: r.assetType,
+        parcelId: r.parcelId,
+        ownerEntity: r.ownerEntity,
+        ownerName: r.ownerName,
+        primaryPhone: r.primaryPhone,
+        secondaryPhone: r.secondaryPhone,
+        otherPhones: r.otherPhones?.length ? r.otherPhones.join("\n") : undefined,
+        primaryEmail: r.primaryEmail,
+        emails: r.emails?.length ? r.emails.join("\n") : undefined,
+        ownerMailingAddress: r.ownerMailingAddress,
+        acreage: r.acreage,
+        yearBuilt: r.yearBuilt,
+        lastSaleDate: day(r.lastSaleDate),
+        lastSalePrice: r.lastSalePrice,
+        lastCallDate: day(r.lastCallDate),
+        callNotes: r.callNotes,
+        followUpAt: callBackAt,
+      };
       let id: string;
       if (found) {
         const merged = (AQ_STAGES as readonly string[]).filter((s) => parseJsonList(found.stages).includes(s) || stages.includes(s));
@@ -335,7 +413,24 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
             neighborhood: found.neighborhood ?? r.neighborhood,
             city: found.city ?? r.city,
             state: found.state ?? r.state,
-            stages: JSON.stringify(merged),
+            stages: stages.length ? JSON.stringify(merged) : undefined,
+            businessName: found.businessName ?? extra.businessName,
+            parcelId: found.parcelId ?? extra.parcelId,
+            ownerEntity: found.ownerEntity ?? extra.ownerEntity,
+            ownerName: found.ownerName ?? extra.ownerName,
+            primaryPhone: found.primaryPhone ?? extra.primaryPhone,
+            secondaryPhone: found.secondaryPhone ?? extra.secondaryPhone,
+            otherPhones: found.otherPhones ?? extra.otherPhones,
+            primaryEmail: found.primaryEmail ?? extra.primaryEmail,
+            emails: found.emails ?? extra.emails,
+            ownerMailingAddress: found.ownerMailingAddress ?? extra.ownerMailingAddress,
+            acreage: found.acreage ?? extra.acreage,
+            yearBuilt: found.yearBuilt ?? extra.yearBuilt,
+            lastSaleDate: found.lastSaleDate ?? extra.lastSaleDate,
+            lastSalePrice: found.lastSalePrice ?? extra.lastSalePrice,
+            lastCallDate: extra.lastCallDate ?? found.lastCallDate,
+            callNotes: extra.callNotes ?? found.callNotes,
+            followUpAt: callBackAt ?? found.followUpAt,
             callBackAt: callBackAt ?? found.callBackAt,
             ...(callBackAt ? { callBackDismissedAt: null } : {}),
             dealStage: merged.includes("Deal") ? found.dealStage ?? r.dealStage ?? dealStages[0] : null,
@@ -349,7 +444,7 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
         id = found.id;
         result.matched.properties++;
       } else {
-        const made = await prisma.aqProperty.create({ data: { address: r.address, neighborhood: r.neighborhood, city: r.city, state: r.state, stages: JSON.stringify(stages), callBackAt, dealStage: stages.includes("Deal") ? r.dealStage ?? dealStages[0] : null, askingPrice: r.askingPrice, units: r.units, squareFeet: r.squareFeet, assetType: r.assetType, notes: r.notes } });
+        const made = await prisma.aqProperty.create({ data: { address: r.address, neighborhood: r.neighborhood, city: r.city, state: r.state, stages: JSON.stringify(stages), callBackAt, dealStage: stages.includes("Deal") ? r.dealStage ?? dealStages[0] : null, askingPrice: r.askingPrice, units: r.units, squareFeet: r.squareFeet, notes: r.notes, ...extra } });
         id = made.id;
         result.created.properties++;
         link(r.address, `/acquisitions/properties/${made.id}`);

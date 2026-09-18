@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { AQ_ROLES, AQ_STAGES, mergeAqRoles, parseJsonList, toJsonList } from "@/lib/acquisitions";
+import { AQ_ROLES, AQ_STAGES, digitsOf, ensureLlc, lines, mergeAqRoles, parseJsonList, toJsonList } from "@/lib/acquisitions";
+import { forgetAqGeo } from "@/lib/aq-geocode";
 import { getAqDealStages, saveAqDealStages } from "@/lib/acquisitions-stages";
 
 const s = (fd: FormData, k: string) => {
@@ -108,39 +109,78 @@ export async function deleteAqContact(id: string) {
 }
 
 // ---------- properties ----------
+const date = (fd: FormData, k: string) => {
+  const v = s(fd, k);
+  return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T12:00:00`) : null;
+};
+const sameDay = (a: Date | null, b: Date | null) => Boolean(a && b && a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10));
+
+/**
+ * The property ticket's fields (Jonathan's list, Sep 18, 2026). Call Result is one pick and becomes the stage:
+ * Callback needs a target date, which also fills Follow Up Date unless that was typed over; Wrong number drops the
+ * picked phone from the property (and from linked contacts, in updateAqProperty); Deal opens the pipeline stage.
+ * The list page's stage cell still writes the stages list directly (setAqPropertyStages).
+ */
 function propertyData(fd: FormData, dealStages: string[]) {
-  const stages = parseJsonList(list(fd, "stages", AQ_STAGES));
-  const callBackRaw = s(fd, "callBackAt");
-  const callBack = stages.includes("Call me back") && callBackRaw ? new Date(`${callBackRaw}T12:00:00`) : null;
+  const picked = s(fd, "callResult");
+  const stages = picked && (AQ_STAGES as readonly string[]).includes(picked) ? [picked] : fd.has("callResult") ? [] : parseJsonList(list(fd, "stages", AQ_STAGES));
+  const callBack = stages.includes("Callback") ? date(fd, "callBackAt") : null;
+  const followUp = date(fd, "followUpAt") ?? callBack;
+  const deletePhone = stages.includes("Wrong number") ? s(fd, "deletePhone") : null;
+  const drop = (p: string | null) => (p && deletePhone && digitsOf(p) === digitsOf(deletePhone) ? null : p);
+  const otherPhones = lines(s(fd, "otherPhones"))
+    .filter((p) => !(deletePhone && digitsOf(p) === digitsOf(deletePhone)))
+    .join("\n");
+  const lastCall = date(fd, "lastCallDate") ?? (picked ? new Date() : null);
   return {
-    address: s(fd, "address") ?? "Property",
-    neighborhood: s(fd, "neighborhood"),
-    city: s(fd, "city"),
-    state: s(fd, "state")?.toUpperCase().slice(0, 2) ?? null,
-    stages: JSON.stringify(stages),
-    callBackAt: callBack,
-    // a fresh call-back date reopens the reminder; without the stage the dismissal is moot
-    ...(callBack ? { callBackDismissedAt: null } : {}),
-    dealStage: stages.includes("Deal") ? (s(fd, "dealStage") && dealStages.includes(s(fd, "dealStage")!) ? s(fd, "dealStage") : dealStages[0]) : null,
-    askingPrice: n(fd, "askingPrice"),
-    units: i(fd, "units"),
-    squareFeet: i(fd, "squareFeet"),
-    assetType: s(fd, "assetType"),
-    notes: s(fd, "notes"),
+    data: {
+      address: s(fd, "address") ?? "Property",
+      city: s(fd, "city"),
+      state: s(fd, "state")?.toUpperCase().slice(0, 2) ?? null,
+      businessName: s(fd, "businessName"),
+      assetType: s(fd, "assetType"),
+      parcelId: s(fd, "parcelId"),
+      ownerEntity: ensureLlc(s(fd, "ownerEntity")),
+      ownerName: s(fd, "ownerName"),
+      primaryPhone: drop(s(fd, "primaryPhone")),
+      secondaryPhone: drop(s(fd, "secondaryPhone")),
+      otherPhones: otherPhones || null,
+      primaryEmail: s(fd, "primaryEmail")?.toLowerCase() ?? null,
+      emails: lines(s(fd, "emails")).map((e) => e.toLowerCase()).join("\n") || null,
+      ownerMailingAddress: s(fd, "ownerMailingAddress"),
+      acreage: n(fd, "acreage"),
+      squareFeet: i(fd, "squareFeet"),
+      yearBuilt: i(fd, "yearBuilt"),
+      lastSaleDate: date(fd, "lastSaleDate"),
+      lastSalePrice: n(fd, "lastSalePrice"),
+      lastCallDate: lastCall,
+      stages: JSON.stringify(stages),
+      callBackAt: callBack,
+      followUpAt: followUp,
+      // a fresh call-back date reopens the reminder; without the stage the dismissal is moot
+      ...(callBack ? { callBackDismissedAt: null } : {}),
+      callNotes: s(fd, "callNotes"),
+      dealStage: stages.includes("Deal") ? (s(fd, "dealStage") && dealStages.includes(s(fd, "dealStage")!) ? s(fd, "dealStage") : dealStages[0]) : null,
+    },
+    deletePhone,
   };
 }
 export async function createAqProperty(fd: FormData) {
-  const p = await prisma.aqProperty.create({ data: propertyData(fd, await getAqDealStages()) });
+  const p = await prisma.aqProperty.create({ data: propertyData(fd, await getAqDealStages()).data });
   touchAll();
   redirect(`/acquisitions/properties/${p.id}`);
 }
 export async function updateAqProperty(id: string, fd: FormData) {
-  const data = propertyData(fd, await getAqDealStages());
+  const { data, deletePhone } = propertyData(fd, await getAqDealStages());
   const before = await prisma.aqProperty.findUnique({ where: { id }, select: { callBackAt: true } });
   // an unchanged date keeps its dismissal; a new date brings the reminder back
   const sameDate = before?.callBackAt && data.callBackAt && before.callBackAt.getTime() === data.callBackAt.getTime();
   if (sameDate) delete (data as { callBackDismissedAt?: null }).callBackDismissedAt;
   await prisma.aqProperty.update({ where: { id }, data });
+  if (deletePhone) {
+    const linked = await prisma.aqContact.findMany({ where: { properties: { some: { propertyId: id } }, phone: { not: null } }, select: { id: true, phone: true } });
+    for (const c of linked) if (digitsOf(c.phone) === digitsOf(deletePhone)) await prisma.aqContact.update({ where: { id: c.id }, data: { phone: null } });
+  }
   revalidatePath(`/acquisitions/properties/${id}`);
   touchAll();
 }
@@ -209,6 +249,23 @@ export async function deleteAqDealStage(name: string): Promise<StageResult> {
   await saveAqDealStages(cur.filter((x) => x !== name));
   stagesChanged();
   return { ok: true };
+}
+// ---------- transcripts and the map ----------
+/** A call transcript pasted onto the property; the newest shows on top of the Transcript card. */
+export async function addAqTranscript(propertyId: string, fd: FormData) {
+  const body = s(fd, "body");
+  if (!body) return;
+  await prisma.aqTranscript.create({ data: { propertyId, body } });
+  revalidatePath(`/acquisitions/properties/${propertyId}`);
+}
+export async function deleteAqTranscript(propertyId: string, id: string) {
+  await prisma.aqTranscript.deleteMany({ where: { id, propertyId } });
+  revalidatePath(`/acquisitions/properties/${propertyId}`);
+}
+/** Forget the map pin so the next page load looks the address up again. */
+export async function recheckAqLocation(id: string) {
+  await forgetAqGeo(id);
+  revalidatePath(`/acquisitions/properties/${id}`);
 }
 export async function dismissCallBack(id: string) {
   await prisma.aqProperty.update({ where: { id }, data: { callBackDismissedAt: new Date() } });

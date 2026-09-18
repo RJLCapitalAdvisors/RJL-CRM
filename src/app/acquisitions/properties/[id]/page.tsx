@@ -6,9 +6,10 @@ import { IlActivityLog } from "@/components/il-activity";
 import { IlRoleCell } from "@/components/il-role-cell";
 import { SelectField } from "@/components/select-field";
 import { CompanyLogo } from "@/components/company-logo";
+import { AqMapCard } from "@/components/aq-map-card";
 import { fmtDate } from "@/lib/format";
-import { AQ_STAGES, aqFullName, aqStageTone, parseJsonList, propertyLine, usd } from "@/lib/acquisitions";
-import { addAqNote, deleteAqProperty, linkAqProperty, setAqPropertyStages, updateAqProperty } from "../../actions";
+import { AQ_STAGES, aqFullName, aqStageTone, lines, parseJsonList, propertyLine, usd } from "@/lib/acquisitions";
+import { addAqNote, addAqTranscript, deleteAqProperty, deleteAqTranscript, linkAqProperty, setAqPropertyStages, updateAqProperty } from "../../actions";
 import { AqPropertyForm } from "../property-form";
 import { getAqDealStages } from "@/lib/acquisitions-stages";
 
@@ -20,7 +21,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: p?.address ?? "Property" };
 }
 
-/** A property ticket: stage tokens and the facts on the left, emails and notes in the middle, the companies and people around it on the right. */
+const tel = (p: string) => `tel:${p.replace(/[^\d+]/g, "")}`;
+
+/**
+ * A property ticket: the property, owner, physical facts and the call on the left (Jonathan's field list), then
+ * the transcripts; emails and notes in the middle; the map, companies and people around it on the right.
+ */
 export default async function AqPropertyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [p, companies, people, dealStages] = await Promise.all([
@@ -30,6 +36,7 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
         companies: { include: { company: { select: { id: true, name: true, domain: true, website: true, roles: true, phone: true } } } },
         contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, roles: true, company: { select: { name: true } } } } } },
         aqNotes: { orderBy: { createdAt: "desc" } },
+        transcripts: { orderBy: { createdAt: "desc" } },
         activities: { orderBy: { occurredAt: "desc" }, take: 200, include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
       },
     }),
@@ -40,9 +47,11 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
   if (!p) notFound();
   const stages = parseJsonList(p.stages);
   const link = linkAqProperty.bind(null, p.id);
+  const reminder = p.followUpAt ?? p.callBackAt;
+  const facts = [p.assetType, p.squareFeet ? `${p.squareFeet.toLocaleString()} SF` : null, p.acreage ? `${p.acreage} ac` : null, p.yearBuilt ? `built ${p.yearBuilt}` : null, p.lastSalePrice != null ? `last sold ${usd(p.lastSalePrice)}${p.lastSaleDate ? ` ${fmtDate(p.lastSaleDate)}` : ""}` : null].filter(Boolean).join(" · ");
   const noteForm = (
     <form action={addAqNote.bind(null, { propertyId: p.id })} className="flex gap-2">
-      <input name="body" placeholder="Add a note (what was said on the call, what they want, next step)" className="input flex-1 py-1 text-sm" />
+      <input name="body" placeholder="Add a note" className="input flex-1 py-1 text-sm" />
       <button type="submit" className="btn-secondary px-3 text-xs">
         Note
       </button>
@@ -57,8 +66,23 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
             backLabel="Properties"
             initial={(p.city?.[0] ?? p.address[0] ?? "P").toUpperCase()}
             title={p.address}
-            subtitle={propertyLine(p) || undefined}
-            lines={[<span key="f">{[p.assetType, p.units ? `${p.units} units` : null, p.squareFeet ? `${p.squareFeet.toLocaleString()} SF` : null, p.askingPrice != null ? `asking ${usd(p.askingPrice)}` : null].filter(Boolean).join(" · ")}</span>]}
+            subtitle={[p.businessName, propertyLine(p)].filter(Boolean).join(" · ") || undefined}
+            lines={[
+              facts ? <span key="f">{facts}</span> : null,
+              p.ownerName || p.ownerEntity ? (
+                <span key="o">
+                  {[p.ownerName, p.ownerEntity].filter(Boolean).join(", ")}
+                  {p.primaryPhone && (
+                    <>
+                      {" · "}
+                      <a href={tel(p.primaryPhone)} className="tabular-nums hover:underline">
+                        {p.primaryPhone}
+                      </a>
+                    </>
+                  )}
+                </span>
+              ) : null,
+            ].filter(Boolean)}
             actions={
               <>
                 <IlRoleCell roles={p.stages} options={AQ_STAGES} action={setAqPropertyStages.bind(null, p.id)} />
@@ -75,20 +99,61 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
               </>
             }
           />
-          {stages.includes("Call me back") && p.callBackAt && (
+          {stages.includes("Callback") && reminder && (
             <div className={`rounded-md border px-4 py-2 text-sm ${p.callBackDismissedAt ? "border-line bg-cream-50 text-muted" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-              Call back {fmtDate(p.callBackAt)}
-              {p.callBackDismissedAt ? " · dismissed from the dashboard" : " · on the dashboard's Call Me Back window that day"}
+              Call back {fmtDate(reminder)}
+              {p.callBackDismissedAt ? " · dismissed from the dashboard" : " · on the dashboard's Call Me Back window from that day"}
             </div>
           )}
           <AboutCard title="About this property">
             <AqPropertyForm p={p} dealStages={dealStages} action={updateAqProperty.bind(null, p.id)} autosave />
           </AboutCard>
+          <div className="card">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <div className="text-sm font-semibold">Transcript (most recent)</div>
+              <span className="text-xs text-muted">{p.transcripts.length}</span>
+            </div>
+            <form action={addAqTranscript.bind(null, p.id)} className="space-y-2 border-b border-line p-4">
+              <textarea name="body" rows={4} placeholder="Paste the call transcript here. It goes to the top." className="input w-full resize-y text-sm" />
+              <div className="flex justify-end">
+                <button type="submit" className="btn-secondary px-3 py-1 text-xs">
+                  Add transcript
+                </button>
+              </div>
+            </form>
+            {p.transcripts.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-muted">No transcripts yet.</div>
+            ) : (
+              <ul className="divide-y divide-line">
+                {p.transcripts.map((t, i) => (
+                  <li key={t.id} className={`px-4 py-3 text-sm ${i === 0 ? "" : "text-ink-soft"}`}>
+                    <div className="mb-1 flex items-center justify-between text-xs text-muted">
+                      <span>
+                        {i === 0 ? "Most recent · " : ""}
+                        {t.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      </span>
+                      <form action={deleteAqTranscript.bind(null, p.id, t.id)}>
+                        <button type="submit" className="hover:text-red-700" title="Remove this transcript">
+                          Remove
+                        </button>
+                      </form>
+                    </div>
+                    <ul className="list-disc space-y-0.5 pl-5">
+                      {lines(t.body).map((l, li) => (
+                        <li key={li}>{l}</li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </>
       }
       center={<IlActivityLog activities={p.activities} notes={p.aqNotes} form={noteForm} empty="No emails or notes yet. Emails with the people linked here land on the property; notes go in above." />}
       right={
         <>
+          <AqMapCard id={p.id} row={p} />
           <AssocCard title="Companies" count={p.companies.length} addHref="/acquisitions/companies/new" addLabel="New company" empty="The seller, operator or buyer behind this address. Pick below.">
             <ul className="divide-y divide-line text-sm">
               {p.companies.map(({ company: c }) => (
@@ -123,7 +188,7 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
               </button>
             </form>
           </AssocCard>
-          <AssocCard title="Contacts" count={p.contacts.length} addHref="/acquisitions/contacts/new" addLabel="New contact" empty="The people to call about this address. Pick below; their numbers show on the Call Me Back window.">
+          <AssocCard title="Contacts" count={p.contacts.length} addHref="/acquisitions/contacts/new" addLabel="New contact" empty="People in the CRM tied to this address. The owner's own numbers live on the left.">
             <ul className="divide-y divide-line text-sm">
               {p.contacts.map(({ contact: c }) => (
                 <li key={c.id} className="flex items-center justify-between gap-2 px-4 py-2">
@@ -158,7 +223,7 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
             </form>
           </AssocCard>
           <div className="px-1 text-[11px] text-muted">
-            Stage tokens:{" "}
+            Call results:{" "}
             {AQ_STAGES.map((st) => (
               <span key={st} className={`chip mr-1 text-[10px] ${aqStageTone(st)}`}>
                 {st}

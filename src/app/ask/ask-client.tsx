@@ -107,24 +107,26 @@ function ProposalCard({ message, workspace, onImported }: { message: StoredMessa
               <thead>
                 <tr>
                   <th>Address</th>
-                  <th>Neighborhood</th>
                   <th>City</th>
                   <th>St</th>
-                  <th>Stage</th>
-                  <th>Companies</th>
-                  <th>Contacts</th>
+                  <th>Business</th>
+                  <th>Owner</th>
+                  <th>Phone</th>
+                  <th>Result</th>
+                  <th>Linked</th>
                 </tr>
               </thead>
               <tbody>
                 {p.properties.map((r, i) => (
                   <tr key={i}>
                     <td className="font-medium">{r.address}</td>
-                    <td>{r.neighborhood}</td>
                     <td>{r.city}</td>
                     <td>{r.state}</td>
-                    <td>{[...(r.stages ?? []), r.callBackAt].filter(Boolean).join(" · ")}</td>
-                    <td className="max-w-[160px] truncate">{r.companies?.join(", ")}</td>
-                    <td className="max-w-[160px] truncate">{r.contacts?.join(", ")}</td>
+                    <td className="max-w-[140px] truncate">{r.businessName}</td>
+                    <td className="max-w-[160px] truncate">{[r.ownerName, r.ownerEntity].filter(Boolean).join(" · ")}</td>
+                    <td className="whitespace-nowrap">{r.primaryPhone}</td>
+                    <td>{[r.callResult, r.callBackAt].filter(Boolean).join(" · ")}</td>
+                    <td className="max-w-[160px] truncate">{[...(r.companies ?? []), ...(r.contacts ?? [])].join(", ")}</td>
                   </tr>
                 ))}
               </tbody>
