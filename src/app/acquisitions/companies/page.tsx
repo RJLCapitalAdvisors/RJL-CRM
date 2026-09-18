@@ -38,7 +38,7 @@ export default async function AqCompaniesPage({ searchParams }: { searchParams: 
     return `/acquisitions/companies?${u}`;
   };
   const columns: GridColumn[] = [
-    { key: "name", label: "Company", type: "text", width: 220 },
+    { key: "name", label: "Company", type: "text", width: 220, logoKey: "domain" },
     { key: "roles", label: "Roles", type: "tokens", options: AQ_ROLES, width: 170 },
     { key: "phone", label: "Phone", type: "tel", width: 140 },
     { key: "website", label: "Website", type: "url", width: 200 },
@@ -53,6 +53,7 @@ export default async function AqCompaniesPage({ searchParams }: { searchParams: 
     id: c.id,
     href: `/acquisitions/companies/${c.id}`,
     name: c.name,
+    domain: c.domain ?? c.website?.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] ?? null,
     roles: parseJsonList(c.roles),
     phone: c.phone,
     website: c.website,

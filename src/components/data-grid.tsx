@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { ExternalLink, GripVertical } from "lucide-react";
+import { CompanyLogo } from "@/components/company-logo";
 
 /**
  * An Excel-like grid for a CRM list (Jonathan, Sep 18, 2026): drag a header left or right to reorder the columns,
@@ -10,9 +11,9 @@ import { ExternalLink, GripVertical } from "lucide-react";
  * cell to edit it in place (Enter or clicking away saves, Escape cancels, Tab moves to the next cell). Order and
  * widths are remembered in this browser per grid.
  */
-export type GridOption = { value: string; label: string };
+export type GridOption = { value: string; label: string; domain?: string | null };
 export type GridType = "text" | "multiline" | "number" | "money" | "date" | "select" | "tokens" | "tel" | "email" | "url" | "lines" | "readonly";
-export type GridColumn = { key: string; label: string; type: GridType; options?: readonly (string | GridOption)[]; width?: number; tone?: (v: string) => string; hint?: string };
+export type GridColumn = { key: string; label: string; type: GridType; options?: readonly (string | GridOption)[]; width?: number; tone?: (v: string) => string; hint?: string; logoKey?: string };
 export type GridRow = { id: string; href?: string } & Record<string, unknown>;
 export type SaveResult = { ok: true; row?: Record<string, unknown> } | { ok: false; reason: string };
 
@@ -33,8 +34,19 @@ const toDateInput = (v: unknown) => {
 const money = (v: unknown) => (v == null || v === "" ? "" : `$${Number(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`);
 const asList = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : typeof v === "string" && v.trim().startsWith("[") ? (JSON.parse(v) as string[]) : typeof v === "string" && v ? v.split(/\r?\n/).filter(Boolean) : []);
 
-function Display({ col, value }: { col: GridColumn; value: unknown }) {
+function Display({ col, value, row }: { col: GridColumn; value: unknown; row?: GridRow }) {
   if (value == null || value === "") return <span className="text-muted">—</span>;
+  if (col.logoKey && (col.type === "text" || col.type === "select")) {
+    const o = col.type === "select" ? col.options?.map(opt).find((x) => x.value === String(value)) : null;
+    const label = o?.label ?? String(value);
+    const domain = (o?.domain ?? (row?.[col.logoKey] as string | null | undefined)) || null;
+    return (
+      <span className="inline-flex max-w-full items-center gap-2 align-middle">
+        <CompanyLogo domain={domain} name={label} size={18} />
+        <span className="truncate">{label}</span>
+      </span>
+    );
+  }
   switch (col.type) {
     case "money":
       return <span className="tabular-nums">{money(value)}</span>;
@@ -365,7 +377,7 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
                         <Editor col={c} value={r[c.key]} onCommit={(v) => commit(r.id, c.key, v)} onCancel={() => setEditing(null)} onTab={(back) => moveEdit(r.id, c.key, back)} />
                       ) : (
                         <div className="truncate">
-                          <Display col={c} value={r[c.key]} />
+                          <Display col={c} value={r[c.key]} row={r} />
                         </div>
                       )}
                       {open && <Peek col={c} value={r[c.key]} onClose={() => setPeek(null)} />}

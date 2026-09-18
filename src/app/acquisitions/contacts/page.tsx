@@ -28,7 +28,7 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
   const [total, rows, companies] = await Promise.all([
     prisma.aqContact.count({ where }),
     prisma.aqContact.findMany({ where, orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { lastName: "asc" }, { firstName: "asc" }], skip: (page - 1) * PAGE, take: PAGE, include: { _count: { select: { properties: true } } } }),
-    prisma.aqCompany.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.aqCompany.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, domain: true, website: true } }),
   ]);
   const makeHref = (p: number) => {
     const u = new URLSearchParams();
@@ -42,7 +42,7 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
     { key: "lastName", label: "Last Name", type: "text", width: 140 },
     { key: "email", label: "Email", type: "email", width: 220 },
     { key: "phone", label: "Phone", type: "tel", width: 140 },
-    { key: "companyId", label: "Company", type: "select", options: companies.map((c) => ({ value: c.id, label: c.name })), width: 200 },
+    { key: "companyId", label: "Company", type: "select", options: companies.map((c) => ({ value: c.id, label: c.name, domain: c.domain ?? c.website?.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] ?? null })), width: 200, logoKey: "companyId" },
     { key: "roles", label: "Roles", type: "tokens", options: AQ_ROLES, width: 170 },
     { key: "notes", label: "Notes", type: "multiline", width: 240 },
     { key: "properties", label: "Properties", type: "readonly", width: 90 },
