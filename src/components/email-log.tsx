@@ -28,7 +28,7 @@ export function EmailLog({ rows, title = "Activity", empty, aside, toolbar }: { 
       {rows.length === 0 ? (
         <div className="px-4 py-8 text-center text-sm text-muted">{empty}</div>
       ) : (
-        <ul className="max-h-[calc(100vh-230px)] min-h-[320px] divide-y divide-line overflow-y-auto">
+        <ul className="max-h-[calc(100vh-180px)] min-h-[320px] divide-y divide-line overflow-y-auto">
           {rows.map((r) => {
             const m: Meta = r.meta ? JSON.parse(r.meta) : {};
             const person = r.contact ? [r.contact.firstName, r.contact.lastName].filter(Boolean).join(" ") : "";

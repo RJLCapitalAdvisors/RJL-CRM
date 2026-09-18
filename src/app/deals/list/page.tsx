@@ -41,7 +41,7 @@ export default async function DealListPage({ searchParams }: { searchParams: Pro
           </Link>
         }
       />
-      <div className="px-8 py-4">
+      <div className="px-6 py-2">
         <SearchForm action="/deals/list" q={q} placeholder="Search deal, property, sponsor, city, address or plan">
           <select name="stage" defaultValue={stage} className="input w-52">
             <option value="">All stages</option>

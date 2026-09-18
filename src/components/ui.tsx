@@ -2,14 +2,15 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { parseList, roleColor } from "@/lib/taxonomy";
 
-export function PageHeader({ title, subtitle, actions, compact = false }: { title: string; subtitle?: React.ReactNode; actions?: React.ReactNode; compact?: boolean }) {
+/** The strip at the top of every page, kept to one line so the window below gets the room (Jonathan, Sep 18, 2026). `compact` is accepted for older callers and changes nothing. */
+export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: React.ReactNode; actions?: React.ReactNode; compact?: boolean }) {
   return (
-    <div className={`flex items-start justify-between gap-4 border-b border-line bg-paper px-8 ${compact ? "py-2.5" : "py-5"}`}>
-      <div className={compact ? "flex items-baseline gap-3" : ""}>
-        <h1 className={compact ? "text-lg font-semibold tracking-tight" : "text-2xl font-semibold tracking-tight"}>{title}</h1>
-        {subtitle && <div className={compact ? "text-xs text-muted" : "mt-1 text-sm text-muted"}>{subtitle}</div>}
+    <div className="flex min-h-[44px] items-center justify-between gap-4 border-b border-line bg-paper px-6 py-1.5">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3">
+        <h1 className="text-base font-semibold tracking-tight">{title}</h1>
+        {subtitle && <div className="truncate text-xs text-muted">{subtitle}</div>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="flex shrink-0 items-center gap-2 [&_.btn-primary]:py-1 [&_.btn-primary]:text-xs [&_.btn-secondary]:py-1 [&_.btn-secondary]:text-xs">{actions}</div>}
     </div>
   );
 }
@@ -60,7 +61,7 @@ export function SearchForm({
     <form action={action} className="flex flex-wrap items-center gap-2">
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted" />
-        <input name="q" defaultValue={q} placeholder={placeholder} className="input w-72 pl-8" />
+        <input name="q" defaultValue={q} placeholder={placeholder} className="input w-72 py-1.5 pl-8 text-sm" />
       </div>
       {children}
       <button className="btn-secondary" type="submit">

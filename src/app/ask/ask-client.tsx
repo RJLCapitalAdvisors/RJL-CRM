@@ -356,7 +356,7 @@ export function AskClient({ userName, initialThreads, initialThreadId, initialMe
 
   return (
     <div
-      className="relative flex h-[calc(100vh-4.5rem)]"
+      className="relative flex h-screen"
       onDragOver={(e) => {
         e.preventDefault();
         if (!dragging) setDragging(true);

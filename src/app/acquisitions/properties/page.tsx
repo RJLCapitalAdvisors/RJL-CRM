@@ -159,7 +159,7 @@ export default async function AqPropertiesPage({ searchParams }: { searchParams:
           </Link>
         }
       />
-      <div className="px-8 py-4">
+      <div className="px-6 py-2">
         <SearchForm action="/acquisitions/properties" q={q} placeholder="Search address, business, owner, phone, email, parcel, company or person">
           <div className="w-48">
             <MultiSelect name="stage" options={AQ_STAGES} selected={stages} placeholder="Any call result" />
@@ -172,7 +172,7 @@ export default async function AqPropertiesPage({ searchParams }: { searchParams:
           </div>
         </SearchForm>
       </div>
-      <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+      <div className="mx-8 flex h-[calc(100vh-176px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <AqGrid kind="property" columns={columns} rows={gridRows} empty="No properties match." />
       </div>
       <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />

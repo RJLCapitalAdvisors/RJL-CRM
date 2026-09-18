@@ -74,14 +74,14 @@ export default async function AqCompaniesPage({ searchParams }: { searchParams: 
           </Link>
         }
       />
-      <div className="px-8 py-4">
+      <div className="px-6 py-2">
         <SearchForm action="/acquisitions/companies" q={q} placeholder="Search name, city, website, or contact email">
           <div className="w-56">
             <MultiSelect name="role" options={AQ_ROLES} selected={roles} placeholder="Any role" />
           </div>
         </SearchForm>
       </div>
-      <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+      <div className="mx-8 flex h-[calc(100vh-176px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <AqGrid kind="company" columns={columns} rows={gridRows} empty="No companies match." />
       </div>
       <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />

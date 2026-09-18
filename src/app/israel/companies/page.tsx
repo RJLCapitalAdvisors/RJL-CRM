@@ -46,14 +46,14 @@ export default async function IlCompaniesPage({ searchParams }: { searchParams: 
           </Link>
         }
       />
-      <div className="px-8 py-4">
+      <div className="px-6 py-2">
         <SearchForm action="/israel/companies" q={q} placeholder="Search name, city, or contact email">
           <div className="w-56">
             <MultiSelect name="role" options={IL_COMPANY_ROLES} selected={roles} placeholder="Any role" />
           </div>
         </SearchForm>
       </div>
-      <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+      <div className="mx-8 flex h-[calc(100vh-176px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <div className="min-h-0 flex-1 overflow-auto">
           <table className="table dense w-full min-w-[900px]">
             <thead>
