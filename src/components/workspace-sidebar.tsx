@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect } from "react";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks, BookOpen } from "lucide-react";
+import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks, BookOpen, Table2 } from "lucide-react";
 import { NavLink } from "@/components/nav-link";
 import { DealContextNav } from "@/components/deal-context-nav";
 import { ApartmentContextNav } from "@/components/apartment-context-nav";
@@ -24,6 +24,7 @@ const CA_NAV = [
 ];
 
 const AQ_NAV = [
+  { href: "/acquisitions/ask", label: "Ask the CRM", icon: MessageSquare },
   { href: "/acquisitions", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/acquisitions/contacts", label: "Contacts", icon: Users },
   { href: "/acquisitions/companies", label: "Companies", icon: Building2 },
@@ -89,7 +90,7 @@ export function WorkspaceSidebar({ user }: { user: { name: string; workspaces?: 
       </div>
       {user && !(openCA && openIL) && <div className="px-4 pt-2 text-[11px] leading-snug text-muted">{openCA ? "RJL Israel is faded until you sign in with your @rjlisrael.com account. Click its logo." : "RJL Capital Advisors is faded until you sign in with your @rjlcapadvisors.com account. Click its logo."}</div>}
       {user && showAQ && !openAQ && <div className="px-4 pt-2 text-[11px] leading-snug text-muted">RJL Acquisitions is faded until you click its logo and sign in once with your @rjlcapadvisors.com account.</div>}
-      <div className="px-3 pt-3">{israel ? <Nav items={IL_NAV} apartmentSteps /> : acquisitions ? <Nav items={AQ_NAV} /> : <Nav items={CA_NAV} dealSteps />}</div>
+      <div className="px-3 pt-3">{israel ? <Nav items={IL_NAV} apartmentSteps /> : acquisitions ? <Nav items={AQ_NAV} propertySteps /> : <Nav items={CA_NAV} dealSteps />}</div>
       <div className="flex-1" />
       <div className="px-5 py-4 text-xs text-muted">
         {user ? (
@@ -112,7 +113,7 @@ export function WorkspaceSidebar({ user }: { user: { name: string; workspaces?: 
   );
 }
 
-function Nav({ items, dealSteps = false, apartmentSteps = false }: { items: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; exact?: boolean }[]; dealSteps?: boolean; apartmentSteps?: boolean }) {
+function Nav({ items, dealSteps = false, apartmentSteps = false, propertySteps = false }: { items: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; exact?: boolean }[]; dealSteps?: boolean; apartmentSteps?: boolean; propertySteps?: boolean }) {
   return (
     <nav className="flex flex-col gap-1 pb-2">
       {items.map((n) => (
@@ -129,6 +130,8 @@ function Nav({ items, dealSteps = false, apartmentSteps = false }: { items: { hr
             </Suspense>
           )}
           {apartmentSteps && n.href === "/israel/templates" && <IlTemplatesSubnav />}
+          {apartmentSteps && n.href === "/israel/settings" && <SideSettingsSubnav base="/israel/settings" />}
+          {propertySteps && n.href === "/acquisitions/settings" && <SideSettingsSubnav base="/acquisitions/settings" />}
           {apartmentSteps && n.href === "/israel/apartments" && (
             <Suspense fallback={null}>
               <ApartmentContextNav section="apartments" />
@@ -172,10 +175,33 @@ function SettingsSubnav() {
   if (!pathname.startsWith("/settings")) return null;
   const onUsers = pathname.startsWith("/settings/users");
   const onRules = pathname.startsWith("/settings/underwriting");
+  const onData = pathname.startsWith("/settings/data-rules");
   const items = [
-    { href: "/settings", label: "Settings", icon: Settings, on: !onUsers && !onRules },
+    { href: "/settings", label: "Settings", icon: Settings, on: !onUsers && !onRules && !onData },
     { href: "/settings/users", label: "Users", icon: Users, on: onUsers },
     { href: "/settings/underwriting", label: "Underwriting rules", icon: BookOpen, on: onRules },
+    { href: "/settings/data-rules", label: "Data rules", icon: Table2, on: onData },
+  ];
+  return (
+    <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
+      {items.map((s) => (
+        <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${s.on ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
+          <s.icon className="h-3.5 w-3.5" />
+          {s.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/** Under Settings on the Israel and Acquisitions sides: Users (the settings page itself) and Data rules. Shows while you are on either page. */
+function SideSettingsSubnav({ base }: { base: string }) {
+  const pathname = usePathname();
+  if (!pathname.startsWith(base)) return null;
+  const onData = pathname.startsWith(base + "/data-rules");
+  const items = [
+    { href: base, label: "Users", icon: Users, on: !onData },
+    { href: base + "/data-rules", label: "Data rules", icon: Table2, on: onData },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">

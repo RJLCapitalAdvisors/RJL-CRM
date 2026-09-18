@@ -607,6 +607,7 @@ model ChatMessage {
   role      String // user | assistant
   content   String
   lookups   String? // JSON list of the lookups behind an answer
+  data      String? // JSON: attachments (parsed spreadsheets) on a user turn, an import proposal and its importedAt on an assistant turn, rules saved
   createdAt DateTime   @default(now())
 
   @@index([threadId, createdAt])

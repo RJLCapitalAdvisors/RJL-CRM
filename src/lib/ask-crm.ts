@@ -29,7 +29,7 @@ const clip = (s: unknown, n = 12_000) => {
 const ci = "insensitive" as const;
 
 // ---------- the lookups ----------
-const TOOLS: Anthropic.Tool[] = [
+export const TOOLS: Anthropic.Tool[] = [
   {
     name: "search_deals",
     description: "Find deals (tickets) by any words in their name, property, sponsor or city, optionally by stage. Returns id, name, stage, sponsor, location, asset class, ask, last update. Use get_deal for details.",
@@ -82,7 +82,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-async function run(name: string, input: Record<string, unknown>): Promise<unknown> {
+export async function run(name: string, input: Record<string, unknown>): Promise<unknown> {
   const lim = Math.min(Number(input.limit ?? 25), 60);
   switch (name) {
     case "search_deals": {
@@ -212,7 +212,7 @@ async function run(name: string, input: Record<string, unknown>): Promise<unknow
   }
 }
 
-const SYSTEM = `You are the RJL Capital Advisors CRM assistant. RJL is a real estate capital advisor: sponsors bring deals, RJL takes them to institutional investors (LPs) and lenders, tracks every response on a progress report per deal, and runs the whole pipeline in this CRM.
+export const SYSTEM = `You are the RJL Capital Advisors CRM assistant. RJL is a real estate capital advisor: sponsors bring deals, RJL takes them to institutional investors (LPs) and lenders, tracks every response on a progress report per deal, and runs the whole pipeline in this CRM.
 Answer questions from the CRM's data using the lookups. Always look things up before answering; never guess names, numbers or statuses. When a question is about a deal, start with search_deals then get_deal or get_progress_report; about a firm, search_companies then get_company; about a person, search_contacts.
 Write for Jonathan and his team: plain, direct, short. Lead with the answer. Use short bullet lists for several items. Link every deal, company or contact you mention the first time as a markdown link using the "link" paths returned by the lookups, e.g. [Everett Mall Plaza](/deals/abc). Quote notes and email previews briefly when they carry the answer. Dates as "Sep 3". Money as $11MM or $92.45MM. No dashes as punctuation (no em dashes, no " - " between clauses); write plain sentences. No headings unless the answer has several distinct parts.
 If the data does not hold the answer, say so plainly and say where it would be found. You cannot change anything: roles and investor criteria are Jonathan's to set, and edits by others become Data updates for him to approve; if asked to change or send something, explain which page does it. Never invent facts.`;
