@@ -2,6 +2,7 @@ import { linkStrayEmails, syncAllMailboxes } from "@/lib/mail-sync";
 import { ensureDealsSubscription, processDealsInbox } from "@/lib/deals-inbox";
 import { ensureIsraelSubscription, processIsraelInbox } from "@/lib/israel-intake";
 import { syncIsraelMailboxes } from "@/lib/israel-mail";
+import { syncAcquisitionsMailboxes } from "@/lib/acquisitions-mail";
 import { closeLandedMentions, detectIsraelMentions } from "@/lib/israel-mentions";
 import { refreshDashboardSignals } from "@/lib/dashboard-refresh";
 import { proposeNamingConventions } from "@/lib/naming";
@@ -24,8 +25,9 @@ export async function GET(req: Request) {
   const intros = await scanAllIntros().catch((e) => String(e));
   const israel = await processIsraelInbox().catch((e) => String(e));
   const israelMail = await syncIsraelMailboxes().catch((e) => String(e));
+  const acquisitionsMail = await syncAcquisitionsMailboxes().catch((e) => String(e));
   const israelMentions = await detectIsraelMentions().catch((e) => String(e));
   await closeLandedMentions().catch(() => 0);
   const israelSubscription = await ensureIsraelSubscription().catch((e) => String(e));
-  return Response.json({ ok: true, result, deals, subscription, stray, momentum, intros, israel, israelMail, israelMentions, israelSubscription, naming });
+  return Response.json({ ok: true, result, deals, subscription, stray, momentum, intros, israel, israelMail, acquisitionsMail, israelMentions, israelSubscription, naming });
 }

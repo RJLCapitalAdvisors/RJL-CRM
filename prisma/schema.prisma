@@ -20,6 +20,7 @@ model User {
   signatureHtml String? // Outlook signature, pasted in Settings or picked up from a sent email
   workspaces    String   @default("[]") // JSON: ["CA"], ["IL"] or both; empty means the sign-in email decides
   israelEmail   String?  // the person's @rjlisrael.com mailbox, read into RJL Israel once that tenant is connected
+  acqMailSyncedAt   DateTime? // RJL Acquisitions: this person's mailbox last read into that side
   israelMailSyncedAt DateTime? // last RJL Israel mailbox pass for israelEmail
   mailSyncedAt  DateTime? // last time this mailbox was read into the email log
   invitedAt     DateTime? // when the invite email last went out (Settings > Users)
@@ -1012,4 +1013,116 @@ model IlHouse {
   updatedAt       DateTime  @updatedAt
 
   @@index([city])
+}
+
+
+// ---------- RJL Acquisitions (Shawn's CRM, Sep 18, 2026): sellers, operators and buyers around properties ----------
+model AqCompany {
+  id             String   @id @default(cuid())
+  name           String
+  roles          String   @default("[]") // JSON list: Seller | Operator | Buyer; flows to every contact at the company
+  city           String?
+  state          String?
+  website        String?
+  domain         String?  // email domain, set when the company is created or matched from an email
+  phone          String?
+  notes          String?
+  lastActivityAt DateTime?
+  contacts       AqContact[]
+  activities     AqActivity[]
+  aqNotes        AqNote[]
+  properties     AqPropertyCompany[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+model AqContact {
+  id             String   @id @default(cuid())
+  firstName      String?
+  lastName       String?
+  email          String?
+  phone          String?
+  roles          String   @default("[]") // JSON list: Seller | Operator | Buyer
+  notes          String?
+  companyId      String?
+  company        AqCompany? @relation(fields: [companyId], references: [id])
+  activities     AqActivity[]
+  aqNotes        AqNote[]
+  properties     AqPropertyContact[]
+  lastActivityAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([lastName, firstName])
+  @@index([email])
+}
+model AqProperty {
+  id                  String   @id @default(cuid())
+  address             String
+  neighborhood        String?
+  city                String?
+  state               String?
+  stages              String   @default("[]") // JSON list: Deal | Call me back | Not interested | No answer
+  callBackAt          DateTime? // required when Call me back is ticked; the dashboard shows it that day until dismissed
+  callBackDismissedAt DateTime?
+  dealStage           String?  // pipeline column while Deal is ticked (AQ_DEAL_STAGES)
+  askingPrice         Float?
+  units               Int?
+  squareFeet          Int?
+  assetType           String?
+  notes               String?
+  companies           AqPropertyCompany[]
+  contacts            AqPropertyContact[]
+  aqNotes             AqNote[]
+  activities          AqActivity[]
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([city, state])
+  @@index([callBackAt])
+}
+model AqPropertyCompany {
+  propertyId String
+  property   AqProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  companyId  String
+  company    AqCompany  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  @@id([propertyId, companyId])
+}
+model AqPropertyContact {
+  propertyId String
+  property   AqProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  contactId  String
+  contact    AqContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  @@id([propertyId, contactId])
+}
+model AqNote {
+  id         String      @id @default(cuid())
+  body       String
+  contactId  String?
+  contact    AqContact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyId  String?
+  company    AqCompany?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  propertyId String?
+  property   AqProperty? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime    @default(now())
+}
+model AqActivity {
+  id         String      @id @default(cuid())
+  type       String      @default("EMAIL")
+  subject    String?
+  body       String?
+  direction  String?     // OUTBOUND | INBOUND
+  occurredAt DateTime    @default(now())
+  externalId String?     @unique // internet message id
+  meta       String?     // JSON: { from, to, cc, mailbox, hasAttachments }
+  contactId  String?
+  contact    AqContact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyId  String?
+  company    AqCompany?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  propertyId String?
+  property   AqProperty? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  createdAt  DateTime    @default(now())
+
+  @@index([contactId, occurredAt])
+  @@index([companyId, occurredAt])
+  @@index([propertyId, occurredAt])
 }

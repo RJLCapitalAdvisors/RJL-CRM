@@ -12,7 +12,7 @@ const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
   return typeof v === "string" && v.trim() ? v.trim() : null;
 };
-const PAGES = ["/settings", "/settings/users", "/israel/settings"];
+const PAGES = ["/settings", "/settings/users", "/israel/settings", "/acquisitions/settings"];
 const refresh = () => PAGES.forEach((p) => revalidatePath(p));
 
 /** What a person opens follows from their addresses: the sign-in email's domain, plus the Israel side when an Israel-side address is on file. */
@@ -63,8 +63,8 @@ export async function sendInviteAction(userId: string, workspace: Workspace): Pr
   }
 }
 
-const NAMES: Record<Workspace, string> = { CA: "RJL Capital Advisors", IL: "RJL Israel" };
-const DOMAIN_HINT: Record<Workspace, string> = { CA: "@rjlcapadvisors.com", IL: "@rjlisrael.com" };
+const NAMES: Record<Workspace, string> = { CA: "RJL Capital Advisors", IL: "RJL Israel", AQ: "RJL Acquisitions" };
+const DOMAIN_HINT: Record<Workspace, string> = { CA: "@rjlcapadvisors.com", IL: "@rjlisrael.com", AQ: "@rjlcapadvisors.com" };
 
 export async function sendInvite(userId: string, workspaces: Workspace[], fromName: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -78,7 +78,7 @@ export async function sendInvite(userId: string, workspaces: Workspace[], fromNa
   const blocks = sides
     .map((w) => {
       const account = w === "IL" ? user.israelEmail ?? user.email : user.email;
-      const link = `${base}/login?business=${w}&next=${encodeURIComponent(w === "IL" ? "/israel" : "/")}`;
+      const link = `${base}/login?business=${w}&next=${encodeURIComponent(w === "IL" ? "/israel" : w === "AQ" ? "/acquisitions" : "/")}`;
       return `<p style="margin:0 0 6pt 0;${F}"><b>${NAMES[w]}</b></p>
 <ol style="margin:0 0 12pt 18pt;${F}">
 <li style="margin-bottom:4pt;">Open <a href="${link}" style="color:#1d4ed8;">${link}</a></li>

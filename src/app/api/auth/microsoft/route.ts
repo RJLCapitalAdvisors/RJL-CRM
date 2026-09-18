@@ -21,6 +21,6 @@ export async function GET(req: NextRequest) {
   });
   // point Microsoft at the right domain so the picker offers that account first
   if (business === "IL") params.set("domain_hint", process.env.ISRAEL_DEALS_MAILBOX?.split("@")[1] ?? "rjlisrael.com");
-  if (business === "CA") params.set("domain_hint", "rjlcapadvisors.com");
+  if (business === "CA" || business === "AQ") params.set("domain_hint", "rjlcapadvisors.com");
   return NextResponse.redirect(`https://login.microsoftonline.com/${process.env.AZURE_LOGIN_TENANT ?? process.env.AZURE_TENANT_ID}/oauth2/v2.0/authorize?${params}`);
 }

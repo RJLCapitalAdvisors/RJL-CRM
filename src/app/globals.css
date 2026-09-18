@@ -160,6 +160,37 @@ body.israel {
   background-color: #23397a;
 }
 
+/* RJL Acquisitions (Shawn's CRM): light yellow paper with dark blue where RJL CA uses its light blue. */
+.acquisitions {
+  --color-sky: #1e3a8a;
+  --color-sky-600: #172c6b;
+  --color-sky-50: #fff7d6;
+  --color-cream: #fdf3c4;
+  --color-cream-50: #fffbe8;
+  --color-line: #e6d9a3;
+}
+body.acquisitions {
+  background: #fffbe8;
+}
+.acquisitions .bg-sky {
+  color: #ffffff;
+}
+.acquisitions .btn-primary,
+.acquisitions nav a.bg-ink {
+  background-color: #1e3a8a;
+  color: #ffffff;
+}
+.acquisitions .btn-primary:hover {
+  background-color: #172c6b;
+}
+.acquisitions .btn-soft {
+  background-color: #1e3a8a;
+  color: #ffffff;
+}
+.acquisitions .btn-soft:hover {
+  background-color: #172c6b;
+}
+
 /* Merge tokens in the template editor: light blue chips that read "Deal: Sponsor" and travel with the text. */
 .tok {
   display: inline-block;

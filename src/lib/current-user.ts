@@ -13,7 +13,7 @@ export async function currentUser(): Promise<CurrentUser | null> {
   const u = await prisma.user.findUnique({ where: { id: s.u } });
   if (!u || !u.active || !u.email) return null;
   // unlocked in this browser: what the sign-ins so far granted (older cookies: the sign-in email's own side)
-  const unlocked = (s.w?.length ? s.w : workspacesByDomain(s.e)).filter((x): x is Workspace => x === "CA" || x === "IL");
+  const unlocked = (s.w?.length ? s.w : workspacesByDomain(s.e)).filter((x): x is Workspace => x === "CA" || x === "IL" || x === "AQ");
   return { id: u.id, name: u.name, email: u.email, canEditCriteria: canEditCriteria(u.email), workspaces: unlocked, accounts: s.a ?? {}, israelEmail: u.israelEmail };
 }
 

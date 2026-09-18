@@ -7,7 +7,7 @@ export const SESSION_COOKIE = "rjl_user";
 export const SESSION_DAYS = 30;
 
 /** w: businesses unlocked in this browser (each by its own sign-in); a: the account that unlocked each one. */
-export type Session = { u: string; e: string; n: string; x: number; w?: string[]; a?: Partial<Record<"CA" | "IL", string>> };
+export type Session = { u: string; e: string; n: string; x: number; w?: string[]; a?: Partial<Record<"CA" | "IL" | "AQ", string>> };
 
 const enc = new TextEncoder();
 const b64url = (s: string) => Buffer.from(s, "utf8").toString("base64url");

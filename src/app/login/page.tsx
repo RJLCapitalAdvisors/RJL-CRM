@@ -10,7 +10,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const next = str(sp.next) || "/";
   const error = str(sp.error);
   // the side named on the link, else inferred from next (an /israel page means RJL Israel), else the generic page
-  const business = str(sp.business) === "IL" ? "IL" : str(sp.business) === "CA" ? "CA" : /^\/israel(\/|$)/.test(next) ? "IL" : next !== "/" ? "CA" : null;
+  const business = str(sp.business) === "IL" ? "IL" : str(sp.business) === "AQ" ? "AQ" : str(sp.business) === "CA" ? "CA" : /^\/israel(\/|$)/.test(next) ? "IL" : /^\/acquisitions(\/|$)/.test(next) ? "AQ" : next !== "/" ? "CA" : null;
+  const acquisitions = business === "AQ";
   const israel = business === "IL";
   const microsoft = Boolean(process.env.AZURE_CLIENT_ID && process.env.AZURE_TENANT_ID);
   const password = Boolean(process.env.APP_PASSWORD);
@@ -25,9 +26,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         ) : (
           <img src="/logo.png" alt="RJL Capital Advisors" className="mx-auto mb-6 h-10" />
         )}
-        <h1 className="mb-1 text-center text-lg font-semibold">{israel ? "RJL Israel" : business === "CA" ? "RJL Capital Advisors" : "RJL CRM"}</h1>
+        <h1 className="mb-1 text-center text-lg font-semibold">{israel ? "RJL Israel" : acquisitions ? "RJL Acquisitions" : business === "CA" ? "RJL Capital Advisors" : "RJL CRM"}</h1>
         <p className="mb-6 text-center text-sm text-muted">
-          {israel ? "Sign in with your @rjlisrael.com (or @liviemisrael.com) Microsoft account to open RJL Israel." : business === "CA" ? "Sign in with your @rjlcapadvisors.com Microsoft account to open RJL Capital Advisors." : "Sign in with your RJL Microsoft account. Each business opens with its own account; sign in to both, one at a time, to use both."}
+          {israel ? "Sign in with your @rjlisrael.com (or @liviemisrael.com) Microsoft account to open RJL Israel." : acquisitions ? "Sign in with your @rjlcapadvisors.com Microsoft account to open RJL Acquisitions." : business === "CA" ? "Sign in with your @rjlcapadvisors.com Microsoft account to open RJL Capital Advisors." : "Sign in with your RJL Microsoft account. Each business opens with its own account; sign in to both, one at a time, to use both."}
         </p>
         {error && <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error === "1" ? "That password isn't right." : error}</div>}
         {microsoft && (

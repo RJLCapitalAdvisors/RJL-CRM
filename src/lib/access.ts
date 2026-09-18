@@ -4,7 +4,8 @@
  * (Jonathan) opens both. Jonathan can widen or narrow anyone's access under Settings. The session cookie carries
  * the list so the sign-in gate can check it without a database.
  */
-export type Workspace = "CA" | "IL";
+/** CA: RJL Capital Advisors. IL: RJL Israel. AQ: RJL Acquisitions (Shawn's CRM, Sep 18, 2026), opened with an RJL CA address but only for people Jonathan lists under Users with AQ. */
+export type Workspace = "CA" | "IL" | "AQ";
 export const CA_DOMAINS = ["rjlcapadvisors.com", "rjlequities.com"];
 /** RJL Israel's partner company. Only the people Jonathan listed may sign in from it (Sep 15, 2026); nobody from any other domain. */
 export const PARTNER_DOMAIN = "liviemisrael.com";
@@ -59,10 +60,18 @@ export function workspacesByDomain(email: string | null | undefined): Workspace[
   return [];
 }
 
+/** What an address could unlock, before Jonathan's list narrows it: an RJL CA address can open RJL CA or RJL Acquisitions. */
+export function possibleByDomain(email: string | null | undefined): Workspace[] {
+  const d = domainOf(email);
+  if (CA_DOMAINS.includes(d)) return ["CA", "AQ"];
+  if (IL_DOMAINS.includes(d)) return ["IL"];
+  return [];
+}
+
 export function parseWorkspaces(stored: string | null | undefined, email?: string | null): Workspace[] {
   try {
     const v = JSON.parse(stored ?? "[]") as string[];
-    const list = v.filter((x): x is Workspace => x === "CA" || x === "IL");
+    const list = v.filter((x): x is Workspace => x === "CA" || x === "IL" || x === "AQ");
     if (list.length) return list;
   } catch {
     /* fall through */
@@ -70,4 +79,6 @@ export function parseWorkspaces(stored: string | null | undefined, email?: strin
   return workspacesByDomain(email);
 }
 
-export const homeFor = (w: Workspace[]) => (w.includes("CA") ? "/" : w.includes("IL") ? "/israel" : "/login?error=" + encodeURIComponent("Your account has no CRM access yet. Ask Jonathan."));
+export const homeFor = (w: Workspace[]) => (w.includes("CA") ? "/" : w.includes("AQ") ? "/acquisitions" : w.includes("IL") ? "/israel" : "/login?error=" + encodeURIComponent("Your account has no CRM access yet. Ask Jonathan."));
+/** RJL Acquisitions people: an RJL CA address whose access list carries AQ. Their mailbox feeds the Acquisitions log, not RJL CA's. */
+export const acquisitionsOnly = (stored: string | null | undefined, email: string | null | undefined) => { const w = parseWorkspaces(stored, email); return w.includes("AQ") && !w.includes("CA"); };

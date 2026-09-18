@@ -3,7 +3,8 @@ import { headers } from "next/headers";
 import { currentUser } from "@/lib/current-user";
 import "./globals.css";
 import { WorkspaceSidebar } from "@/components/workspace-sidebar";
-import { isIsraelPath } from "@/lib/workspace";
+import { isAcquisitionsPath, isIsraelPath } from "@/lib/workspace";
+import { kickAcquisitionsMailSync } from "@/lib/acquisitions-mail";
 import { kickMailSync } from "@/lib/mail-sync";
 import { kickIsraelMailSync } from "@/lib/israel-mail";
 
@@ -18,11 +19,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // sent shows on the contact and company pages without waiting for the daily cron or a dashboard visit
   if (user && !pathname.startsWith("/api")) {
     if (isIsraelPath(pathname)) kickIsraelMailSync();
+    else if (isAcquisitionsPath(pathname)) kickAcquisitionsMailSync();
     else kickMailSync();
   }
   return (
     <html lang="en">
-      <body className={`flex min-h-screen ${isIsraelPath(pathname) ? "israel" : ""}`}>
+      <body className={`flex min-h-screen ${isIsraelPath(pathname) ? "israel" : isAcquisitionsPath(pathname) ? "acquisitions" : ""}`}>
         <WorkspaceSidebar user={user ? { name: user.name, workspaces: user.workspaces, accounts: user.accounts } : null} />
         <main className="min-w-0 flex-1">{children}</main>
       </body>

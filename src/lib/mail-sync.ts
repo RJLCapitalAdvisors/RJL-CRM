@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { isCaMailbox } from "@/lib/access";
+import { acquisitionsOnly, isCaMailbox } from "@/lib/access";
 import { houseSubjectMatches, subjectLooselyMatchesDeal, subjectMatchesDeal } from "@/lib/deal-match";
 import { noteDealSent } from "@/lib/deal-outbound";
 import { DEPARTURE_SUBJECT, HUMAN_DEPARTURE, noteDepartureIfAny } from "@/lib/departures";
@@ -257,7 +257,8 @@ export async function bumpLastActivity(contactId: string | null, companyId: stri
 export async function syncAllMailboxes(opts: { sinceDays?: number } = {}): Promise<Record<string, { scanned: number; logged: number; created: number } | string>> {
   if (!graphConfigured()) return {};
   // RJL Capital Advisors mailboxes only: an @rjlisrael.com or partner address on a user is RJL Israel's business
-  const users = (await prisma.user.findMany({ where: { active: true, email: { not: null } } })).filter((u) => isCaMailbox(u.email));
+  // an RJL Acquisitions person's mailbox (Shawn) feeds that side's log, never this one
+  const users = (await prisma.user.findMany({ where: { active: true, email: { not: null } } })).filter((u) => isCaMailbox(u.email) && !acquisitionsOnly(u.workspaces, u.email));
   const out: Record<string, { scanned: number; logged: number; created: number } | string> = {};
   for (const u of users) {
     try {

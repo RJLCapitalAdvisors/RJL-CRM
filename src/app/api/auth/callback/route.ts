@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, SESSION_DAYS, signSession, verifySession } from "@/lib/session";
-import { aliasesOf, homeFor, parseWorkspaces, signInAllowed, workspacesByDomain, type Workspace } from "@/lib/access";
+import { aliasesOf, homeFor, parseWorkspaces, possibleByDomain, signInAllowed, workspacesByDomain, type Workspace } from "@/lib/access";
+import { sideOfPath } from "@/lib/workspace";
 import { isIsraelPath } from "@/lib/workspace";
 
 /** Step 2 of Microsoft sign-in: exchange the code, confirm who it is, match to a CRM user, set the session. */
@@ -40,7 +41,8 @@ export async function GET(req: NextRequest) {
   // this sign-in unlocks the business its email belongs to (an @rjlcapadvisors.com account opens RJL Capital
   // Advisors, an @rjlisrael.com account opens RJL Israel), within what Jonathan allows the person under Settings
   const allowed = parseWorkspaces(user.workspaces, user.email ?? email);
-  const granted = byDomain.filter((x) => allowed.includes(x));
+  // an RJL CA address can open RJL Capital Advisors or RJL Acquisitions; Jonathan's list under Users says which (Shawn: Acquisitions only)
+  const granted = possibleByDomain(email).filter((x) => allowed.includes(x));
   if (!granted.length) return fail(`${email} does not open ${byDomain.includes("IL") ? "RJL Israel" : byDomain.includes("CA") ? "RJL Capital Advisors" : "the CRM"} yet. Ask Jonathan to open it for you.`);
 
   // someone with both businesses signs in twice, one account at a time; the second sign-in adds to the first
@@ -52,6 +54,6 @@ export async function GET(req: NextRequest) {
   const value = await signSession({ u: user.id, e: primary?.e ?? email, n: user.name, x: Date.now() + SESSION_DAYS * 86_400_000, w, a });
   jar.set(SESSION_COOKIE, value, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: SESSION_DAYS * 86_400 });
   const wanted = next && next.startsWith("/") ? next : homeFor(granted as Workspace[]);
-  const ok = isIsraelPath(wanted) ? w.includes("IL") : w.includes("CA");
+  const ok = w.includes(sideOfPath(wanted));
   return NextResponse.redirect(`${base}${ok ? wanted : homeFor(granted as Workspace[])}`);
 }

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { workspacesByDomain } from "@/lib/access";
-import { isIsraelPath } from "@/lib/workspace";
+import { isIsraelPath, sideOfPath } from "@/lib/workspace";
 
 /**
  * Sign-in gate for the hosted CRM. Preferred: Microsoft sign-in (signed rjl_user cookie, one person).
@@ -34,8 +34,7 @@ export async function proxy(req: NextRequest) {
   if (session) {
     // which business this person may open; sessions from before the split fall back to what their email domain allows
     const w = session.w?.length ? session.w : workspacesByDomain(session.e);
-    const israel = isIsraelPath(pathname);
-    const need = israel ? "IL" : pathname.startsWith("/api/") ? null : "CA";
+    const need = pathname.startsWith("/api/") ? null : sideOfPath(pathname);
     if (need && !w.includes(need)) {
       // that side is still faded: sign in with the account for it, then come back here
       const url = req.nextUrl.clone();
@@ -54,7 +53,7 @@ export async function proxy(req: NextRequest) {
   // which read as "you must log in to RJL CA first".
   const url = req.nextUrl.clone();
   url.pathname = "/login";
-  const side = isIsraelPath(pathname) ? "IL" : pathname.startsWith("/api/") ? null : "CA";
+  const side = pathname.startsWith("/api/") ? null : sideOfPath(pathname);
   const params = new URLSearchParams();
   if (side) params.set("business", side);
   if (pathname !== "/") params.set("next", pathname + req.nextUrl.search);
