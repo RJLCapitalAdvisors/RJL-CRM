@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { graph, graphConfigured } from "@/lib/graph";
-import { acquisitionsOnly, domainOf, isCaMailbox } from "@/lib/access";
+import { domainOf, mailReadsFor } from "@/lib/access";
 import { FREE_MAIL, nameFromDomain } from "@/lib/domains";
 import { mergeAqRoles } from "@/lib/acquisitions";
 
@@ -40,10 +40,10 @@ const splitName = (display: string | undefined, address: string): { firstName: s
   return { firstName: parts[0] ?? null, lastName: parts.slice(1).join(" ") || null };
 };
 
-/** The Acquisitions mailboxes: active people with an RJL CA address whose access is Acquisitions without RJL CA. */
+/** The Acquisitions mailboxes: active people whose RJL CA address has Email reading pointed at this side (Settings > Users). */
 export async function acquisitionsMailboxes(): Promise<string[]> {
-  const users = await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { email: true, workspaces: true } });
-  return users.filter((u) => isCaMailbox(u.email) && acquisitionsOnly(u.workspaces, u.email)).map((u) => u.email!.toLowerCase());
+  const users = await prisma.user.findMany({ where: { active: true, email: { not: null } }, select: { email: true, israelEmail: true, workspaces: true, mailReads: true } });
+  return users.filter((u) => mailReadsFor(u).includes("AQ")).map((u) => u.email!.toLowerCase());
 }
 
 async function pageThrough(mailbox: string, folder: "sentitems" | "inbox", since: Date): Promise<Msg[]> {

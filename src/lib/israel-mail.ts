@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { isIlMailbox } from "@/lib/access";
+import { isIlMailbox, mailReadsFor } from "@/lib/access";
 import { graph, graphConfigured, israelGraphConfigured, type GraphMessage } from "@/lib/graph";
 import { FREE_MAIL, nameFromDomain } from "@/lib/domains";
 import { ISRAEL_MAILBOX } from "@/lib/israel-intake";
@@ -44,7 +44,8 @@ const rootDomain = (d: string) => {
 
 /** The mailboxes that belong to RJL Israel: each person's registered Israel address and the deals mailbox. */
 export async function israelMailboxes(): Promise<string[]> {
-  const users = await prisma.user.findMany({ where: { active: true, israelEmail: { not: null } }, select: { israelEmail: true } });
+  // only people whose Email reading (Settings > Users) has the Israel side on
+  const users = (await prisma.user.findMany({ where: { active: true, israelEmail: { not: null } }, select: { email: true, israelEmail: true, workspaces: true, mailReads: true } })).filter((u) => mailReadsFor(u).includes("IL"));
   // @rjlisrael.com mailboxes only (partner mailboxes live in another tenant; RJL CA addresses belong to the other log)
   const boxes = [...users.map((u) => u.israelEmail!.toLowerCase()), ISRAEL_MAILBOX().toLowerCase()].filter(isIlMailbox);
   return boxes.filter((b, i) => boxes.indexOf(b) === i);

@@ -5,7 +5,7 @@ import type { InviteResult } from "@/components/invite-button";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireCriteriaAdmin } from "@/lib/current-user";
-import { domainAllowed, workspacesByDomain, type Workspace } from "@/lib/access";
+import { domainAllowed, isCaMailbox, mailReadsFor, parseWorkspaces, workspacesByDomain, type Workspace } from "@/lib/access";
 import { mailConfigured, sendEmail } from "@/lib/mailer";
 
 const s = (fd: FormData, k: string) => {
@@ -41,7 +41,10 @@ export async function addUserAction(fd: FormData) {
   if (!domainAllowed(email)) throw new Error(`${email} cannot be added: only @rjlcapadvisors.com, @rjlisrael.com and @liviemisrael.com addresses open the CRM for now.`);
   const israelEmail = s(fd, "israelEmail")?.toLowerCase() ?? (email.endsWith("@rjlisrael.com") ? email : null);
   if (israelEmail && !domainAllowed(israelEmail)) throw new Error(`${israelEmail} is not an allowed address.`);
-  const granted = grantsFor(email, israelEmail);
+  // added from the RJL Acquisitions page: an RJL CA address opens that side (and keeps whatever it already had)
+  const side = s(fd, "side");
+  const existing = await prisma.user.findUnique({ where: { email }, select: { workspaces: true, email: true } });
+  const granted = [...new Set<Workspace>([...(existing ? parseWorkspaces(existing.workspaces, existing.email) : []), ...grantsFor(email, israelEmail), ...(side === "AQ" && isCaMailbox(email) ? (["AQ"] as Workspace[]) : [])])];
   const user = await prisma.user.upsert({
     where: { email },
     create: { name, email, active: true, workspaces: JSON.stringify(granted), israelEmail },
@@ -49,6 +52,31 @@ export async function addUserAction(fd: FormData) {
   });
   if (fd.get("invite") === "on") await sendInvite(user.id, granted, me.name).catch((e) => console.error("invite:", String(e).slice(0, 200)));
   refresh();
+}
+
+/**
+ * Email reading on or off for one side (Users > Email reading). Turning the RJL CA address on for one of RJL Capital
+ * Advisors or RJL Acquisitions turns it off for the other: one mailbox feeds one log. The Israel side needs an
+ * Israel address on file. The choice is stored, so later access changes do not move the mailbox by themselves.
+ */
+export async function setMailReadAction(userId: string, side: Workspace, on: boolean): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try {
+    const me = await requireCriteriaAdmin();
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true, israelEmail: true, workspaces: true, mailReads: true } });
+    if (!u) return { ok: false, reason: "User not found." };
+    if ((side === "CA" || side === "AQ") && !isCaMailbox(u.email)) return { ok: false, reason: "Only an @rjlcapadvisors.com mailbox can be read here." };
+    if (side === "IL" && !u.israelEmail) return { ok: false, reason: u.name + " has no RJL Israel address on file." };
+    let list = mailReadsFor(u).filter((x) => x !== side);
+    if (on) list = [...list.filter((x) => !((side === "CA" && x === "AQ") || (side === "AQ" && x === "CA"))), side];
+    await prisma.user.update({ where: { id: userId }, data: { mailReads: JSON.stringify(list) } });
+    const names: Record<Workspace, string> = { CA: "RJL Capital Advisors", IL: "RJL Israel", AQ: "RJL Acquisitions" };
+    const tail = on && (side === "CA" || side === "AQ") ? " (their RJL CA mailbox now feeds " + names[side] + " only)" : "";
+    await prisma.activity.create({ data: { type: "NOTE", body: me.name + " turned email reading " + (on ? "on" : "off") + " for " + u.name + " in " + names[side] + tail + "." } }).catch(() => null);
+    refresh();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Send (or send again) the invite for one business. */

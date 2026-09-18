@@ -20,6 +20,7 @@ model User {
   signatureHtml String? // Outlook signature, pasted in Settings or picked up from a sent email
   workspaces    String   @default("[]") // JSON: ["CA"], ["IL"] or both; empty means the sign-in email decides
   israelEmail   String?  // the person's @rjlisrael.com mailbox, read into RJL Israel once that tenant is connected
+  mailReads     String?  // JSON: which side reads each mailbox, set under Users > Email reading: "CA" or "AQ" for the RJL CA address (never both), "IL" for the Israel address; null = the default from their access
   acqMailSyncedAt   DateTime? // RJL Acquisitions: this person's mailbox last read into that side
   israelMailSyncedAt DateTime? // last RJL Israel mailbox pass for israelEmail
   mailSyncedAt  DateTime? // last time this mailbox was read into the email log

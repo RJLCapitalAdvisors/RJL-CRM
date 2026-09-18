@@ -52,6 +52,35 @@ export function aliasesOf(email: string | null | undefined): string[] {
 export const isCaMailbox = (email: string | null | undefined) => CA_DOMAINS.includes(domainOf(email));
 export const isIlMailbox = (email: string | null | undefined) => domainOf(email) === IL_MAIL_DOMAIN || domainOf(email) === "rjlisrael.com";
 
+/**
+ * Which side reads each of a person's mailboxes (Settings > Users > Email reading, Sep 18, 2026). "CA": their RJL CA
+ * address feeds RJL Capital Advisors; "AQ": that same address feeds RJL Acquisitions instead (never both, the sides
+ * stay apart); "IL": their RJL Israel address feeds RJL Israel. With nothing set, the default follows their access:
+ * an RJL CA address goes to RJL Acquisitions when that is the only RJL CA side they open, otherwise to RJL Capital
+ * Advisors; an Israel address goes to RJL Israel. Jonathan opens all three and his mail reads into RJL CA only.
+ */
+export function mailReadsFor(u: { email: string | null; israelEmail?: string | null; workspaces: string | null; mailReads?: string | null }): Workspace[] {
+  let list: Workspace[] | null = null;
+  if (u.mailReads) {
+    try {
+      const v = JSON.parse(u.mailReads) as string[];
+      if (Array.isArray(v)) list = v.filter((x): x is Workspace => x === "CA" || x === "IL" || x === "AQ");
+    } catch {
+      list = null;
+    }
+  }
+  if (!list) {
+    list = [];
+    if (isCaMailbox(u.email)) list.push(acquisitionsOnly(u.workspaces, u.email) ? "AQ" : "CA");
+    if (u.israelEmail && isIlMailbox(u.israelEmail)) list.push("IL");
+  }
+  // one RJL CA mailbox feeds one side; an Israel side needs an Israel address
+  if (list.includes("CA") && list.includes("AQ")) list = list.filter((x) => x !== "AQ");
+  if (!isCaMailbox(u.email)) list = list.filter((x) => x !== "CA" && x !== "AQ");
+  if (!(u.israelEmail && isIlMailbox(u.israelEmail))) list = list.filter((x) => x !== "IL");
+  return list;
+}
+
 /** What the email address alone entitles a person to. */
 export function workspacesByDomain(email: string | null | undefined): Workspace[] {
   const d = domainOf(email);

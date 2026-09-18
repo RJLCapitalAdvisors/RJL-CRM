@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { acquisitionsOnly, isCaMailbox } from "@/lib/access";
+import { mailReadsFor } from "@/lib/access";
 import { houseSubjectMatches, subjectLooselyMatchesDeal, subjectMatchesDeal } from "@/lib/deal-match";
 import { noteDealSent } from "@/lib/deal-outbound";
 import { DEPARTURE_SUBJECT, HUMAN_DEPARTURE, noteDepartureIfAny } from "@/lib/departures";
@@ -256,9 +256,9 @@ export async function bumpLastActivity(contactId: string | null, companyId: stri
 /** Every active team mailbox. Skips quietly when Microsoft is not configured. */
 export async function syncAllMailboxes(opts: { sinceDays?: number } = {}): Promise<Record<string, { scanned: number; logged: number; created: number } | string>> {
   if (!graphConfigured()) return {};
-  // RJL Capital Advisors mailboxes only: an @rjlisrael.com or partner address on a user is RJL Israel's business
-  // an RJL Acquisitions person's mailbox (Shawn) feeds that side's log, never this one
-  const users = (await prisma.user.findMany({ where: { active: true, email: { not: null } } })).filter((u) => isCaMailbox(u.email) && !acquisitionsOnly(u.workspaces, u.email));
+  // RJL Capital Advisors mailboxes only, and only those whose Email reading (Settings > Users) points here: an
+  // @rjlisrael.com or partner address is RJL Israel's business, an RJL Acquisitions person's mailbox (Shawn) feeds that log
+  const users = (await prisma.user.findMany({ where: { active: true, email: { not: null } } })).filter((u) => mailReadsFor(u).includes("CA"));
   const out: Record<string, { scanned: number; logged: number; created: number } | string> = {};
   for (const u of users) {
     try {
