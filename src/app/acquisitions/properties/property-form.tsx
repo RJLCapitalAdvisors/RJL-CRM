@@ -32,7 +32,6 @@ type Pr = Partial<{
   stages: string;
   callBackAt: Date | string | null;
   followUpAt: Date | string | null;
-  callNotes: string | null;
   dealStage: string | null;
 }>;
 
@@ -60,7 +59,7 @@ function AddressInput({ name, value, placeholder }: { name: string; value?: stri
  * The left side of a property ticket in RJL Acquisitions, in Jonathan's order (Sep 18, 2026): the property, the
  * owner and every way to reach them, the physical facts and last sale, then the call: Last Call Date, Call Result
  * (Callback asks for a target date that feeds the dashboard's Call Me Back window and the Follow Up Date; Wrong
- * number asks which number to drop), Call Notes, Follow Up Date. Transcripts live in their own card under this.
+ * number asks which number to drop), Follow Up Date. Call Notes and Transcripts are cards under this, newest on top.
  */
 export function AqPropertyForm({ p = {}, dealStages, action, autosave = false, submitLabel = "Create property" }: { p?: Pr; dealStages: string[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
   const stages = parseJsonList(p.stages);
@@ -174,9 +173,6 @@ export function AqPropertyForm({ p = {}, dealStages, action, autosave = false, s
             <Select name="dealStage" value={p.dealStage && dealStages.includes(p.dealStage) ? p.dealStage : dealStages[0]} options={dealStages} noBlank />
           </Row>
         )}
-        <Row label="Call Notes">
-          <textarea name="callNotes" rows={3} defaultValue={p.callNotes ?? ""} className="input" placeholder="What was said, what they want, next step" />
-        </Row>
         <Row label="Follow Up Date" hint="Filled from the callback target; type over it to change.">
           <input
             type="date"

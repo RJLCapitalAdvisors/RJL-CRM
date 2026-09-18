@@ -9,7 +9,7 @@ import { CompanyLogo } from "@/components/company-logo";
 import { AqMapCard } from "@/components/aq-map-card";
 import { fmtDate } from "@/lib/format";
 import { AQ_STAGES, aqFullName, aqStageTone, lines, parseJsonList, propertyLine, usd } from "@/lib/acquisitions";
-import { addAqNote, addAqTranscript, deleteAqProperty, deleteAqTranscript, linkAqProperty, setAqPropertyStages, updateAqProperty } from "../../actions";
+import { addAqNote, addAqTranscript, deleteAqNote, deleteAqProperty, deleteAqTranscript, linkAqProperty, setAqPropertyStages, updateAqProperty } from "../../actions";
 import { AqPropertyForm } from "../property-form";
 import { getAqDealStages } from "@/lib/acquisitions-stages";
 
@@ -49,14 +49,6 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
   const link = linkAqProperty.bind(null, p.id);
   const reminder = p.followUpAt ?? p.callBackAt;
   const facts = [p.assetType, p.squareFeet ? `${p.squareFeet.toLocaleString()} SF` : null, p.acreage ? `${p.acreage} ac` : null, p.yearBuilt ? `built ${p.yearBuilt}` : null, p.lastSalePrice != null ? `last sold ${usd(p.lastSalePrice)}${p.lastSaleDate ? ` ${fmtDate(p.lastSaleDate)}` : ""}` : null].filter(Boolean).join(" · ");
-  const noteForm = (
-    <form action={addAqNote.bind(null, { propertyId: p.id })} className="flex gap-2">
-      <input name="body" placeholder="Add a note" className="input flex-1 py-1 text-sm" />
-      <button type="submit" className="btn-secondary px-3 text-xs">
-        Note
-      </button>
-    </form>
-  );
   return (
     <RecordLayout
       left={
@@ -110,6 +102,46 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
           </AboutCard>
           <div className="card">
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <div className="text-sm font-semibold">Call Notes (most recent)</div>
+              <span className="text-xs text-muted">{p.aqNotes.length}</span>
+            </div>
+            <form action={addAqNote.bind(null, { propertyId: p.id })} className="space-y-2 border-b border-line p-4">
+              <textarea name="body" rows={3} placeholder="What was said, what they want, next step. It goes to the top." className="input w-full resize-y text-sm" />
+              <div className="flex justify-end">
+                <button type="submit" className="btn-secondary px-3 py-1 text-xs">
+                  Add note
+                </button>
+              </div>
+            </form>
+            {p.aqNotes.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-muted">No call notes yet.</div>
+            ) : (
+              <ul className="divide-y divide-line">
+                {p.aqNotes.map((n, i) => (
+                  <li key={n.id} className={`px-4 py-3 text-sm ${i === 0 ? "" : "text-ink-soft"}`}>
+                    <div className="mb-1 flex items-center justify-between text-xs text-muted">
+                      <span>
+                        {i === 0 ? "Most recent · " : ""}
+                        {n.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      </span>
+                      <form action={deleteAqNote.bind(null, p.id, n.id)}>
+                        <button type="submit" className="hover:text-red-700" title="Remove this note">
+                          Remove
+                        </button>
+                      </form>
+                    </div>
+                    <ul className="list-disc space-y-0.5 pl-5">
+                      {lines(n.body).map((l, li) => (
+                        <li key={li}>{l}</li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="card">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
               <div className="text-sm font-semibold">Transcript (most recent)</div>
               <span className="text-xs text-muted">{p.transcripts.length}</span>
             </div>
@@ -150,7 +182,7 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
           </div>
         </>
       }
-      center={<IlActivityLog activities={p.activities} notes={p.aqNotes} form={noteForm} empty="No emails or notes yet. Emails with the people linked here land on the property; notes go in above." />}
+      center={<IlActivityLog activities={p.activities} notes={[]} form={null} empty="No emails yet. Emails with the people linked to this property land here; call notes and transcripts are on the left." />}
       right={
         <>
           <AqMapCard id={p.id} row={p} />

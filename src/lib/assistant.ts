@@ -401,7 +401,6 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
         lastSaleDate: day(r.lastSaleDate),
         lastSalePrice: r.lastSalePrice,
         lastCallDate: day(r.lastCallDate),
-        callNotes: r.callNotes,
         followUpAt: callBackAt,
       };
       let id: string;
@@ -429,7 +428,6 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
             lastSaleDate: found.lastSaleDate ?? extra.lastSaleDate,
             lastSalePrice: found.lastSalePrice ?? extra.lastSalePrice,
             lastCallDate: extra.lastCallDate ?? found.lastCallDate,
-            callNotes: extra.callNotes ?? found.callNotes,
             followUpAt: callBackAt ?? found.followUpAt,
             callBackAt: callBackAt ?? found.callBackAt,
             ...(callBackAt ? { callBackDismissedAt: null } : {}),
@@ -449,6 +447,7 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
         result.created.properties++;
         link(r.address, `/acquisitions/properties/${made.id}`);
       }
+      if (r.callNotes) await prisma.aqNote.create({ data: { propertyId: id, body: r.callNotes } });
       for (const n of r.companies ?? []) {
         const companyId = companyIds.get(norm(n));
         if (companyId) await prisma.aqPropertyCompany.upsert({ where: { propertyId_companyId: { propertyId: id, companyId } }, create: { propertyId: id, companyId }, update: {} });

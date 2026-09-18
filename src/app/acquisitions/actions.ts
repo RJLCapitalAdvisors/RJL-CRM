@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { AQ_ROLES, AQ_STAGES, digitsOf, ensureLlc, lines, mergeAqRoles, parseJsonList, toJsonList } from "@/lib/acquisitions";
+import { AQ_ASSET_TYPES, AQ_ROLES, AQ_STAGES, digitsOf, ensureLlc, lines, mergeAqRoles, parseJsonList, toJsonList } from "@/lib/acquisitions";
+import { US_STATES } from "@/lib/taxonomy";
 import { forgetAqGeo } from "@/lib/aq-geocode";
 import { getAqDealStages, saveAqDealStages } from "@/lib/acquisitions-stages";
 
@@ -159,7 +160,6 @@ function propertyData(fd: FormData, dealStages: string[]) {
       followUpAt: followUp,
       // a fresh call-back date reopens the reminder; without the stage the dismissal is moot
       ...(callBack ? { callBackDismissedAt: null } : {}),
-      callNotes: s(fd, "callNotes"),
       dealStage: stages.includes("Deal") ? (s(fd, "dealStage") && dealStages.includes(s(fd, "dealStage")!) ? s(fd, "dealStage") : dealStages[0]) : null,
     },
     deletePhone,
@@ -250,8 +250,136 @@ export async function deleteAqDealStage(name: string): Promise<StageResult> {
   stagesChanged();
   return { ok: true };
 }
+// ---------- the list pages' grid (one cell at a time) ----------
+type CellResult = { ok: true; row?: Record<string, unknown> } | { ok: false; reason: string };
+const PROPERTY_CELLS: Record<string, "text" | "llc" | "state" | "assetType" | "lines" | "number" | "int" | "date" | "callResult" | "dealStage" | "email"> = {
+  address: "text", city: "text", state: "state", businessName: "text", assetType: "assetType", parcelId: "text", ownerEntity: "llc", ownerName: "text",
+  primaryPhone: "text", secondaryPhone: "text", otherPhones: "lines", primaryEmail: "email", emails: "lines", ownerMailingAddress: "text",
+  acreage: "number", squareFeet: "int", yearBuilt: "int", lastSaleDate: "date", lastSalePrice: "number", lastCallDate: "date",
+  callResult: "callResult", callBackAt: "date", followUpAt: "date", dealStage: "dealStage", neighborhood: "text", askingPrice: "number", units: "int", notes: "text",
+};
+const COMPANY_CELLS: Record<string, "text" | "state" | "roles" | "name"> = { name: "name", website: "text", phone: "text", city: "text", state: "state", notes: "text", roles: "roles" };
+const CONTACT_CELLS: Record<string, "text" | "email" | "roles" | "companyId"> = { firstName: "text", lastName: "text", email: "email", phone: "text", notes: "text", roles: "roles", companyId: "companyId" };
+const numOf = (v: string | null) => {
+  if (v == null) return null;
+  const n = Number(v.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? n : null;
+};
+const dayOf = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? new Date(`${v.slice(0, 10)}T12:00:00`) : null);
+const tokensOf = (v: string | null, allowed: readonly string[]) => {
+  try {
+    const arr = JSON.parse(v ?? "[]") as unknown;
+    return Array.isArray(arr) ? arr.map(String).filter((x) => allowed.includes(x)) : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * One cell from the Excel-like list pages (Properties, Companies, Contacts): the field is checked against the list
+ * of what the grid may edit, the value is read the way the ticket reads it (LLC appended to the owner, two-letter
+ * state, one-per-line lists, dates at noon), and the side effects the ticket has still happen (Callback fills the
+ * follow-up date, a company's roles flow to its people, a contact's roles pick up its company's).
+ */
+export async function updateAqCell(kind: "property" | "company" | "contact", id: string, key: string, value: string | null): Promise<CellResult> {
+  try {
+    const text = value?.trim() ? value.trim() : null;
+    if (kind === "property") {
+      const t = PROPERTY_CELLS[key];
+      if (!t) return { ok: false, reason: `${key} cannot be edited here.` };
+      if (t === "callResult") {
+        const stage = text && (AQ_STAGES as readonly string[]).includes(text) ? [text] : [];
+        await setAqPropertyStages(id, stage);
+        const p = await prisma.aqProperty.findUnique({ where: { id }, select: { dealStage: true, stages: true } });
+        return { ok: true, row: { callResult: parseJsonList(p?.stages)[0] ?? null, dealStage: p?.dealStage ?? null } };
+      }
+      if (t === "dealStage") {
+        if (!text) return { ok: false, reason: "Pick a stage, or clear the Call result instead." };
+        await setAqDealStage(id, text);
+        return { ok: true, row: { callResult: "Deal", dealStage: text } };
+      }
+      const data: Record<string, unknown> = {};
+      if (t === "text") data[key] = key === "address" ? text ?? "Property" : text;
+      else if (t === "email") data[key] = text?.toLowerCase() ?? null;
+      else if (t === "llc") data[key] = ensureLlc(text);
+      else if (t === "state") {
+        const st = text?.toUpperCase().slice(0, 2) ?? null;
+        if (st && !US_STATES[st]) return { ok: false, reason: `${text} is not a state code.` };
+        data[key] = st;
+      } else if (t === "assetType") {
+        if (text && !(AQ_ASSET_TYPES as readonly string[]).includes(text)) return { ok: false, reason: `Asset type must be one of ${AQ_ASSET_TYPES.join(", ")}.` };
+        data[key] = text;
+      } else if (t === "lines") data[key] = lines(text).join("\n") || null;
+      else if (t === "number") data[key] = numOf(text);
+      else if (t === "int") {
+        const n = numOf(text);
+        data[key] = n == null ? null : Math.round(n);
+      } else if (t === "date") {
+        const d = dayOf(text);
+        if (text && !d) return { ok: false, reason: "Use a date." };
+        data[key] = d;
+        if (key === "callBackAt" && d) {
+          const cur = await prisma.aqProperty.findUnique({ where: { id }, select: { followUpAt: true, callBackAt: true } });
+          data.callBackDismissedAt = null;
+          if (!cur?.followUpAt || (cur.callBackAt && cur.followUpAt.getTime() === cur.callBackAt.getTime())) data.followUpAt = d;
+        }
+      }
+      await prisma.aqProperty.update({ where: { id }, data });
+      revalidatePath(`/acquisitions/properties/${id}`);
+      touchAll();
+      const row: Record<string, unknown> = { [key]: data[key] instanceof Date ? (data[key] as Date).toISOString() : data[key] };
+      if (data.followUpAt instanceof Date) row.followUpAt = data.followUpAt.toISOString();
+      return { ok: true, row };
+    }
+    if (kind === "company") {
+      const t = COMPANY_CELLS[key];
+      if (!t) return { ok: false, reason: `${key} cannot be edited here.` };
+      if (t === "roles") {
+        await setAqCompanyRoles(id, tokensOf(value, AQ_ROLES));
+        return { ok: true };
+      }
+      if (t === "name" && !text) return { ok: false, reason: "A company needs a name." };
+      const st = t === "state" ? text?.toUpperCase().slice(0, 2) ?? null : undefined;
+      if (st && !US_STATES[st]) return { ok: false, reason: `${text} is not a state code.` };
+      const data: Record<string, unknown> = { [key]: t === "state" ? st : text };
+      if (key === "website") data.domain = text ? text.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0].toLowerCase() || null : null;
+      await prisma.aqCompany.update({ where: { id }, data });
+      revalidatePath(`/acquisitions/companies/${id}`);
+      touchAll();
+      return { ok: true, row: { [key]: data[key] } };
+    }
+    const t = CONTACT_CELLS[key];
+    if (!t) return { ok: false, reason: `${key} cannot be edited here.` };
+    if (t === "roles") {
+      await setAqContactRoles(id, tokensOf(value, AQ_ROLES));
+      return { ok: true };
+    }
+    if (t === "companyId") {
+      const co = text ? await prisma.aqCompany.findUnique({ where: { id: text }, select: { id: true, roles: true } }) : null;
+      if (text && !co) return { ok: false, reason: "That company is gone; reload the page." };
+      const cur = await prisma.aqContact.findUnique({ where: { id }, select: { roles: true } });
+      await prisma.aqContact.update({ where: { id }, data: { companyId: co?.id ?? null, roles: mergeAqRoles(cur?.roles, co?.roles) } });
+      revalidatePath(`/acquisitions/contacts/${id}`);
+      touchAll();
+      const roles = parseJsonList(mergeAqRoles(cur?.roles, co?.roles));
+      return { ok: true, row: { companyId: co?.id ?? null, roles } };
+    }
+    await prisma.aqContact.update({ where: { id }, data: { [key]: t === "email" ? text?.toLowerCase() ?? null : text } });
+    revalidatePath(`/acquisitions/contacts/${id}`);
+    touchAll();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+}
+
 // ---------- transcripts and the map ----------
 /** A call transcript pasted onto the property; the newest shows on top of the Transcript card. */
+export async function deleteAqNote(propertyId: string, id: string) {
+  await prisma.aqNote.deleteMany({ where: { id, propertyId } });
+  revalidatePath(`/acquisitions/properties/${propertyId}`);
+  touchAll();
+}
 export async function addAqTranscript(propertyId: string, fd: FormData) {
   const body = s(fd, "body");
   if (!body) return;

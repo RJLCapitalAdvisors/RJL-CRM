@@ -2,19 +2,19 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager, SearchForm } from "@/components/ui";
-import { fmtDate, str } from "@/lib/format";
-import { AQ_ROLES } from "@/lib/acquisitions";
-import { IlRoleCell } from "@/components/il-role-cell";
-import { CompanyLogo } from "@/components/company-logo";
+import { str } from "@/lib/format";
+import { AQ_ROLES, parseJsonList } from "@/lib/acquisitions";
+import { US_STATES } from "@/lib/taxonomy";
 import { MultiSelect } from "@/components/multi-select";
-import { setAqCompanyRoles } from "../actions";
+import type { GridColumn, GridRow } from "@/components/data-grid";
+import { AqGrid } from "../grid";
 
 export const metadata = { title: "Companies" };
 export const dynamic = "force-dynamic";
 const PAGE = 50;
 const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);
 
-/** Companies: sellers, operators and buyers. A company's roles flow to its contacts. */
+/** Companies as a sheet: sellers, operators and buyers, every column draggable and resizable, every cell editable. A company's roles flow to its contacts. */
 export default async function AqCompaniesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const q = str(sp.q).trim();
@@ -22,7 +22,7 @@ export default async function AqCompaniesPage({ searchParams }: { searchParams: 
   const page = Math.max(1, Number(str(sp.page)) || 1);
   const where: Prisma.AqCompanyWhereInput = {
     AND: [
-      q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { contacts: { some: { email: { contains: q, mode: "insensitive" } } } }] } : {},
+      q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { website: { contains: q, mode: "insensitive" } }, { contacts: { some: { email: { contains: q, mode: "insensitive" } } } }] } : {},
       roles.length ? { OR: roles.map((r) => ({ roles: { contains: `"${r}"` } })) } : {},
     ],
   };
@@ -37,11 +37,37 @@ export default async function AqCompaniesPage({ searchParams }: { searchParams: 
     u.set("page", String(p));
     return `/acquisitions/companies?${u}`;
   };
+  const columns: GridColumn[] = [
+    { key: "name", label: "Company", type: "text", width: 220 },
+    { key: "roles", label: "Roles", type: "tokens", options: AQ_ROLES, width: 170 },
+    { key: "phone", label: "Phone", type: "tel", width: 140 },
+    { key: "website", label: "Website", type: "url", width: 200 },
+    { key: "city", label: "City", type: "text", width: 130 },
+    { key: "state", label: "State", type: "select", options: Object.keys(US_STATES), width: 80 },
+    { key: "notes", label: "Notes", type: "multiline", width: 240 },
+    { key: "contacts", label: "Contacts", type: "readonly", width: 90 },
+    { key: "properties", label: "Properties", type: "readonly", width: 90 },
+    { key: "lastActivityAt", label: "Last Activity", type: "readonly", width: 120 },
+  ];
+  const gridRows: GridRow[] = rows.map((c) => ({
+    id: c.id,
+    href: `/acquisitions/companies/${c.id}`,
+    name: c.name,
+    roles: parseJsonList(c.roles),
+    phone: c.phone,
+    website: c.website,
+    city: c.city,
+    state: c.state,
+    notes: c.notes,
+    contacts: String(c._count.contacts),
+    properties: String(c._count.properties),
+    lastActivityAt: c.lastActivityAt?.toISOString() ?? null,
+  }));
   return (
     <>
       <PageHeader
         title="Companies"
-        subtitle={`${total.toLocaleString()} companies`}
+        subtitle={`${total.toLocaleString()} companies · click any cell to edit, drag headers to arrange`}
         actions={
           <Link href="/acquisitions/companies/new" className="btn-primary">
             New company
@@ -49,57 +75,14 @@ export default async function AqCompaniesPage({ searchParams }: { searchParams: 
         }
       />
       <div className="px-8 py-4">
-        <SearchForm action="/acquisitions/companies" q={q} placeholder="Search name, city, or contact email">
+        <SearchForm action="/acquisitions/companies" q={q} placeholder="Search name, city, website, or contact email">
           <div className="w-56">
             <MultiSelect name="role" options={AQ_ROLES} selected={roles} placeholder="Any role" />
           </div>
         </SearchForm>
       </div>
       <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="table dense w-full min-w-[900px]">
-            <thead>
-              <tr>
-                <th>Company</th>
-                <th>Roles</th>
-                <th className="text-right">Contacts</th>
-                <th className="text-right">Properties</th>
-                <th>Phone</th>
-                <th>Website</th>
-                <th>Location</th>
-                <th>Last activity</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <Link href={`/acquisitions/companies/${c.id}`} className="flex items-center gap-2 font-medium hover:underline">
-                      <CompanyLogo domain={c.domain ?? c.website?.replace(/^https?:\/\//, "").split("/")[0]} name={c.name} />
-                      <span className="truncate">{c.name}</span>
-                    </Link>
-                  </td>
-                  <td>
-                    <IlRoleCell roles={c.roles} options={AQ_ROLES} action={setAqCompanyRoles.bind(null, c.id)} />
-                  </td>
-                  <td className="text-right">{c._count.contacts}</td>
-                  <td className="text-right">{c._count.properties}</td>
-                  <td className="whitespace-nowrap">{c.phone ?? <span className="text-muted">—</span>}</td>
-                  <td className="max-w-[220px] truncate text-muted">{c.website?.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? "—"}</td>
-                  <td className="whitespace-nowrap">{[c.city, c.state].filter(Boolean).join(", ") || <span className="text-muted">—</span>}</td>
-                  <td className="whitespace-nowrap text-muted">{c.lastActivityAt ? fmtDate(c.lastActivityAt) : <span title={`Added ${fmtDate(c.createdAt)}`}>—</span>}</td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="py-10 text-center text-muted">
-                    No companies match.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <AqGrid kind="company" columns={columns} rows={gridRows} empty="No companies match." />
       </div>
       <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
     </>

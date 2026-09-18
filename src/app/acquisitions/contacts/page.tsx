@@ -2,19 +2,18 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager, SearchForm } from "@/components/ui";
-import { fmtDate, str } from "@/lib/format";
-import { AQ_ROLES, aqFullName } from "@/lib/acquisitions";
-import { IlRoleCell } from "@/components/il-role-cell";
-import { CompanyLogo } from "@/components/company-logo";
+import { str } from "@/lib/format";
+import { AQ_ROLES, parseJsonList } from "@/lib/acquisitions";
 import { MultiSelect } from "@/components/multi-select";
-import { setAqContactRoles } from "../actions";
+import type { GridColumn, GridRow } from "@/components/data-grid";
+import { AqGrid } from "../grid";
 
 export const metadata = { title: "Contacts" };
 export const dynamic = "force-dynamic";
 const PAGE = 50;
 const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);
 
-/** Contacts: the people around the properties, with their company (logo) and roles; the firms emailed most recently on top. */
+/** Contacts as a sheet: the people around the properties, every column draggable and resizable, every cell editable; the company is a dropdown of the companies in this side. */
 export default async function AqContactsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const q = str(sp.q).trim();
@@ -26,9 +25,10 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
       roles.length ? { OR: roles.map((r) => ({ roles: { contains: `"${r}"` } })) } : {},
     ],
   };
-  const [total, rows] = await Promise.all([
+  const [total, rows, companies] = await Promise.all([
     prisma.aqContact.count({ where }),
-    prisma.aqContact.findMany({ where, orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { lastName: "asc" }, { firstName: "asc" }], skip: (page - 1) * PAGE, take: PAGE, include: { company: { select: { id: true, name: true, domain: true, website: true } } } }),
+    prisma.aqContact.findMany({ where, orderBy: [{ lastActivityAt: { sort: "desc", nulls: "last" } }, { lastName: "asc" }, { firstName: "asc" }], skip: (page - 1) * PAGE, take: PAGE, include: { _count: { select: { properties: true } } } }),
+    prisma.aqCompany.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   const makeHref = (p: number) => {
     const u = new URLSearchParams();
@@ -37,11 +37,35 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
     u.set("page", String(p));
     return `/acquisitions/contacts?${u}`;
   };
+  const columns: GridColumn[] = [
+    { key: "firstName", label: "First Name", type: "text", width: 140 },
+    { key: "lastName", label: "Last Name", type: "text", width: 140 },
+    { key: "email", label: "Email", type: "email", width: 220 },
+    { key: "phone", label: "Phone", type: "tel", width: 140 },
+    { key: "companyId", label: "Company", type: "select", options: companies.map((c) => ({ value: c.id, label: c.name })), width: 200 },
+    { key: "roles", label: "Roles", type: "tokens", options: AQ_ROLES, width: 170 },
+    { key: "notes", label: "Notes", type: "multiline", width: 240 },
+    { key: "properties", label: "Properties", type: "readonly", width: 90 },
+    { key: "lastActivityAt", label: "Last Activity", type: "readonly", width: 120 },
+  ];
+  const gridRows: GridRow[] = rows.map((c) => ({
+    id: c.id,
+    href: `/acquisitions/contacts/${c.id}`,
+    firstName: c.firstName,
+    lastName: c.lastName,
+    email: c.email,
+    phone: c.phone,
+    companyId: c.companyId,
+    roles: parseJsonList(c.roles),
+    notes: c.notes,
+    properties: String(c._count.properties),
+    lastActivityAt: c.lastActivityAt?.toISOString() ?? null,
+  }));
   return (
     <>
       <PageHeader
         title="Contacts"
-        subtitle={`${total.toLocaleString()} contacts`}
+        subtitle={`${total.toLocaleString()} contacts · click any cell to edit, drag headers to arrange`}
         actions={
           <Link href="/acquisitions/contacts/new" className="btn-primary">
             New contact
@@ -56,54 +80,7 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
         </SearchForm>
       </div>
       <div className="mx-8 flex h-[calc(100vh-260px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="table dense w-full min-w-[900px]">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Company</th>
-                <th>Roles</th>
-                <th>Phone</th>
-                <th>Last activity</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <Link href={`/acquisitions/contacts/${c.id}`} className="font-medium hover:underline">
-                      {aqFullName(c)}
-                    </Link>
-                  </td>
-                  <td className="text-muted">{c.email ?? "—"}</td>
-                  <td>
-                    {c.company ? (
-                      <Link href={`/acquisitions/companies/${c.company.id}`} className="flex items-center gap-2 hover:underline">
-                        <CompanyLogo domain={c.company.domain ?? c.company.website?.replace(/^https?:\/\//, "").split("/")[0]} name={c.company.name} />
-                        <span className="truncate">{c.company.name}</span>
-                      </Link>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </td>
-                  <td>
-                    <IlRoleCell roles={c.roles} options={AQ_ROLES} action={setAqContactRoles.bind(null, c.id)} />
-                  </td>
-                  <td className="whitespace-nowrap">{c.phone ?? <span className="text-muted">—</span>}</td>
-                  <td className="whitespace-nowrap text-muted">{c.lastActivityAt ? fmtDate(c.lastActivityAt) : <span title={`Added ${fmtDate(c.createdAt)}`}>—</span>}</td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-10 text-center text-muted">
-                    No contacts match. Emails from the Acquisitions mailbox add people here on their own; New contact adds one by hand.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <AqGrid kind="contact" columns={columns} rows={gridRows} empty="No contacts match. Emails from the Acquisitions mailbox add people here on their own; New contact adds one by hand." />
       </div>
       <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
     </>

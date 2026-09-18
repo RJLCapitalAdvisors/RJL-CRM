@@ -21,7 +21,7 @@ export default async function AcquisitionsDashboard() {
   const callBacks = await prisma.aqProperty.findMany({
     where: { stages: { contains: '"Callback"' }, callBackDismissedAt: null, OR: [{ followUpAt: { lte: endOfToday } }, { followUpAt: null, callBackAt: { lte: endOfToday } }] },
     orderBy: [{ followUpAt: "asc" }, { callBackAt: "asc" }],
-    include: { contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } } } } },
+    include: { contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } } } }, aqNotes: { orderBy: { createdAt: "desc" }, take: 1, select: { body: true } } },
   });
   const tel = (p: string) => `tel:${p.replace(/[^\d+]/g, "")}`;
   const Phone = ({ n }: { n: string }) => (
@@ -73,7 +73,7 @@ export default async function AcquisitionsDashboard() {
                           ))}
                           {!p.ownerName && !p.ownerEntity && !ownerPhones.length && p.contacts.length === 0 && <span className="text-muted">No owner or contact on the ticket yet; open it to add one.</span>}
                         </div>
-                        {p.callNotes && <div className="mt-1 text-xs text-ink-soft">{p.callNotes}</div>}
+                        {p.aqNotes[0] && <div className="mt-1 text-xs text-ink-soft">{p.aqNotes[0].body}</div>}
                         <div className="mt-1 text-xs text-muted">
                           Call back {due ? fmtDate(due) : ""}
                           {overdue ? " · overdue" : ""}
