@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { AQ_DEAL_STAGES, AQ_ROLES, AQ_STAGES, mergeAqRoles, parseJsonList, toJsonList } from "@/lib/acquisitions";
+import { AQ_ROLES, AQ_STAGES, mergeAqRoles, parseJsonList, toJsonList } from "@/lib/acquisitions";
+import { getAqDealStages, saveAqDealStages } from "@/lib/acquisitions-stages";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -107,7 +108,7 @@ export async function deleteAqContact(id: string) {
 }
 
 // ---------- properties ----------
-function propertyData(fd: FormData) {
+function propertyData(fd: FormData, dealStages: string[]) {
   const stages = parseJsonList(list(fd, "stages", AQ_STAGES));
   const callBackRaw = s(fd, "callBackAt");
   const callBack = stages.includes("Call me back") && callBackRaw ? new Date(`${callBackRaw}T12:00:00`) : null;
@@ -120,7 +121,7 @@ function propertyData(fd: FormData) {
     callBackAt: callBack,
     // a fresh call-back date reopens the reminder; without the stage the dismissal is moot
     ...(callBack ? { callBackDismissedAt: null } : {}),
-    dealStage: stages.includes("Deal") ? (s(fd, "dealStage") && (AQ_DEAL_STAGES as readonly string[]).includes(s(fd, "dealStage")!) ? s(fd, "dealStage") : AQ_DEAL_STAGES[0]) : null,
+    dealStage: stages.includes("Deal") ? (s(fd, "dealStage") && dealStages.includes(s(fd, "dealStage")!) ? s(fd, "dealStage") : dealStages[0]) : null,
     askingPrice: n(fd, "askingPrice"),
     units: i(fd, "units"),
     squareFeet: i(fd, "squareFeet"),
@@ -129,12 +130,12 @@ function propertyData(fd: FormData) {
   };
 }
 export async function createAqProperty(fd: FormData) {
-  const p = await prisma.aqProperty.create({ data: propertyData(fd) });
+  const p = await prisma.aqProperty.create({ data: propertyData(fd, await getAqDealStages()) });
   touchAll();
   redirect(`/acquisitions/properties/${p.id}`);
 }
 export async function updateAqProperty(id: string, fd: FormData) {
-  const data = propertyData(fd);
+  const data = propertyData(fd, await getAqDealStages());
   const before = await prisma.aqProperty.findUnique({ where: { id }, select: { callBackAt: true } });
   // an unchanged date keeps its dismissal; a new date brings the reminder back
   const sameDate = before?.callBackAt && data.callBackAt && before.callBackAt.getTime() === data.callBackAt.getTime();
@@ -145,18 +146,69 @@ export async function updateAqProperty(id: string, fd: FormData) {
 }
 export async function setAqPropertyStages(id: string, stages: string[], _focus: string | null = null) {
   const clean = (AQ_STAGES as readonly string[]).filter((r) => stages.includes(r));
-  const cur = await prisma.aqProperty.findUnique({ where: { id }, select: { dealStage: true } });
-  await prisma.aqProperty.update({ where: { id }, data: { stages: JSON.stringify(clean), dealStage: clean.includes("Deal") ? cur?.dealStage ?? AQ_DEAL_STAGES[0] : null } });
+  const [cur, dealStages] = await Promise.all([prisma.aqProperty.findUnique({ where: { id }, select: { dealStage: true } }), getAqDealStages()]);
+  await prisma.aqProperty.update({ where: { id }, data: { stages: JSON.stringify(clean), dealStage: clean.includes("Deal") ? cur?.dealStage ?? dealStages[0] : null } });
   revalidatePath(`/acquisitions/properties/${id}`);
   touchAll();
 }
 export async function setAqDealStage(id: string, stage: string) {
-  if (!(AQ_DEAL_STAGES as readonly string[]).includes(stage)) return;
+  if (!(await getAqDealStages()).includes(stage)) return;
   const cur = await prisma.aqProperty.findUnique({ where: { id }, select: { stages: true } });
   const stages = parseJsonList(cur?.stages);
   await prisma.aqProperty.update({ where: { id }, data: { dealStage: stage, stages: JSON.stringify(stages.includes("Deal") ? stages : [...stages, "Deal"]) } });
   revalidatePath(`/acquisitions/properties/${id}`);
   touchAll();
+}
+// ---------- pipeline stages (data: Setting aqDealStages) ----------
+type StageResult = { ok: true } | { ok: false; reason: string };
+const stagesChanged = () => {
+  revalidatePath("/acquisitions/pipeline");
+  touchAll();
+};
+export async function addAqDealStage(name: string): Promise<StageResult> {
+  const clean = name.trim();
+  if (!clean) return { ok: false, reason: "Give the stage a name." };
+  const cur = await getAqDealStages();
+  if (cur.some((x) => x.toLowerCase() === clean.toLowerCase())) return { ok: false, reason: "There is already a stage called " + clean + "." };
+  await saveAqDealStages([...cur, clean]);
+  stagesChanged();
+  return { ok: true };
+}
+/** Rename a stage; every deal sitting in it moves with the name. */
+export async function renameAqDealStage(from: string, to: string): Promise<StageResult> {
+  const clean = to.trim();
+  if (!clean) return { ok: false, reason: "Give the stage a name." };
+  const cur = await getAqDealStages();
+  if (!cur.includes(from)) return { ok: false, reason: "That stage is gone; reload the page." };
+  if (clean !== from && cur.some((x) => x.toLowerCase() === clean.toLowerCase())) return { ok: false, reason: "There is already a stage called " + clean + "." };
+  if (clean === from) return { ok: true };
+  await saveAqDealStages(cur.map((x) => (x === from ? clean : x)));
+  await prisma.aqProperty.updateMany({ where: { dealStage: from }, data: { dealStage: clean } });
+  stagesChanged();
+  return { ok: true };
+}
+/** Move a stage one column left (-1) or right (+1). */
+export async function moveAqDealStage(name: string, dir: -1 | 1): Promise<StageResult> {
+  const cur = await getAqDealStages();
+  const i = cur.indexOf(name);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= cur.length) return { ok: true };
+  const next = [...cur];
+  [next[i], next[j]] = [next[j], next[i]];
+  await saveAqDealStages(next);
+  stagesChanged();
+  return { ok: true };
+}
+/** Remove an empty stage. A stage with deals in it stays until they are moved. */
+export async function deleteAqDealStage(name: string): Promise<StageResult> {
+  const cur = await getAqDealStages();
+  if (!cur.includes(name)) return { ok: true };
+  if (cur.length === 1) return { ok: false, reason: "The pipeline needs at least one stage." };
+  const inIt = await prisma.aqProperty.count({ where: { dealStage: name, stages: { contains: '"Deal"' } } });
+  if (inIt) return { ok: false, reason: inIt + (inIt === 1 ? " deal is" : " deals are") + " in " + name + ". Move them first." };
+  await saveAqDealStages(cur.filter((x) => x !== name));
+  stagesChanged();
+  return { ok: true };
 }
 export async function dismissCallBack(id: string) {
   await prisma.aqProperty.update({ where: { id }, data: { callBackDismissedAt: new Date() } });

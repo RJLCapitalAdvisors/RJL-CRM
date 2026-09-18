@@ -2,35 +2,45 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
-import { AQ_DEAL_STAGES, aqDealStageTone, aqFullName, propertyLine, usd } from "@/lib/acquisitions";
+import { aqDealStageTone, aqFullName, propertyLine, usd } from "@/lib/acquisitions";
+import { getAqDealStages } from "@/lib/acquisitions-stages";
 import { StageSelect } from "./stage-select";
+import { StageEditor } from "./stage-editor";
 
 export const metadata = { title: "Deal Pipeline" };
 export const dynamic = "force-dynamic";
 
-/** Deal Pipeline: every property marked Deal, one column per stage. The stages are placeholders until Jonathan and Shawn settle them. */
+/** Deal Pipeline: every property marked Deal, one column per stage. The stages themselves are edited here (Edit stages): add, rename, reorder, remove when empty. */
 export default async function AqPipelinePage() {
-  const deals = await prisma.aqProperty.findMany({
-    where: { stages: { contains: '"Deal"' } },
-    orderBy: { updatedAt: "desc" },
-    include: { companies: { include: { company: { select: { id: true, name: true } } } }, contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } } },
-  });
-  const columns = AQ_DEAL_STAGES.map((stage) => ({ stage, rows: deals.filter((d) => (d.dealStage ?? AQ_DEAL_STAGES[0]) === stage) }));
-  const live = deals.filter((d) => d.dealStage !== "Closed" && d.dealStage !== "Dead").length;
+  const [stages, deals] = await Promise.all([
+    getAqDealStages(),
+    prisma.aqProperty.findMany({
+      where: { stages: { contains: '"Deal"' } },
+      orderBy: { updatedAt: "desc" },
+      include: { companies: { include: { company: { select: { id: true, name: true } } } }, contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } } },
+    }),
+  ]);
+  // a deal whose stage no longer exists sits in the first column until someone moves it
+  const stageOf = (d: { dealStage: string | null }) => (d.dealStage && stages.includes(d.dealStage) ? d.dealStage : stages[0]);
+  const columns = stages.map((stage) => ({ stage, rows: deals.filter((d) => stageOf(d) === stage) }));
+  const counts = Object.fromEntries(columns.map((c) => [c.stage, c.rows.length])) as Record<string, number>;
   return (
     <>
       <PageHeader
         compact
         title="Deal Pipeline"
-        subtitle={`${live} live · ${deals.length - live} closed or dead · a property joins when its stage carries Deal`}
+        subtitle={`${deals.length} deal${deals.length === 1 ? "" : "s"} across ${stages.length} stage${stages.length === 1 ? "" : "s"} · a property joins when its stage carries Deal`}
         actions={
           <Link href="/acquisitions/properties/new" className="btn-primary">
             New property
           </Link>
         }
       />
+      <div className="px-8 pt-3">
+        <StageEditor stages={stages} counts={counts} />
+      </div>
       <div className="overflow-x-auto px-8 py-4">
-        <div className="grid min-w-[1200px] grid-cols-6 gap-3">
+        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(200px, 1fr))`, minWidth: `${stages.length * 212}px` }}>
           {columns.map((col) => (
             <div key={col.stage} id={col.stage} className="flex flex-col rounded-lg border border-line bg-cream-50">
               <div className="flex items-center justify-between border-b border-line px-3 py-2">
@@ -48,7 +58,7 @@ export default async function AqPipelinePage() {
                     {d.companies.length > 0 && <div className="mt-1 truncate text-xs text-muted">{d.companies.map((x) => x.company.name).join(", ")}</div>}
                     {d.contacts.length > 0 && <div className="truncate text-xs text-muted">{d.contacts.map((x) => aqFullName(x.contact)).join(", ")}</div>}
                     <div className="mt-2 flex items-center justify-between gap-2">
-                      <StageSelect id={d.id} stage={d.dealStage ?? AQ_DEAL_STAGES[0]} />
+                      <StageSelect id={d.id} stage={stageOf(d)} stages={stages} />
                       <span className="text-[11px] text-muted">{fmtDate(d.updatedAt)}</span>
                     </div>
                   </div>

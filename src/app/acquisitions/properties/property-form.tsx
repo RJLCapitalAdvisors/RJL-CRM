@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AutoSaveForm } from "@/components/autosave-form";
 import { Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
-import { AQ_DEAL_STAGES, AQ_STAGES, aqStageTone, parseJsonList } from "@/lib/acquisitions";
+import { AQ_STAGES, aqStageTone, parseJsonList } from "@/lib/acquisitions";
 
 type Pr = Partial<{ address: string; neighborhood: string | null; city: string | null; state: string | null; stages: string; callBackAt: Date | string | null; dealStage: string | null; askingPrice: number | null; units: number | null; squareFeet: number | null; assetType: string | null; notes: string | null }>;
 
@@ -15,7 +15,7 @@ const toDateInput = (v: Date | string | null | undefined) => (v ? new Date(v).to
  * Call me back asks for the date, and that date puts the property in the dashboard's Call Me Back window; ticking
  * Deal puts it in the pipeline at the stage picked here.
  */
-export function AqPropertyForm({ p = {}, action, autosave = false, submitLabel = "Create property" }: { p?: Pr; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
+export function AqPropertyForm({ p = {}, dealStages, action, autosave = false, submitLabel = "Create property" }: { p?: Pr; dealStages: string[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
   const [stages, setStages] = useState<string[]>(parseJsonList(p.stages));
   const toggle = (r: string) => setStages((cur) => (cur.includes(r) ? cur.filter((x) => x !== r) : [...cur, r]));
   const callBack = stages.includes("Call me back");
@@ -43,7 +43,7 @@ export function AqPropertyForm({ p = {}, action, autosave = false, submitLabel =
         )}
         {deal && (
           <Row label="Pipeline stage">
-            <Select name="dealStage" value={p.dealStage ?? AQ_DEAL_STAGES[0]} options={AQ_DEAL_STAGES} noBlank />
+            <Select name="dealStage" value={p.dealStage && dealStages.includes(p.dealStage) ? p.dealStage : dealStages[0]} options={dealStages} noBlank />
           </Row>
         )}
       </Group>

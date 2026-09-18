@@ -10,6 +10,7 @@ import { fmtDate } from "@/lib/format";
 import { AQ_STAGES, aqFullName, aqStageTone, parseJsonList, propertyLine, usd } from "@/lib/acquisitions";
 import { addAqNote, deleteAqProperty, linkAqProperty, setAqPropertyStages, updateAqProperty } from "../../actions";
 import { AqPropertyForm } from "../property-form";
+import { getAqDealStages } from "@/lib/acquisitions-stages";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 /** A property ticket: stage tokens and the facts on the left, emails and notes in the middle, the companies and people around it on the right. */
 export default async function AqPropertyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [p, companies, people] = await Promise.all([
+  const [p, companies, people, dealStages] = await Promise.all([
     prisma.aqProperty.findUnique({
       where: { id },
       include: {
@@ -34,6 +35,7 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
     }),
     prisma.aqCompany.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.aqContact.findMany({ orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { id: true, firstName: true, lastName: true, email: true, company: { select: { name: true } } } }),
+    getAqDealStages(),
   ]);
   if (!p) notFound();
   const stages = parseJsonList(p.stages);
@@ -61,8 +63,8 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
               <>
                 <IlRoleCell roles={p.stages} options={AQ_STAGES} action={setAqPropertyStages.bind(null, p.id)} />
                 {stages.includes("Deal") && (
-                  <Link href={`/acquisitions/pipeline#${encodeURIComponent(p.dealStage ?? "New")}`} className="btn-secondary">
-                    Pipeline · {p.dealStage ?? "New"}
+                  <Link href={`/acquisitions/pipeline#${encodeURIComponent(p.dealStage ?? dealStages[0])}`} className="btn-secondary">
+                    Pipeline · {p.dealStage ?? dealStages[0]}
                   </Link>
                 )}
                 <form action={deleteAqProperty.bind(null, p.id)}>
@@ -80,7 +82,7 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
             </div>
           )}
           <AboutCard title="About this property">
-            <AqPropertyForm p={p} action={updateAqProperty.bind(null, p.id)} autosave />
+            <AqPropertyForm p={p} dealStages={dealStages} action={updateAqProperty.bind(null, p.id)} autosave />
           </AboutCard>
         </>
       }
