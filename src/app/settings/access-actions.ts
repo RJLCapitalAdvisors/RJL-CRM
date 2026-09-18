@@ -102,3 +102,23 @@ ${blocks}${both}${outlook}
   await prisma.user.update({ where: { id: userId }, data: { invitedAt: new Date() } });
   return to;
 }
+
+/**
+ * Remove a person from the CRM, both sides (Jonathan, Sep 18). Inactive means: the session check turns them away on
+ * the next request, the sign-in callback refuses them, no mailbox sync reads their mail (every reader filters
+ * active), and they leave the owner, CC and Users lists. Deals, emails and notes they created stay as history.
+ */
+export async function removeUserAction(userId: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try {
+    const me = await requireCriteriaAdmin();
+    if (me.id === userId) return { ok: false, reason: "You cannot remove yourself." };
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true, israelEmail: true } });
+    if (!u) return { ok: false, reason: "User not found." };
+    await prisma.user.update({ where: { id: userId }, data: { active: false, invitedAt: null } });
+    await prisma.activity.create({ data: { type: "NOTE", body: `${u.name} (${[u.email, u.israelEmail].filter(Boolean).join(", ")}) removed from the CRM by ${me.name}: sign-in closed, mailbox no longer read.` } }).catch(() => null);
+    refresh();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}

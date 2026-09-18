@@ -1,5 +1,6 @@
-import { addUserAction, sendInviteAction } from "@/app/settings/access-actions";
+import { addUserAction, removeUserAction, sendInviteAction } from "@/app/settings/access-actions";
 import { InviteButton } from "@/components/invite-button";
+import { RemoveUserButton } from "@/components/remove-user-button";
 import { parseWorkspaces, type Workspace } from "@/lib/access";
 import { fmtDate } from "@/lib/format";
 
@@ -11,7 +12,7 @@ type U = { id: string; name: string; email: string | null; active: boolean; work
  * Adding a person just adds them; the invite goes from their row. The Israel page carries no business name because
  * RJL Israel and LiviemIsrael use it together.
  */
-export function UsersCard({ users, workspace, canEdit }: { users: U[]; workspace: Workspace; canEdit: boolean }) {
+export function UsersCard({ users, workspace, canEdit, meId }: { users: U[]; workspace: Workspace; canEdit: boolean; meId?: string | null }) {
   const ca = workspace === "CA";
   const rows = users.filter((u) => u.active && (parseWorkspaces(u.workspaces, u.email).includes(workspace) || (!ca && u.israelEmail)));
   // on the Israel page a person is listed by the address they open it with
@@ -51,9 +52,12 @@ export function UsersCard({ users, workspace, canEdit }: { users: U[]; workspace
                   {ca && <td className="text-xs text-muted">{u.israelEmail ?? ""}</td>}
                   <td className={`text-xs ${st.tone}`}>{st.text}</td>
                   <td className="text-right">
-                    {canEdit && u.email && (
-                      <InviteButton action={sendInviteAction.bind(null, u.id, workspace)} label={u.invitedAt || u.lastSignInAt ? "Invite again" : "Send invite"} email={emailFor(u) ?? u.email} />
-                    )}
+                    <div className="flex items-start justify-end gap-2">
+                      {canEdit && u.email && (
+                        <InviteButton action={sendInviteAction.bind(null, u.id, workspace)} label={u.invitedAt || u.lastSignInAt ? "Invite again" : "Send invite"} email={emailFor(u) ?? u.email} />
+                      )}
+                      {canEdit && <RemoveUserButton action={removeUserAction.bind(null, u.id)} name={u.name} self={u.id === meId} />}
+                    </div>
                   </td>
                 </tr>
               );

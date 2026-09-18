@@ -13,7 +13,7 @@ export default async function UsersPage() {
     <>
       <PageHeader title="Users" subtitle="Who uses the CRM. Add a person by email and the invite goes out with the sign-in link." />
       <div className="mx-auto max-w-5xl space-y-4 px-8 py-6">
-        <UsersCard users={users} workspace="CA" canEdit={Boolean(me?.canEditCriteria)} />
+        <UsersCard users={users} workspace="CA" canEdit={Boolean(me?.canEditCriteria)} meId={me?.id} />
       </div>
     </>
   );

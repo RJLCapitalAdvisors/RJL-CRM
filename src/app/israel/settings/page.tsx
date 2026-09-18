@@ -13,7 +13,7 @@ export default async function IlSettingsPage() {
     <>
       <PageHeader title="Settings" subtitle="Who uses this side. Add a person by their @rjlisrael.com or @liviemisrael.com email and the invite goes out with the sign-in link." />
       <div className="mx-auto max-w-5xl space-y-4 px-8 py-6">
-        <UsersCard users={users} workspace="IL" canEdit={Boolean(me?.canEditCriteria)} />
+        <UsersCard users={users} workspace="IL" canEdit={Boolean(me?.canEditCriteria)} meId={me?.id} />
       </div>
     </>
   );
