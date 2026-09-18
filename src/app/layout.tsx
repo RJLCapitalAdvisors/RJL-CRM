@@ -25,7 +25,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body className={`flex min-h-screen ${isIsraelPath(pathname) ? "israel" : isAcquisitionsPath(pathname) ? "acquisitions" : ""}`}>
-        <WorkspaceSidebar user={user ? { name: user.name, workspaces: user.workspaces, accounts: user.accounts } : null} />
+        <WorkspaceSidebar user={user ? { name: user.name, workspaces: user.workspaces, granted: user.granted, accounts: user.accounts } : null} />
         <main className="min-w-0 flex-1">{children}</main>
       </body>
     </html>

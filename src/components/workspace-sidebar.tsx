@@ -51,12 +51,14 @@ const IL_NAV = [
  * highlighted and its pages are listed underneath. The body carries the `israel` class while you are in
  * RJL Israel so the accent turns royal blue.
  */
-export function WorkspaceSidebar({ user }: { user: { name: string; workspaces?: string[]; accounts?: Partial<Record<"CA" | "IL" | "AQ", string>> } | null }) {
+export function WorkspaceSidebar({ user }: { user: { name: string; workspaces?: string[]; granted?: string[]; accounts?: Partial<Record<"CA" | "IL" | "AQ", string>> } | null }) {
   // both logos always sit at the top. A side is faded until you sign in with the account for it (an
   // @rjlcapadvisors.com account for RJL Capital Advisors, an @rjlisrael.com account for RJL Israel); clicking a
   // faded tile starts that sign-in. Someone with both signs in twice. The team password opens both.
   const ws = user ? user.workspaces ?? [] : ["CA", "IL", "AQ"];
   const openCA = ws.includes("CA"), openIL = ws.includes("IL"), openAQ = ws.includes("AQ");
+  // the Acquisitions tile shows for anyone granted that side, faded until its sign-in (same @rjlcapadvisors.com account) unlocks it here
+  const showAQ = openAQ || !user || (user.granted ?? []).includes("AQ");
   const pathname = usePathname();
   const israel = isIsraelPath(pathname);
   const acquisitions = isAcquisitionsPath(pathname);
@@ -78,7 +80,7 @@ export function WorkspaceSidebar({ user }: { user: { name: string; workspaces?: 
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/israel-logo.svg" alt="RJL Israel" className="h-auto w-full" />
         </a>
-        {(openAQ || !user) && (
+        {showAQ && (
           <a href={openAQ ? "/acquisitions" : signIn("AQ", "/acquisitions")} aria-current={acquisitions && openAQ ? "page" : undefined} title={openAQ ? "RJL Acquisitions" : "Sign in with your @rjlcapadvisors.com account to open RJL Acquisitions"} className={`${tile(acquisitions, openAQ)} col-span-2 mx-auto w-1/2`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/acquisitions-logo.svg" alt="RJL Acquisitions" className="h-auto w-full" />
@@ -86,6 +88,7 @@ export function WorkspaceSidebar({ user }: { user: { name: string; workspaces?: 
         )}
       </div>
       {user && !(openCA && openIL) && <div className="px-4 pt-2 text-[11px] leading-snug text-muted">{openCA ? "RJL Israel is faded until you sign in with your @rjlisrael.com account. Click its logo." : "RJL Capital Advisors is faded until you sign in with your @rjlcapadvisors.com account. Click its logo."}</div>}
+      {user && showAQ && !openAQ && <div className="px-4 pt-2 text-[11px] leading-snug text-muted">RJL Acquisitions is faded until you click its logo and sign in once with your @rjlcapadvisors.com account.</div>}
       <div className="px-3 pt-3">{israel ? <Nav items={IL_NAV} apartmentSteps /> : acquisitions ? <Nav items={AQ_NAV} /> : <Nav items={CA_NAV} dealSteps />}</div>
       <div className="flex-1" />
       <div className="px-5 py-4 text-xs text-muted">
