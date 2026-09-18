@@ -35,6 +35,7 @@ const money = (v: unknown) => (v == null || v === "" ? "" : `$${Number(v).toLoca
 const asList = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : typeof v === "string" && v.trim().startsWith("[") ? (JSON.parse(v) as string[]) : typeof v === "string" && v ? v.split(/\r?\n/).filter(Boolean) : []);
 
 function Display({ col, value, row }: { col: GridColumn; value: unknown; row?: GridRow }) {
+  if (col.type === "tokens" && asList(value).length === 0) return <span className="rounded border border-dashed border-line px-2 py-0.5 text-[11px] text-muted">Set {col.label.toLowerCase()}</span>;
   if (value == null || value === "") return <span className="text-muted">—</span>;
   if (col.logoKey && (col.type === "text" || col.type === "select")) {
     const o = col.type === "select" ? col.options?.map(opt).find((x) => x.value === String(value)) : null;
@@ -57,13 +58,13 @@ function Display({ col, value, row }: { col: GridColumn; value: unknown; row?: G
       return <>{col.type === "date" || /^\d{4}-\d{2}-\d{2}T/.test(String(value)) ? fmtDate(value) : String(value)}</>;
     case "select": {
       const label = col.options?.map(opt).find((o) => o.value === String(value))?.label ?? String(value);
-      return col.tone ? <span className={`chip text-[10px] ${col.tone(String(value))}`}>{label}</span> : <>{label}</>;
+      return col.tone ? <span className={`chip text-[11px] ${col.tone(String(value))}`}>{label}</span> : <>{label}</>;
     }
     case "tokens":
       return (
         <span className="flex gap-1 overflow-hidden">
           {asList(value).map((t) => (
-            <span key={t} className={`chip text-[10px] ${col.tone ? col.tone(t) : "bg-cream text-ink"}`}>
+            <span key={t} className={`chip text-[11px] ${col.tone ? col.tone(t) : "bg-cream text-ink"}`}>
               {t}
             </span>
           ))}
@@ -141,17 +142,15 @@ function Editor({ col, value, onCommit, onCancel, onTab }: { col: GridColumn; va
           if (!e.currentTarget.contains(e.relatedTarget as Node)) commit();
         }}
       >
-        {(col.options ?? []).map(opt).map((o) => (
-          <label key={o.value} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-cream">
-            <input type="checkbox" checked={chosen.has(o.value)} onChange={() => toggle(o.value)} autoFocus={o === opt((col.options ?? [])[0])} />
-            {o.label}
+        {(col.options ?? []).map(opt).map((o, i) => (
+          <label key={o.value} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-cream">
+            <input type="checkbox" checked={chosen.has(o.value)} onChange={() => toggle(o.value)} autoFocus={i === 0} className="accent-ink" />
+            <span className={`chip text-[11px] ${col.tone ? col.tone(o.value) : "bg-cream text-ink"}`}>{o.label}</span>
           </label>
         ))}
-        <div className="mt-1 flex justify-end">
-          <button type="button" className="btn-primary px-2 py-0.5 text-xs" onClick={() => commit()}>
-            Done
-          </button>
-        </div>
+        <button type="button" className="mt-1 w-full rounded bg-ink px-2 py-1 text-xs text-white" onClick={() => commit()}>
+          Done
+        </button>
       </div>
     );
   }
