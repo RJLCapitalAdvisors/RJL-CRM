@@ -174,7 +174,7 @@ function Editor({ col, value, onCommit, onCancel, onTab }: { col: GridColumn; va
 }
 
 /** `linkKey` names the one column that opens the ticket instead of editing (the name); with it there is no separate open-arrow column. */
-export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothing here.", linkKey }: { id: string; columns: GridColumn[]; rows: GridRow[]; save: (rowId: string, key: string, value: string | null) => Promise<SaveResult>; empty?: string; linkKey?: string }) {
+export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothing here.", linkKey, zoom: zoomProp, onZoom, showTools = true, title }: { id: string; columns: GridColumn[]; rows: GridRow[]; save: (rowId: string, key: string, value: string | null) => Promise<SaveResult>; empty?: string; linkKey?: string; zoom?: number; onZoom?: (z: number) => void; showTools?: boolean; title?: string }) {
   const storageKey = `grid:${id}`;
   const [order, setOrder] = useState<string[]>(columns.map((c) => c.key));
   const [widths, setWidths] = useState<Record<string, number>>({});
@@ -185,7 +185,9 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
   const [, start] = useTransition();
-  const [zoom, setZoom] = useZoom(id);
+  const [ownZoom, setOwnZoom] = useZoom(id);
+  const zoom = zoomProp ?? ownZoom;
+  const setZoom = onZoom ?? setOwnZoom;
   const [toolsSlot, setToolsSlot] = useState<HTMLElement | null>(null);
   useEffect(() => setToolsSlot(document.getElementById("grid-tools")), []);
   const resizing = useRef<{ key: string; startX: number; startW: number } | null>(null);
@@ -303,8 +305,9 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {error && <div className="border-b border-red-200 bg-red-50 px-4 py-1.5 text-xs text-red-800">{error}</div>}
-      <div className="relative min-h-0 flex-1 overflow-auto">
-        {toolsSlot ? (
+      {title && <div className="border-b border-line bg-cream px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{title}</div>}
+      <div className="relative min-h-0 flex-1 overflow-auto" data-grid-scroll={id}>
+        {!showTools ? null : toolsSlot ? (
           createPortal(tools, toolsSlot)
         ) : (
           <div className="pointer-events-none sticky top-0 z-30 flex justify-end pr-2" style={{ height: 0 }}>
