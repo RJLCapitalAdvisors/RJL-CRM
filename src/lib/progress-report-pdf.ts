@@ -1,6 +1,6 @@
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
 import { loadReport } from "@/lib/tracker-report";
-import { investorLabel, statusOf } from "@/lib/tracker";
+import { investorLabel, reportNoteLines, statusOf } from "@/lib/tracker";
 import { logoBytes } from "@/lib/faq-pdf";
 
 /**
@@ -148,7 +148,7 @@ export async function buildProgressReportPdf(dealId: string): Promise<{ name: st
     const st = statusOf(r.status);
     const a = wrap(investorLabel(r.contact), reg, 9.5, cols[0] - pad * 2);
     const b = wrap(st.label, reg, 9.5, cols[1] - pad * 2);
-    const c = wrap(r.note ?? "", reg, 9.5, cols[2] - pad * 2);
+    const c = reportNoteLines(r.note, r.status).flatMap((l) => wrap(`\u2022 ${l}`, reg, 9.5, cols[2] - pad * 2));
     const h = Math.max(a.length, b.length, c.length) * 12.5 + pad * 2;
     if (y - h < PAGE.bottom) {
       newPage();

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { fmtMoney } from "@/lib/format";
 import { missingFor, itemLabel } from "@/lib/checklist";
 import { loadChecklist } from "@/lib/required-items";
-import { fmtReportDate, investorLabel } from "@/lib/tracker";
+import { fmtReportDate, investorLabel, rankOf } from "@/lib/tracker";
 
 /** Everything the progress report needs, shared by the in-app tracker, the sponsor view, and the export. */
 export async function loadReport(dealId: string) {
@@ -18,7 +18,8 @@ export async function loadReport(dealId: string) {
   });
   if (!deal) return null;
   const name = deal.propertyName ?? deal.name;
-  const rows = [...deal.investors].sort((a, b) => b.status - a.status || investorLabel(a.contact).localeCompare(investorLabel(b.contact)));
+  // report order: Intro Made at the top down to Not A Fit and Pass at the bottom (rank), then by firm
+  const rows = [...deal.investors].sort((a, b) => rankOf(b.status) - rankOf(a.status) || investorLabel(a.contact).localeCompare(investorLabel(b.contact)));
   const lastUpdated = deal.investors.reduce<Date>((m, r) => (r.updatedAt > m ? r.updatedAt : m), deal.updatedAt);
   const itemsNeeded = missingFor(deal).map((it) => itemLabel(it, deal.strategy));
   const chips = [

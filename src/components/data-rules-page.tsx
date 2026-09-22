@@ -2,7 +2,8 @@ import { PageHeader } from "@/components/ui";
 import { AutoSaveForm } from "@/components/autosave-form";
 import type { Workspace } from "@/lib/access";
 import { dataRulesText } from "@/lib/data-rules";
-import { saveDataRulesAction } from "@/app/ask/actions";
+import { saveDataRulesAction, saveReportRulesAction } from "@/app/ask/actions";
+import { reportRulesText } from "@/lib/report-rules";
 
 const NAMES: Record<Workspace, string> = { CA: "RJL Capital Advisors", IL: "RJL Israel", AQ: "RJL Acquisitions" };
 const ASK: Record<Workspace, string> = { CA: "/ask", IL: "/israel/ask", AQ: "/acquisitions/ask" };
@@ -15,14 +16,29 @@ const ASK: Record<Workspace, string> = { CA: "/ask", IL: "/israel/ask", AQ: "/ac
 export async function DataRulesPage({ workspace }: { workspace: Workspace }) {
   const { text, savedAt } = await dataRulesText(workspace);
   const count = text.split(/\r?\n/).filter((l) => l.trim()).length;
+  const report = workspace === "CA" ? await reportRulesText() : null;
   return (
     <>
-      <PageHeader title="Data rules" subtitle={`How Ask the CRM reads files dropped into ${NAMES[workspace]}: one rule per line, plain English. It saves as you type and the next file is read with it.`} />
+      <PageHeader title="Data rules" subtitle={workspace === "CA" ? "How progress reports are kept, and how Ask the CRM reads files. One rule per line, plain English; it saves as you type." : `How Ask the CRM reads files dropped into ${NAMES[workspace]}: one rule per line, plain English. It saves as you type and the next file is read with it.`} />
       <div className="mx-auto max-w-4xl space-y-4 px-8 py-6">
+        {report && (
+          <div className="card">
+            <div className="flex items-center justify-between border-b border-line bg-cream px-4 py-2">
+              <div className="text-sm font-semibold">
+                Progress report rules <span className="ml-1 font-normal text-muted">{report.text.split(/\r?\n/).filter((l) => l.trim()).length}</span>
+              </div>
+              <div className="text-[11px] text-muted">{report.savedAt ? `Last saved ${report.savedAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "Not edited yet: these are the rules given so far"}</div>
+            </div>
+            <AutoSaveForm action={saveReportRulesAction} className="p-4">
+              <textarea name="text" defaultValue={report.text} spellCheck className="input min-h-[360px] w-full resize-y text-[13px] leading-6" />
+              <div className="mt-2 text-xs text-muted">How the investor rows, Notable Feedback Themes and Items Needed from Sponsor are kept. The mechanical rules (statuses, what a pass keeps, bullets, order) are built into the code as written here; the wording rules go to the writer with every note, theme and item.</div>
+            </AutoSaveForm>
+          </div>
+        )}
         <div className="card">
           <div className="flex items-center justify-between border-b border-line bg-cream px-4 py-2">
             <div className="text-sm font-semibold">
-              Rules <span className="ml-1 font-normal text-muted">{count}</span>
+              {workspace === "CA" ? "File reading rules" : "Rules"} <span className="ml-1 font-normal text-muted">{count}</span>
             </div>
             <div className="text-[11px] text-muted">{savedAt ? `Last saved ${savedAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "Nothing taught yet"}</div>
           </div>

@@ -1,18 +1,30 @@
 // Investor progress tracker: the eight statuses from the legacy Google Drive progress report.
 
-export type TrackerStatus = { id: number; label: string; short: string; bg: string; c: string; d: string; meaning: string };
+export type TrackerStatus = { id: number; rank: number; label: string; short: string; bg: string; c: string; d: string; meaning: string };
 
-// Labels and cell colors copied from the Word progress reports Jonathan sends sponsors.
-export const TRACKER_STATUSES: TrackerStatus[] = [
-  { id: 1, label: "1. Deal Not Sent", short: "Deal Not Sent", bg: "#e6e6e6", c: "#3d3d3d", d: "#3d3d3d", meaning: "Not yet reached" },
-  { id: 2, label: "2. Deal Sent - Awaiting Response", short: "Deal Sent", bg: "#e6cff2", c: "#5a3286", d: "#5a3286", meaning: "Materials sent, no response" },
-  { id: 3, label: "3. Followed Up After No Response", short: "Followed Up", bg: "#ffe5a0", c: "#473821", d: "#473821", meaning: "Follow-up sent, awaiting" },
-  { id: 4, label: "4. Taking A Look", short: "Taking A Look", bg: "#d4edbc", c: "#11734b", d: "#11734b", meaning: "Active review in progress" },
-  { id: 5, label: "5. Interested", short: "Interested", bg: "#bfe0f6", c: "#0a53a8", d: "#0a53a8", meaning: "Expressed interest" },
-  { id: 6, label: "6. Intro Made", short: "Intro Made", bg: "#0a53a8", c: "#bfe0f6", d: "#bfe0f6", meaning: "Sponsor intro completed" },
-  { id: 7, label: "7. Not A Fit", short: "Not A Fit", bg: "#ffcfc9", c: "#b10202", d: "#b10202", meaning: "Soft decline / wrong focus" },
-  { id: 8, label: "8. Pass", short: "Pass", bg: "#ffcfc9", c: "#b10202", d: "#b10202", meaning: "Hard pass / declined" },
+// Labels and cell colors copied from the Word progress reports Jonathan sends sponsors. `id` is what the database
+// stores and the code compares (never renumbered); `rank` is the number the report prints and sorts by: Pass and
+// Not A Fit are 1 and 2 so they always sit at the bottom, Intro Made is 8 at the top (Jonathan, Sep 22, 2026).
+const STATUS_ROWS: Omit<TrackerStatus, "label">[] = [
+  { id: 1, rank: 3, short: "Deal Not Sent", bg: "#e6e6e6", c: "#3d3d3d", d: "#3d3d3d", meaning: "Not yet reached" },
+  { id: 2, rank: 4, short: "Deal Sent - Awaiting Response", bg: "#e6cff2", c: "#5a3286", d: "#5a3286", meaning: "Materials sent, no response" },
+  { id: 3, rank: 5, short: "Followed Up After No Response", bg: "#ffe5a0", c: "#473821", d: "#473821", meaning: "Follow-up sent, awaiting" },
+  { id: 4, rank: 6, short: "Taking A Look", bg: "#d4edbc", c: "#11734b", d: "#11734b", meaning: "Active review in progress" },
+  { id: 5, rank: 7, short: "Interested", bg: "#bfe0f6", c: "#0a53a8", d: "#0a53a8", meaning: "Expressed interest" },
+  { id: 6, rank: 8, short: "Intro Made", bg: "#0a53a8", c: "#bfe0f6", d: "#bfe0f6", meaning: "Sponsor intro completed" },
+  { id: 7, rank: 2, short: "Not A Fit", bg: "#ffcfc9", c: "#b10202", d: "#b10202", meaning: "Soft decline / wrong focus" },
+  { id: 8, rank: 1, short: "Pass", bg: "#ffcfc9", c: "#b10202", d: "#b10202", meaning: "Hard pass / declined" },
+  { id: 9, rank: 9, short: "Term Sheet Issued", bg: "#11734b", c: "#d4edbc", d: "#d4edbc", meaning: "The group issued a term sheet" },
 ];
+export const STATUS_INTRO_MADE = 6;
+export const STATUS_PASS = 8;
+export const STATUS_TERM_SHEET = 9;
+/** Groups owed nothing on Items Needed from Sponsor: passed, not a fit, or already at a term sheet (Jonathan, Sep 22, 2026). */
+export const owedNothing = (status: number) => status === 7 || status === 8 || status === 9;
+export const TRACKER_STATUSES: TrackerStatus[] = STATUS_ROWS.map((s) => ({ ...s, label: `${s.rank}. ${s.short}`, short: s.short.split(" - ")[0].replace(" After No Response", "") }));
+/** The statuses in report order, top to bottom: Intro Made first, Pass last. */
+export const TRACKER_STATUSES_BY_RANK = [...TRACKER_STATUSES].sort((a, b) => b.rank - a.rank);
+export const rankOf = (id: number) => statusOf(id).rank;
 
 export const STATUS_SENT = 2;
 export const STATUS_FOLLOWED_UP = 3;
@@ -78,3 +90,21 @@ export function mergeNote(existing: string | null | undefined, note: string): st
 export function dedupeNote(existing: string | null | undefined): string | null {
   return normalizeNote((existing ?? "").split(" | "));
 }
+/** The note as its entries, oldest first. */
+export const noteSegments = (note: string | null | undefined): string[] => (note ?? "").split(" | ").map((x) => x.trim()).filter(Boolean);
+/**
+ * Once a group passes (or is not a fit), the report keeps only the reason for the pass (Jonathan, Sep 22, 2026):
+ * the entries written on the day of the last one, which is the passing email; everything earlier goes. Without date
+ * tags, the last entry stays.
+ */
+export function passReasonOnly(note: string | null | undefined): string | null {
+  // (status 9, a term sheet, keeps its notes; only 7 and 8 prune)
+  const segs = noteSegments(note);
+  if (segs.length <= 1) return segs[0] ?? null;
+  const last = segs[segs.length - 1];
+  const tag = last.match(/\((\w{3} \d{1,2})\)\s*$/)?.[1];
+  const kept = tag ? segs.filter((s) => s.endsWith(`(${tag})`)) : [last];
+  return kept.join(" | ");
+}
+/** What a progress report prints for a row: every entry as its own bullet; a passed or not-a-fit row shows only the reason. */
+export const reportNoteLines = (note: string | null | undefined, status: number): string[] => noteSegments(status === 7 || status === 8 ? passReasonOnly(note) : note);

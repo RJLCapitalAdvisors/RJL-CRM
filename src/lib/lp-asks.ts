@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db";
 import { isSponsorSide } from "@/lib/report-guard";
 import { graph } from "@/lib/graph";
 import { ACTIVE_STAGES, isBlindIntro, isLegacyIntroTicket } from "@/lib/taxonomy";
-import { mergeNote } from "@/lib/tracker";
+import { mergeNote, passReasonOnly } from "@/lib/tracker";
+import { loadReportRules } from "@/lib/report-rules";
 import { stripDashes } from "@/lib/style";
 import { houseSubjectMatches, subjectMatchesDeal } from "@/lib/deal-match";
 
@@ -93,7 +94,7 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
       const res = await client.messages.parse({
         model: "claude-sonnet-5",
         max_tokens: 500,
-        system: `An investor (LP) emailed RJL Capital Advisors, a real estate capital advisor that has sent them the deals listed under DEALS. Decide which deal the email is about (${known}) and extract what they asked for and where they stand on that deal. Only real requests; ignore pleasantries. If the email is an auto-reply or out-of-office, return no asks and stance unclear.`,
+        system: `An investor (LP) emailed RJL Capital Advisors, a real estate capital advisor that has sent them the deals listed under DEALS. Decide which deal the email is about (${known}) and extract what they asked for and where they stand on that deal. Only real requests; ignore pleasantries. If the email is an auto-reply or out-of-office, return no asks and stance unclear.\n\nHouse rules for progress reports (Settings > Data rules):\n${(await loadReportRules()).map((r) => "- " + r).join("\n")}`,
         messages: [{ role: "user", content: `DEALS:\n${list}\n\nFrom ${a.company?.name} (${[a.contact?.firstName, a.contact?.lastName].filter(Boolean).join(" ")}), subject "${a.subject ?? ""}":\n\n${body}` }],
         output_config: { format: zodOutputFormat(Out) },
       });
@@ -135,11 +136,21 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const mentionsHere = here ? names(here).some((w) => noteText.toLowerCase().includes(w)) : false;
     const mentionsOther = candidates.filter((x) => x.id !== dealId).some((x) => names(x).some((w) => noteText.toLowerCase().includes(w)));
     const noteForThisDeal = noteText && !(mentionsOther && !mentionsHere) ? noteText : "";
+    // what they asked the sponsor for belongs on the report too (Corebridge's nine questions had no note of their own, Sep 22)
+    const askLine = parsed.asks.length && parsed.stance !== "pass" ? `Requested: ${parsed.asks.map((x) => stripDashes(x).replace(/\.$/, "")).join("; ")}` : "";
+    // an acknowledgement alone ("thanks, received") is not a note; the requests still are (Corebridge, Sep 22)
+    const substantive = noteForThisDeal && !/^(confirmed receipt|acknowledged|received|thanks?)\b/i.test(noteForThisDeal) ? noteForThisDeal.replace(/\.$/, "") : "";
     for (const r of reportRows) {
-      const cleaned = noteForThisDeal;
-      const note = cleaned && !/^(confirmed receipt|acknowledged|received|thanks?)\b/i.test(cleaned) ? `${cleaned} (${dateTag})` : null;
+      const cleaned = [substantive, askLine].filter(Boolean).join(". ");
+      const note = cleaned ? `${cleaned} (${dateTag})` : null;
       const extras = new Set<string>([...(r.extraContactIds ? (JSON.parse(r.extraContactIds) as string[]) : []), ...loopedIn.filter((id) => id !== r.contactId)]);
-      await prisma.dealInvestor.update({ where: { id: r.id }, data: { ...(note ? { note: mergeNote(r.note, note), noteDate: a.occurredAt } : {}), ...(newStatus && newStatus > r.status && r.status < 6 ? { status: newStatus } : {}), ...(loopedIn.length ? { extraContactIds: JSON.stringify([...extras]) } : {}), updatedAt: a.occurredAt } });
+      // a pass always lands, whatever the row said before (MLG passed after an intro call and the row stayed at Intro Made, Sep 22);
+      // other stances only move a row forward and never past Intro Made
+      const moves = newStatus != null && (newStatus === 8 ? r.status !== 8 : newStatus > r.status && r.status < 6);
+      const mergedNote = note ? mergeNote(r.note, note) : r.note;
+      const finalNote = moves && newStatus === 8 ? passReasonOnly(mergedNote) : mergedNote;
+      if (moves && newStatus === 8 && finalNote !== mergedNote) await prisma.activity.create({ data: { type: "NOTE", dealId, contactId: r.contactId, body: `Report notes before the pass (kept off the report): ${mergedNote}` } }).catch(() => null);
+      await prisma.dealInvestor.update({ where: { id: r.id }, data: { ...(note ? { noteDate: a.occurredAt } : {}), ...(finalNote !== r.note ? { note: finalNote } : {}), ...(moves ? { status: newStatus } : {}), ...(loopedIn.length ? { extraContactIds: JSON.stringify([...extras]) } : {}), updatedAt: a.occurredAt } });
     }
     if (parsed.asks.length) {
       // anything the sponsor already told us (Questions answered on the ticket) gets surfaced with the ask

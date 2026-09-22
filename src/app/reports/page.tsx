@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { CompanyLogo } from "@/components/company-logo";
 import { REPORT_STAGES } from "@/lib/taxonomy";
-import { AWAITING_RESPONSE, TRACKER_STATUSES } from "@/lib/tracker";
+import { AWAITING_RESPONSE, TRACKER_STATUSES_BY_RANK } from "@/lib/tracker";
 import { fmtDate } from "@/lib/format";
 import { reportActive, reportQualifies } from "@/lib/report-active";
 import { Item, ItemForm } from "@/app/dash-item";
@@ -81,7 +81,7 @@ export default async function ReportsPage() {
                   <td className="text-center">{responded || <span className="text-muted">—</span>}</td>
                   <td>
                     <div className="flex flex-wrap gap-1">
-                      {[...TRACKER_STATUSES].reverse().map((s) => {
+                      {TRACKER_STATUSES_BY_RANK.map((s) => {
                         const n = counts.get(s.id) ?? 0;
                         return n ? (
                           <span key={s.id} className="chip text-[10px]" style={{ background: s.bg, color: s.c }}>

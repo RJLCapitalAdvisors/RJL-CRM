@@ -289,6 +289,8 @@ export function kickMailSync(minMinutes = 3) {
     await pumpAllLaunches().catch(() => 0); // a launch left running when the Send deal page was closed
     const { scanAllIntros } = await import("@/lib/intros");
     await scanAllIntros().catch(() => ({}));
+    const { detectIntroCalls } = await import("@/lib/intro-calls");
+    await detectIntroCalls().catch(() => ({})); // a recorded or calendared call with a group moves its row to Intro Made
   };
   import("next/server")
     .then(({ after }) => after(run))

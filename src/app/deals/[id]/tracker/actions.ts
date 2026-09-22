@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { sponsorSideIds } from "@/lib/report-guard";
 import { logActivity } from "@/lib/activity";
-import { AWAITING_RESPONSE, statusOf } from "@/lib/tracker";
+import { AWAITING_RESPONSE, statusOf, passReasonOnly } from "@/lib/tracker";
 import { generateTrackerSummary } from "@/lib/tracker-summary";
 import { proposeCriteriaChanges } from "@/lib/criteria-proposals";
 
@@ -39,8 +39,12 @@ export async function regenerateTrackerSummary(dealId: string) {
 }
 
 export async function setTrackerStatus(rowId: string, status: number) {
-  if (!statusOf(status) || status < 1 || status > 8) return;
-  const row = await prisma.dealInvestor.update({ where: { id: rowId }, data: { status } });
+  if (!statusOf(status) || status < 1 || status > 9) return;
+  const before = await prisma.dealInvestor.findUnique({ where: { id: rowId }, select: { note: true } });
+  // a pass or not-a-fit keeps only the reason on the report; the earlier entries go to the deal's log
+  const kept = status === 7 || status === 8 ? passReasonOnly(before?.note) : before?.note ?? null;
+  const row = await prisma.dealInvestor.update({ where: { id: rowId }, data: { status, ...(kept !== (before?.note ?? null) ? { note: kept } : {}) } });
+  if (kept !== (before?.note ?? null) && before?.note) await logActivity({ type: "NOTE", body: `Report notes before the pass (kept off the report): ${before.note}`, contactId: row.contactId, dealId: row.dealId });
   await logActivity({ type: "NOTE", body: `Tracker: ${statusOf(status).short}`, contactId: row.contactId, dealId: row.dealId });
   touch(row.dealId);
   if (row.note) summarizeLater(row.dealId);

@@ -51,8 +51,8 @@ export default async function IsraelQueuePage() {
                 <th className="text-right">₪ / m²</th>
                 <th>Built / delivery</th>
                 <th>Received</th>
-                <th>Still needed</th>
-                <th></th>
+                <th className="w-[340px]">Still needed</th>
+                <th className="w-[150px]"></th>
               </tr>
             </thead>
             <tbody>
@@ -90,17 +90,25 @@ export default async function IsraelQueuePage() {
                     {r.from ? ` · ${r.from}` : ""}
                     {r.source ? ` · ${r.source}` : ""}
                   </td>
-                  <td className="max-w-[260px] text-xs">
+                  <td className="w-[340px] max-w-[340px] whitespace-normal text-xs leading-5">
                     {r.missing.length === 0 ? (
-                      <span className="text-emerald-700">Complete</span>
+                      <span className="chip bg-emerald-100 text-[11px] text-emerald-900">Complete</span>
                     ) : (
-                      <span className="text-amber-800" title={r.missing.join(", ")}>
-                        {r.missing.length} missing: <span className="text-ink-soft">{r.missing.join(", ")}</span>
-                      </span>
+                      <details className="group">
+                        <summary className="cursor-pointer list-none">
+                          <span className="chip bg-amber-100 text-[11px] text-amber-900">{r.missing.length} missing</span>
+                          <span className="ml-2 text-muted group-open:hidden">{r.missing.slice(0, 3).join(", ")}{r.missing.length > 3 ? ", …" : ""}</span>
+                        </summary>
+                        <ul className="mt-1 list-disc pl-5 text-ink-soft">
+                          {r.missing.map((m) => (
+                            <li key={m}>{m}</li>
+                          ))}
+                        </ul>
+                      </details>
                     )}
-                    {r.requestedAt && <div className="text-muted">Approved by {r.requestedBy} {fmtDate(r.requestedAt)}; waiting on Jonathan</div>}
+                    {r.requestedAt && <div className="mt-1 text-muted">Approved by {r.requestedBy} {fmtDate(r.requestedAt)}; waiting on Jonathan</div>}
                   </td>
-                  <td className="text-right">{r.requestedAt ? <span className="text-xs text-muted">On the dashboard</span> : <QueueApprove kind={r.kind} id={r.id} missing={r.missing.length} />}</td>
+                  <td className="w-[150px] whitespace-nowrap text-right align-top">{r.requestedAt ? <span className="text-xs text-muted">On the dashboard</span> : <QueueApprove kind={r.kind} id={r.id} missing={r.missing.length} />}</td>
                 </tr>
               ))}
               {rows.length === 0 && (

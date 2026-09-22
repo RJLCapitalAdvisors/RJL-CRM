@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui";
 import { AttachmentList } from "@/components/attachment-list";
 import { progressReportFileName } from "@/lib/progress-report-pdf";
 import { ReportView } from "@/components/report-view";
-import { AWAITING_RESPONSE, TRACKER_STATUSES, fmtReportDate } from "@/lib/tracker";
+import { AWAITING_RESPONSE, TRACKER_STATUSES_BY_RANK, fmtReportDate } from "@/lib/tracker";
 import { GrowingTextarea } from "@/components/growing-textarea";
 import { DraftButton } from "@/app/draft-button";
 import { openReportDraftAction } from "@/app/todo-actions";
@@ -74,7 +74,7 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
           <Link href={`/deals/${deal.id}/tracker`} className={`rounded-full border px-2.5 py-0.5 ${statusFilter === 0 ? "border-ink bg-ink text-white" : "border-line text-muted hover:bg-cream"}`}>
             All ({deal.investors.length})
           </Link>
-          {[...TRACKER_STATUSES].reverse().map((s) => {
+          {TRACKER_STATUSES_BY_RANK.map((s) => {
             const n = counts.get(s.id) ?? 0;
             if (!n) return null;
             const active = statusFilter === s.id;

@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { Report } from "@/lib/tracker-report";
-import { investorLabel, personLabel, statusOf } from "@/lib/tracker";
+import { investorLabel, personLabel, statusOf, reportNoteLines } from "@/lib/tracker";
 
 /**
  * The progress report, laid out exactly like the Word reports Jonathan sends sponsors:
@@ -122,7 +122,19 @@ export function ReportView({ report, slots = {} }: { report: Report; slots?: Rep
                   {person && person !== investorLabel(r.contact) && <div style={{ fontSize: "8.5pt", color: "#666" }}>{person}</div>}
                 </td>
                 <td style={{ ...S.td, background: st.bg, color: st.c }}>{slots.statusCell ? slots.statusCell(r) : st.label}</td>
-                <td style={S.td}>{slots.noteCell ? slots.noteCell(r) : r.note}</td>
+                <td style={S.td}>
+                  {slots.noteCell ? (
+                    slots.noteCell(r)
+                  ) : (
+                    <ul style={{ margin: 0, paddingLeft: 14 }}>
+                      {reportNoteLines(r.note, r.status).map((l, i) => (
+                        <li key={i} style={{ margin: "0 0 2px" }}>
+                          {l}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </td>
                 {slots.rowEnd && <td style={{ ...S.td, border: 0, padding: "5px 0 0 6px", color: "#999" }}>{slots.rowEnd(r)}</td>}
               </tr>
             );

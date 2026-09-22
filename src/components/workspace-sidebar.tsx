@@ -39,7 +39,8 @@ const IL_NAV = [
   { href: "/israel/queue", label: "The Que", icon: Inbox },
   { href: "/israel/projects", label: "Projects", icon: Building2 },
   { href: "/israel/apartments", label: "Apartments", icon: Building2 },
-  { href: "/israel/houses", label: "Houses", icon: Home },
+  { href: "/israel/houses", label: "Houses", icon: Home, except: ["/israel/houses/map"] },
+  { href: "/israel/houses/map", label: "Map View", icon: Map },
   { href: "/israel/companies", label: "Companies", icon: Building2 },
   { href: "/israel/contacts", label: "Contacts", icon: Users },
   { href: "/israel/deals", label: "Deals", icon: KanbanSquare },
@@ -114,12 +115,12 @@ export function WorkspaceSidebar({ user }: { user: { name: string; workspaces?: 
   );
 }
 
-function Nav({ items, dealSteps = false, apartmentSteps = false, propertySteps = false }: { items: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; exact?: boolean }[]; dealSteps?: boolean; apartmentSteps?: boolean; propertySteps?: boolean }) {
+function Nav({ items, dealSteps = false, apartmentSteps = false, propertySteps = false }: { items: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; exact?: boolean; except?: string[] }[]; dealSteps?: boolean; apartmentSteps?: boolean; propertySteps?: boolean }) {
   return (
     <nav className="flex flex-col gap-1 pb-2">
       {items.map((n) => (
         <div key={n.href}>
-          <NavLink href={n.href} exact={n.exact}>
+          <NavLink href={n.href} exact={n.exact} except={n.except}>
             <n.icon className="h-4 w-4" />
             {n.label}
           </NavLink>
@@ -139,12 +140,9 @@ function Nav({ items, dealSteps = false, apartmentSteps = false, propertySteps =
             </Suspense>
           )}
           {apartmentSteps && n.href === "/israel/houses" && (
-            <>
-              <IlHousesSubnav />
-              <Suspense fallback={null}>
-                <ApartmentContextNav section="houses" />
-              </Suspense>
-            </>
+            <Suspense fallback={null}>
+              <ApartmentContextNav section="houses" />
+            </Suspense>
           )}
         </div>
       ))}
@@ -206,27 +204,6 @@ function SideSettingsSubnav({ base }: { base: string }) {
   const items = [
     { href: base, label: "Users", icon: Users, on: !onData },
     { href: base + "/data-rules", label: "Data rules", icon: Table2, on: onData },
-  ];
-  return (
-    <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
-      {items.map((s) => (
-        <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${s.on ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
-          <s.icon className="h-3.5 w-3.5" />
-          {s.label}
-        </Link>
-      ))}
-    </div>
-  );
-}
-
-/** Under Houses on the Israel side: the list and the Map View (every unit pinned). Shows while you are on either page. */
-function IlHousesSubnav() {
-  const pathname = usePathname();
-  if (!pathname.startsWith("/israel/houses")) return null;
-  const onMap = pathname.startsWith("/israel/houses/map");
-  const items = [
-    { href: "/israel/houses", label: "Houses", icon: Home, on: !onMap },
-    { href: "/israel/houses/map", label: "Map View", icon: Map, on: onMap },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">

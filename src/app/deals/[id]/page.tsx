@@ -6,7 +6,7 @@ import { DealForm } from "@/components/deal-form";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { CompanyLogo } from "@/components/company-logo";
 import { fmtDate, fmtMoney, fullName } from "@/lib/format";
-import { TRACKER_STATUSES, investorLabel, statusOf } from "@/lib/tracker";
+import { TRACKER_STATUSES_BY_RANK, investorLabel, statusOf } from "@/lib/tracker";
 import { addDealNote, deleteFact, updateDeal , toggleFactFaq } from "../actions";
 import { StageSelect } from "./stage-select";
 import { AttachmentList } from "@/components/attachment-list";
@@ -175,7 +175,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             ) : (
               <>
                 <div className="flex flex-wrap gap-1 px-4 py-3">
-                  {[...TRACKER_STATUSES].reverse().map((s) => {
+                  {TRACKER_STATUSES_BY_RANK.map((s) => {
                     const n = counts.get(s.id) ?? 0;
                     return n ? (
                       <span key={s.id} className="chip text-[11px]" style={{ background: s.bg, color: s.c }}>

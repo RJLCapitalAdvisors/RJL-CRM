@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { TRACKER_STATUSES, statusOf } from "@/lib/tracker";
+import { TRACKER_STATUSES_BY_RANK, noteSegments, normalizeNote, statusOf } from "@/lib/tracker";
 import { saveTrackerNote, setTrackerStatus } from "./actions";
 import { GrowingTextarea } from "@/components/growing-textarea";
 
@@ -17,7 +17,7 @@ export function StatusBadge({ rowId, status }: { rowId: string; status: number }
       </button>
       {open && (
         <div className="absolute left-0 z-20 mt-1 w-64 overflow-hidden border border-black bg-white shadow-lg">
-          {[...TRACKER_STATUSES].reverse().map((s) => (
+          {TRACKER_STATUSES_BY_RANK.map((s) => (
             <button
               key={s.id}
               type="button"
@@ -43,12 +43,13 @@ export function StatusBadge({ rowId, status }: { rowId: string; status: number }
 export function NoteCell({ rowId, note }: { rowId: string; note: string | null }) {
   return (
     <GrowingTextarea
-      defaultValue={note}
+      defaultValue={noteSegments(note).join("\n")}
       placeholder="Add note"
       className="text-[10.5pt]"
+      bullets
       onSave={async (v) => {
         const fd = new FormData();
-        fd.set("note", v);
+        fd.set("note", normalizeNote(v.split("\n")) ?? "");
         await saveTrackerNote(rowId, fd);
       }}
     />

@@ -6,6 +6,7 @@ import { currentUser } from "@/lib/current-user";
 import type { Workspace } from "@/lib/access";
 import { assistantTurn, attachmentText, parseSpreadsheet, runImport, type Attachment, type HistoryMessage, type ImportResult, type Proposal } from "@/lib/assistant";
 import { saveDataRulesText } from "@/lib/data-rules";
+import { saveReportRulesText } from "@/lib/report-rules";
 
 export type { Workspace };
 export type ThreadSummary = { id: string; title: string; updatedAt: string };
@@ -139,6 +140,12 @@ export async function renameThread(threadId: string, title: string) {
   const t = title.trim().slice(0, 80);
   if (!t) return;
   await prisma.chatThread.updateMany({ where: { id: threadId, userId: key }, data: { title: t } });
+}
+
+/** Settings > Data rules (RJL CA): the progress report rules, saved as typed; the next note, theme or item is written with them. */
+export async function saveReportRulesAction(fd: FormData) {
+  await saveReportRulesText(String(fd.get("text") ?? ""));
+  revalidatePath("/settings/data-rules");
 }
 
 /** Settings > Data rules: the whole list, saved as typed. */
