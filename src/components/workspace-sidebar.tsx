@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks, BookOpen, Table2, Inbox, Map } from "lucide-react";
 import { NavLink } from "@/components/nav-link";
@@ -135,6 +135,11 @@ function Nav({ items, dealSteps = false, apartmentSteps = false, propertySteps =
           {apartmentSteps && n.href === "/israel/templates" && <IlTemplatesSubnav />}
           {apartmentSteps && n.href === "/israel/settings" && <SideSettingsSubnav base="/israel/settings" />}
           {propertySteps && n.href === "/acquisitions/settings" && <SideSettingsSubnav base="/acquisitions/settings" />}
+          {propertySteps && n.href === "/acquisitions/contacts" && (
+            <Suspense fallback={null}>
+              <AqContactsSubnav />
+            </Suspense>
+          )}
           {apartmentSteps && n.href === "/israel/apartments" && (
             <Suspense fallback={null}>
               <ApartmentContextNav section="apartments" />
@@ -190,6 +195,28 @@ function SettingsSubnav() {
       {items.map((s) => (
         <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${s.on ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
           <s.icon className="h-3.5 w-3.5" />
+          {s.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/** Under Contacts on the Acquisitions side, always open: Owners and Operators, the list filtered to that role (Jonathan, Sep 22, 2026). */
+function AqContactsSubnav() {
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const onContacts = pathname === "/acquisitions/contacts";
+  const roles = onContacts ? params.getAll("role") : [];
+  const items = [
+    { href: "/acquisitions/contacts?role=Owner", label: "Owners", on: roles.length === 1 && roles[0] === "Owner" },
+    { href: "/acquisitions/contacts?role=Operator", label: "Operators", on: roles.length === 1 && roles[0] === "Operator" },
+  ];
+  return (
+    <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
+      {items.map((s) => (
+        <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${s.on ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
+          <Users className="h-3.5 w-3.5" />
           {s.label}
         </Link>
       ))}

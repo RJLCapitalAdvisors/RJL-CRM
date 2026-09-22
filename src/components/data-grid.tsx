@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { GripVertical } from "lucide-react";
 import { CompanyLogo } from "@/components/company-logo";
@@ -185,6 +186,8 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
   const [dropKey, setDropKey] = useState<string | null>(null);
   const [, start] = useTransition();
   const [zoom, setZoom] = useZoom(id);
+  const [toolsSlot, setToolsSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setToolsSlot(document.getElementById("grid-tools")), []);
   const resizing = useRef<{ key: string; startX: number; startW: number } | null>(null);
 
   useEffect(() => setRows(initialRows), [initialRows]);
@@ -280,27 +283,34 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
     if (next) setTimeout(() => setEditing({ rowId, key: next }), 0);
   };
 
+  const tools = (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        className="rounded-md border border-line bg-paper px-2 py-1 text-[11px] text-muted shadow-sm hover:bg-cream"
+        title="Put the columns back in their original order and width"
+        onClick={() => {
+          setOrder(columns.map((c) => c.key));
+          setWidths({});
+          remember(columns.map((c) => c.key), {});
+        }}
+      >
+        Reset columns
+      </button>
+      <ZoomControls zoom={zoom} setZoom={setZoom} />
+    </div>
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {error && <div className="border-b border-red-200 bg-red-50 px-4 py-1.5 text-xs text-red-800">{error}</div>}
       <div className="relative min-h-0 flex-1 overflow-auto">
-        <div className="pointer-events-none sticky top-0 z-30 flex justify-end pr-2" style={{ height: 0 }}>
-          <div className="pointer-events-auto mt-1 flex items-center gap-1">
-            <button
-              type="button"
-              className="rounded-md border border-line bg-paper px-2 py-1 text-[11px] text-muted shadow-sm hover:bg-cream"
-              title="Put the columns back in their original order and width"
-              onClick={() => {
-                setOrder(columns.map((c) => c.key));
-                setWidths({});
-                remember(columns.map((c) => c.key), {});
-              }}
-            >
-              Reset columns
-            </button>
-            <ZoomControls zoom={zoom} setZoom={setZoom} />
+        {toolsSlot ? (
+          createPortal(tools, toolsSlot)
+        ) : (
+          <div className="pointer-events-none sticky top-0 z-30 flex justify-end pr-2" style={{ height: 0 }}>
+            <div className="pointer-events-auto mt-1">{tools}</div>
           </div>
-        </div>
+        )}
         <table className="table dense grid-table" style={{ width: total, minWidth: "100%", tableLayout: "fixed", zoom }}>
           <colgroup>
             {!linkKey && <col style={{ width: 36 }} />}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Minus, Plus } from "lucide-react";
 
 /**
@@ -52,13 +53,18 @@ export function ZoomControls({ zoom, setZoom, className = "" }: { zoom: number; 
 /** Wrap the content of a data window: the controls sit in the top-right corner and the content scales. */
 export function ZoomBox({ id, children }: { id: string; children: React.ReactNode }) {
   const [zoom, setZoom] = useZoom(id);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setSlot(document.getElementById("zoom-tools")), []);
+  const controls = <ZoomControls zoom={zoom} setZoom={setZoom} />;
   return (
     <div className="relative">
-      <div className="pointer-events-none sticky top-0 z-30 flex justify-end pr-2" style={{ height: 0 }}>
-        <div className="pointer-events-auto mt-1">
-          <ZoomControls zoom={zoom} setZoom={setZoom} />
+      {slot ? (
+        createPortal(controls, slot)
+      ) : (
+        <div className="pointer-events-none sticky top-0 z-30 flex justify-end pr-2" style={{ height: 0 }}>
+          <div className="pointer-events-auto mt-1">{controls}</div>
         </div>
-      </div>
+      )}
       <div style={{ zoom }}>{children}</div>
     </div>
   );

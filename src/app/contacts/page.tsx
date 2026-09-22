@@ -72,7 +72,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
         }
       />
       <div className="px-8 py-4">
-        <ListFilters basePath="/contacts" initial={{ q, roles, assets }} placeholder="Search name, email, phone, or company" />
+        <div className="flex flex-wrap items-center gap-3"><ListFilters basePath="/contacts" initial={{ q, roles, assets }} placeholder="Search name, email, phone, or company" /><div id="zoom-tools" className="ml-auto" /></div>
       </div>
       <div className="mx-8 flex h-[calc(100vh-150px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <div className="min-h-0 flex-1 overflow-auto">
