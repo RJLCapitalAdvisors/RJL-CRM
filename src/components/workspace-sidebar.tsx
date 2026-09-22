@@ -202,7 +202,7 @@ function SettingsSubnav() {
   );
 }
 
-/** Under Contacts on the Acquisitions side, always open: Owners and Operators, the list filtered to that role (Jonathan, Sep 22, 2026). */
+/** Under Contacts on the Acquisitions side, always open: Owners, Operators and Buyers, the list filtered to that role (Jonathan, Sep 22, 2026). */
 function AqContactsSubnav() {
   const pathname = usePathname();
   const params = useSearchParams();
@@ -211,6 +211,7 @@ function AqContactsSubnav() {
   const items = [
     { href: "/acquisitions/contacts?role=Owner", label: "Owners", on: roles.length === 1 && roles[0] === "Owner" },
     { href: "/acquisitions/contacts?role=Operator", label: "Operators", on: roles.length === 1 && roles[0] === "Operator" },
+    { href: "/acquisitions/contacts?role=Buyer", label: "Buyers", on: roles.length === 1 && roles[0] === "Buyer" },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
