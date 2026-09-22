@@ -1088,6 +1088,16 @@ model AqProperty {
   primaryEmail        String?
   emails              String?  // from public record, one per line
   ownerMailingAddress String?
+  ownerContactId      String?  // the contact ticket made from the owner fields (kept in step by syncPropertyPeople)
+  operatorEntity      String?  // the business operating at the property, as a company
+  operatorName        String?  // the person running it
+  operatorPhone       String?
+  operatorSecondaryPhone String?
+  operatorOtherPhones String?  // one per line
+  operatorEmail       String?
+  operatorEmails      String?  // one per line
+  operatorMailingAddress String?
+  operatorContactId   String?  // the contact ticket made from the operator fields
   acreage             Float?
   squareFeet          Int?     // gross SF
   yearBuilt           Int?

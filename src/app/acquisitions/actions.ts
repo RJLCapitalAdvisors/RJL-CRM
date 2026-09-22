@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { AQ_ASSET_TYPES, AQ_ROLES, AQ_STAGES, digitsOf, ensureLlc, lines, mergeAqRoles, parseJsonList, toJsonList } from "@/lib/acquisitions";
 import { US_STATES } from "@/lib/taxonomy";
 import { forgetAqGeo } from "@/lib/aq-geocode";
+import { dropPhoneFromPeople, syncPropertyPeople } from "@/lib/aq-people";
 import { getAqDealStages, saveAqDealStages } from "@/lib/acquisitions-stages";
 
 const s = (fd: FormData, k: string) => {
@@ -149,6 +150,14 @@ function propertyData(fd: FormData, dealStages: string[]) {
       primaryEmail: s(fd, "primaryEmail")?.toLowerCase() ?? null,
       emails: lines(s(fd, "emails")).map((e) => e.toLowerCase()).join("\n") || null,
       ownerMailingAddress: s(fd, "ownerMailingAddress"),
+      operatorEntity: s(fd, "operatorEntity"),
+      operatorName: s(fd, "operatorName"),
+      operatorPhone: drop(s(fd, "operatorPhone")),
+      operatorSecondaryPhone: drop(s(fd, "operatorSecondaryPhone")),
+      operatorOtherPhones: lines(s(fd, "operatorOtherPhones")).filter((p) => !(deletePhone && digitsOf(p) === digitsOf(deletePhone))).join("\n") || null,
+      operatorEmail: s(fd, "operatorEmail")?.toLowerCase() ?? null,
+      operatorEmails: lines(s(fd, "operatorEmails")).map((e) => e.toLowerCase()).join("\n") || null,
+      operatorMailingAddress: s(fd, "operatorMailingAddress"),
       acreage: n(fd, "acreage"),
       squareFeet: i(fd, "squareFeet"),
       yearBuilt: i(fd, "yearBuilt"),
@@ -167,6 +176,7 @@ function propertyData(fd: FormData, dealStages: string[]) {
 }
 export async function createAqProperty(fd: FormData) {
   const p = await prisma.aqProperty.create({ data: propertyData(fd, await getAqDealStages()).data });
+  await syncPropertyPeople(p.id).catch(() => null);
   touchAll();
   redirect(`/acquisitions/properties/${p.id}`);
 }
@@ -177,10 +187,8 @@ export async function updateAqProperty(id: string, fd: FormData) {
   const sameDate = before?.callBackAt && data.callBackAt && before.callBackAt.getTime() === data.callBackAt.getTime();
   if (sameDate) delete (data as { callBackDismissedAt?: null }).callBackDismissedAt;
   await prisma.aqProperty.update({ where: { id }, data });
-  if (deletePhone) {
-    const linked = await prisma.aqContact.findMany({ where: { properties: { some: { propertyId: id } }, phone: { not: null } }, select: { id: true, phone: true } });
-    for (const c of linked) if (digitsOf(c.phone) === digitsOf(deletePhone)) await prisma.aqContact.update({ where: { id: c.id }, data: { phone: null } });
-  }
+  if (deletePhone) await dropPhoneFromPeople(id, deletePhone);
+  await syncPropertyPeople(id).catch(() => null);
   revalidatePath(`/acquisitions/properties/${id}`);
   touchAll();
 }
@@ -255,6 +263,7 @@ type CellResult = { ok: true; row?: Record<string, unknown> } | { ok: false; rea
 const PROPERTY_CELLS: Record<string, "text" | "llc" | "state" | "assetType" | "lines" | "number" | "int" | "date" | "callResult" | "dealStage" | "email"> = {
   address: "text", city: "text", state: "state", businessName: "text", assetType: "assetType", parcelId: "text", ownerEntity: "llc", ownerName: "text",
   primaryPhone: "text", secondaryPhone: "text", otherPhones: "lines", primaryEmail: "email", emails: "lines", ownerMailingAddress: "text",
+  operatorEntity: "text", operatorName: "text", operatorPhone: "text", operatorSecondaryPhone: "text", operatorOtherPhones: "lines", operatorEmail: "email", operatorEmails: "lines", operatorMailingAddress: "text",
   acreage: "number", squareFeet: "int", yearBuilt: "int", lastSaleDate: "date", lastSalePrice: "number", lastCallDate: "date",
   callResult: "callResult", callBackAt: "date", followUpAt: "date", dealStage: "dealStage", neighborhood: "text", askingPrice: "number", units: "int", notes: "text",
 };
@@ -325,6 +334,7 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
         }
       }
       await prisma.aqProperty.update({ where: { id }, data });
+      if (/^(owner|operator|primary|secondary|other|emails|businessName)/.test(key)) await syncPropertyPeople(id).catch(() => null);
       revalidatePath(`/acquisitions/properties/${id}`);
       touchAll();
       const row: Record<string, unknown> = { [key]: data[key] instanceof Date ? (data[key] as Date).toISOString() : data[key] };

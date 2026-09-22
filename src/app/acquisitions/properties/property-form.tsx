@@ -23,6 +23,14 @@ type Pr = Partial<{
   primaryEmail: string | null;
   emails: string | null;
   ownerMailingAddress: string | null;
+  operatorEntity: string | null;
+  operatorName: string | null;
+  operatorPhone: string | null;
+  operatorSecondaryPhone: string | null;
+  operatorOtherPhones: string | null;
+  operatorEmail: string | null;
+  operatorEmails: string | null;
+  operatorMailingAddress: string | null;
   acreage: number | null;
   squareFeet: number | null;
   yearBuilt: number | null;
@@ -70,7 +78,9 @@ export function AqPropertyForm({ p = {}, dealStages, action, autosave = false, s
   const [owner, setOwner] = useState((p.ownerEntity ?? "").replace(/\s+LLC$/i, ""));
   const [phones, setPhones] = useState({ primary: p.primaryPhone ?? "", secondary: p.secondaryPhone ?? "" });
   const [others, setOthers] = useState(p.otherPhones ?? "");
-  const numbers = [phones.primary, phones.secondary, ...lines(others)].map((x) => x.trim()).filter(Boolean);
+  const [opPhones, setOpPhones] = useState({ primary: p.operatorPhone ?? "", secondary: p.operatorSecondaryPhone ?? "" });
+  const [opOthers, setOpOthers] = useState(p.operatorOtherPhones ?? "");
+  const numbers = [phones.primary, phones.secondary, ...lines(others), opPhones.primary, opPhones.secondary, ...lines(opOthers)].map((x) => x.trim()).filter(Boolean).filter((x, i, a) => a.indexOf(x) === i);
   const body = (
     <>
       <Group title="Property">
@@ -123,6 +133,36 @@ export function AqPropertyForm({ p = {}, dealStages, action, autosave = false, s
         <Row label="Owner Mailing Address">
           <AddressInput name="ownerMailingAddress" value={p.ownerMailingAddress} placeholder="Street, city, state, zip" />
         </Row>
+        <div className="px-1 text-[11px] text-muted">The owner becomes a contact with the role Owner (and the entity a company); phones and emails flow onto it.</div>
+      </Group>
+      <Group title="Operator">
+        <Row label="Operator Company" hint="The business running at the property; the Current Business Name if left blank.">
+          <Text name="operatorEntity" value={p.operatorEntity} placeholder={p.businessName ?? "The business at the property"} />
+        </Row>
+        <Row label="Operator Name">
+          <Text name="operatorName" value={p.operatorName} placeholder="The person running the business" />
+        </Row>
+        <Row label="Primary Phone">
+          <input name="operatorPhone" type="tel" value={opPhones.primary} onChange={(e) => setOpPhones((c) => ({ ...c, primary: e.target.value }))} className="input" />
+        </Row>
+        <Row label="Secondary Phone">
+          <input name="operatorSecondaryPhone" type="tel" value={opPhones.secondary} onChange={(e) => setOpPhones((c) => ({ ...c, secondary: e.target.value }))} className="input" />
+        </Row>
+        <Row label="Other Phones" hint="One per line.">
+          <div onInput={(e) => setOpOthers((e.currentTarget.querySelector("input[type=hidden]") as HTMLInputElement | null)?.value ?? "")}>
+            <BulletTextarea name="operatorOtherPhones" value={p.operatorOtherPhones} placeholder="• (718) 555-0102" />
+          </div>
+        </Row>
+        <Row label="Primary Email">
+          <input name="operatorEmail" type="email" defaultValue={p.operatorEmail ?? ""} className="input" />
+        </Row>
+        <Row label="Email" hint="One per line.">
+          <BulletTextarea name="operatorEmails" value={p.operatorEmails} placeholder="• operator@example.com" />
+        </Row>
+        <Row label="Operator Mailing Address">
+          <AddressInput name="operatorMailingAddress" value={p.operatorMailingAddress} placeholder="Street, city, state, zip" />
+        </Row>
+        <div className="px-1 text-[11px] text-muted">The operator becomes a contact with the role Operator (and the business a company).</div>
       </Group>
       <Group title="Physical and last sale">
         <Row label="Acreage">

@@ -6,6 +6,7 @@ import { SYSTEM as CA_SYSTEM, TOOLS as CA_TOOLS, run as runCa } from "@/lib/ask-
 import { IL_SYSTEM, IL_TOOLS, runIl } from "@/lib/ask-israel";
 import { AQ_ASSET_TYPES, AQ_ROLES, AQ_STAGES, aqFullName, ensureLlc, mergeAqRoles, parseJsonList, propertyLine, toJsonList } from "@/lib/acquisitions";
 import { getAqDealStages } from "@/lib/acquisitions-stages";
+import { syncPropertyPeople } from "@/lib/aq-people";
 import { IL_ROLES, ilFullName } from "@/lib/israel";
 import { ROLES as CA_ROLES } from "@/lib/taxonomy";
 import { appendDataRule, loadDataRules } from "@/lib/data-rules";
@@ -24,7 +25,7 @@ export type Attachment = { name: string; rows: number; sheets: Sheet[]; truncate
 
 export type CompanyRow = { name: string; roles?: string[]; website?: string; phone?: string; city?: string; state?: string; notes?: string };
 export type ContactRow = { firstName?: string; lastName?: string; email?: string; phone?: string; company?: string; roles?: string[]; title?: string; notes?: string };
-export type PropertyRow = { address: string; neighborhood?: string; city?: string; state?: string; businessName?: string; assetType?: string; parcelId?: string; ownerEntity?: string; ownerName?: string; primaryPhone?: string; secondaryPhone?: string; otherPhones?: string[]; primaryEmail?: string; emails?: string[]; ownerMailingAddress?: string; acreage?: number; squareFeet?: number; yearBuilt?: number; lastSaleDate?: string; lastSalePrice?: number; lastCallDate?: string; callResult?: string; callBackAt?: string; callNotes?: string; dealStage?: string; askingPrice?: number; units?: number; notes?: string; companies?: string[]; contacts?: string[] };
+export type PropertyRow = { address: string; neighborhood?: string; city?: string; state?: string; businessName?: string; assetType?: string; parcelId?: string; ownerEntity?: string; ownerName?: string; primaryPhone?: string; secondaryPhone?: string; otherPhones?: string[]; primaryEmail?: string; emails?: string[]; ownerMailingAddress?: string; operatorEntity?: string; operatorName?: string; operatorPhone?: string; operatorEmail?: string; acreage?: number; squareFeet?: number; yearBuilt?: number; lastSaleDate?: string; lastSalePrice?: number; lastCallDate?: string; callResult?: string; callBackAt?: string; callNotes?: string; dealStage?: string; askingPrice?: number; units?: number; notes?: string; companies?: string[]; contacts?: string[] };
 export type Proposal = { summary: string; properties?: PropertyRow[]; companies?: CompanyRow[]; contacts?: ContactRow[] };
 export type ImportResult = { created: { properties: number; companies: number; contacts: number }; matched: { properties: number; companies: number; contacts: number }; links: { label: string; href: string }[]; skipped: string[] };
 export type TurnResult = { answer: string; lookups: string[]; proposal: Proposal | null; savedRules: string[] };
@@ -149,6 +150,10 @@ const ROW_PROPERTY = {
     primaryEmail: { type: "string" },
     emails: { type: "array", items: { type: "string" }, description: "other emails, e.g. from public record" },
     ownerMailingAddress: { type: "string" },
+    operatorEntity: { type: "string", description: "the business operating at the property, as a company" },
+    operatorName: { type: "string", description: "the person running that business" },
+    operatorPhone: { type: "string" },
+    operatorEmail: { type: "string" },
     acreage: { type: "number" },
     squareFeet: { type: "integer", description: "gross SF" },
     yearBuilt: { type: "integer" },
@@ -187,7 +192,7 @@ const SAVE_RULE: Anthropic.Tool = {
 function importGuide(ws: Workspace, rules: string[]): string {
   const fields =
     ws === "AQ"
-      ? `Properties (the ticket's own fields; put the owner and their numbers HERE, on the property row): address (street only), city, state (2 letters), neighborhood, businessName (the business operating there), assetType (${AQ_ASSET_TYPES.join(", ")}), parcelId, ownerEntity (owner of record, usually an LLC), ownerName (the person), primaryPhone, secondaryPhone, otherPhones (list), primaryEmail, emails (list), ownerMailingAddress, acreage, squareFeet (gross SF), yearBuilt, lastSaleDate (YYYY-MM-DD), lastSalePrice, lastCallDate, callResult (one of ${AQ_STAGES.join(", ")}), callBackAt (YYYY-MM-DD, only with Callback), callNotes, dealStage (only with Deal), askingPrice, units, notes, companies (names of separate company records to link), contacts (email or "First Last" of separate contact records to link). Only make a separate company or contact record when the row names a firm or person that is not simply the property's owner (a broker, a buyer, an operator with several properties); the owner and their phones belong on the property.`
+      ? `Properties (the ticket's own fields; put the owner and their numbers HERE, on the property row): address (street only), city, state (2 letters), neighborhood, businessName (the business operating there), assetType (${AQ_ASSET_TYPES.join(", ")}), parcelId, ownerEntity (owner of record, usually an LLC), ownerName (the person), primaryPhone, secondaryPhone, otherPhones (list), primaryEmail, emails (list), ownerMailingAddress, operatorEntity (the business operating there, as a company), operatorName (the person running it), operatorPhone, operatorEmail, acreage, squareFeet (gross SF), yearBuilt, lastSaleDate (YYYY-MM-DD), lastSalePrice, lastCallDate, callResult (one of ${AQ_STAGES.join(", ")}), callBackAt (YYYY-MM-DD, only with Callback), callNotes, dealStage (only with Deal), askingPrice, units, notes, companies (names of separate company records to link), contacts (email or "First Last" of separate contact records to link). Only make a separate company or contact record when the row names a firm or person that is not simply the property's owner or operator (a broker, a buyer); the owner, the operator and their phones belong on the property row, and the CRM makes their contact records itself.`
       : ws === "IL"
         ? `Companies: name, roles (${IL_ROLES.join(", ")}), website, phone, city, notes. Contacts: firstName, lastName, email, phone, company (name), roles (${IL_ROLES.join(", ")}), notes.`
         : `Companies: name, roles (${CA_ROLES.join(", ")}), website, phone, city, state, notes. Contacts: firstName, lastName, email, phone, company (name), roles (${CA_ROLES.join(", ")}), title, notes.`;
@@ -305,6 +310,10 @@ function cleanProposal(ws: Workspace, p: Proposal, dealStages: string[]): Propos
           primaryEmail: str(r.primaryEmail, 160)?.toLowerCase(),
           emails: list(r.emails)?.map((e) => e.toLowerCase()),
           ownerMailingAddress: str(r.ownerMailingAddress, 240),
+          operatorEntity: str(r.operatorEntity, 160),
+          operatorName: str(r.operatorName, 160),
+          operatorPhone: str(r.operatorPhone, 40),
+          operatorEmail: str(r.operatorEmail, 160)?.toLowerCase(),
           acreage: num(r.acreage),
           yearBuilt: num(r.yearBuilt) != null ? Math.round(num(r.yearBuilt)!) : undefined,
           lastSaleDate: isoDay(r.lastSaleDate),
@@ -396,6 +405,10 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
         primaryEmail: r.primaryEmail,
         emails: r.emails?.length ? r.emails.join("\n") : undefined,
         ownerMailingAddress: r.ownerMailingAddress,
+        operatorEntity: r.operatorEntity,
+        operatorName: r.operatorName,
+        operatorPhone: r.operatorPhone,
+        operatorEmail: r.operatorEmail,
         acreage: r.acreage,
         yearBuilt: r.yearBuilt,
         lastSaleDate: day(r.lastSaleDate),
@@ -423,6 +436,10 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
             primaryEmail: found.primaryEmail ?? extra.primaryEmail,
             emails: found.emails ?? extra.emails,
             ownerMailingAddress: found.ownerMailingAddress ?? extra.ownerMailingAddress,
+            operatorEntity: found.operatorEntity ?? extra.operatorEntity,
+            operatorName: found.operatorName ?? extra.operatorName,
+            operatorPhone: found.operatorPhone ?? extra.operatorPhone,
+            operatorEmail: found.operatorEmail ?? extra.operatorEmail,
             acreage: found.acreage ?? extra.acreage,
             yearBuilt: found.yearBuilt ?? extra.yearBuilt,
             lastSaleDate: found.lastSaleDate ?? extra.lastSaleDate,
@@ -448,6 +465,7 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
         link(r.address, `/acquisitions/properties/${made.id}`);
       }
       if (r.callNotes) await prisma.aqNote.create({ data: { propertyId: id, body: r.callNotes } });
+      await syncPropertyPeople(id).catch(() => null);
       for (const n of r.companies ?? []) {
         const companyId = companyIds.get(norm(n));
         if (companyId) await prisma.aqPropertyCompany.upsert({ where: { propertyId_companyId: { propertyId: id, companyId } }, create: { propertyId: id, companyId }, update: {} });

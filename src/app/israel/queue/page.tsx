@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ZoomBox } from "@/components/zoom-box";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { CompanyLogo } from "@/components/company-logo";
@@ -36,7 +37,7 @@ export default async function IsraelQueuePage() {
       <PageHeader title="The Que" subtitle={`${rows.length} deal${rows.length === 1 ? "" : "s"} waiting · everything that came in and is not yet in the system`} />
       <div className="mx-6 mt-3 flex h-[calc(100vh-100px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <div className="min-h-0 flex-1 overflow-auto">
-          <table className="table dense w-full min-w-[1300px]">
+          <ZoomBox id="israel-queue"><table className="table dense w-full min-w-[1300px]">
             <thead>
               <tr>
                 <th>Type</th>
@@ -119,7 +120,7 @@ export default async function IsraelQueuePage() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </table></ZoomBox>
         </div>
       </div>
     </>

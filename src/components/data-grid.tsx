@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { GripVertical } from "lucide-react";
 import { CompanyLogo } from "@/components/company-logo";
+import { ZoomControls, useZoom } from "@/components/zoom-box";
 
 /**
  * An Excel-like grid for a CRM list (Jonathan, Sep 18, 2026): drag a header left or right to reorder the columns,
@@ -183,6 +184,7 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
   const [, start] = useTransition();
+  const [zoom, setZoom] = useZoom(id);
   const resizing = useRef<{ key: string; startX: number; startW: number } | null>(null);
 
   useEffect(() => setRows(initialRows), [initialRows]);
@@ -230,7 +232,7 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
     const move = (e: MouseEvent) => {
       const r = resizing.current;
       if (!r) return;
-      setWidths((w) => ({ ...w, [r.key]: Math.max(MIN_WIDTH, r.startW + e.clientX - r.startX) }));
+      setWidths((w) => ({ ...w, [r.key]: Math.max(MIN_WIDTH, r.startW + (e.clientX - r.startX) / zoom) }));
     };
     const up = () => {
       if (!resizing.current) return;
@@ -248,7 +250,7 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
       window.removeEventListener("mouseup", up);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order]);
+  }, [order, zoom]);
 
   const editable = (c: GridColumn) => c.type !== "readonly" && c.key !== linkKey;
   const commit = (rowId: string, key: string, value: string | null) => {
@@ -281,8 +283,13 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {error && <div className="border-b border-red-200 bg-red-50 px-4 py-1.5 text-xs text-red-800">{error}</div>}
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="table dense grid-table" style={{ width: total, minWidth: total, tableLayout: "fixed" }}>
+      <div className="relative min-h-0 flex-1 overflow-auto">
+        <div className="pointer-events-none sticky top-0 z-30 flex justify-end pr-2" style={{ height: 0 }}>
+          <div className="pointer-events-auto mt-1">
+            <ZoomControls zoom={zoom} setZoom={setZoom} />
+          </div>
+        </div>
+        <table className="table dense grid-table" style={{ width: total, minWidth: total, tableLayout: "fixed", zoom }}>
           <colgroup>
             {!linkKey && <col style={{ width: 36 }} />}
             {ordered.map((c) => (

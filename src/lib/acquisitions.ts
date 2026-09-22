@@ -2,7 +2,8 @@
  * RJL Acquisitions (Shawn Aziz's CRM, Sep 18, 2026): sellers, operators and buyers around properties. Same look
  * and habits as the other two sides; light yellow paper, dark blue accents (globals.css .acquisitions).
  */
-export const AQ_ROLES = ["Seller", "Operator", "Buyer"] as const;
+/** Owner: the owner of the real estate. Operator: the business running at the property. Buyer: a group that buys. (Seller was renamed Owner on Sep 22, 2026.) */
+export const AQ_ROLES = ["Owner", "Operator", "Buyer"] as const;
 /** The Call Result on a property. Callback needs a target date (the dashboard's Call Me Back window); Wrong number asks which number to drop. */
 export const AQ_STAGES = ["Deal", "Callback", "Not interested", "No answer", "Wrong number"] as const;
 export const AQ_ASSET_TYPES = ["Free-standing", "Strip center", "Other"] as const;
@@ -32,6 +33,7 @@ export const aqFullName = (c: { firstName: string | null; lastName: string | nul
 
 export function aqRoleColor(role: string): string {
   switch (role) {
+    case "Owner":
     case "Seller":
       return "bg-amber-200 text-ink";
     case "Operator":

@@ -61,9 +61,22 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
             subtitle={[p.businessName, propertyLine(p)].filter(Boolean).join(" · ") || undefined}
             lines={[
               facts ? <span key="f">{facts}</span> : null,
+              p.operatorName || p.operatorEntity ? (
+                <span key="op">
+                  Operator: {[p.operatorName, p.operatorEntity ?? p.businessName].filter(Boolean).join(", ")}
+                  {p.operatorPhone && (
+                    <>
+                      {" · "}
+                      <a href={tel(p.operatorPhone)} className="tabular-nums hover:underline">
+                        {p.operatorPhone}
+                      </a>
+                    </>
+                  )}
+                </span>
+              ) : null,
               p.ownerName || p.ownerEntity ? (
                 <span key="o">
-                  {[p.ownerName, p.ownerEntity].filter(Boolean).join(", ")}
+                  Owner: {[p.ownerName, p.ownerEntity].filter(Boolean).join(", ")}
                   {p.primaryPhone && (
                     <>
                       {" · "}

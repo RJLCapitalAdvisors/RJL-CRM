@@ -28,7 +28,8 @@ const AQ_NAV = [
   { href: "/acquisitions", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/acquisitions/contacts", label: "Contacts", icon: Users },
   { href: "/acquisitions/companies", label: "Companies", icon: Building2 },
-  { href: "/acquisitions/properties", label: "Properties", icon: Home },
+  { href: "/acquisitions/properties", label: "Properties", icon: Home, except: ["/acquisitions/properties/map"] },
+  { href: "/acquisitions/properties/map", label: "Map View", icon: Map },
   { href: "/acquisitions/pipeline", label: "Deal Pipeline", icon: KanbanSquare },
   { href: "/acquisitions/settings", label: "Settings", icon: Settings },
 ];

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ZoomBox } from "@/components/zoom-box";
 import { checkLabel } from "@/lib/ranges";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -70,7 +71,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
       </div>
       <div className="mx-8 flex h-[calc(100vh-150px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <div className="min-h-0 flex-1 overflow-auto">
-        <table className="table dense w-full min-w-[1100px]">
+        <ZoomBox id="companies"><table className="table dense w-full min-w-[1100px]">
           <thead>
             <tr>
               <th>Company</th>
@@ -115,7 +116,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
               </tr>
             )}
           </tbody>
-        </table>
+        </table></ZoomBox>
         </div>
       </div>
       <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
