@@ -240,6 +240,14 @@ async function openMomentumDraftInner(momentumId: string) {
   }
 }
 
+/** To do list: done, gone for good from the dashboard (the row keeps the date it was dismissed). */
+export async function dismissTodoAction(id: string) {
+  const me = await currentUser();
+  if (!me?.email) return;
+  await prisma.reminder.updateMany({ where: { id, userEmail: me.email.toLowerCase() }, data: { doneAt: new Date() } });
+  revalidatePath("/");
+}
+
 export async function dismissMomentum(id: string) {
   await prisma.momentum.update({ where: { id }, data: { status: "DISMISSED" } });
   revalidatePath("/");

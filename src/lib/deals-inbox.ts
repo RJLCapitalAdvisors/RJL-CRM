@@ -126,6 +126,18 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   const releaseClaim = () => prisma.dealIntake.deleteMany({ where: { messageId: ext, status: "PROCESSING" } }).catch(() => null);
 
   const bodyText = msg.body?.contentType === "html" ? emailHtmlToText(msg.body.content) : (msg.body?.content ?? "");
+  // a team member's "remind me to handle this" is a to-do for their dashboard, not a deal (Jonathan, Sep 22, 2026)
+  if (INTERNAL.test(fromAddr)) {
+    const { looksLikeReminder, createTodoFromEmail } = await import("@/lib/todos");
+    if (looksLikeReminder(bodyText, msg.subject)) {
+      const todo = await createTodoFromEmail({ userEmail: fromAddr, subject: msg.subject, bodyText, messageId: ext }).catch(() => null);
+      await prisma.dealIntake.update({ where: { messageId: ext }, data: { status: "CONVERTED", rawText: bodyText.slice(0, 20_000), notes: `To-do for ${fromAddr}: ${todo?.text ?? ""}` } }).catch(() => null);
+      const html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt"><p>Added to your To do list on the Dashboard:</p><p><b>${(todo?.text ?? msg.subject ?? "").replace(/</g, "&lt;")}</b>${todo?.people.length ? `<br><span style="color:#555">${todo.people.map((p) => p.replace(/</g, "&lt;")).join(", ")}</span>` : ""}</p><p style="color:#555">Dismiss it there once it is handled.</p></div>`;
+      await replyOnThread(msg, html).catch((e) => console.error("to-do reply failed", e));
+      await graph(`/users/${q(MAILBOX())}/messages/${q(msg.id)}`, { method: "PATCH", body: JSON.stringify({ isRead: true }) }).catch(() => {});
+      return { skipped: "to-do" };
+    }
+  }
   const { names, texts } = msg.hasAttachments ? await readAttachments(msg.id) : { names: [], texts: [] };
   // Drive / Dropbox / OneDrive / Box links in the email: their documents count as attachments
   const cloud = await fetchCloudFiles(findCloudLinks(msg.body?.content, bodyText)).catch(() => ({ files: [], notes: [] as string[] }));

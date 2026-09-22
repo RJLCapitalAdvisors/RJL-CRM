@@ -1203,3 +1203,17 @@ model AqActivity {
   @@index([companyId, occurredAt])
   @@index([propertyId, occurredAt])
 }
+
+/// A team member's to-do, made from an email they forwarded to deals@ with a note like "remind me to handle" (Sep 22, 2026). Dismissed once done, gone from the dashboard for good.
+model Reminder {
+  id        String    @id @default(cuid())
+  userEmail String    // who forwarded it; the item shows on their dashboard
+  text      String    // one or two lines: what to handle and who is in the email
+  people    String?   // JSON: the names (and firms) found in the email
+  subject   String?
+  messageId String?   @unique
+  doneAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userEmail, doneAt, createdAt])
+}

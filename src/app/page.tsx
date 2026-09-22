@@ -9,7 +9,7 @@ import { EXTRA_FIELD_LABELS, PROPOSAL_FIELDS, type Change, type ProposalField } 
 import { STALE_DAYS, staleDeals } from "@/lib/stale-deals";
 import { possibleDuplicates } from "@/lib/deal-dedupe";
 import { reportsDue, type ReportDue } from "@/lib/report-due";
-import { approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction , handleStaleDeal , openReportDraftAction, markReportSentAction , markDealLostFromLaunchAction } from "./todo-actions";
+import { dismissTodoAction, approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction , handleStaleDeal , openReportDraftAction, markReportSentAction , markDealLostFromLaunchAction } from "./todo-actions";
 import { DraftButton } from "./draft-button";
 import { listMomentum } from "@/lib/momentum";
 import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
@@ -82,6 +82,7 @@ export default async function Dashboard() {
   // went out are picked up after the page is served (throttled); the next load shows the result.
   kickDashboardRefresh(me?.email);
   const showCriteria = Boolean(me?.canEditCriteria);
+  const todos = me?.email ? await prisma.reminder.findMany({ where: { userEmail: me.email.toLowerCase(), doneAt: null }, orderBy: { createdAt: "desc" } }) : [];
   const [proposals, quiet, momentum, intros, readyDeals, stale, dupes, reports] = await Promise.all([
     showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING", createdAt: { gte: HOME_SINCE } }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]),
     quietInvestors(),
@@ -247,6 +248,35 @@ export default async function Dashboard() {
           </ul>
         </Window>
 
+        {(!showCriteria || todos.length > 0) && (
+          <Window title="To do" count={todos.length} empty="Nothing on your list. Forward an email to deals@ with a note like “remind me to handle this” and it lands here with the people from the email.">
+            <ul className="divide-y divide-line">
+              {todos.map((t) => {
+                let people: string[] = [];
+                try {
+                  people = t.people ? (JSON.parse(t.people) as string[]) : [];
+                } catch {
+                  people = [];
+                }
+                return (
+                  <Item key={t.id} className="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
+                    <div className="min-w-0">
+                      <div>{t.text}</div>
+                      {people.length > 0 && <div className="mt-0.5 text-xs text-muted">{people.join(" · ")}</div>}
+                      <div className="mt-0.5 text-[11px] text-muted">
+                        {t.subject ? `${t.subject} · ` : ""}
+                        {t.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </div>
+                    </div>
+                    <ItemForm action={dismissTodoAction.bind(null, t.id)} className="btn-grey act" title="Done; this leaves the list for good">
+                      Dismiss
+                    </ItemForm>
+                  </Item>
+                );
+              })}
+            </ul>
+          </Window>
+        )}
         {showCriteria && (
           <Window title="Data updates" count={proposals.length + stale.length + dupes.length} empty="Nothing to approve. Criteria corrections from investor emails, notes, calls or teammates, people who left their firm, and deals that went quiet land here.">
             {dupes.length > 0 && (
