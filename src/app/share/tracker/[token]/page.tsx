@@ -11,7 +11,7 @@ export default async function SharedTracker({ params }: { params: Promise<{ toke
   const { token } = await params;
   const dealId = verifyContactToken(token);
   if (!dealId) notFound();
-  const report = await loadReport(dealId);
+  const report = await loadReport(dealId, { refresh: false });
   if (!report) notFound();
   return (
     <div className="min-h-screen bg-[#f3f4f6] px-5 py-8 print:bg-white print:p-0">

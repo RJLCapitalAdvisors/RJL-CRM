@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { currentUser } from "@/lib/current-user";
 import { sponsorSideIds } from "@/lib/report-guard";
 import { logActivity } from "@/lib/activity";
-import { AWAITING_RESPONSE, statusOf, passReasonOnly } from "@/lib/tracker";
+import { AWAITING_RESPONSE, statusOf, passReasonOnly, investorLabel } from "@/lib/tracker";
 import { generateTrackerSummary } from "@/lib/tracker-summary";
 import { proposeCriteriaChanges } from "@/lib/criteria-proposals";
 
@@ -69,9 +70,30 @@ export async function saveTrackerNote(rowId: string, fd: FormData) {
   }
 }
 
+/** Remove from report: the row goes, a copy is kept for Undo (30 days), and the deal log says who removed whom. */
 export async function removeTrackerRow(rowId: string) {
-  const row = await prisma.dealInvestor.delete({ where: { id: rowId } });
+  const me = await currentUser();
+  const row = await prisma.dealInvestor.delete({ where: { id: rowId }, include: { contact: { select: { firstName: true, lastName: true, email: true, company: { select: { name: true } } } } } });
+  await prisma.trackerRemoval.create({ data: { dealId: row.dealId, contactId: row.contactId, status: row.status, note: row.note, noteDate: row.noteDate, openingLine: row.openingLine, bodyOverride: row.bodyOverride, extraContactIds: row.extraContactIds, removedBy: me?.name ?? null } }).catch(() => null);
+  await logActivity({ type: "NOTE", body: `${me?.name ?? "Someone"} removed ${investorLabel(row.contact)} from the progress report (status ${statusOf(row.status).short}${row.note ? `; notes: ${row.note}` : ""}). Undo is on the report page for 30 days.`, contactId: row.contactId, dealId: row.dealId });
   touch(row.dealId);
+}
+
+/** Undo a removal: the row comes back exactly as it was. */
+export async function undoRemovalAction(removalId: string) {
+  const r = await prisma.trackerRemoval.findUnique({ where: { id: removalId } });
+  if (!r) return;
+  await prisma.dealInvestor.upsert({ where: { dealId_contactId: { dealId: r.dealId, contactId: r.contactId } }, create: { dealId: r.dealId, contactId: r.contactId, status: r.status, note: r.note, noteDate: r.noteDate, openingLine: r.openingLine, bodyOverride: r.bodyOverride, extraContactIds: r.extraContactIds }, update: { status: r.status, note: r.note, noteDate: r.noteDate, openingLine: r.openingLine, bodyOverride: r.bodyOverride, extraContactIds: r.extraContactIds } });
+  await prisma.trackerRemoval.delete({ where: { id: r.id } }).catch(() => null);
+  touch(r.dealId);
+}
+
+/** Forget a removal without restoring it. */
+export async function forgetRemovalAction(removalId: string) {
+  const r = await prisma.trackerRemoval.findUnique({ where: { id: removalId } });
+  if (!r) return;
+  await prisma.trackerRemoval.delete({ where: { id: r.id } });
+  touch(r.dealId);
 }
 
 /** Add contacts to the tracker (status 1, Deal Not Sent). Ignores contacts already on it. */
@@ -81,6 +103,12 @@ export async function addTrackerContacts(dealId: string, contactIds: string[]) {
   const sponsorSide = await sponsorSideIds(dealId, fresh);
   const ok = fresh.filter((id) => !sponsorSide.has(id));
   if (ok.length) await prisma.dealInvestor.createMany({ data: ok.map((contactId) => ({ dealId, contactId, status: 1 })) });
+  // a firm put (back) on the report: its emails on this deal are read again on the next refresh, so status and notes rebuild themselves
+  if (ok.length) {
+    const companyIds = (await prisma.contact.findMany({ where: { id: { in: ok } }, select: { companyId: true } })).map((c) => c.companyId).filter((x): x is string => Boolean(x));
+    const emails = await prisma.activity.findMany({ where: { dealId, type: "EMAIL", direction: "INBOUND", externalId: { not: null }, OR: [{ contactId: { in: ok } }, { companyId: { in: companyIds } }] }, select: { externalId: true } });
+    if (emails.length) await prisma.lpAskScan.deleteMany({ where: { externalId: { in: emails.map((e) => e.externalId!) } } }).catch(() => null);
+  }
   touch(dealId);
   return fresh.length;
 }

@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui";
 import { AttachmentList } from "@/components/attachment-list";
 import { progressReportFileName } from "@/lib/progress-report-pdf";
 import { ReportView } from "@/components/report-view";
-import { AWAITING_RESPONSE, TRACKER_STATUSES_BY_RANK, fmtReportDate } from "@/lib/tracker";
+import { AWAITING_RESPONSE, TRACKER_STATUSES_BY_RANK, fmtReportDate, investorLabel, statusOf } from "@/lib/tracker";
 import { GrowingTextarea } from "@/components/growing-textarea";
 import { DraftButton } from "@/app/draft-button";
 import { openReportDraftAction } from "@/app/todo-actions";
@@ -16,7 +16,7 @@ import { loadReport } from "@/lib/tracker-report";
 import { syncSendDrafts } from "@/lib/send-deal";
 import { signContactToken, signFileToken } from "@/lib/tokens";
 import { missingFor, itemLabel } from "@/lib/checklist";
-import { removeTrackerRow, saveTrackerMeta } from "./actions";
+import { forgetRemovalAction, removeTrackerRow, saveTrackerMeta, undoRemovalAction } from "./actions";
 import { NoteCell, StatusBadge } from "./tracker-row";
 import { TrackerContactPicker } from "./contact-picker";
 
@@ -35,6 +35,8 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
   const sp = await searchParams;
   const statusFilter = Number(str(sp.status)) || 0;
   const report = await loadReport(id);
+  const removals = await prisma.trackerRemoval.findMany({ where: { dealId: id, removedAt: { gte: new Date(Date.now() - 30 * 86_400_000) } }, orderBy: { removedAt: "desc" } }).catch(() => []);
+  const removedContacts = removals.length ? new Map((await prisma.contact.findMany({ where: { id: { in: removals.map((r) => r.contactId) } }, select: { id: true, firstName: true, lastName: true, email: true, company: { select: { name: true } } } })).map((c) => [c.id, c])) : new Map();
   if (!report) notFound();
   const { deal, name, lastUpdated } = report;
   const awaiting = deal.investors.filter((r) => AWAITING_RESPONSE.includes(r.status) && r.contact.email && !r.contact.unsubscribed).length;
@@ -64,6 +66,30 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
         }
       />
 
+      {removals.length > 0 && (
+        <div className="mx-8 mb-3 flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <span className="font-medium">Removed from this report:</span>
+          {removals.map((r) => {
+            const c = removedContacts.get(r.contactId);
+            return (
+              <span key={r.id} className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-white px-2 py-0.5">
+                {c ? investorLabel(c) : "a row"} · {statusOf(r.status).short}
+                {r.removedBy ? ` · by ${r.removedBy}` : ""}
+                <form action={undoRemovalAction.bind(null, r.id)} className="inline">
+                  <button type="submit" className="font-semibold text-sky-700 hover:underline">
+                    Undo
+                  </button>
+                </form>
+                <form action={forgetRemovalAction.bind(null, r.id)} className="inline">
+                  <button type="submit" className="text-muted hover:text-ink" title="Forget this removal">
+                    ×
+                  </button>
+                </form>
+              </span>
+            );
+          })}
+        </div>
+      )}
       <div className="mx-8 mb-3 flex flex-wrap items-center gap-3">
         <TrackerContactPicker dealId={deal.id} />
         <div className="flex items-center rounded-md border border-line bg-paper" title="Drag this file straight into an Outlook email, or click to download">

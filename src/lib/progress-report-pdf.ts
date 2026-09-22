@@ -39,7 +39,7 @@ export function progressReportFileName(dealName: string) {
 }
 
 export async function buildProgressReportPdf(dealId: string): Promise<{ name: string; bytes: Uint8Array } | null> {
-  const report = await loadReport(dealId);
+  const report = await loadReport(dealId, { refresh: false }); // the PDF is the page as it stands
   if (!report) return null;
   const { deal, name, rows } = report;
   const cityState = [deal.city, deal.state].filter(Boolean).join(", ");

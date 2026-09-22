@@ -50,8 +50,17 @@ export async function generateTrackerSummary(dealId: string): Promise<{ themes: 
   });
   if (!res.parsed_output) return null;
   const out = { themes: res.parsed_output.themes.map((x) => stripDashes(x)), items: res.parsed_output.items.map((x) => stripDashes(x)) };
-  await prisma.deal.update({ where: { id: dealId }, data: { trackerThemes: out.themes.join("\n") || null, trackerItemsNote: out.items.join("\n") || null, trackerSummaryAt: new Date() } });
+  await prisma.deal.update({ where: { id: dealId }, data: { trackerThemes: out.themes.join("\n") || null, trackerItemsNote: out.items.join("\n") || null, trackerSummaryAt: new Date(), trackerSummaryKey: await summaryKey(dealId) } });
   return out;
+}
+
+/** What the sections are written from, as one string: every row's status and note, and the open requests. A status click or a note edit changes it; a page load or a download does not. */
+async function summaryKey(dealId: string): Promise<string> {
+  const [rows, asks] = await Promise.all([
+    prisma.dealInvestor.findMany({ where: { dealId }, select: { contactId: true, status: true, note: true }, orderBy: { contactId: "asc" } }),
+    prisma.momentum.findMany({ where: { dealId, kind: "LP_ASK", status: "OPEN" }, select: { party: true, summary: true }, orderBy: { party: "asc" } }),
+  ]);
+  return JSON.stringify([rows.map((r) => [r.contactId, r.status, r.note ?? ""]), asks.map((a) => [a.party, a.summary])]);
 }
 
 /**
@@ -60,14 +69,16 @@ export async function generateTrackerSummary(dealId: string): Promise<{ themes: 
  * the tracker page counts as fresh until the next change.
  */
 export async function ensureTrackerSummary(dealId: string): Promise<void> {
-  const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { trackerSummaryAt: true, investors: { where: { note: { not: null } }, select: { updatedAt: true, noteDate: true } } } });
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { trackerSummaryAt: true, trackerSummaryKey: true, trackerManualAt: true } });
   if (!deal) return;
-  const [askMax, noteMax] = await Promise.all([
-    prisma.momentum.aggregate({ where: { dealId, kind: "LP_ASK" }, _max: { updatedAt: true } }),
-    Promise.resolve(deal.investors.reduce<Date | null>((m, r) => { const t = r.noteDate ?? r.updatedAt; return !m || t > m ? t : m; }, null)),
-  ]);
-  const latest = [noteMax, askMax._max.updatedAt].filter((d): d is Date => Boolean(d)).sort((a, b) => b.getTime() - a.getTime())[0];
-  if (!latest) return; // nothing to summarize yet
-  if (deal.trackerSummaryAt && deal.trackerSummaryAt >= latest) return; // still current
+  const key = await summaryKey(dealId);
+  // a hand edit stands until a row or a request actually changes (Sep 22: the PDF used to come out different from the page
+  // because every load rewrote the sections whenever any row had been touched, and the writer never words them the same twice)
+  if (deal.trackerSummaryKey === key) return;
+  if (!deal.trackerSummaryKey && deal.trackerSummaryAt) {
+    // first time with the key: nothing has changed that we know of, so keep what is there and just record the key
+    await prisma.deal.update({ where: { id: dealId }, data: { trackerSummaryKey: key } }).catch(() => null);
+    return;
+  }
   await generateTrackerSummary(dealId).catch((e) => console.error("tracker summary failed", e));
 }

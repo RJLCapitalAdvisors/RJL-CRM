@@ -213,6 +213,7 @@ model Deal {
   trackerThemes       String? // notable feedback themes across investor responses
   trackerItemsNote    String? // extra "items needed from sponsor" beyond the checklist
   trackerSummaryAt    DateTime? // themes/items last written; a newer note on any row means they are stale
+  trackerSummaryKey String?   // what the themes and items were last written from (row notes, statuses, open asks); unchanged means no rewrite
   trackerManualAt     DateTime? // themes/items last edited by hand on the tracker page; the writer keeps that text and only adjusts it
 
   closeDate DateTime?
@@ -1216,4 +1217,21 @@ model Reminder {
   createdAt DateTime  @default(now())
 
   @@index([userEmail, doneAt, createdAt])
+}
+
+/// A progress report row someone removed (Sep 22, 2026): everything needed to put it back with Undo, kept 30 days.
+model TrackerRemoval {
+  id              String   @id @default(cuid())
+  dealId          String
+  contactId       String
+  status          Int
+  note            String?
+  noteDate        DateTime?
+  openingLine     String?
+  bodyOverride    String?
+  extraContactIds String?
+  removedBy       String?
+  removedAt       DateTime @default(now())
+
+  @@index([dealId, removedAt])
 }
