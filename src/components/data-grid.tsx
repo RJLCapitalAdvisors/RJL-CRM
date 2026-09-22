@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { ExternalLink, GripVertical } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import { CompanyLogo } from "@/components/company-logo";
 
 /**
@@ -171,7 +171,8 @@ function Editor({ col, value, onCommit, onCancel, onTab }: { col: GridColumn; va
   return <input ref={ref as React.RefObject<HTMLInputElement>} type={type} value={v} inputMode={col.type === "number" || col.type === "money" ? "decimal" : undefined} onChange={(e) => setV(e.target.value)} onBlur={() => commit()} onKeyDown={keys} className={cls} />;
 }
 
-export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothing here." }: { id: string; columns: GridColumn[]; rows: GridRow[]; save: (rowId: string, key: string, value: string | null) => Promise<SaveResult>; empty?: string }) {
+/** `linkKey` names the one column that opens the ticket instead of editing (the name); with it there is no separate open-arrow column. */
+export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothing here.", linkKey }: { id: string; columns: GridColumn[]; rows: GridRow[]; save: (rowId: string, key: string, value: string | null) => Promise<SaveResult>; empty?: string; linkKey?: string }) {
   const storageKey = `grid:${id}`;
   const [order, setOrder] = useState<string[]>(columns.map((c) => c.key));
   const [widths, setWidths] = useState<Record<string, number>>({});
@@ -211,7 +212,7 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
   const byKey = useMemo(() => Object.fromEntries(columns.map((c) => [c.key, c])), [columns]);
   const ordered = order.map((k) => byKey[k]).filter(Boolean);
   const widthOf = (c: GridColumn) => widths[c.key] ?? c.width ?? DEFAULT_WIDTH[c.type];
-  const total = ordered.reduce((a, c) => a + widthOf(c), 0) + 36;
+  const total = ordered.reduce((a, c) => a + widthOf(c), 0) + (linkKey ? 0 : 36);
 
   // reorder by dragging a header
   const drop = (target: string) => {
@@ -249,7 +250,7 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order]);
 
-  const editable = (c: GridColumn) => c.type !== "readonly";
+  const editable = (c: GridColumn) => c.type !== "readonly" && c.key !== linkKey;
   const commit = (rowId: string, key: string, value: string | null) => {
     setEditing(null);
     const row = rows.find((r) => r.id === rowId);
@@ -283,14 +284,14 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="table dense grid-table" style={{ width: total, minWidth: total, tableLayout: "fixed" }}>
           <colgroup>
-            <col style={{ width: 36 }} />
+            {!linkKey && <col style={{ width: 36 }} />}
             {ordered.map((c) => (
               <col key={c.key} style={{ width: widthOf(c) }} />
             ))}
           </colgroup>
           <thead className="sticky top-0 z-20">
             <tr>
-              <th className="bg-cream" title="Click a cell to edit; Enter saves, Escape cancels, Tab moves right. Drag a header to reorder, pull its edge to resize (double-click resets). Your layout is remembered on this computer." />
+              {!linkKey && <th className="bg-cream" title="Click a cell to edit; Enter saves, Escape cancels, Tab moves right. Drag a header to reorder, pull its edge to resize (double-click resets). Your layout is remembered on this computer." />}
               {ordered.map((c) => (
                 <th
                   key={c.key}
@@ -343,20 +344,22 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={ordered.length + 1} className="py-10 text-center text-muted">
+                <td colSpan={ordered.length + (linkKey ? 0 : 1)} className="py-10 text-center text-muted">
                   {empty}
                 </td>
               </tr>
             )}
             {rows.map((r) => (
               <tr key={r.id}>
-                <td className="!px-1 text-center">
-                  {r.href && (
-                    <Link href={r.href} className="inline-flex text-muted hover:text-sky-700" title="Open the ticket">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Link>
-                  )}
-                </td>
+                {!linkKey && (
+                  <td className="!px-1 text-center">
+                    {r.href && (
+                      <Link href={r.href} className="text-xs text-muted hover:text-sky-700" title="Open the ticket">
+                        Open
+                      </Link>
+                    )}
+                  </td>
+                )}
                 {ordered.map((c) => {
                   const on = editing?.rowId === r.id && editing.key === c.key;
                   const open = peek?.rowId === r.id && peek.key === c.key;
@@ -364,15 +367,20 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
                     <td
                       key={c.key}
                       onClick={() => {
+                        if (c.key === linkKey) return;
                         if (editable(c)) {
                           if (!on) setEditing({ rowId: r.id, key: c.key });
                         } else if (r[c.key] != null && r[c.key] !== "" && !open) setPeek({ rowId: r.id, key: c.key });
                       }}
                       title={!on && !open && r[c.key] != null && r[c.key] !== "" && typeof r[c.key] === "string" && (r[c.key] as string).length > 24 ? "Click to open" : undefined}
-                      className={`relative h-9 align-middle ${editable(c) ? "cursor-text" : r[c.key] != null && r[c.key] !== "" ? "cursor-pointer text-muted" : "text-muted"} ${on ? "!p-0.5" : ""}`}
+                      className={`relative h-9 align-middle ${c.key === linkKey ? "" : editable(c) ? "cursor-text" : r[c.key] != null && r[c.key] !== "" ? "cursor-pointer text-muted" : "text-muted"} ${on ? "!p-0.5" : ""}`}
                       style={{ maxWidth: widthOf(c) }}
                     >
-                      {on ? (
+                      {c.key === linkKey && r.href ? (
+                        <Link href={r.href} className="block truncate font-medium hover:underline" title="Open the ticket">
+                          <Display col={c} value={r[c.key]} row={r} />
+                        </Link>
+                      ) : on ? (
                         <Editor col={c} value={r[c.key]} onCommit={(v) => commit(r.id, c.key, v)} onCancel={() => setEditing(null)} onTab={(back) => moveEdit(r.id, c.key, back)} />
                       ) : (
                         <div className="truncate">

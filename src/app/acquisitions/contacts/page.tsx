@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager, SearchForm } from "@/components/ui";
 import { str } from "@/lib/format";
-import { AQ_ROLES, parseJsonList } from "@/lib/acquisitions";
+import { AQ_ROLES, aqFullName, parseJsonList } from "@/lib/acquisitions";
 import { MultiSelect } from "@/components/multi-select";
 import type { GridColumn, GridRow } from "@/components/data-grid";
 import { AqGrid } from "../grid";
@@ -38,7 +38,8 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
     return `/acquisitions/contacts?${u}`;
   };
   const columns: GridColumn[] = [
-    { key: "firstName", label: "First Name", type: "text", width: 140 },
+    { key: "fullName", label: "Name", type: "readonly", width: 180 },
+    { key: "firstName", label: "First Name", type: "text", width: 130 },
     { key: "lastName", label: "Last Name", type: "text", width: 140 },
     { key: "email", label: "Email", type: "email", width: 220 },
     { key: "phone", label: "Phone", type: "tel", width: 140 },
@@ -51,6 +52,7 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
   const gridRows: GridRow[] = rows.map((c) => ({
     id: c.id,
     href: `/acquisitions/contacts/${c.id}`,
+    fullName: aqFullName(c),
     firstName: c.firstName,
     lastName: c.lastName,
     email: c.email,
