@@ -285,11 +285,23 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
       {error && <div className="border-b border-red-200 bg-red-50 px-4 py-1.5 text-xs text-red-800">{error}</div>}
       <div className="relative min-h-0 flex-1 overflow-auto">
         <div className="pointer-events-none sticky top-0 z-30 flex justify-end pr-2" style={{ height: 0 }}>
-          <div className="pointer-events-auto mt-1">
+          <div className="pointer-events-auto mt-1 flex items-center gap-1">
+            <button
+              type="button"
+              className="rounded-md border border-line bg-paper px-2 py-1 text-[11px] text-muted shadow-sm hover:bg-cream"
+              title="Put the columns back in their original order and width"
+              onClick={() => {
+                setOrder(columns.map((c) => c.key));
+                setWidths({});
+                remember(columns.map((c) => c.key), {});
+              }}
+            >
+              Reset columns
+            </button>
             <ZoomControls zoom={zoom} setZoom={setZoom} />
           </div>
         </div>
-        <table className="table dense grid-table" style={{ width: total, minWidth: total, tableLayout: "fixed", zoom }}>
+        <table className="table dense grid-table" style={{ width: total, minWidth: "100%", tableLayout: "fixed", zoom }}>
           <colgroup>
             {!linkKey && <col style={{ width: 36 }} />}
             {ordered.map((c) => (
