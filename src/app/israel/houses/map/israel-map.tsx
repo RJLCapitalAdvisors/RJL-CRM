@@ -40,7 +40,7 @@ const popupHtml = (group: MapUnit[]) =>
   `</div>`;
 
 /**
- * The map itself (Leaflet on OpenStreetMap tiles; a Google Maps key would let the base map switch). Pins group the
+ * The map itself (Leaflet on OpenStreetMap's own tiles, no key needed; a Google Maps key would let the base map switch). Pins group the
  * units at one address; hovering shows each unit's internal size, mirpeset size and price per metre. The toolbar on
  * the right: pan, circle an area (press and drag) to list every unit inside, or pick pins to compare. The panel under
  * the toolbar holds the list; tick up to five of one kind and open the side-by-side comparer.
@@ -80,7 +80,8 @@ export function IsraelMap({ units }: { units: MapUnit[] }) {
       LRef.current = L;
       const map = L.map(el.current, { center: [31.7, 35.0], zoom: 8, zoomControl: true });
       mapRef.current = map;
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>', maxZoom: 20 }).addTo(map);
+      // OpenStreetMap's own tiles: no key, no account (CARTO's styled tiles started asking for one, Sep 22)
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19 }).addTo(map);
       const layer = L.layerGroup().addTo(map);
       for (const g of groups) {
         const kinds = [...new Set(g.map((u) => u.kind))];
