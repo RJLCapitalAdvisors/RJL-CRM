@@ -10,6 +10,9 @@ import { useEffect, useRef, useState } from "react";
 export function MultiSelect({ name, options, selected, placeholder = "Select…", value, onChange }: { name?: string; options: readonly string[]; selected?: string[]; placeholder?: string; value?: string[]; onChange?: (v: string[]) => void }) {
   const [open, setOpen] = useState(false);
   const [inner, setInner] = useState<string[]>(selected ?? []);
+  // the page can hand in a new selection (the Owners and Operators links change ?role while the page stays mounted)
+  const selectedKey = (selected ?? []).join("|");
+  useEffect(() => setInner(selected ?? []), [selectedKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const sel = value ?? inner;
   const dirty = useRef(false);
   const ref = useRef<HTMLDivElement>(null);

@@ -6,7 +6,6 @@ import { SYSTEM as CA_SYSTEM, TOOLS as CA_TOOLS, run as runCa } from "@/lib/ask-
 import { IL_SYSTEM, IL_TOOLS, runIl } from "@/lib/ask-israel";
 import { AQ_ASSET_TYPES, AQ_ROLES, AQ_STAGES, aqFullName, ensureLlc, mergeAqRoles, parseJsonList, propertyLine, toJsonList } from "@/lib/acquisitions";
 import { getAqDealStages } from "@/lib/acquisitions-stages";
-import { syncPropertyPeople } from "@/lib/aq-people";
 import { IL_ROLES, ilFullName } from "@/lib/israel";
 import { ROLES as CA_ROLES } from "@/lib/taxonomy";
 import { appendDataRule, loadDataRules } from "@/lib/data-rules";
@@ -24,7 +23,7 @@ export type Sheet = { name: string; rows: number; csv: string };
 export type Attachment = { name: string; rows: number; sheets: Sheet[]; truncated: boolean };
 
 export type CompanyRow = { name: string; roles?: string[]; website?: string; phone?: string; city?: string; state?: string; notes?: string };
-export type ContactRow = { firstName?: string; lastName?: string; email?: string; phone?: string; company?: string; roles?: string[]; title?: string; notes?: string };
+export type ContactRow = { firstName?: string; lastName?: string; email?: string; emails?: string[]; phone?: string; secondaryPhone?: string; otherPhones?: string[]; mailingAddress?: string; company?: string; roles?: string[]; title?: string; notes?: string; operatorBrandName?: string; website?: string; operatorEntityName?: string; directoryOperatorName?: string; storePhone?: string; directoryOperatorPhone?: string; operatorTotalLocations?: number; lastCallDate?: string; callResult?: string; callBackAt?: string; callNotes?: string; properties?: string[] };
 export type PropertyRow = { address: string; neighborhood?: string; city?: string; state?: string; businessName?: string; assetType?: string; parcelId?: string; ownerEntity?: string; ownerName?: string; primaryPhone?: string; secondaryPhone?: string; otherPhones?: string[]; primaryEmail?: string; emails?: string[]; ownerMailingAddress?: string; operatorEntity?: string; operatorName?: string; operatorPhone?: string; operatorEmail?: string; acreage?: number; squareFeet?: number; yearBuilt?: number; lastSaleDate?: string; lastSalePrice?: number; lastCallDate?: string; callResult?: string; callBackAt?: string; callNotes?: string; dealStage?: string; askingPrice?: number; units?: number; notes?: string; companies?: string[]; contacts?: string[] };
 export type Proposal = { summary: string; properties?: PropertyRow[]; companies?: CompanyRow[]; contacts?: ContactRow[] };
 export type ImportResult = { created: { properties: number; companies: number; contacts: number }; matched: { properties: number; companies: number; contacts: number }; links: { label: string; href: string }[]; skipped: string[] };
@@ -131,7 +130,35 @@ Write for Shawn and Jonathan: plain, direct, short. Lead with the answer. Short 
 // ---------- the import and rule tools ----------
 
 const ROW_COMPANY = { type: "object", properties: { name: { type: "string" }, roles: { type: "array", items: { type: "string" } }, website: { type: "string" }, phone: { type: "string" }, city: { type: "string" }, state: { type: "string" }, notes: { type: "string" } }, required: ["name"] };
-const ROW_CONTACT = { type: "object", properties: { firstName: { type: "string" }, lastName: { type: "string" }, email: { type: "string" }, phone: { type: "string" }, company: { type: "string", description: "company name, matching a row in companies when there is one" }, roles: { type: "array", items: { type: "string" } }, title: { type: "string" }, notes: { type: "string" } } };
+const ROW_CONTACT = {
+  type: "object",
+  properties: {
+    firstName: { type: "string" },
+    lastName: { type: "string" },
+    email: { type: "string" },
+    emails: { type: "array", items: { type: "string" }, description: "other emails" },
+    phone: { type: "string" },
+    secondaryPhone: { type: "string" },
+    otherPhones: { type: "array", items: { type: "string" } },
+    mailingAddress: { type: "string" },
+    company: { type: "string", description: "company name (the owner's LLC, the operator's business), matching a row in companies when there is one" },
+    roles: { type: "array", items: { type: "string" } },
+    title: { type: "string" },
+    notes: { type: "string" },
+    operatorBrandName: { type: "string" },
+    website: { type: "string" },
+    operatorEntityName: { type: "string" },
+    directoryOperatorName: { type: "string" },
+    storePhone: { type: "string" },
+    directoryOperatorPhone: { type: "string" },
+    operatorTotalLocations: { type: "integer" },
+    lastCallDate: { type: "string", description: "YYYY-MM-DD" },
+    callResult: { type: "string", enum: [...AQ_STAGES] },
+    callBackAt: { type: "string", description: "YYYY-MM-DD, only with the Callback result" },
+    callNotes: { type: "string" },
+    properties: { type: "array", items: { type: "string" }, description: "addresses of properties in this import this person is tied to" },
+  },
+};
 const ROW_PROPERTY = {
   type: "object",
   properties: {
@@ -192,7 +219,7 @@ const SAVE_RULE: Anthropic.Tool = {
 function importGuide(ws: Workspace, rules: string[]): string {
   const fields =
     ws === "AQ"
-      ? `Properties (the ticket's own fields; put the owner and their numbers HERE, on the property row): address (street only), city, state (2 letters), neighborhood, businessName (the business operating there), assetType (${AQ_ASSET_TYPES.join(", ")}), parcelId, ownerEntity (owner of record, usually an LLC), ownerName (the person), primaryPhone, secondaryPhone, otherPhones (list), primaryEmail, emails (list), ownerMailingAddress, operatorEntity (the business operating there, as a company), operatorName (the person running it), operatorPhone, operatorEmail, acreage, squareFeet (gross SF), yearBuilt, lastSaleDate (YYYY-MM-DD), lastSalePrice, lastCallDate, callResult (one of ${AQ_STAGES.join(", ")}), callBackAt (YYYY-MM-DD, only with Callback), callNotes, dealStage (only with Deal), askingPrice, units, notes, companies (names of separate company records to link), contacts (email or "First Last" of separate contact records to link). Only make a separate company or contact record when the row names a firm or person that is not simply the property's owner or operator (a broker, a buyer); the owner, the operator and their phones belong on the property row, and the CRM makes their contact records itself.`
+      ? `Properties (the real estate only): address (street only), city, state (2 letters), county, neighborhood, businessName (the business operating there), assetType (${AQ_ASSET_TYPES.join(", ")}), parcelId, acreage, squareFeet (gross SF), yearBuilt, lastSaleDate (YYYY-MM-DD), lastSalePrice, callResult "Deal" when the row marks it a deal, dealStage (only with Deal), askingPrice, units, notes, companies (names), contacts (email or "First Last" of contact rows to link). PEOPLE ARE CONTACT ROWS: the owner of the real estate is a contact with roles ["Owner"] and company = the owner entity (usually an LLC); the operator of the business there is a contact with roles ["Operator"], company = the business, plus operatorBrandName, website, operatorEntityName, directoryOperatorName, storePhone, directoryOperatorPhone, operatorTotalLocations when the sheet has them. Every contact carries its own phone, secondaryPhone, otherPhones, email, emails, mailingAddress, and the call: lastCallDate, callResult (${AQ_STAGES.join(", ")}), callBackAt, callNotes. Put the property addresses the person is tied to in the contact's properties list so they link. Make a company row for each owner entity and each operator business.`
       : ws === "IL"
         ? `Companies: name, roles (${IL_ROLES.join(", ")}), website, phone, city, notes. Contacts: firstName, lastName, email, phone, company (name), roles (${IL_ROLES.join(", ")}), notes.`
         : `Companies: name, roles (${CA_ROLES.join(", ")}), website, phone, city, state, notes. Contacts: firstName, lastName, email, phone, company (name), roles (${CA_ROLES.join(", ")}), title, notes.`;
@@ -285,7 +312,34 @@ function cleanProposal(ws: Workspace, p: Proposal, dealStages: string[]): Propos
     const name = str(c.name, 160);
     return name ? [{ name, roles: list(c.roles, roles), website: str(c.website), phone: str(c.phone, 60), city: str(c.city, 80), state: str(c.state, 40), notes: str(c.notes, 1000) }] : [];
   });
-  const contacts = (Array.isArray(p.contacts) ? p.contacts : []).map((c) => ({ firstName: str(c.firstName, 80), lastName: str(c.lastName, 80), email: str(c.email, 160)?.toLowerCase(), phone: str(c.phone, 60), company: str(c.company, 160), roles: list(c.roles, roles), title: str(c.title, 120), notes: str(c.notes, 1000) })).filter((c) => c.firstName || c.lastName || c.email);
+  const contacts = (Array.isArray(p.contacts) ? p.contacts : [])
+    .map((c) => ({
+      firstName: str(c.firstName, 80),
+      lastName: str(c.lastName, 80),
+      email: str(c.email, 160)?.toLowerCase(),
+      emails: list(c.emails)?.map((e) => e.toLowerCase()),
+      phone: str(c.phone, 60),
+      secondaryPhone: str(c.secondaryPhone, 60),
+      otherPhones: list(c.otherPhones),
+      mailingAddress: str(c.mailingAddress, 240),
+      company: str(c.company, 160),
+      roles: list(c.roles, roles),
+      title: str(c.title, 120),
+      notes: str(c.notes, 1000),
+      operatorBrandName: str(c.operatorBrandName, 160),
+      website: str(c.website, 200),
+      operatorEntityName: str(c.operatorEntityName, 160),
+      directoryOperatorName: str(c.directoryOperatorName, 160),
+      storePhone: str(c.storePhone, 60),
+      directoryOperatorPhone: str(c.directoryOperatorPhone, 60),
+      operatorTotalLocations: num(c.operatorTotalLocations) != null ? Math.round(num(c.operatorTotalLocations)!) : undefined,
+      lastCallDate: isoDay(c.lastCallDate),
+      callResult: (AQ_STAGES as readonly string[]).includes(str(c.callResult, 40) ?? "") ? str(c.callResult, 40) : undefined,
+      callBackAt: isoDay(c.callBackAt),
+      callNotes: str(c.callNotes, 2000),
+      properties: list(c.properties),
+    }))
+    .filter((c) => c.firstName || c.lastName || c.email);
   if (companies.length) out.companies = companies;
   if (contacts.length) out.contacts = contacts;
   if (ws === "AQ") {
@@ -349,6 +403,7 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
   };
   const companyIds = new Map<string, string>(); // norm(name) → id
   const contactIds = new Map<string, string>(); // email or norm(name) → id
+  const pendingLinks: { contactId: string; address: string }[] = [];
 
   if (ws === "AQ") {
     // companies named on property rows count too
@@ -374,20 +429,43 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
       const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ");
       const found = (c.email ? await prisma.aqContact.findFirst({ where: { email: { equals: c.email, mode: ci } } }) : null) ?? (fullName && (c.firstName || c.lastName) ? await prisma.aqContact.findFirst({ where: { firstName: { equals: c.firstName ?? "", mode: ci }, lastName: { equals: c.lastName ?? "", mode: ci }, ...(companyId ? { companyId } : {}) } }) : null);
       const roles = mergeAqRoles(toJsonList(c.roles ?? []), company?.roles);
+      const callBackAt = c.callResult === "Callback" && c.callBackAt ? new Date(`${c.callBackAt}T12:00:00`) : null;
+      const extra = {
+        emails: c.emails?.length ? c.emails.join("\n") : undefined,
+        secondaryPhone: c.secondaryPhone,
+        otherPhones: c.otherPhones?.length ? c.otherPhones.join("\n") : undefined,
+        mailingAddress: c.mailingAddress,
+        operatorBrandName: c.operatorBrandName,
+        website: c.website,
+        operatorEntityName: c.operatorEntityName,
+        directoryOperatorName: c.directoryOperatorName,
+        storePhone: c.storePhone,
+        directoryOperatorPhone: c.directoryOperatorPhone,
+        operatorTotalLocations: c.operatorTotalLocations,
+        lastCallDate: c.lastCallDate ? new Date(`${c.lastCallDate}T12:00:00`) : c.callResult ? new Date() : undefined,
+        callResult: c.callResult,
+        callBackAt: callBackAt ?? undefined,
+        followUpAt: callBackAt ?? undefined,
+      };
+      let contactId: string;
       if (found) {
-        await prisma.aqContact.update({ where: { id: found.id }, data: { email: found.email ?? c.email, phone: found.phone ?? c.phone, companyId: found.companyId ?? companyId, roles: toJsonList([...parseJsonList(found.roles), ...parseJsonList(roles)]), notes: found.notes ?? c.notes } });
-        if (c.email) contactIds.set(c.email.toLowerCase(), found.id);
-        if (fullName) contactIds.set(norm(fullName), found.id);
+        const fill = Object.fromEntries(Object.entries(extra).filter(([k, v]) => v !== undefined && (found as Record<string, unknown>)[k] == null || k === "callResult" || k === "lastCallDate" || k === "callBackAt" || k === "followUpAt").filter(([, v]) => v !== undefined));
+        await prisma.aqContact.update({ where: { id: found.id }, data: { email: found.email ?? c.email, phone: found.phone ?? c.phone, companyId: found.companyId ?? companyId, roles: toJsonList([...parseJsonList(found.roles), ...parseJsonList(roles)]), notes: found.notes ?? c.notes, ...fill } });
+        contactId = found.id;
         result.matched.contacts++;
       } else {
-        const made = await prisma.aqContact.create({ data: { firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone, companyId, roles, notes: c.notes } });
-        if (c.email) contactIds.set(c.email.toLowerCase(), made.id);
-        if (fullName) contactIds.set(norm(fullName), made.id);
+        const made = await prisma.aqContact.create({ data: { firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone, companyId, roles, notes: c.notes, ...Object.fromEntries(Object.entries(extra).filter(([, v]) => v !== undefined)) } });
+        contactId = made.id;
         result.created.contacts++;
         link(fullName || c.email || "Contact", `/acquisitions/contacts/${made.id}`);
       }
+      if (c.email) contactIds.set(c.email.toLowerCase(), contactId);
+      if (fullName) contactIds.set(norm(fullName), contactId);
+      if (c.callNotes) await prisma.aqNote.create({ data: { contactId, body: c.callNotes } });
+      for (const addr of c.properties ?? []) pendingLinks.push({ contactId, address: addr });
     }
     const dealStages = await getAqDealStages();
+    const propertyIds = new Map<string, string>(); // norm(address) → id
     for (const r of p.properties ?? []) {
       const found = await prisma.aqProperty.findFirst({ where: { address: { equals: r.address, mode: ci }, ...(r.city ? { city: { equals: r.city, mode: ci } } : {}) } });
       const stages = r.callResult ? [r.callResult] : [];
@@ -465,7 +543,6 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
         link(r.address, `/acquisitions/properties/${made.id}`);
       }
       if (r.callNotes) await prisma.aqNote.create({ data: { propertyId: id, body: r.callNotes } });
-      await syncPropertyPeople(id).catch(() => null);
       for (const n of r.companies ?? []) {
         const companyId = companyIds.get(norm(n));
         if (companyId) await prisma.aqPropertyCompany.upsert({ where: { propertyId_companyId: { propertyId: id, companyId } }, create: { propertyId: id, companyId }, update: {} });
@@ -475,6 +552,12 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
         if (contactId) await prisma.aqPropertyContact.upsert({ where: { propertyId_contactId: { propertyId: id, contactId } }, create: { propertyId: id, contactId }, update: {} });
         else result.skipped.push(`${r.address}: no contact called ${n} in this import`);
       }
+      propertyIds.set(norm(r.address), id);
+    }
+    for (const l of pendingLinks) {
+      const propertyId = propertyIds.get(norm(l.address)) ?? (await prisma.aqProperty.findFirst({ where: { address: { equals: l.address, mode: ci } }, select: { id: true } }))?.id;
+      if (propertyId) await prisma.aqPropertyContact.upsert({ where: { propertyId_contactId: { propertyId, contactId: l.contactId } }, create: { propertyId, contactId: l.contactId }, update: {} });
+      else result.skipped.push(`No property at ${l.address} to tie the contact to`);
     }
     return result;
   }

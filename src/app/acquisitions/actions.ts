@@ -6,7 +6,6 @@ import { prisma } from "@/lib/db";
 import { AQ_ASSET_TYPES, AQ_ROLES, AQ_STAGES, digitsOf, ensureLlc, lines, mergeAqRoles, parseJsonList, toJsonList } from "@/lib/acquisitions";
 import { US_STATES } from "@/lib/taxonomy";
 import { forgetAqGeo } from "@/lib/aq-geocode";
-import { dropPhoneFromPeople, syncPropertyPeople } from "@/lib/aq-people";
 import { getAqDealStages, saveAqDealStages } from "@/lib/acquisitions-stages";
 
 const s = (fd: FormData, k: string) => {
@@ -73,27 +72,65 @@ export async function deleteAqCompany(id: string) {
 }
 
 // ---------- contacts ----------
+const dateOf = (fd: FormData, k: string) => {
+  const v = s(fd, k);
+  return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T12:00:00`) : null;
+};
+/**
+ * The contact card's fields (Sep 22, 2026): who they are and how to reach them, the operator details, and the call.
+ * Callback needs a target date, which also fills Follow Up Date unless that was typed over; Wrong number drops the
+ * picked phone from every phone field on the card.
+ */
 function contactData(fd: FormData) {
+  const callResult = s(fd, "callResult");
+  const result = callResult && (AQ_STAGES as readonly string[]).includes(callResult) ? callResult : null;
+  const callBack = result === "Callback" ? dateOf(fd, "callBackAt") : null;
+  const followUp = dateOf(fd, "followUpAt") ?? callBack;
+  const deletePhone = result === "Wrong number" ? s(fd, "deletePhone") : null;
+  const drop = (p: string | null) => (p && deletePhone && digitsOf(p) === digitsOf(deletePhone) ? null : p);
+  const total = s(fd, "operatorTotalLocations");
   return {
     firstName: s(fd, "firstName"),
     lastName: s(fd, "lastName"),
     email: s(fd, "email")?.toLowerCase() ?? null,
-    phone: s(fd, "phone"),
+    emails: lines(s(fd, "emails")).map((e) => e.toLowerCase()).join("\n") || null,
+    phone: drop(s(fd, "phone")),
+    secondaryPhone: drop(s(fd, "secondaryPhone")),
+    otherPhones: lines(s(fd, "otherPhones")).filter((p) => !(deletePhone && digitsOf(p) === digitsOf(deletePhone))).join("\n") || null,
+    mailingAddress: s(fd, "mailingAddress"),
     companyId: s(fd, "companyId"),
     roles: list(fd, "roles", AQ_ROLES),
     notes: s(fd, "notes"),
+    operatorBrandName: s(fd, "operatorBrandName"),
+    website: s(fd, "website"),
+    operatorEntityName: s(fd, "operatorEntityName"),
+    directoryOperatorName: s(fd, "directoryOperatorName"),
+    storePhone: drop(s(fd, "storePhone")),
+    directoryOperatorPhone: drop(s(fd, "directoryOperatorPhone")),
+    operatorTotalLocations: total && Number.isFinite(Number(total)) ? Math.round(Number(total)) : null,
+    lastCallDate: dateOf(fd, "lastCallDate") ?? (result ? new Date() : null),
+    callResult: result,
+    callBackAt: callBack,
+    followUpAt: followUp,
+    ...(callBack ? { callBackDismissedAt: null } : {}),
   };
 }
 export async function createAqContact(fd: FormData) {
   const data = contactData(fd);
   const co = data.companyId ? await prisma.aqCompany.findUnique({ where: { id: data.companyId }, select: { roles: true } }) : null;
   const c = await prisma.aqContact.create({ data: { ...data, roles: mergeAqRoles(data.roles, co?.roles) } });
+  // from a property's Owners or Operators window: linked to that property straight away
+  const propertyId = s(fd, "propertyId");
+  if (propertyId) await prisma.aqPropertyContact.create({ data: { propertyId, contactId: c.id } }).catch(() => null);
   touchAll();
-  redirect(`/acquisitions/contacts/${c.id}`);
+  redirect(propertyId ? `/acquisitions/properties/${propertyId}` : `/acquisitions/contacts/${c.id}`);
 }
 export async function updateAqContact(id: string, fd: FormData) {
   const data = contactData(fd);
   const co = data.companyId ? await prisma.aqCompany.findUnique({ where: { id: data.companyId }, select: { roles: true } }) : null;
+  const before = await prisma.aqContact.findUnique({ where: { id }, select: { callBackAt: true } });
+  // an unchanged callback date keeps its dismissal; a new date brings the reminder back
+  if (before?.callBackAt && data.callBackAt && before.callBackAt.getTime() === data.callBackAt.getTime()) delete (data as { callBackDismissedAt?: null }).callBackDismissedAt;
   await prisma.aqContact.update({ where: { id }, data: { ...data, roles: mergeAqRoles(data.roles, co?.roles) } });
   revalidatePath(`/acquisitions/contacts/${id}`);
   touchAll();
@@ -115,80 +152,34 @@ const date = (fd: FormData, k: string) => {
   const v = s(fd, k);
   return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T12:00:00`) : null;
 };
-const sameDay = (a: Date | null, b: Date | null) => Boolean(a && b && a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10));
 
-/**
- * The property ticket's fields (Jonathan's list, Sep 18, 2026). Call Result is one pick and becomes the stage:
- * Callback needs a target date, which also fills Follow Up Date unless that was typed over; Wrong number drops the
- * picked phone from the property (and from linked contacts, in updateAqProperty); Deal opens the pipeline stage.
- * The list page's stage cell still writes the stages list directly (setAqPropertyStages).
- */
+/** The property ticket's fields (Sep 22, 2026): the property, the physical facts and last sale, and whether it is in the Deal Pipeline. People and calls live on the contact cards. */
 function propertyData(fd: FormData, dealStages: string[]) {
-  const picked = s(fd, "callResult");
-  const stages = picked && (AQ_STAGES as readonly string[]).includes(picked) ? [picked] : fd.has("callResult") ? [] : parseJsonList(list(fd, "stages", AQ_STAGES));
-  const callBack = stages.includes("Callback") ? date(fd, "callBackAt") : null;
-  const followUp = date(fd, "followUpAt") ?? callBack;
-  const deletePhone = stages.includes("Wrong number") ? s(fd, "deletePhone") : null;
-  const drop = (p: string | null) => (p && deletePhone && digitsOf(p) === digitsOf(deletePhone) ? null : p);
-  const otherPhones = lines(s(fd, "otherPhones"))
-    .filter((p) => !(deletePhone && digitsOf(p) === digitsOf(deletePhone)))
-    .join("\n");
-  const lastCall = date(fd, "lastCallDate") ?? (picked ? new Date() : null);
+  const deal = fd.get("deal") === "1" || fd.get("deal") === "on";
   return {
-    data: {
-      address: s(fd, "address") ?? "Property",
-      city: s(fd, "city"),
-      state: s(fd, "state")?.toUpperCase().slice(0, 2) ?? null,
-      businessName: s(fd, "businessName"),
-      assetType: s(fd, "assetType"),
-      parcelId: s(fd, "parcelId"),
-      ownerEntity: ensureLlc(s(fd, "ownerEntity")),
-      ownerName: s(fd, "ownerName"),
-      primaryPhone: drop(s(fd, "primaryPhone")),
-      secondaryPhone: drop(s(fd, "secondaryPhone")),
-      otherPhones: otherPhones || null,
-      primaryEmail: s(fd, "primaryEmail")?.toLowerCase() ?? null,
-      emails: lines(s(fd, "emails")).map((e) => e.toLowerCase()).join("\n") || null,
-      ownerMailingAddress: s(fd, "ownerMailingAddress"),
-      operatorEntity: s(fd, "operatorEntity"),
-      operatorName: s(fd, "operatorName"),
-      operatorPhone: drop(s(fd, "operatorPhone")),
-      operatorSecondaryPhone: drop(s(fd, "operatorSecondaryPhone")),
-      operatorOtherPhones: lines(s(fd, "operatorOtherPhones")).filter((p) => !(deletePhone && digitsOf(p) === digitsOf(deletePhone))).join("\n") || null,
-      operatorEmail: s(fd, "operatorEmail")?.toLowerCase() ?? null,
-      operatorEmails: lines(s(fd, "operatorEmails")).map((e) => e.toLowerCase()).join("\n") || null,
-      operatorMailingAddress: s(fd, "operatorMailingAddress"),
-      acreage: n(fd, "acreage"),
-      squareFeet: i(fd, "squareFeet"),
-      yearBuilt: i(fd, "yearBuilt"),
-      lastSaleDate: date(fd, "lastSaleDate"),
-      lastSalePrice: n(fd, "lastSalePrice"),
-      lastCallDate: lastCall,
-      stages: JSON.stringify(stages),
-      callBackAt: callBack,
-      followUpAt: followUp,
-      // a fresh call-back date reopens the reminder; without the stage the dismissal is moot
-      ...(callBack ? { callBackDismissedAt: null } : {}),
-      dealStage: stages.includes("Deal") ? (s(fd, "dealStage") && dealStages.includes(s(fd, "dealStage")!) ? s(fd, "dealStage") : dealStages[0]) : null,
-    },
-    deletePhone,
+    address: s(fd, "address") ?? "Property",
+    city: s(fd, "city"),
+    state: s(fd, "state")?.toUpperCase().slice(0, 2) ?? null,
+    county: s(fd, "county")?.replace(/\s+county$/i, "") ?? null,
+    businessName: s(fd, "businessName"),
+    assetType: s(fd, "assetType"),
+    parcelId: s(fd, "parcelId"),
+    acreage: n(fd, "acreage"),
+    squareFeet: i(fd, "squareFeet"),
+    yearBuilt: i(fd, "yearBuilt"),
+    lastSaleDate: date(fd, "lastSaleDate"),
+    lastSalePrice: n(fd, "lastSalePrice"),
+    stages: JSON.stringify(deal ? ["Deal"] : []),
+    dealStage: deal ? (s(fd, "dealStage") && dealStages.includes(s(fd, "dealStage")!) ? s(fd, "dealStage") : dealStages[0]) : null,
   };
 }
 export async function createAqProperty(fd: FormData) {
-  const p = await prisma.aqProperty.create({ data: propertyData(fd, await getAqDealStages()).data });
-  await syncPropertyPeople(p.id).catch(() => null);
+  const p = await prisma.aqProperty.create({ data: propertyData(fd, await getAqDealStages()) });
   touchAll();
   redirect(`/acquisitions/properties/${p.id}`);
 }
 export async function updateAqProperty(id: string, fd: FormData) {
-  const { data, deletePhone } = propertyData(fd, await getAqDealStages());
-  const before = await prisma.aqProperty.findUnique({ where: { id }, select: { callBackAt: true } });
-  // an unchanged date keeps its dismissal; a new date brings the reminder back
-  const sameDate = before?.callBackAt && data.callBackAt && before.callBackAt.getTime() === data.callBackAt.getTime();
-  if (sameDate) delete (data as { callBackDismissedAt?: null }).callBackDismissedAt;
-  await prisma.aqProperty.update({ where: { id }, data });
-  if (deletePhone) await dropPhoneFromPeople(id, deletePhone);
-  await syncPropertyPeople(id).catch(() => null);
+  await prisma.aqProperty.update({ where: { id }, data: propertyData(fd, await getAqDealStages()) });
   revalidatePath(`/acquisitions/properties/${id}`);
   touchAll();
 }
@@ -260,15 +251,17 @@ export async function deleteAqDealStage(name: string): Promise<StageResult> {
 }
 // ---------- the list pages' grid (one cell at a time) ----------
 type CellResult = { ok: true; row?: Record<string, unknown> } | { ok: false; reason: string };
-const PROPERTY_CELLS: Record<string, "text" | "llc" | "state" | "assetType" | "lines" | "number" | "int" | "date" | "callResult" | "dealStage" | "email"> = {
-  address: "text", city: "text", state: "state", businessName: "text", assetType: "assetType", parcelId: "text", ownerEntity: "llc", ownerName: "text",
-  primaryPhone: "text", secondaryPhone: "text", otherPhones: "lines", primaryEmail: "email", emails: "lines", ownerMailingAddress: "text",
-  operatorEntity: "text", operatorName: "text", operatorPhone: "text", operatorSecondaryPhone: "text", operatorOtherPhones: "lines", operatorEmail: "email", operatorEmails: "lines", operatorMailingAddress: "text",
-  acreage: "number", squareFeet: "int", yearBuilt: "int", lastSaleDate: "date", lastSalePrice: "number", lastCallDate: "date",
-  callResult: "callResult", callBackAt: "date", followUpAt: "date", dealStage: "dealStage", neighborhood: "text", askingPrice: "number", units: "int", notes: "text",
+const PROPERTY_CELLS: Record<string, "text" | "state" | "assetType" | "number" | "int" | "date" | "deal" | "dealStage"> = {
+  address: "text", city: "text", state: "state", county: "text", businessName: "text", assetType: "assetType", parcelId: "text", neighborhood: "text", notes: "text",
+  acreage: "number", squareFeet: "int", yearBuilt: "int", lastSaleDate: "date", lastSalePrice: "number", askingPrice: "number", units: "int",
+  deal: "deal", dealStage: "dealStage",
 };
 const COMPANY_CELLS: Record<string, "text" | "state" | "roles" | "name"> = { name: "name", website: "text", phone: "text", city: "text", state: "state", notes: "text", roles: "roles" };
-const CONTACT_CELLS: Record<string, "text" | "email" | "roles" | "companyId"> = { firstName: "text", lastName: "text", email: "email", phone: "text", notes: "text", roles: "roles", companyId: "companyId" };
+const CONTACT_CELLS: Record<string, "text" | "email" | "roles" | "companyId" | "lines" | "int" | "date" | "callResult"> = {
+  firstName: "text", lastName: "text", email: "email", emails: "lines", phone: "text", secondaryPhone: "text", otherPhones: "lines", mailingAddress: "text", notes: "text", roles: "roles", companyId: "companyId",
+  operatorBrandName: "text", website: "text", operatorEntityName: "text", directoryOperatorName: "text", storePhone: "text", directoryOperatorPhone: "text", operatorTotalLocations: "int",
+  lastCallDate: "date", callResult: "callResult", callBackAt: "date", followUpAt: "date",
+};
 const numOf = (v: string | null) => {
   if (v == null) return null;
   const n = Number(v.replace(/[^0-9.-]/g, ""));
@@ -296,21 +289,18 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
     if (kind === "property") {
       const t = PROPERTY_CELLS[key];
       if (!t) return { ok: false, reason: `${key} cannot be edited here.` };
-      if (t === "callResult") {
-        const stage = text && (AQ_STAGES as readonly string[]).includes(text) ? [text] : [];
-        await setAqPropertyStages(id, stage);
+      if (t === "deal") {
+        await setAqPropertyStages(id, text === "Deal" ? ["Deal"] : []);
         const p = await prisma.aqProperty.findUnique({ where: { id }, select: { dealStage: true, stages: true } });
-        return { ok: true, row: { callResult: parseJsonList(p?.stages)[0] ?? null, dealStage: p?.dealStage ?? null } };
+        return { ok: true, row: { deal: parseJsonList(p?.stages).includes("Deal") ? "Deal" : null, dealStage: p?.dealStage ?? null } };
       }
       if (t === "dealStage") {
         if (!text) return { ok: false, reason: "Pick a stage, or clear the Call result instead." };
         await setAqDealStage(id, text);
-        return { ok: true, row: { callResult: "Deal", dealStage: text } };
+        return { ok: true, row: { deal: "Deal", dealStage: text } };
       }
       const data: Record<string, unknown> = {};
       if (t === "text") data[key] = key === "address" ? text ?? "Property" : text;
-      else if (t === "email") data[key] = text?.toLowerCase() ?? null;
-      else if (t === "llc") data[key] = ensureLlc(text);
       else if (t === "state") {
         const st = text?.toUpperCase().slice(0, 2) ?? null;
         if (st && !US_STATES[st]) return { ok: false, reason: `${text} is not a state code.` };
@@ -318,8 +308,7 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
       } else if (t === "assetType") {
         if (text && !(AQ_ASSET_TYPES as readonly string[]).includes(text)) return { ok: false, reason: `Asset type must be one of ${AQ_ASSET_TYPES.join(", ")}.` };
         data[key] = text;
-      } else if (t === "lines") data[key] = lines(text).join("\n") || null;
-      else if (t === "number") data[key] = numOf(text);
+      } else if (t === "number") data[key] = numOf(text);
       else if (t === "int") {
         const n = numOf(text);
         data[key] = n == null ? null : Math.round(n);
@@ -327,19 +316,11 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
         const d = dayOf(text);
         if (text && !d) return { ok: false, reason: "Use a date." };
         data[key] = d;
-        if (key === "callBackAt" && d) {
-          const cur = await prisma.aqProperty.findUnique({ where: { id }, select: { followUpAt: true, callBackAt: true } });
-          data.callBackDismissedAt = null;
-          if (!cur?.followUpAt || (cur.callBackAt && cur.followUpAt.getTime() === cur.callBackAt.getTime())) data.followUpAt = d;
-        }
       }
       await prisma.aqProperty.update({ where: { id }, data });
-      if (/^(owner|operator|primary|secondary|other|emails|businessName)/.test(key)) await syncPropertyPeople(id).catch(() => null);
       revalidatePath(`/acquisitions/properties/${id}`);
       touchAll();
-      const row: Record<string, unknown> = { [key]: data[key] instanceof Date ? (data[key] as Date).toISOString() : data[key] };
-      if (data.followUpAt instanceof Date) row.followUpAt = data.followUpAt.toISOString();
-      return { ok: true, row };
+      return { ok: true, row: { [key]: data[key] instanceof Date ? (data[key] as Date).toISOString() : data[key] } };
     }
     if (kind === "company") {
       const t = COMPANY_CELLS[key];
@@ -374,10 +355,33 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
       const roles = parseJsonList(mergeAqRoles(cur?.roles, co?.roles));
       return { ok: true, row: { companyId: co?.id ?? null, roles } };
     }
-    await prisma.aqContact.update({ where: { id }, data: { [key]: t === "email" ? text?.toLowerCase() ?? null : text } });
+    const data: Record<string, unknown> = {};
+    if (t === "text") data[key] = text;
+    else if (t === "email") data[key] = text?.toLowerCase() ?? null;
+    else if (t === "lines") data[key] = lines(text).join("\n") || null;
+    else if (t === "int") {
+      const v = numOf(text);
+      data[key] = v == null ? null : Math.round(v);
+    } else if (t === "callResult") {
+      if (text && !(AQ_STAGES as readonly string[]).includes(text)) return { ok: false, reason: "Pick a call result from the list." };
+      data.callResult = text;
+      if (text) data.lastCallDate = new Date();
+    } else if (t === "date") {
+      const d = dayOf(text);
+      if (text && !d) return { ok: false, reason: "Use a date." };
+      data[key] = d;
+      if (key === "callBackAt" && d) {
+        const cur = await prisma.aqContact.findUnique({ where: { id }, select: { followUpAt: true, callBackAt: true } });
+        data.callBackDismissedAt = null;
+        if (!cur?.followUpAt || (cur.callBackAt && cur.followUpAt.getTime() === cur.callBackAt.getTime())) data.followUpAt = d;
+      }
+    }
+    await prisma.aqContact.update({ where: { id }, data });
     revalidatePath(`/acquisitions/contacts/${id}`);
     touchAll();
-    return { ok: true };
+    const row: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(data)) row[k] = v instanceof Date ? v.toISOString() : v;
+    return { ok: true, row };
   } catch (e) {
     return { ok: false, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
   }
@@ -385,28 +389,31 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
 
 // ---------- transcripts and the map ----------
 /** A call transcript pasted onto the property; the newest shows on top of the Transcript card. */
-export async function deleteAqNote(propertyId: string, id: string) {
-  await prisma.aqNote.deleteMany({ where: { id, propertyId } });
-  revalidatePath(`/acquisitions/properties/${propertyId}`);
+export async function deleteAqNote(target: NoteTarget, id: string) {
+  await prisma.aqNote.deleteMany({ where: { id, ...(target.contactId ? { contactId: target.contactId } : { propertyId: target.propertyId }) } });
+  revalidatePath(targetPath(target));
   touchAll();
 }
-export async function addAqTranscript(propertyId: string, fd: FormData) {
+type NoteTarget = { contactId?: string; propertyId?: string };
+const targetPath = (t: NoteTarget) => (t.contactId ? `/acquisitions/contacts/${t.contactId}` : `/acquisitions/properties/${t.propertyId}`);
+export async function addAqTranscript(target: NoteTarget, fd: FormData) {
   const body = s(fd, "body");
   if (!body) return;
-  await prisma.aqTranscript.create({ data: { propertyId, body } });
-  revalidatePath(`/acquisitions/properties/${propertyId}`);
+  await prisma.aqTranscript.create({ data: { contactId: target.contactId, propertyId: target.propertyId, body } });
+  revalidatePath(targetPath(target));
 }
-export async function deleteAqTranscript(propertyId: string, id: string) {
-  await prisma.aqTranscript.deleteMany({ where: { id, propertyId } });
-  revalidatePath(`/acquisitions/properties/${propertyId}`);
+export async function deleteAqTranscript(target: NoteTarget, id: string) {
+  await prisma.aqTranscript.deleteMany({ where: { id, ...(target.contactId ? { contactId: target.contactId } : { propertyId: target.propertyId }) } });
+  revalidatePath(targetPath(target));
 }
 /** Forget the map pin so the next page load looks the address up again. */
 export async function recheckAqLocation(id: string) {
   await forgetAqGeo(id);
   revalidatePath(`/acquisitions/properties/${id}`);
 }
-export async function dismissCallBack(id: string) {
-  await prisma.aqProperty.update({ where: { id }, data: { callBackDismissedAt: new Date() } });
+/** The dashboard's Dismiss: this person's callback is done or no longer needed; the call result stays. */
+export async function dismissCallBack(contactId: string) {
+  await prisma.aqContact.update({ where: { id: contactId }, data: { callBackDismissedAt: new Date() } });
   touchAll();
 }
 export async function deleteAqProperty(id: string) {

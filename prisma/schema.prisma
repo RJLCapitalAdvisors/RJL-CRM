@@ -1050,12 +1050,32 @@ model AqContact {
   lastName       String?
   email          String?
   phone          String?
-  roles          String   @default("[]") // JSON list: Seller | Operator | Buyer
+  roles          String   @default("[]") // JSON list: Owner | Operator | Buyer
   notes          String?
   companyId      String?
   company        AqCompany? @relation(fields: [companyId], references: [id])
+  // the contact card carries every way to reach the person (Sep 22, 2026; moved here from the property ticket)
+  secondaryPhone String?
+  otherPhones    String?  // one per line
+  emails         String?  // other emails, one per line
+  mailingAddress String?
+  // operator details, shown only when the role Operator is on
+  operatorBrandName     String?
+  website               String?
+  operatorEntityName    String?
+  directoryOperatorName String?
+  storePhone            String?  // the store's public number (Google)
+  directoryOperatorPhone String?
+  operatorTotalLocations Int?
+  // the call, tracked per person: result, callback target (the dashboard's Call Me Back), follow-up
+  lastCallDate        DateTime?
+  callResult          String?  // Deal | Callback | Not interested | No answer | Wrong number
+  callBackAt          DateTime?
+  callBackDismissedAt DateTime?
+  followUpAt          DateTime?
   activities     AqActivity[]
   aqNotes        AqNote[]
+  transcripts    AqTranscript[]
   properties     AqPropertyContact[]
   lastActivityAt DateTime?
   createdAt      DateTime @default(now())
@@ -1070,6 +1090,7 @@ model AqProperty {
   neighborhood        String?
   city                String?
   state               String?
+  county              String?
   stages              String   @default("[]") // JSON list, the Call Result: Deal | Callback | Not interested | No answer | Wrong number
   callBackAt          DateTime? // the Callback target date; the dashboard's Call Me Back window shows the property from that day (followUpAt when set) until dismissed
   callBackDismissedAt DateTime?
@@ -1123,13 +1144,16 @@ model AqProperty {
 }
 /** A call transcript pasted onto a property. The newest sits on top of the ticket's Transcript card. */
 model AqTranscript {
-  id         String     @id @default(cuid())
-  propertyId String
-  property   AqProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  id         String      @id @default(cuid())
+  propertyId String?
+  property   AqProperty? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  contactId  String?
+  contact    AqContact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
   body       String
-  createdAt  DateTime   @default(now())
+  createdAt  DateTime    @default(now())
 
   @@index([propertyId, createdAt])
+  @@index([contactId, createdAt])
 }
 
 model AqPropertyCompany {
