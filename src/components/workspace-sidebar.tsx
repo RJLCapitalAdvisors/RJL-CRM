@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect } from "react";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks, BookOpen, Table2 } from "lucide-react";
+import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks, BookOpen, Table2, Inbox, Map } from "lucide-react";
 import { NavLink } from "@/components/nav-link";
 import { DealContextNav } from "@/components/deal-context-nav";
 import { ApartmentContextNav } from "@/components/apartment-context-nav";
@@ -36,6 +36,7 @@ const AQ_NAV = [
 const IL_NAV = [
   { href: "/israel/ask", label: "Ask the CRM", icon: MessageSquare },
   { href: "/israel", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  { href: "/israel/queue", label: "The Que", icon: Inbox },
   { href: "/israel/projects", label: "Projects", icon: Building2 },
   { href: "/israel/apartments", label: "Apartments", icon: Building2 },
   { href: "/israel/houses", label: "Houses", icon: Home },
@@ -138,9 +139,12 @@ function Nav({ items, dealSteps = false, apartmentSteps = false, propertySteps =
             </Suspense>
           )}
           {apartmentSteps && n.href === "/israel/houses" && (
-            <Suspense fallback={null}>
-              <ApartmentContextNav section="houses" />
-            </Suspense>
+            <>
+              <IlHousesSubnav />
+              <Suspense fallback={null}>
+                <ApartmentContextNav section="houses" />
+              </Suspense>
+            </>
           )}
         </div>
       ))}
@@ -202,6 +206,27 @@ function SideSettingsSubnav({ base }: { base: string }) {
   const items = [
     { href: base, label: "Users", icon: Users, on: !onData },
     { href: base + "/data-rules", label: "Data rules", icon: Table2, on: onData },
+  ];
+  return (
+    <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
+      {items.map((s) => (
+        <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${s.on ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
+          <s.icon className="h-3.5 w-3.5" />
+          {s.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/** Under Houses on the Israel side: the list and the Map View (every unit pinned). Shows while you are on either page. */
+function IlHousesSubnav() {
+  const pathname = usePathname();
+  if (!pathname.startsWith("/israel/houses")) return null;
+  const onMap = pathname.startsWith("/israel/houses/map");
+  const items = [
+    { href: "/israel/houses", label: "Houses", icon: Home, on: !onMap },
+    { href: "/israel/houses/map", label: "Map View", icon: Map, on: onMap },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">

@@ -652,7 +652,9 @@ model IlApartment {
   mamad          Boolean?  // Yes, No, or not stated yet (asked for while null)
   priceNis       Float?
   priceCheckedAt DateTime? // pricing last confirmed with the agent or developer; the dashboard asks again after 90 days
-  pendingApproval Boolean  @default(false) // came in by email with data missing; waits on the dashboard until approved
+  pendingApproval Boolean  @default(false) // came in by email with data missing; sits in The Que until approved
+  approvalRequestedAt DateTime? // someone approved it from The Que with data still missing; Jonathan decides on the dashboard
+  approvalRequestedBy String?
   extra          String?   // JSON answers to Required Items List questions that have no field of their own
   pool           String?   // Private pool: Yes | No
   poolSqm        Float?
@@ -825,6 +827,9 @@ model IlProject {
   agentContactId String?       // the broker who brought the project
   agent          IlContact?    @relation("IlProjectAgent", fields: [agentContactId], references: [id])
   priceCheckedAt DateTime?     // unit pricing last confirmed with the developer; asked again after 90 days
+  pendingApproval Boolean      @default(false) // came in with data missing; sits in The Que until approved
+  approvalRequestedAt DateTime?
+  approvalRequestedBy String?
   lat            Float?
   lng            Float?
   geoQuery       String?
@@ -986,7 +991,9 @@ model IlHouse {
   pool            String?   // Yes | No
   poolSqm         Float?
   priceCheckedAt  DateTime? // pricing last confirmed; asked again after 90 days
-  pendingApproval Boolean   @default(false) // came in by email or WhatsApp with data missing
+  pendingApproval Boolean   @default(false) // came in by email or WhatsApp with data missing; sits in The Que until approved
+  approvalRequestedAt DateTime? // approved from The Que with data still missing; Jonathan decides on the dashboard
+  approvalRequestedBy String?
   extra           String?   // JSON answers to Required Items List questions that have no field of their own
   lat             Float?
   lng             Float?

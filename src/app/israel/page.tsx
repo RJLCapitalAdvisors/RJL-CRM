@@ -2,8 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
-import { apartmentLine, apartmentMissing, houseLine, houseMissing, ilFullName, nis } from "@/lib/israel";
-import { approveApartment, approveHouse } from "./actions";
+import { apartmentLine, apartmentMissing, houseLine, houseMissing, ilFullName, nis, projectMissing } from "@/lib/israel";
+import { dashboardApprove, dashboardDecline } from "./queue-actions";
 import { kickIsraelMailSync } from "@/lib/israel-mail";
 import { IL_MENTIONED } from "@/lib/israel-mentions";
 import { dismissIlMention, snoozeIlMention } from "./actions";
@@ -16,8 +16,9 @@ export const metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
 
 /**
- * RJL Israel dashboard. Deals to be approved: apartments that came in by email with data missing. They sit here,
- * not in the Apartments list, until the data is chased down and Jonathan approves them. Deals mentioned carries
+ * RJL Israel dashboard. Deals to be approved: deals someone approved from The Que with data still missing (Sep 22,
+ * 2026); they wait here for Jonathan, whose Approve admits them whatever is missing. Everything else that came in
+ * sits in The Que until approved. Deals mentioned carries
  * properties people floated by email without ever sending the listing. Data updates lists tickets a later message
  * added data to. Pricing updates asks, every three months per apartment, house and project, for the pricing to be
  * checked with the agent or developer. Four windows, none replacing another.
@@ -27,18 +28,23 @@ export default async function IsraelDashboard() {
   await loadIlRequired(); // Still needed reads the Required Items Lists as Jonathan last edited them
   const since = new Date(Date.now() - 14 * 86_400_000);
   const pricing = await pricingDue(40);
-  const [pendingApts, pendingHouses, mentions, updates] = await Promise.all([
-    prisma.ilApartment.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
-    prisma.ilHouse.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
+  const waiting = { pendingApproval: true, approvalRequestedAt: { not: null } };
+  const [pendingApts, pendingHouses, pendingProjects, queued, mentions, updates] = await Promise.all([
+    prisma.ilApartment.findMany({ where: waiting, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
+    prisma.ilHouse.findMany({ where: waiting, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
+    prisma.ilProject.findMany({ where: waiting, orderBy: { createdAt: "desc" }, include: { developer: { select: { name: true } }, agent: { select: { firstName: true, lastName: true, email: true } } } }),
+    Promise.all([prisma.ilApartment.count({ where: { pendingApproval: true } }), prisma.ilHouse.count({ where: { pendingApproval: true } }), prisma.ilProject.count({ where: { pendingApproval: true } })]).then((c) => c[0] + c[1] + c[2]),
     prisma.ilDeal.findMany({ where: { stage: IL_MENTIONED, OR: [{ snoozedUntil: null }, { snoozedUntil: { lt: new Date() } }] }, orderBy: { updatedAt: "desc" }, include: { agent: { select: { id: true, firstName: true, lastName: true, email: true, company: { select: { name: true } } } } } }),
     // tickets a later email or WhatsApp message added data to (the intake writes an "Updated from ..." note)
     prisma.ilNote.findMany({ where: { body: { startsWith: "Updated from" }, createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 30, include: { apartment: { select: { id: true, name: true } }, house: { select: { id: true, name: true } } } }),
   ]);
   // apartments and houses in one list, newest first
   const pending = [
-    ...pendingApts.map((a) => ({ id: a.id, kind: "apartments" as const, name: a.name, line: apartmentLine(a), developer: a.developer?.name, price: a.priceNis, createdAt: a.createdAt, agent: a.agent, source: a.source, missing: apartmentMissing(a as unknown as Record<string, unknown>) })),
-    ...pendingHouses.map((h) => ({ id: h.id, kind: "houses" as const, name: h.name, line: houseLine(h), developer: h.developer?.name, price: h.priceNis, createdAt: h.createdAt, agent: h.agent, source: h.source, missing: houseMissing(h as unknown as Record<string, unknown>) })),
+    ...pendingApts.map((a) => ({ id: a.id, kind: "apartments" as const, name: a.name, line: apartmentLine(a), developer: a.developer?.name, price: a.priceNis, createdAt: a.createdAt, agent: a.agent, source: a.source, missing: apartmentMissing(a as unknown as Record<string, unknown>), requestedBy: a.approvalRequestedBy, requestedAt: a.approvalRequestedAt })),
+    ...pendingHouses.map((h) => ({ id: h.id, kind: "houses" as const, name: h.name, line: houseLine(h), developer: h.developer?.name, price: h.priceNis, createdAt: h.createdAt, agent: h.agent, source: h.source, missing: houseMissing(h as unknown as Record<string, unknown>), requestedBy: h.approvalRequestedBy, requestedAt: h.approvalRequestedAt })),
+    ...pendingProjects.map((p) => ({ id: p.id, kind: "projects" as const, name: p.name, line: [p.street, p.neighborhood, p.city].filter(Boolean).join(", "), developer: p.developer?.name, price: null as number | null, createdAt: p.createdAt, agent: p.agent, source: null as string | null, missing: projectMissing(p as unknown as Record<string, unknown>), requestedBy: p.approvalRequestedBy, requestedAt: p.approvalRequestedAt })),
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const kindLabel = { apartments: "Apartment", houses: "House", projects: "Project" } as const;
   return (
     <>
       <PageHeader title="Dashboard" />
@@ -46,10 +52,17 @@ export default async function IsraelDashboard() {
         <div className="card">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <div className="text-sm font-semibold">Deals to be approved</div>
-            <span className="text-xs text-muted">{pending.length}</span>
+            <div className="flex items-center gap-3 text-xs text-muted">
+              <Link href="/israel/queue" className="hover:underline">
+                The Que · {queued}
+              </Link>
+              <span>{pending.length}</span>
+            </div>
           </div>
           {pending.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-muted">Nothing waiting. Apartments and houses that arrive by email or WhatsApp with data missing show up here until the data is complete and approved.</div>
+            <div className="px-4 py-8 text-center text-sm text-muted">
+              Nothing waiting on you. Deals that come in sit in <Link href="/israel/queue" className="text-sky-700 hover:underline">The Que</Link>; when someone approves one there with data still missing, it comes here for your say.
+            </div>
           ) : (
             <ul className="divide-y divide-line">
               {pending.map((a) => {
@@ -61,7 +74,7 @@ export default async function IsraelDashboard() {
                         <Link href={`/israel/${a.kind}/${a.id}`} className="font-medium hover:underline">
                           {a.name}
                         </Link>
-                        <span className="ml-2 chip bg-cream text-[10px]">{a.kind === "houses" ? "House" : "Apartment"}</span>
+                        <span className="ml-2 chip bg-cream text-[10px]">{kindLabel[a.kind]}</span>
                         <div className="truncate text-xs text-muted">
                           {[a.line, a.developer, nis(a.price) || null].filter(Boolean).join(" · ")}
                         </div>
@@ -69,19 +82,23 @@ export default async function IsraelDashboard() {
                           Received {fmtDate(a.createdAt)}
                           {a.agent ? ` from ${[a.agent.firstName, a.agent.lastName].filter(Boolean).join(" ") || a.agent.email}` : ""}
                           {a.source ? ` · ${a.source}` : ""}
+                          {a.requestedBy ? ` · approved by ${a.requestedBy}${a.requestedAt ? ` ${fmtDate(a.requestedAt)}` : ""}` : ""}
                         </div>
                       </div>
-                      {missing.length === 0 ? (
-                        <form action={(a.kind === "houses" ? approveHouse : approveApartment).bind(null, a.id)}>
-                          <button type="submit" className="btn-primary px-3 py-1.5 text-xs">
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <form action={dashboardApprove.bind(null, a.kind, a.id)}>
+                          <button type="submit" className="btn-primary px-3 py-1.5 text-xs" title={missing.length ? "Into the system, with the missing data still to come" : "Into the system"}>
                             Approve
                           </button>
                         </form>
-                      ) : (
-                        <span className="chip shrink-0 bg-amber-100 text-[11px] text-amber-900">{missing.length} missing</span>
-                      )}
+                        <form action={dashboardDecline.bind(null, a.kind, a.id)}>
+                          <button type="submit" className="text-[11px] text-muted hover:underline" title="Back to The Que until the data is in">
+                            Back to The Que
+                          </button>
+                        </form>
+                      </div>
                     </div>
-                    {missing.length > 0 && <div className="mt-1.5 text-xs text-ink-soft">Still needed: {missing.join(", ")}</div>}
+                    {missing.length > 0 && <div className="mt-1.5 text-xs text-ink-soft">Still missing: {missing.join(", ")}</div>}
                   </li>
                 );
               })}
