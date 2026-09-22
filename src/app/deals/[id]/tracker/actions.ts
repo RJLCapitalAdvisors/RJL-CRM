@@ -170,6 +170,30 @@ export async function saveTrackerMeta(dealId: string, fd: FormData) {
   revalidatePath(`/share/tracker`);
 }
 
+/**
+ * "Refresh report" (Jonathan, Sep 22, 2026): everything at once. The team mailboxes are read again, every email with
+ * this deal's firms is tied to the deal and re-read for stance and asks, intro calls are looked for, and the themes and
+ * Items Needed are rewritten from what is now on the rows. The page redraws when it returns.
+ */
+export async function refreshReportAction(dealId: string): Promise<{ ok: true; linked: number; moved: number } | { ok: false; reason: string }> {
+  try {
+    const { refreshResponses } = await import("@/lib/refresh-responses");
+    const r = await refreshResponses(dealId);
+    const { detectIntroCalls } = await import("@/lib/intro-calls");
+    const calls = await detectIntroCalls().catch(() => ({ checked: 0, moved: 0 }));
+    const { ensureTrackerSummary } = await import("@/lib/tracker-summary");
+    await prisma.deal.update({ where: { id: dealId }, data: { trackerSummaryAt: null } }).catch(() => null);
+    await ensureTrackerSummary(dealId).catch(() => null);
+    revalidatePath(`/deals/${dealId}/tracker`);
+    revalidatePath(`/deals/${dealId}`);
+    revalidatePath("/share/tracker");
+    revalidatePath("/");
+    return { ok: true, linked: r.linked, moved: calls.moved };
+  } catch (e) {
+    return { ok: false, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+}
+
 /** "Refresh responses": re-read the team mailboxes for this deal's firms and update statuses, notes and LP requests. */
 export async function refreshResponsesAction(dealId: string) {
   const { refreshResponses } = await import("@/lib/refresh-responses");

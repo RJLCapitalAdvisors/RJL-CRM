@@ -1,4 +1,5 @@
-import Link from "next/link";
+﻿import Link from "next/link";
+import { RefreshButton } from "./refresh-button";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
@@ -26,6 +27,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 }
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300; // Refresh report reads every mailbox and re-reads the replies
 
 export default async function TrackerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
@@ -46,10 +48,11 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
   return (
     <>
       <PageHeader
-        title={`${name} — Progress Report`}
-        subtitle={`${deal.investors.length} investors · ${awaiting} awaiting response · last updated ${fmtReportDate(lastUpdated)}`}
+        title={`${name} â€” Progress Report`}
+        subtitle={`${deal.investors.length} investors Â· ${awaiting} awaiting response Â· last updated ${fmtReportDate(lastUpdated)}`}
         actions={
           <>
+            <RefreshButton dealId={deal.id} />
             <Link href={`/deals/${deal.id}`} className="btn-secondary">
               Back to deal
             </Link>
@@ -116,7 +119,7 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
             rowEnd: (r) => (
               <form action={removeTrackerRow.bind(null, r.id)}>
                 <button type="submit" className="hover:text-red-700" title="Remove from report">
-                  ×
+                  Ã—
                 </button>
               </form>
             ),
