@@ -7,6 +7,8 @@ export const AQ_ROLES = ["Owner", "Operator", "Buyer"] as const;
 /** The Call Result on a property. Callback needs a target date (the dashboard's Call Me Back window); Wrong number asks which number to drop. */
 export const AQ_STAGES = ["Deal", "Callback", "Not interested", "No answer", "Wrong number"] as const;
 export const AQ_ASSET_TYPES = ["Free-standing", "Strip center", "Other"] as const;
+/** Where an operator stands with us (Jonathan, Sep 22, 2026). */
+export const AQ_OPERATOR_STATUSES = ["Pipeline", "Corporate", "Not interested"] as const;
 /** Lines of a one-per-line field (Other Phones, Emails), bullets and blanks stripped. */
 export const lines = (s: string | null | undefined): string[] => (s ?? "").split(/\r?\n/).map((l) => l.replace(/^\s*[•\-*]\s*/, "").trim()).filter(Boolean);
 /** "1234 Bedford Ave" becomes "1234 Bedford Ave LLC"; a name that already ends in an entity suffix is left alone. */

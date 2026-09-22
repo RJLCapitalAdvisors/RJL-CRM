@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { AQ_ASSET_TYPES, AQ_ROLES, AQ_STAGES, digitsOf, ensureLlc, lines, mergeAqRoles, parseJsonList, toJsonList } from "@/lib/acquisitions";
+import { AQ_ASSET_TYPES, AQ_OPERATOR_STATUSES, AQ_ROLES, AQ_STAGES, digitsOf, ensureLlc, lines, mergeAqRoles, parseJsonList, toJsonList } from "@/lib/acquisitions";
 import { US_STATES } from "@/lib/taxonomy";
 import { forgetAqGeo } from "@/lib/aq-geocode";
 import { getAqDealStages, saveAqDealStages } from "@/lib/acquisitions-stages";
@@ -108,6 +108,7 @@ function contactData(fd: FormData) {
     storePhone: drop(s(fd, "storePhone")),
     directoryOperatorPhone: drop(s(fd, "directoryOperatorPhone")),
     operatorTotalLocations: total && Number.isFinite(Number(total)) ? Math.round(Number(total)) : null,
+    operatorPipelineStatus: (AQ_OPERATOR_STATUSES as readonly string[]).includes(s(fd, "operatorPipelineStatus") ?? "") ? s(fd, "operatorPipelineStatus") : null,
     lastCallDate: dateOf(fd, "lastCallDate") ?? (result ? new Date() : null),
     callResult: result,
     callBackAt: callBack,
@@ -257,9 +258,9 @@ const PROPERTY_CELLS: Record<string, "text" | "state" | "assetType" | "number" |
   deal: "deal", dealStage: "dealStage",
 };
 const COMPANY_CELLS: Record<string, "text" | "state" | "roles" | "name"> = { name: "name", website: "text", phone: "text", city: "text", state: "state", notes: "text", roles: "roles" };
-const CONTACT_CELLS: Record<string, "text" | "email" | "roles" | "companyId" | "lines" | "int" | "date" | "callResult"> = {
+const CONTACT_CELLS: Record<string, "text" | "email" | "roles" | "companyId" | "lines" | "int" | "date" | "callResult" | "operatorStatus"> = {
   firstName: "text", lastName: "text", email: "email", emails: "lines", phone: "text", secondaryPhone: "text", otherPhones: "lines", mailingAddress: "text", notes: "text", roles: "roles", companyId: "companyId",
-  operatorBrandName: "text", website: "text", operatorEntityName: "text", directoryOperatorName: "text", storePhone: "text", directoryOperatorPhone: "text", operatorTotalLocations: "int",
+  operatorBrandName: "text", website: "text", operatorEntityName: "text", directoryOperatorName: "text", storePhone: "text", directoryOperatorPhone: "text", operatorTotalLocations: "int", operatorPipelineStatus: "operatorStatus",
   lastCallDate: "date", callResult: "callResult", callBackAt: "date", followUpAt: "date",
 };
 const numOf = (v: string | null) => {
@@ -362,6 +363,9 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
     else if (t === "int") {
       const v = numOf(text);
       data[key] = v == null ? null : Math.round(v);
+    } else if (t === "operatorStatus") {
+      if (text && !(AQ_OPERATOR_STATUSES as readonly string[]).includes(text)) return { ok: false, reason: `Operator Pipeline Status is one of ${AQ_OPERATOR_STATUSES.join(", ")}.` };
+      data.operatorPipelineStatus = text;
     } else if (t === "callResult") {
       if (text && !(AQ_STAGES as readonly string[]).includes(text)) return { ok: false, reason: "Pick a call result from the list." };
       data.callResult = text;

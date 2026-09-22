@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager, SearchForm } from "@/components/ui";
 import { str } from "@/lib/format";
-import { AQ_ROLES, AQ_STAGES, aqFullName, parseJsonList } from "@/lib/acquisitions";
+import { AQ_OPERATOR_STATUSES, AQ_ROLES, AQ_STAGES, aqFullName, parseJsonList } from "@/lib/acquisitions";
 import { MultiSelect } from "@/components/multi-select";
 import type { GridColumn, GridRow } from "@/components/data-grid";
 import { AqGrid } from "../grid";
@@ -90,6 +90,7 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
     { key: "storePhone", label: "Store Phone (Google)", type: "tel", width: 150 },
     { key: "directoryOperatorPhone", label: "Directory Operator Phone", type: "tel", width: 160 },
     { key: "operatorTotalLocations", label: "Operator Total Locations", type: "number", width: 120 },
+    { key: "operatorPipelineStatus", label: "Operator Pipeline Status", type: "select", options: AQ_OPERATOR_STATUSES, width: 160 },
     { key: "notes", label: "Notes", type: "multiline", width: 240 },
     { key: "lastActivityAt", label: "Last Activity", type: "readonly", width: 120 },
   ];
@@ -126,6 +127,7 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
     storePhone: c.storePhone,
     directoryOperatorPhone: c.directoryOperatorPhone,
     operatorTotalLocations: c.operatorTotalLocations,
+    operatorPipelineStatus: c.operatorPipelineStatus,
     notes: c.notes,
     lastActivityAt: iso(c.lastActivityAt),
   }));

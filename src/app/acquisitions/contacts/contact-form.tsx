@@ -5,7 +5,7 @@ import { AutoSaveForm } from "@/components/autosave-form";
 import { Group, Row, Select, Text } from "@/components/form-rows";
 import { SelectField } from "@/components/select-field";
 import { BulletTextarea } from "@/components/bullet-textarea";
-import { AQ_ROLES, AQ_STAGES, aqRoleColor, lines, parseJsonList } from "@/lib/acquisitions";
+import { AQ_OPERATOR_STATUSES, AQ_ROLES, AQ_STAGES, aqRoleColor, lines, parseJsonList } from "@/lib/acquisitions";
 
 type Ct = Partial<{
   firstName: string | null;
@@ -26,6 +26,7 @@ type Ct = Partial<{
   storePhone: string | null;
   directoryOperatorPhone: string | null;
   operatorTotalLocations: number | null;
+  operatorPipelineStatus: string | null;
   lastCallDate: Date | string | null;
   callResult: string | null;
   callBackAt: Date | string | null;
@@ -138,6 +139,9 @@ export function AqContactForm({ c = {}, companies, propertyId, action, autosave 
           </Row>
           <Row label="Operator Total Locations">
             <input name="operatorTotalLocations" type="number" min={0} defaultValue={c.operatorTotalLocations ?? ""} className="input w-32" />
+          </Row>
+          <Row label="Operator Pipeline Status">
+            <Select name="operatorPipelineStatus" value={(AQ_OPERATOR_STATUSES as readonly string[]).includes(c.operatorPipelineStatus ?? "") ? c.operatorPipelineStatus! : ""} options={AQ_OPERATOR_STATUSES} blank="—" />
           </Row>
         </Group>
       )}

@@ -1067,6 +1067,7 @@ model AqContact {
   storePhone            String?  // the store's public number (Google)
   directoryOperatorPhone String?
   operatorTotalLocations Int?
+  operatorPipelineStatus String?  // Pipeline | Corporate | Not interested
   // the call, tracked per person: result, callback target (the dashboard's Call Me Back), follow-up
   lastCallDate        DateTime?
   callResult          String?  // Deal | Callback | Not interested | No answer | Wrong number
