@@ -130,6 +130,11 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
   const isDev = strategy === "Development";
   const isCondo = assetClass === "Condo"; // sellout instead of NOI (Jonathan, Sep 23, 2026)
   const [sellout, setSellout] = useState<number | null>(d?.projectedSellout ?? null);
+  // the per-unit and per-foot figures follow the sellout (Jonathan, Sep 23, 2026) until typed over
+  const [perUnitTyped, setPerUnitTyped] = useState<boolean>(d?.selloutPerUnit != null && (!d?.projectedSellout || !d?.units || Math.abs(d.selloutPerUnit - d.projectedSellout / d.units) > 1));
+  const [perFootTyped, setPerFootTyped] = useState<boolean>(d?.selloutPerFoot != null && (!d?.projectedSellout || !d?.squareFeet || Math.abs(d.selloutPerFoot - d.projectedSellout / d.squareFeet) > 0.5));
+  const derivedPerUnit = sellout && count ? Math.round(sellout / count) : null;
+  const derivedPerFoot = sellout && sf ? Math.round((sellout / sf) * 100) / 100 : null;
   const [ask, setAsk] = useState<number | null>(d?.requestedAmount ?? null);
   const [t12, setT12] = useState<number | null>(d?.capRateT12 ?? null);
   const [yoc, setYoc] = useState<number | null>(d?.yieldOnCost ?? null);
@@ -291,11 +296,11 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
             <Row label="Projected sellout ($)" hint="Gross sellout of every unit, whole dollars. A condo has no NOI, so no yield on cost or cash on cash.">
               <NumberInput name="projectedSellout" defaultValue={d?.projectedSellout} decimals={false} onValue={setSellout} />
             </Row>
-            <Row label="Average sellout per unit ($)" hint={sellout && count ? `Sellout ÷ units is ${money(sellout / count)}; type to override.` : "Sellout ÷ units when both are known."}>
-              <NumberInput name="selloutPerUnit" defaultValue={d?.selloutPerUnit} decimals={false} />
+            <Row label="Average sellout per unit ($)" hint={perUnitTyped ? "Typed by hand; clear it to go back to sellout ÷ units." : "Filled from sellout ÷ units; type to override."}>
+              <NumberInput name="selloutPerUnit" defaultValue={d?.selloutPerUnit} value={perUnitTyped ? undefined : derivedPerUnit} decimals={false} onValue={(v) => setPerUnitTyped(v != null)} />
             </Row>
-            <Row label="Sellout price per foot ($)" hint={sellout && sf ? `Sellout ÷ square feet is ${money(sellout / sf)}; type to override.` : "Sellout ÷ sellable square feet when both are known."}>
-              <NumberInput name="selloutPerFoot" defaultValue={d?.selloutPerFoot} />
+            <Row label="Sellout price per foot ($)" hint={perFootTyped ? "Typed by hand; clear it to go back to sellout ÷ square feet." : "Filled from sellout ÷ sellable square feet; type to override."}>
+              <NumberInput name="selloutPerFoot" defaultValue={d?.selloutPerFoot} value={perFootTyped ? undefined : derivedPerFoot} onValue={(v) => setPerFootTyped(v != null)} />
             </Row>
           </>
         ) : (

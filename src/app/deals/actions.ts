@@ -88,8 +88,9 @@ async function dealData(fd: FormData) {
     capRateT12: num(fd, "capRateT12"),
     cashOnCash: num(fd, "cashOnCash"),
     projectedSellout: num(fd, "projectedSellout"),
-    selloutPerUnit: num(fd, "selloutPerUnit"),
-    selloutPerFoot: num(fd, "selloutPerFoot"),
+    // blank per-unit and per-foot figures follow the sellout (Jonathan, Sep 23, 2026)
+    selloutPerUnit: num(fd, "selloutPerUnit") ?? (num(fd, "projectedSellout") && num(fd, "units") ? Math.round(num(fd, "projectedSellout")! / num(fd, "units")!) : null),
+    selloutPerFoot: num(fd, "selloutPerFoot") ?? (num(fd, "projectedSellout") && num(fd, "squareFeet") ? Math.round((num(fd, "projectedSellout")! / num(fd, "squareFeet")!) * 100) / 100 : null),
     units: num(fd, "units") != null ? Math.trunc(num(fd, "units")!) : null,
     squareFeet: num(fd, "squareFeet"),
     yearBuilt: s(fd, "yearBuilt"),
