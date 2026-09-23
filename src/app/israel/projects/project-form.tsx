@@ -2,6 +2,7 @@
 
 import { AutoSaveForm } from "@/components/autosave-form";
 import { MultiSelect } from "@/components/multi-select";
+import { AddressPicker } from "@/components/address-picker";
 import { Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
 import { IL_CITIES, toMonthInput, IL_AMENITIES, parseJsonList, developerIdList } from "@/lib/israel";
@@ -23,7 +24,7 @@ export function IlProjectForm({ p = {}, developers, action, autosave = false, su
           <MultiSelect name="developers" options={developers.map((d) => d.name)} selected={developerIdList(p).map((id) => developers.find((d) => d.id === id)?.name).filter((x): x is string => Boolean(x))} placeholder="No developer yet" />
         </Row>
         <Row label="Address">
-          <Text name="street" value={p.street} placeholder="Ramban 12" />
+          <AddressPicker value={p.street} placeholder="Ramban 12" />
         </Row>
         <Row label="City">
           <input name="city" defaultValue={p.city ?? ""} className="input" list="il-cities-pr" />

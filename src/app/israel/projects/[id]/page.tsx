@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MultiSelect } from "@/components/multi-select";
 import { CompanyLogo } from "@/components/company-logo";
 import { PhotosWindow } from "@/components/il-photos";
 import { IlSummaryCard } from "@/components/il-summary-card";
@@ -158,7 +159,16 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
       }
       right={
         <>
-          <AssocCard title={developerIdList(p).length > 1 ? "Developers" : "Developer"} count={developerIdList(p).length} empty="Tick the developers in the form on the left.">
+          <AssocCard title={developerIdList(p).length > 1 ? "Developers" : "Developer"} count={developerIdList(p).length} empty="Tick the developers below or in the form on the left.">
+            <form action={linkProject.bind(null, p.id)} className="flex gap-2 border-b border-line p-3">
+              <input type="hidden" name="developersSet" value="1" />
+              <div className="min-w-0 flex-1 text-xs">
+                <MultiSelect name="developers" options={developers.map((d) => d.name)} selected={developerIdList(p).map((id) => developers.find((d) => d.id === id)?.name).filter((x): x is string => Boolean(x))} placeholder="Tick the developers (yazamim)" />
+              </div>
+              <button className="btn-secondary px-2 text-xs" type="submit">
+                Save
+              </button>
+            </form>
             {developerIdList(p).slice(1).length > 0 && (
               <div className="px-4 pt-3 text-xs text-muted">
                 With {developerIdList(p).slice(1).map((id) => developers.find((d) => d.id === id)?.name ?? "another developer").join(", ")}

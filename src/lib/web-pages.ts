@@ -51,6 +51,36 @@ async function getHtml(url: string): Promise<string | null> {
 
 // the header stays: a project site's hero often carries the facts (units, floors, site size); menus and footers go
 const strip = (html: string) => emailHtmlToText(html.replace(/<(script|style|noscript|svg|nav|footer)[\s\S]*?<\/\1>/gi, " ")).replace(/\n{3,}/g, "\n\n").trim();
+/** What the page says about itself in its head: title, description, Open Graph text, keywords and structured data. Often the only text a script-built site serves. */
+function headText(html: string): string {
+  const out: string[] = [];
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim();
+  if (title) out.push(`Title: ${title}`);
+  for (const m of html.matchAll(/<meta[^>]+(?:name|property)=["']([^"']+)["'][^>]+content=["']([^"']+)["']/gi)) {
+    if (/^(description|keywords|og:title|og:description|og:site_name|twitter:title|twitter:description)$/i.test(m[1])) out.push(`${m[1]}: ${m[2].trim()}`);
+  }
+  for (const m of html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)) out.push(`Structured data: ${m[1].replace(/\s+/g, " ").trim().slice(0, 4000)}`);
+  return out.join("\n");
+}
+/** A page built by scripts serves no text ("This site relies on JavaScript", a loading line). */
+const scriptBuilt = (html: string, text: string) => text.length < 400 || /relies on JavaScript|enable JavaScript|Loading, please wait|noscript/i.test(html.replace(/<noscript>[\s\S]*?<\/noscript>/gi, (m) => m));
+/**
+ * The page as a browser shows it, for a site built by scripts (Sep 23, 2026: mophetraanana.com serves only a loading line;
+ * the address "Eliezer Yaffe 6-8" appears once the scripts run). Read through a public rendering reader (Jina Reader by
+ * default, given only the page's public address); WEB_RENDER_READER overrides the prefix, "off" turns it off.
+ */
+async function renderedText(url: string): Promise<string | null> {
+  const reader = process.env.WEB_RENDER_READER ?? "https://r.jina.ai/";
+  if (!reader || reader === "off") return null;
+  try {
+    const res = await fetch(reader + url, { headers: { Accept: "text/plain", "X-Return-Format": "text", "User-Agent": "RJL CRM reader" }, signal: AbortSignal.timeout(45_000) });
+    if (!res.ok) return null;
+    const t = (await res.text()).replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+    return t.length > 200 ? t.slice(0, MAX_CHARS_PER_PAGE) : null;
+  } catch {
+    return null;
+  }
+}
 
 /** The linked pages, and the same-site pages worth following, as text. Sites that do not answer are skipped quietly. */
 export async function fetchWebPages(urls: string[]): Promise<WebPage[]> {
@@ -74,8 +104,11 @@ export async function fetchWebPages(urls: string[]): Promise<WebPage[]> {
       const html = await getHtml(url);
       if (!html) continue;
       const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ?? null;
-      const text = strip(html).slice(0, MAX_CHARS_PER_PAGE);
-      if (text.length > 200) out.push({ url, title, text });
+      let body = strip(html);
+      if (scriptBuilt(html, body)) body = (await renderedText(url)) ?? body; // a script-built page is read as a browser shows it
+      const head = headText(html);
+      const text = [head, body].filter(Boolean).join("\n\n").slice(0, MAX_CHARS_PER_PAGE);
+      if (text.length > 120) out.push({ url, title, text });
       // every same-site page is read while the budget lasts; the ones whose link says units, plans, prices or the
       // project go first, legal and other-language pages never
       const hot: string[] = [], cold: string[] = [];

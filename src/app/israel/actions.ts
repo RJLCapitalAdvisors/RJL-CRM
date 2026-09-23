@@ -387,8 +387,9 @@ export async function updateIlProject(id: string, fd: FormData) {
 }
 /** The right column of a project: the broker who brought it. */
 export async function linkProject(id: string, fd: FormData) {
-  const data: { agentContactId?: string | null } = {};
+  const data: { agentContactId?: string | null; developerId?: string | null; developerIds?: string | null } = {};
   if (fd.has("agentContactId")) data.agentContactId = s(fd, "agentContactId");
+  if (fd.has("developersSet")) Object.assign(data, await developersFromForm(fd));
   await prisma.ilProject.update({ where: { id }, data });
   revalidatePath(`/israel/projects/${id}`);
 }

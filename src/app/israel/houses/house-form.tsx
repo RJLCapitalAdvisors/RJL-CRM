@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AutoSaveForm } from "@/components/autosave-form";
 import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
+import { AddressPicker } from "@/components/address-picker";
 /** Rooms are picked, 1 to 12 in half steps (3.5 rooms is a real Israeli listing), so a count is never mistyped (Jonathan, Sep 17). */
 const ROOMS = Array.from({ length: 23 }, (_, i) => String(1 + i / 2));
 
@@ -75,7 +76,7 @@ export function HouseForm({ h = {}, fx, projects = [], action, autosave = false,
           <Text name="neighborhood" value={h.neighborhood} />
         </Row>
         <Row label="Address">
-          <Text name="street" value={h.street} placeholder="HaPalmach 8" />
+          <AddressPicker value={h.street} placeholder="HaPalmach 8" />
         </Row>
         <Row label="Rooms">
           <Select name="rooms" value={h.rooms != null ? String(h.rooms) : ""} options={ROOMS} />

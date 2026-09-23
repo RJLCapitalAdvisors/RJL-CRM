@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AutoSaveForm } from "@/components/autosave-form";
 import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
+import { AddressPicker } from "@/components/address-picker";
 /** Rooms are picked, 1 to 12 in half steps (3.5 rooms is a real Israeli listing), so a count is never mistyped (Jonathan, Sep 17). */
 const ROOMS = Array.from({ length: 23 }, (_, i) => String(1 + i / 2));
 /** 1 to 10 in halves (Jonathan, Sep 23, 2026). */
@@ -74,7 +75,7 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
           </SelectField>
         </Row>
         <Row label="Building address">
-          <Text name="street" value={a.street} placeholder="Ramban 12" />
+          <AddressPicker value={a.street} placeholder="Ramban 12" />
         </Row>
         <Row label="City">
           <input name="city" defaultValue={a.city ?? ""} className="input" list="il-cities" />
