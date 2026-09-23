@@ -73,6 +73,7 @@ const Project = z.object({
   pool: z.enum(["Yes", "No"]).nullish().default(null).describe("A shared pool in the project: Yes or No; null when not stated"),
   doorman: z.enum(["Yes", "No"]).nullish().default(null).describe("A doorman or reception (שוער, לובי מאויש) in the building: Yes or No; null when not stated"),
   gym: z.enum(["Yes", "No"]).nullish().default(null).describe("A gym (חדר כושר) for the residents: Yes or No; null when not stated"),
+  amenities: z.array(z.enum(["Doorman", "Pool", "Gym", "Jacuzzi", "Sauna", "Yoga/Pilates Studio", "Co-working spaces"])).default([]).describe("Everything the project offers its residents that the documents state: Doorman (שוער, לובי), Pool (בריכה), Gym (חדר כושר), Jacuzzi (ג'קוזי), Sauna (סאונה), Yoga/Pilates Studio, Co-working spaces"),
   description: z.string().nullish().default(null).describe("Two to four plain English sentences about the project. No numbers already captured in fields."),
 });
 const Output = z.object({
@@ -82,6 +83,9 @@ const Output = z.object({
 });
 type Extracted = z.infer<typeof Output>;
 type ExtractedApartment = Extracted["apartments"][number];
+
+const FLOOR_PLANS = `
+Floor plan decks (a developer's marketing PDF, one page per unit type, mostly drawings): read them as pictures. Each page is a unit type, usually with a small table: Building, Type (a code such as A, UA1, PH2), Floor, Rooms, Apartment Area (the internal m²), Balcony Area (the mirpeset m²), and the street. Make one apartment per unit type per building (not per page: the same type drawn on several floors is one apartment named for the type, with the floor range in the description), named "<project>, Building <x>, Type <code>, <rooms> rooms, <internal m²> m²" so that no two units share a name; when two pages show the same type code with different sizes they are two units. The compass rose on the plan (the north arrow, usually bottom left) gives the orientation: read which way the apartment's windows face for direction and which way the balcony faces for mirpesetDirection. Count mirpasot and read their sizes from the plan when the table does not give them. A price list page maps unit types (or apartment numbers) to prices: put the matching price on each unit; when a type has a range, use the lowest and say so in the description. The street and city on the plans (e.g. Eliezer Yafe St. is in Ra'anana) give the project's address. When the decks describe a project, fill the project too: name, developer, address, total units, stories, delivery.`;
 
 const SYSTEM = `You read messages and documents about apartments for sale in Israel and fill in apartment tickets for RJL Israel.
 Rules: one entry per distinct apartment or house, with kind set (a private house on its own plot is a house; anything inside a building is an apartment). A building with several units for sale is several apartments; a whole project description with no specific unit is one apartment named after the project with the unit fields blank). Only record what the documents state; leave a field null when it is not stated. Never use placeholders like TBD. Square metres: internal excludes the mirpeset (balcony); if only a total is given, put it in internalSqm and say so in the description. Prices in shekels; if a price is in dollars, convert only if the document gives the rate, else leave priceNis null and mention the dollar price in the description. Parking must be one of the allowed values. Direction is the apartment's air directions. Mamad is the safe room. The subject line is often stale; trust the body, the attachments and the photos. No dashes as punctuation in text you write.
@@ -141,11 +145,63 @@ export async function describeFile(name: string, type: string | null, bytes: Uin
 }
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const MAX_PDF_BYTES = 30 * 1024 * 1024; // what one request may carry as a document
+/** A PDF that is mostly drawings (a floor plan deck, a brochure): little text per page, or a plan/floor/type in its name. It has to be looked at, not read. */
+const isVisualPdf = (f: IntakeFile) => Boolean(f.bytes && f.bytes.byteLength <= MAX_PDF_BYTES && (/\.pdf$/i.test(f.name) || (f.type ?? "").includes("pdf")) && ((f.text ?? "").length < 600 * Math.max(1, Math.round(f.bytes.byteLength / 1_500_000)) || /floor|plan|type|rooms|תכנית|קומה|מפרט|brochure|deck/i.test(f.name)));
+
+/** Merge what several calls read: every apartment once (by name), the fullest project, the first agent. */
+function mergeExtracted(parts: Extracted[]): Extracted {
+  const out: Extracted = { project: null, apartments: [], agent: null };
+  const seen = new Set<string>();
+  for (const p of parts) {
+    for (const a of p.apartments) {
+      const k = `${a.name.trim().toLowerCase()}|${a.rooms ?? ""}|${a.internalSqm ?? ""}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.apartments.push(a);
+    }
+    if (p.project) out.project = out.project ? (Object.fromEntries(Object.entries(out.project).map(([k, v]) => [k, v ?? (p.project as Record<string, unknown>)[k] ?? null])) as Extracted["project"]) : p.project;
+    if (!out.agent && p.agent) out.agent = p.agent;
+  }
+  return out;
+}
+
 async function extract(subject: string | null, body: string, files: IntakeFile[]): Promise<Extracted> {
+  const visual = files.filter(isVisualPdf);
+  const rest = files.filter((f) => !visual.includes(f));
+  if (!visual.length) return extractOnce(subject, body, files, []);
+  // one deck per call (Claude reads up to about 30 MB of PDF at a time); the message and the readable files ride along each time
+  const parts: Extracted[] = [];
+  for (const deck of visual) parts.push(await extractOnce(subject, body, rest, [deck]).catch((e) => { console.error("israel intake: deck failed", deck.name, String(e).slice(0, 200)); return { project: null, apartments: [], agent: null } as Extracted; }));
+  if (rest.some((f) => f.text || f.bytes) && !visual.length) parts.push(await extractOnce(subject, body, rest, []));
+  return mergeExtracted(parts);
+}
+
+async function extractOnce(subject: string | null, body: string, files: IntakeFile[], docs: IntakeFile[]): Promise<Extracted> {
   const client = new Anthropic();
   const content: Anthropic.ContentBlockParam[] = [];
   const parts = [`Subject: ${subject ?? ""}`, `Message:\n${body.slice(0, 40_000)}`, ...files.filter((f) => f.text).map((f) => `Attachment ${f.name}:\n${(f.text ?? "").slice(0, 40_000)}`)];
+  if (docs.length) parts.push(`The document${docs.length > 1 ? "s" : ""} attached below (${docs.map((d) => d.name).join(", ")}) ${docs.length > 1 ? "are" : "is"} a floor plan deck or brochure: look at the drawings, tables and compass rose on every page.`);
   content.push({ type: "text", text: parts.join("\n\n") });
+  for (const d of docs) {
+    let pages: import("@/lib/pdf-images").PageImage[] = [];
+    try {
+      const { renderPdfPages } = await import("@/lib/pdf-images");
+      pages = await renderPdfPages(d.bytes!, { maxPages: 40, width: 1200 });
+    } catch (e) {
+      console.error("israel intake: could not render", d.name, String(e).slice(0, 160));
+    }
+    if (pages.length) {
+      content.push({ type: "text", text: `Document ${d.name}, ${pages.length} page${pages.length === 1 ? "" : "s"}, one picture per page:` });
+      for (const p of pages) {
+        content.push({ type: "text", text: `${d.name}, page ${p.page}:` });
+        content.push({ type: "image", source: { type: "base64", media_type: p.mediaType, data: Buffer.from(p.bytes).toString("base64") } });
+      }
+    } else {
+      content.push({ type: "text", text: `Document ${d.name}:` });
+      content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: Buffer.from(d.bytes!).toString("base64") } });
+    }
+  }
   // photos of listings and flyers: up to six, under 5 MB each
   for (const f of files.filter((f) => f.bytes && ((f.type && IMAGE_TYPES.has(f.type)) || /\.(png|jpe?g|webp|gif)$/i.test(f.name)) && f.bytes.byteLength < 5 * 1024 * 1024).slice(0, 6)) {
     const media = (f.type && IMAGE_TYPES.has(f.type) ? f.type : /\.png$/i.test(f.name) ? "image/png" : /\.webp$/i.test(f.name) ? "image/webp" : /\.gif$/i.test(f.name) ? "image/gif" : "image/jpeg") as "image/jpeg" | "image/png" | "image/webp" | "image/gif";
@@ -157,7 +213,10 @@ async function extract(subject: string | null, body: string, files: IntakeFile[]
   const customQs = [...IL_REQUIRED.apartments.map((i) => ({ ...i, on: "apartments" })), ...IL_REQUIRED.houses.map((i) => ({ ...i, on: "houses" }))].filter((i) => isCustomKey(i.key));
   if (customQs.length) content.push({ type: "text", text: `Extra questions RJL Israel asks on every ticket. Answer each under "extra" by its key when the documents state it, null otherwise: ${customQs.map((i) => `${i.key} (${i.on}): ${i.question || i.label}`).join("; ")}` });
   content.push({ type: "text", text: `Answer with one JSON object only, no prose and no code fence, matching this JSON schema exactly (use null for anything the documents do not state):\n${JSON.stringify(z.toJSONSchema(Output))}` });
-  const res = await client.messages.create({ model: "claude-opus-5", max_tokens: 12_000, system: SYSTEM, messages: [{ role: "user", content }] });
+  const { loadDataRules } = await import("@/lib/data-rules");
+  const rules = await loadDataRules("IL").catch(() => [] as string[]);
+  const system = `${SYSTEM}${FLOOR_PLANS}${rules.length ? `\n\nHouse rules for reading files (Settings > Data rules; follow every one):\n${rules.map((r) => "- " + r).join("\n")}` : ""}`;
+  const res = await client.messages.create({ model: "claude-opus-5", max_tokens: 16_000, system, messages: [{ role: "user", content }] });
   const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("");
   const raw = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
   try {
@@ -349,7 +408,8 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     const pname = stripDashes(proj.name).trim();
     const existing = await findProject(pname, proj.city, proj.street);
     const dev = await findOrCreateCompany(proj.developerName ?? null, "Sponsor (Yazam)");
-    const pdata = { name: pname, developerId: dev?.id ?? null, street: proj.street ?? null, city: proj.city ?? null, neighborhood: proj.neighborhood ?? null, totalUnits: proj.totalUnits ?? null, stories: proj.stories ?? null, parkingSpaces: proj.parkingSpaces ?? null, completionDate: proj.completionDate ?? null, pool: proj.pool ?? null, doorman: proj.doorman ?? null, gym: proj.gym ?? null, agentContactId: agent?.id ?? null, description: proj.description ? stripDashes(proj.description) : null };
+    const amen: string[] = "amenities" in proj && Array.isArray(proj.amenities) ? proj.amenities : [];
+    const pdata = { name: pname, developerId: dev?.id ?? null, street: proj.street ?? null, city: proj.city ?? null, neighborhood: proj.neighborhood ?? null, totalUnits: proj.totalUnits ?? null, stories: proj.stories ?? null, parkingSpaces: proj.parkingSpaces ?? null, completionDate: proj.completionDate ?? null, amenities: amen.length ? JSON.stringify(amen) : null, pool: amen.includes("Pool") ? "Yes" : proj.pool ?? null, doorman: amen.includes("Doorman") ? "Yes" : proj.doorman ?? null, gym: amen.includes("Gym") ? "Yes" : proj.gym ?? null, agentContactId: agent?.id ?? null, description: proj.description ? stripDashes(proj.description) : null };
     projectRow = existing ? await prisma.ilProject.update({ where: { id: existing.id }, data: fillFrom(pdata) }) : await prisma.ilProject.create({ data: { ...pdata, pendingApproval: true } });
     await prisma.ilNote.create({ data: { projectId: projectRow.id, body: existing ? origin.replace(/^Created from/, "Updated from") : origin } });
     if (!existing?.brochureType) await attachBrochure(input.files, projectRow.id).catch(() => null);
@@ -531,7 +591,11 @@ export async function processIsraelMessage(messageId: string): Promise<{ apartme
     if (files.some((x) => x.name.toLowerCase() === cf.name.toLowerCase())) continue;
     files.push(await describeFile(cf.name, cf.contentType, cf.bytes).catch(() => ({ name: cf.name, type: cf.contentType, size: cf.size })));
   }
-  const linkNotes = cloud.notes.map((n) => n.replace(/^OneDrive folder had no/, "The OneDrive folder had no")).join(" ");
+  // a project website in the email: its pages (and the ones about units, plans and prices) are read like attachments (Jonathan, Sep 23)
+  const { findWebLinks, fetchWebPages } = await import("@/lib/web-pages");
+  const sites = await fetchWebPages(findWebLinks(msg.body?.content, bodyText)).catch(() => [] as import("@/lib/web-pages").WebPage[]);
+  for (const pg of sites) files.push({ name: `Website ${pg.title ? `"${pg.title}" ` : ""}${pg.url}`, type: "text/html", size: pg.text.length, text: pg.text });
+  const linkNotes = [...cloud.notes.map((n) => n.replace(/^OneDrive folder had no/, "The OneDrive folder had no")), sites.length ? `Read ${sites.length} web page${sites.length === 1 ? "" : "s"} from the email's links.` : null].filter(Boolean).join(" ");
   const r = await intakeApartments({ channel: "EMAIL", key, subject: msg.subject, body: bodyText, files, sender: { name: msg.from?.emailAddress.name, email: from || null }, sourceLabel: `Email from ${msg.from?.emailAddress.name ?? from}`, mailbox: ISRAEL_MAILBOX() });
   // the reply always goes; when Microsoft refuses it, it is kept and sent on the next inbox pass
   const send = async (html: string) => {

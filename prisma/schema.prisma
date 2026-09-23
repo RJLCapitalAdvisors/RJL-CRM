@@ -822,7 +822,8 @@ model IlProject {
   completionDate String?
   description    String?
   extra          String?       // JSON answers to Required Items List questions that have no field of their own
-  doorman        String?       // Doorman in the building: Yes | No
+  doorman        String?       // Doorman in the building: Yes | No (kept in step with amenities)
+  amenities      String?       // JSON list: Doorman | Pool | Gym | Jacuzzi | Sauna | Yoga/Pilates Studio | Co-working spaces (Sep 23, 2026)
   pool           String?       // Project pool (shared): Yes | No
   gym            String?       // Gym in the project: Yes | No
   agentContactId String?       // the broker who brought the project

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { streamBytes } from "@/lib/stream-file";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -10,13 +11,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const { id } = await params;
   const h = await prisma.ilHouse.findUnique({ where: { id }, select: { floorplan: true, floorplanType: true, floorplanName: true } });
   if (!h?.floorplan) return new NextResponse("No floorplan", { status: 404 });
-  return new NextResponse(new Uint8Array(h.floorplan), {
-    headers: {
+  return streamBytes(h.floorplan, {
       "content-type": h.floorplanType ?? "application/octet-stream",
       "content-disposition": `inline; filename="${(h.floorplanName ?? "floorplan").replace(/"/g, "")}"`,
       "cache-control": "private, max-age=60",
-    },
-  });
+    });
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {

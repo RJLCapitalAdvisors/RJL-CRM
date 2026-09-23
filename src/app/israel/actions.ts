@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { IL_COMPANY_ROLES, IL_DEAL_STAGES, IL_ROLES, IL_SPONSOR, IL_SPONSOR_FOCUS, mergeIlRoles, monthFromForm } from "@/lib/israel";
+import { IL_COMPANY_ROLES, IL_DEAL_STAGES, IL_ROLES, IL_SPONSOR, IL_SPONSOR_FOCUS, mergeIlRoles, monthFromForm, IL_AMENITIES, amenityFlags } from "@/lib/israel";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -339,9 +339,9 @@ function projectData(fd: FormData) {
     parkingSpaces: i(fd, "parkingSpaces"),
     stories: i(fd, "stories"),
     completionDate: monthFromForm(s(fd, "completionDate"), s(fd, "completionDateOrig")),
-    doorman: s(fd, "doorman"),
-    pool: s(fd, "pool"),
-    gym: s(fd, "gym"),
+    ...(fd.has("amenitiesSet") ? (() => { const list = fd.getAll("amenities").map(String).filter((x) => (IL_AMENITIES as readonly string[]).includes(x)); return { amenities: JSON.stringify(list), ...amenityFlags(list) }; })() : { doorman: s(fd, "doorman") }),
+    ...(fd.has("amenitiesSet") ? {} : { pool: s(fd, "pool") }),
+    ...(fd.has("amenitiesSet") ? {} : { gym: s(fd, "gym") }),
     description: s(fd, "description"),
   };
 }

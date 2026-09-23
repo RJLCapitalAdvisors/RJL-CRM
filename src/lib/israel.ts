@@ -77,6 +77,9 @@ export const pricePerMeter = (price: number | null | undefined, internal: number
 export const PRICE_PER_METER_NOTE = "asking price ÷ (internal m² + ⅓ of the mirpeset m²)";
 
 export const IL_SUKKA = ["Yes", "Partial", "No"] as const;
+/** What a project offers its residents, ticked as a set (Jonathan, Sep 23, 2026); doorman, pool and gym stay as Yes/No fields derived from it. */
+export const IL_AMENITIES = ["Doorman", "Pool", "Gym", "Jacuzzi", "Sauna", "Yoga/Pilates Studio", "Co-working spaces"] as const;
+export const amenityFlags = (list: readonly string[]) => ({ doorman: list.includes("Doorman") ? "Yes" : "No", pool: list.includes("Pool") ? "Yes" : "No", gym: list.includes("Gym") ? "Yes" : "No" });
 export const IL_HOUSE_TYPES = ["Villa", "Semi-attached", "Cottage"] as const;
 export const IL_APARTMENT_TYPES = ["Regular apartment", "Garden apartment", "Penthouse"] as const;
 export const isGardenApartment = (t: string | null | undefined) => t === "Garden apartment";
@@ -160,9 +163,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "stories", label: "Building stories" },
     { key: "parkingSpaces", label: "Parking spaces" },
     { key: "completionDate", label: "Expected delivery (month and year)" },
-    { key: "doorman", label: "Doorman (yes or no)" },
-    { key: "pool", label: "Project pool (yes or no)" },
-    { key: "gym", label: "Gym (yes or no)" },
+    { key: "amenities", label: "Amenities (doorman, pool, gym, jacuzzi, sauna, studio, co-working)" },
     { key: "brochureName", label: "Brochure" },
   ],
   apartments: [

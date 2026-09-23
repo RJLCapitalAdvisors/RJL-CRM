@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { streamBytes } from "@/lib/stream-file";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -10,13 +11,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const { id } = await params;
   const p = await prisma.ilProject.findUnique({ where: { id }, select: { brochure: true, brochureType: true, brochureName: true } });
   if (!p?.brochure) return new NextResponse("No brochure", { status: 404 });
-  return new NextResponse(new Uint8Array(p.brochure), {
-    headers: {
+  return streamBytes(p.brochure, {
       "content-type": p.brochureType ?? "application/octet-stream",
       "content-disposition": `inline; filename="${(p.brochureName ?? "brochure").replace(/"/g, "")}"`,
       "cache-control": "private, max-age=60",
-    },
-  });
+    });
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
