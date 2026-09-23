@@ -15,13 +15,13 @@ export function QueueApprove({ kind, id, missing }: { kind: QueueKind; id: strin
         type="button"
         disabled={pending}
         className={`px-3 py-1 text-xs ${missing ? "btn-secondary" : "btn-primary"}`}
-        title={missing ? `${missing} item${missing === 1 ? "" : "s"} still missing. Approving anyway sends it to Jonathan's dashboard first.` : "Data complete; into the system"}
+        title={missing ? `${missing} item${missing === 1 ? "" : "s"} still missing. Approving anyway asks Jonathan: it stays here marked waiting on him until he approves.` : "Data complete; into the system"}
         onClick={() =>
           start(async () => {
             setError(null);
             const r = await queueApprove(kind, id);
             if (!r.ok) setError(r.reason);
-            else setDone(r.where === "system" ? "In the system" : "Sent to Jonathan's dashboard");
+            else setDone(r.where === "system" ? "In the system" : "Waiting on Jonathan");
           })
         }
       >

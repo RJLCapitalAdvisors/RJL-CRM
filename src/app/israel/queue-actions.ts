@@ -24,7 +24,7 @@ const note = async (kind: QueueKind, id: string, body: string) => {
 /**
  * Approve from The Que (Sep 22, 2026). Complete data goes straight into the system. A person can also push a deal
  * through with data still missing: Jonathan's own click admits it at once; anyone else's sends it to Jonathan's
- * dashboard (Deals to be approved), where his Approve admits it regardless of what is missing.
+ * attention: the row stays in The Que marked waiting on him, and his Approve admits it regardless of what is missing.
  */
 export async function queueApprove(kind: QueueKind, id: string): Promise<{ ok: true; where: "system" | "dashboard" } | { ok: false; reason: string }> {
   await loadIlRequired();

@@ -9,9 +9,11 @@ export type WebPage = { url: string; title: string | null; text: string };
 
 const SKIP_HOST = /(dropbox\.com|drive\.google\.com|docs\.google\.com|1drv\.ms|onedrive\.live\.com|sharepoint\.com|box\.com|egnyte\.com|linkedin\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|youtube\.com|youtu\.be|google\.com\/maps|maps\.app\.goo\.gl|waze\.com|wa\.me|whatsapp\.com|rjlcapadvisors\.com|rjlisrael\.com|rjl-crm\.vercel\.app|vercel\.app|microsoft\.com|office\.com|outlook\.com|aka\.ms|unsubscribe|mailchimp|list-manage|safelinks)/i;
 const SKIP_PATH = /\.(png|jpe?g|gif|svg|webp|ico|css|js|pdf|zip|mp4|mov)(\?|$)/i;
-const FOLLOW = /(apartment|unit|floor|plan|price|pricing|project|about|spec|amenit|gallery|building|דירות|דירה|תכניות|תכנית|מחיר|מפרט|פרויקט|אודות|קומה)/i;
+const FOLLOW = /(apartment|unit|floor|plan|price|pricing|project|complex|about|spec|amenit|gallery|building|develop|architect|location|residen|tower|overview|feature|דירות|דירה|תכניות|תכנית|מחיר|מפרט|פרויקט|אודות|קומה|יזם|מיקום)/i;
+/** Pages of a site not worth reading: legal, accessibility, the other-language copy, forms. */
+const SKIP_PAGE = /(terms|privacy|accessib|cookie|legal|disclaimer|login|signin|register|cart|checkout|sitemap|\/(he|en|ru|fr)\/)/i;
 const MAX_SITES = 3;
-const MAX_PAGES_PER_SITE = 6;
+const MAX_PAGES_PER_SITE = 8;
 const MAX_CHARS_PER_PAGE = 30_000;
 
 export function findWebLinks(html: string | null | undefined, text: string | null | undefined): string[] {
@@ -47,7 +49,8 @@ async function getHtml(url: string): Promise<string | null> {
   }
 }
 
-const strip = (html: string) => emailHtmlToText(html.replace(/<(script|style|noscript|svg|nav|footer|header)[\s\S]*?<\/\1>/gi, " ")).replace(/\n{3,}/g, "\n\n").trim();
+// the header stays: a project site's hero often carries the facts (units, floors, site size); menus and footers go
+const strip = (html: string) => emailHtmlToText(html.replace(/<(script|style|noscript|svg|nav|footer)[\s\S]*?<\/\1>/gi, " ")).replace(/\n{3,}/g, "\n\n").trim();
 
 /** The linked pages, and the same-site pages worth following, as text. Sites that do not answer are skipped quietly. */
 export async function fetchWebPages(urls: string[]): Promise<WebPage[]> {
@@ -60,7 +63,9 @@ export async function fetchWebPages(urls: string[]): Promise<WebPage[]> {
   }
   for (const [host, starts] of sites) {
     const seen = new Set<string>();
-    const queue = [...starts];
+    // the linked page first, then the site's front page: a developer's site is small and its facts sit on one page
+    // ("The Complex": 176 apartments, 7 floors), which the link in the email rarely points at (Mophet, Sep 23, 2026)
+    const queue = [...starts, new URL("/", starts[0]).href];
     while (queue.length && seen.size < MAX_PAGES_PER_SITE) {
       const url = queue.shift()!;
       const key = url.replace(/#.*$/, "").replace(/\/$/, "");
@@ -71,7 +76,9 @@ export async function fetchWebPages(urls: string[]): Promise<WebPage[]> {
       const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ?? null;
       const text = strip(html).slice(0, MAX_CHARS_PER_PAGE);
       if (text.length > 200) out.push({ url, title, text });
-      // same-site pages the link text or path says are about the units, plans or prices
+      // every same-site page is read while the budget lasts; the ones whose link says units, plans, prices or the
+      // project go first, legal and other-language pages never
+      const hot: string[] = [], cold: string[] = [];
       for (const m of html.matchAll(/<a[^>]+href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
         let next: URL;
         try {
@@ -79,10 +86,12 @@ export async function fetchWebPages(urls: string[]): Promise<WebPage[]> {
         } catch {
           continue;
         }
-        if (next.host !== host || SKIP_PATH.test(next.pathname)) continue;
+        if (next.host !== host || SKIP_PATH.test(next.pathname) || SKIP_PAGE.test(next.pathname) || /^(mailto|tel|javascript):/i.test(m[1])) continue;
         const label = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-        if (FOLLOW.test(label) || FOLLOW.test(next.pathname)) queue.push(next.href);
+        (FOLLOW.test(label) || FOLLOW.test(next.pathname) ? hot : cold).push(next.href);
       }
+      queue.unshift(...hot);
+      queue.push(...cold);
     }
   }
   return out;

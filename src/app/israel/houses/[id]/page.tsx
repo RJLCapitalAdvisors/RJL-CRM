@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MultiSelect } from "@/components/multi-select";
 import { PhotosWindow } from "@/components/il-photos";
 import { IlSummaryCard } from "@/components/il-summary-card";
 import { IlMapCard } from "@/components/il-map-card";
@@ -10,7 +11,7 @@ import { SelectField } from "@/components/select-field";
 import { usdIls } from "@/lib/fx";
 import { IlExtraCard } from "@/components/il-extra-card";
 import { loadIlRequired } from "@/lib/required-items";
-import { houseMissing, ilFullName, nis, parseJsonList, pricePerMeter, sqm, usdFmt } from "@/lib/israel";
+import { houseMissing, ilFullName, nis, parseJsonList, pricePerMeter, sqm, usdFmt, developerIdList } from "@/lib/israel";
 import { addIlNote, approveHouse, deleteHouse, linkHouse, updateHouse } from "../../actions";
 import { HouseForm } from "../house-form";
 import { FloorplanWindow } from "../../apartments/[id]/floorplan";
@@ -30,7 +31,7 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
     prisma.ilHouse.findUnique({
       where: { id },
       select: {
-        id: true, name: true, extra: true, houseType: true, projectId: true, project: { select: { id: true, name: true } }, street: true, city: true, neighborhood: true, rooms: true, floors: true, ceilingCms: true, completionDate: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpesetDirection: true, mirpasot: true, migrashSqm: true, pool: true, poolSqm: true, parkingSpots: true, sellerType: true, renovationYear: true, mamad: true, priceNis: true, description: true,
+        id: true, name: true, extra: true, developerIds: true, houseType: true, projectId: true, project: { select: { id: true, name: true } }, street: true, city: true, neighborhood: true, rooms: true, floors: true, ceilingCms: true, completionDate: true, internalSqm: true, mirpesetSqm: true, mirpesetCount: true, mirpesetDirection: true, mirpasot: true, migrashSqm: true, pool: true, poolSqm: true, parkingSpots: true, sellerType: true, renovationYear: true, mamad: true, priceNis: true, description: true,
         pendingApproval: true, source: true, floorplanType: true, floorplanName: true, updatedAt: true, developerId: true, agentContactId: true, sellerContactId: true,
         developer: { select: { id: true, name: true, roles: true, city: true, phone: true } },
         agent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: { select: { name: true } } } },
@@ -126,25 +127,23 @@ export default async function HousePage({ params }: { params: Promise<{ id: stri
               </div>
             )}
           </AssocCard>
-          <AssocCard title="Developer" count={h.developer ? 1 : 0} addHref="/israel/companies/new" addLabel="New company" empty="Pick the developer below.">
-            {h.developer && (
-              <div className="px-4 pt-3 text-sm">
-                <Link href={`/israel/companies/${h.developer.id}`} className="font-semibold hover:underline">
-                  {h.developer.name}
-                </Link>
-                <div className="text-xs text-muted">{[...parseJsonList(h.developer.roles), h.developer.city, h.developer.phone].filter(Boolean).join(" · ")}</div>
-              </div>
-            )}
-            <form action={link} className="flex gap-2 p-3">
-              <SelectField name="developerId" defaultValue={h.developerId ?? ""} className="input text-xs">
-                <option value="">No developer</option>
-                {developers.map((d) => (
-                  <option key={d.id} value={d.id}>
+          <AssocCard title={developerIdList(h).length > 1 ? "Developers" : "Developer"} count={developerIdList(h).length} addHref="/israel/companies/new" addLabel="New company" empty="Tick the developers below.">
+            {developerIdList(h).map((id, i) => {
+              const d = developers.find((x) => x.id === id);
+              return d ? (
+                <div key={id} className="px-4 pt-3 text-sm">
+                  <Link href={`/israel/companies/${d.id}`} className="font-semibold hover:underline">
                     {d.name}
-                    {parseJsonList(d.roles).length ? ` (${parseJsonList(d.roles).join(", ")})` : ""}
-                  </option>
-                ))}
-              </SelectField>
+                  </Link>
+                  <div className="text-xs text-muted">{[i === 0 && developerIdList(h).length > 1 ? "Lead" : null, ...parseJsonList(d.roles)].filter(Boolean).join(" · ")}</div>
+                </div>
+              ) : null;
+            })}
+            <form action={link} className="flex gap-2 p-3">
+              <input type="hidden" name="developersSet" value="1" />
+              <div className="min-w-0 flex-1 text-xs">
+                <MultiSelect name="developers" options={developers.filter((d) => parseJsonList(d.roles).includes("Sponsor (Yazam)") || developerIdList(h).includes(d.id)).map((d) => d.name)} selected={developerIdList(h).map((id) => developers.find((d) => d.id === id)?.name).filter((x): x is string => Boolean(x))} placeholder="Tick the developers (yazamim)" />
+              </div>
               <button className="btn-secondary px-2 text-xs" type="submit">
                 Link
               </button>

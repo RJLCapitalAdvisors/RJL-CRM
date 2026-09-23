@@ -3,7 +3,7 @@ import { ZoomBox } from "@/components/zoom-box";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager } from "@/components/ui";
 import { str } from "@/lib/format";
-import { nis, parseJsonList, parseMirpasot, pricePerMeter, yearOf } from "@/lib/israel";
+import { nis, parseJsonList, parseMirpasot, pricePerMeter, yearOf, coDeveloperNames } from "@/lib/israel";
 import { ApartmentFilters, type AptFilters } from "./filters";
 import { CompareCheck, CompareProvider } from "./compare-select";
 import { CompanyLogo } from "@/components/company-logo";
@@ -125,6 +125,7 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
     u.set("page", String(p));
     return `/israel/apartments?${u}`;
   };
+  const devNames = new Map((await prisma.ilCompany.findMany({ select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   return (
     <>
       <PageHeader
@@ -186,7 +187,7 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
                         {a.developer ? (
                           <Link href={`/israel/companies/${a.developer.id}`} className="flex items-center gap-2 hover:underline">
                             <CompanyLogo domain={a.developer.domain ?? a.developer.website?.replace(/^https?:\/\//, "").split("/")[0]} name={a.developer.name} />
-                            <span className="truncate">{a.developer.name}</span>
+                            <span className="truncate">{a.developer.name}{coDeveloperNames(a, devNames).length ? ` + ${coDeveloperNames(a, devNames).join(", ")}` : ""}</span>
                           </Link>
                         ) : (
                           <span className="text-muted">—</span>

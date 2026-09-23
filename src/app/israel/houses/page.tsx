@@ -3,7 +3,7 @@ import { ZoomBox } from "@/components/zoom-box";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager } from "@/components/ui";
 import { str } from "@/lib/format";
-import { nis, parseJsonList, parseMirpasot, pricePerMeter, sqm, yearOf } from "@/lib/israel";
+import { nis, parseJsonList, parseMirpasot, pricePerMeter, sqm, yearOf, coDeveloperNames } from "@/lib/israel";
 import { CompareCheck, CompareProvider } from "../apartments/compare-select";
 import { CompanyLogo } from "@/components/company-logo";
 import { HouseFiltersPanel, type HouseFilters } from "./filters";
@@ -127,6 +127,7 @@ export default async function HousesPage({ searchParams }: { searchParams: Promi
     return `/israel/houses${qs ? `?${qs}` : ""}`;
   };
   const makeHref = (p: number) => withParams((u) => u.set("page", String(p)));
+  const devNames = new Map((await prisma.ilCompany.findMany({ select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   return (
     <>
       <PageHeader
@@ -189,7 +190,7 @@ export default async function HousesPage({ searchParams }: { searchParams: Promi
                           {h.developer ? (
                             <Link href={`/israel/companies/${h.developer.id}`} className="flex items-center gap-2 hover:underline">
                               <CompanyLogo domain={h.developer.domain ?? h.developer.website?.replace(/^https?:\/\//, "").split("/")[0]} name={h.developer.name} />
-                              <span className="truncate">{h.developer.name}</span>
+                              <span className="truncate">{h.developer.name}{coDeveloperNames(h, devNames).length ? ` + ${coDeveloperNames(h, devNames).join(", ")}` : ""}</span>
                             </Link>
                           ) : (
                             <span className="text-muted">—</span>

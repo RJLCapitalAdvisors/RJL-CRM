@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { syncProjectToUnits as syncUnits } from "@/lib/israel-sync";
 import { IL_COMPANY_ROLES, IL_DEAL_STAGES, IL_ROLES, IL_SPONSOR, IL_SPONSOR_FOCUS, mergeIlRoles, monthFromForm, IL_AMENITIES, amenityFlags } from "@/lib/israel";
 
 const s = (fd: FormData, k: string) => {
@@ -70,6 +71,7 @@ function apartmentData(fd: FormData) {
     neighborhood: s(fd, "neighborhood"),
     projectId: s(fd, "projectId"),
     rooms: n(fd, "rooms"),
+    bathrooms: n(fd, "bathrooms"),
     completionDate: monthFromForm(s(fd, "completionDate"), s(fd, "completionDateOrig")),
     floor: i(fd, "floor"),
     totalFloors: i(fd, "totalFloors"),
@@ -111,9 +113,18 @@ export async function updateApartment(id: string, fd: FormData) {
 }
 
 /** The associations in the right column: developer (company), sales agent and seller (contacts). */
+/** The developers ticked by name (the MultiSelect posts names): the first is the lead in developerId, all of them in developerIds. */
+async function developersFromForm(fd: FormData): Promise<{ developerId: string | null; developerIds: string | null }> {
+  const names = fd.getAll("developers").map(String).map((x) => x.trim()).filter(Boolean);
+  if (!names.length) return { developerId: null, developerIds: null };
+  const rows = await prisma.ilCompany.findMany({ where: { name: { in: names } }, select: { id: true, name: true } });
+  const ids = names.map((n) => rows.find((r) => r.name === n)?.id).filter((x): x is string => Boolean(x));
+  return { developerId: ids[0] ?? null, developerIds: ids.length ? JSON.stringify(ids) : null };
+}
 export async function linkApartment(id: string, fd: FormData) {
-  const data: { developerId?: string | null; agentContactId?: string | null; sellerContactId?: string | null } = {};
-  if (fd.has("developerId")) data.developerId = s(fd, "developerId");
+  const data: { developerId?: string | null; developerIds?: string | null; agentContactId?: string | null; sellerContactId?: string | null } = {};
+  if (fd.has("developersSet")) Object.assign(data, await developersFromForm(fd));
+  else if (fd.has("developerId")) data.developerId = s(fd, "developerId");
   if (fd.has("agentContactId")) data.agentContactId = s(fd, "agentContactId");
   if (fd.has("sellerContactId")) data.sellerContactId = s(fd, "sellerContactId");
   await prisma.ilApartment.update({ where: { id }, data });
@@ -164,8 +175,9 @@ export async function updateHouse(id: string, fd: FormData) {
   if (data.projectId) revalidatePath(`/israel/projects/${data.projectId}`);
 }
 export async function linkHouse(id: string, fd: FormData) {
-  const data: { developerId?: string | null; agentContactId?: string | null; sellerContactId?: string | null } = {};
-  if (fd.has("developerId")) data.developerId = s(fd, "developerId");
+  const data: { developerId?: string | null; developerIds?: string | null; agentContactId?: string | null; sellerContactId?: string | null } = {};
+  if (fd.has("developersSet")) Object.assign(data, await developersFromForm(fd));
+  else if (fd.has("developerId")) data.developerId = s(fd, "developerId");
   if (fd.has("agentContactId")) data.agentContactId = s(fd, "agentContactId");
   if (fd.has("sellerContactId")) data.sellerContactId = s(fd, "sellerContactId");
   await prisma.ilHouse.update({ where: { id }, data });
@@ -331,10 +343,10 @@ export async function deleteIlDeal(id: string) {
 }
 
 // ---------- projects: whole buildings, the apartments hang off them ----------
-function projectData(fd: FormData) {
+async function projectData(fd: FormData) {
   return {
     name: s(fd, "name") ?? (s(fd, "street") || "Project"),
-    developerId: s(fd, "developerId"),
+    ...(fd.has("developersSet") ? await developersFromForm(fd) : { developerId: s(fd, "developerId") }),
     street: s(fd, "street"),
     city: s(fd, "city"),
     neighborhood: s(fd, "neighborhood"),
@@ -354,22 +366,15 @@ function projectData(fd: FormData) {
  * value, typed or extracted, stays.
  */
 export async function syncProjectToUnits(projectId: string) {
-  const p = await prisma.ilProject.findUnique({ where: { id: projectId }, select: { totalUnits: true, stories: true, completionDate: true } });
-  if (!p) return;
-  if (p.totalUnits != null) await prisma.ilApartment.updateMany({ where: { projectId, buildingUnits: null }, data: { buildingUnits: p.totalUnits } });
-  if (p.stories != null) await prisma.ilApartment.updateMany({ where: { projectId, totalFloors: null }, data: { totalFloors: p.stories } });
-  if (p.completionDate) {
-    await prisma.ilApartment.updateMany({ where: { projectId, OR: [{ completionDate: null }, { completionDate: "" }] }, data: { completionDate: p.completionDate } });
-    await prisma.ilHouse.updateMany({ where: { projectId, OR: [{ completionDate: null }, { completionDate: "" }] }, data: { completionDate: p.completionDate } });
-  }
+  await syncUnits(projectId);
 }
 export async function createIlProject(fd: FormData) {
-  const p = await prisma.ilProject.create({ data: projectData(fd) });
+  const p = await prisma.ilProject.create({ data: await projectData(fd) });
   revalidatePath("/israel/projects");
   redirect(`/israel/projects/${p.id}`);
 }
 export async function updateIlProject(id: string, fd: FormData) {
-  await prisma.ilProject.update({ where: { id }, data: projectData(fd) });
+  await prisma.ilProject.update({ where: { id }, data: await projectData(fd) });
   await syncProjectToUnits(id);
   revalidatePath(`/israel/projects/${id}`);
   revalidatePath("/israel/projects");

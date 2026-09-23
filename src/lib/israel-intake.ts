@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { syncProjectToUnits } from "@/lib/israel-sync";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { graph, graphConfigured, realmFor } from "@/lib/graph";
@@ -27,11 +28,14 @@ const Apartment = z.object({
   degem: z.string().nullish().default(null).describe("The unit type code (degem) on a developer's plans or price list, e.g. UA1, D, PH4; null when there is none"),
   apartmentType: z.enum(["Regular apartment", "Garden apartment", "Penthouse"]).nullish().default(null).describe("Apartments only: דירת גן Garden apartment, פנטהאוז Penthouse, otherwise Regular apartment when the listing describes a normal unit; null when unclear"),
   projectName: z.string().nullish().default(null),
-  developerName: z.string().nullish().default(null),
+  developerName: z.string().nullish().default(null).describe("The lead developer (יזם) of the project"),
+  developerNames: z.array(z.string()).default([]).describe("Every developer of the project when there is more than one (a joint venture, 'Ramot Ba'ir and Adi Capital'), lead first; empty when only developerName applies"),
+  planPage: z.number().nullish().default(null).describe("When a floor plan deck is attached as pictures: the page number (as captioned, 1-based) where this unit's floor plan is drawn, so the CRM can cut that page out as the unit's floorplan; null when no page shows it"),
   street: z.string().nullish().default(null).describe("Building address, street and number"),
   city: z.string().nullish().default(null),
   neighborhood: z.string().nullish().default(null),
   rooms: z.number().nullish().default(null),
+  bathrooms: z.number().nullish().default(null).describe("Apartments: bathrooms stated or counted on the plan; a toilet with a tub or shower is one, a toilet room alone is 0.5"),
   completionDate: z.string().nullish().default(null).describe("Year built for an existing building, or expected delivery as MM/YYYY for a new build"),
   floor: z.number().nullish().default(null),
   buildingStories: z.number().nullish().default(null),
@@ -63,7 +67,8 @@ const Apartment = z.object({
 });
 const Project = z.object({
   name: z.string().nullish().default(null).describe("The project's name in English"),
-  developerName: z.string().nullish().default(null),
+  developerName: z.string().nullish().default(null).describe("The lead developer (יזם)"),
+  developerNames: z.array(z.string()).default([]).describe("Every developer when there is more than one (a joint venture), lead first"),
   street: z.string().nullish().default(null),
   city: z.string().nullish().default(null),
   neighborhood: z.string().nullish().default(null),
@@ -86,7 +91,18 @@ type Extracted = z.infer<typeof Output>;
 type ExtractedApartment = Extracted["apartments"][number];
 
 const FLOOR_PLANS = `
-Floor plan decks (a developer's marketing PDF, one page per unit type, mostly drawings): read them as pictures. Each page is a unit type, usually with a small table: Building, Type (a code such as A, UA1, PH2), Floor, Rooms, Apartment Area (the internal m²), Balcony Area (the mirpeset m²), and the street. Make one apartment per unit type per building (not per page: the same type drawn on several floors is one apartment, with the floor range in the description). Its name is the project's name only (e.g. "Mophet Ra'anana"); the type code goes in degem (UA1, D, PH4, with the building letter when the project has several buildings, e.g. "B-PH4"); the sizes go in internalSqm and mirpesetSqm, never in the name. Two pages with the same code and different sizes are two units. The compass rose on the plan (the north arrow, usually bottom left) gives the orientation: read which way the apartment's windows face for direction and which way the balcony faces for mirpesetDirection. Count mirpasot and read their sizes from the plan when the table does not give them. A price list page maps unit types (or apartment numbers) to prices: put the matching price on each unit; when a type has a range, use the lowest and say so in the description. The street and city on the plans (e.g. Eliezer Yafe St. is in Ra'anana) give the project's address. When the decks describe a project, fill the project too: name, developer, address, total units, stories, delivery.`;
+Floor plan decks (a developer's marketing PDF, one page per unit type, mostly drawings): read them as pictures. Each page is a unit type, usually with a small table: Building, Type (a code such as A, UA1, PH2), Floor, Rooms, Apartment Area (the internal m²), Balcony Area (the mirpeset m²), and the street. Make one apartment per unit type per building (not per page: the same type drawn on several floors is one apartment, with the floor range in the description). Its name is the project's name only (e.g. "Mophet Ra'anana"); the type code goes in degem (UA1, D, PH4, with the building letter when the project has several buildings, e.g. "B-PH4"); the sizes go in internalSqm and mirpesetSqm, never in the name. Two pages with the same code and different sizes are two units. Reading one plan page, the way Jonathan reads it (Mophet type UA7, Sep 23, 2026):
+- Orientation: the compass rose at the bottom left orients the page; when its north arrow points up, up is north, down is south, left is west, right is east (turn the reading when the arrow points elsewhere). The apartment's direction is every side of it that has windows or a mirpeset: an apartment whose mirpasot sit on the bottom and left edges of the drawing faces south and west, so direction is ["South", "West"].
+- The side table: Building, Type (the degem), Apartment Area (internalSqm), Balcony Area (every mirpeset together) and Floor ("Floor: 5" means floor 5; a span such as 1-6 goes in the description with the lowest floor in floor).
+- Rooms: the big rooms badge ("5 Rooms") is rooms. Bedrooms are the rooms minus one (the living and kitchen area counts as a room); count the bathrooms (a toilet with a tub or shower is one, a toilet room alone is a half) into bathrooms, and say in the description how many bedrooms and bathrooms there are.
+- Dimensions: every space carries its inner size in centimetres as "width / length" (366 / 160 is 3.66 m by 1.60 m, 5.8 m²). Count the mirpasot: each hatched or planked outdoor area outside the walls is one mirpeset, its direction the side of the building it sits on, its size from its printed dimensions. The balcony area left over after the measured ones belongs to the mirpeset without dimensions (Balcony Area 45.7 with a 5.8 m² south mirpeset means the west mirpeset is about 40 m²). Fill mirpasot with one entry per mirpeset (sqm and direction), mirpesetSqm with the total and mirpesetDirection with all their directions; mirpesetCount is how many.
+- A mamad (the reinforced room: thick walls, a small window, a heavy door, marked ממ"ד) is mamad Yes when it is drawn.
+- A private pool or jacuzzi drawn on a mirpeset is pool Yes on that unit. Storage (machsan) drawn or listed gives machsanSqm and machsanLocation.
+Read all of this off the drawing even when the side table is silent; the drawing is the source. A price list page maps unit types (or apartment numbers) to prices: put the matching price on each unit; when a type has a range, use the lowest and say so in the description. The street and city on the plans (e.g. Eliezer Yafe St. is in Ra'anana) give the project's address. For every unit give planPage: the page number (as captioned) whose drawing is that unit's floor plan; the CRM cuts that page out and files it as the unit's floorplan. When the decks describe a project, fill the project too: name, developer, address, total units, stories, delivery.
+
+Developers: a project often has two developers (יזמים) in a joint venture, e.g. a landowner with a capital partner; a website's "Developer & Architects" page names them. Put every developer in developerNames (lead first) and the lead in developerName; architects are not developers.
+
+Websites: a project site's facts usually sit on one page ("The Complex", "The Project", "About"): site size, number of buildings, total apartments, residential floors, elevators, entrances, parking, shared spaces. Read every page given and fill the project's totalUnits, stories, amenities and description from them.`;
 
 const SYSTEM = `You read messages and documents about apartments for sale in Israel and fill in apartment tickets for RJL Israel.
 Rules: one entry per distinct apartment or house, with kind set (a private house on its own plot is a house; anything inside a building is an apartment). A building with several units for sale is several apartments; a whole project description with no specific unit is one apartment named after the project with the unit fields blank). Only record what the documents state; leave a field null when it is not stated. Never use placeholders like TBD. Square metres: internal excludes the mirpeset (balcony); if only a total is given, put it in internalSqm and say so in the description. Prices in shekels; if a price is in dollars, convert only if the document gives the rate, else leave priceNis null and mention the dollar price in the description. Parking must be one of the allowed values. Direction is the apartment's air directions. Mamad is the safe room. The subject line is often stale; trust the body, the attachments and the photos. No dashes as punctuation in text you write.
@@ -167,32 +183,51 @@ function mergeExtracted(parts: Extracted[]): Extracted {
   return out;
 }
 
+/** The deck a unit was read from and its rendered pages, so the unit's planPage can be cut out as its floorplan (Jonathan, Sep 23, 2026). */
+type PlanSource = { name: string; pages: import("@/lib/pdf-images").PageImage[] };
+const planSource = new WeakMap<object, PlanSource>();
+async function renderDeck(d: IntakeFile): Promise<import("@/lib/pdf-images").PageImage[]> {
+  try {
+    const { renderPdfPages } = await import("@/lib/pdf-images");
+    return await renderPdfPages(d.bytes!, { maxPages: 40, width: 1200 });
+  } catch (e) {
+    console.error("israel intake: could not render", d.name, String(e).slice(0, 160));
+    return [];
+  }
+}
+/** The page of the deck a unit's plan is drawn on, as an image for its Floorplan window. */
+function planImageFor(a: ExtractedApartment): { bytes: Uint8Array; type: string; name: string } | null {
+  const src = planSource.get(a);
+  if (!src || !a.planPage) return null;
+  const page = src.pages.find((p) => p.page === a.planPage);
+  if (!page) return null;
+  return { bytes: page.bytes, type: page.mediaType, name: `${src.name.replace(/\.pdf$/i, "")} p${page.page}.${page.mediaType === "image/png" ? "png" : "jpg"}` };
+}
 async function extract(subject: string | null, body: string, files: IntakeFile[]): Promise<Extracted> {
   const visual = files.filter(isVisualPdf);
   const rest = files.filter((f) => !visual.includes(f));
   if (!visual.length) return extractOnce(subject, body, files, []);
   // one deck per call (Claude reads up to about 30 MB of PDF at a time); the message and the readable files ride along each time
   const parts: Extracted[] = [];
-  for (const deck of visual) parts.push(await extractOnce(subject, body, rest, [deck]).catch((e) => { console.error("israel intake: deck failed", deck.name, String(e).slice(0, 200)); return { project: null, apartments: [], agent: null } as Extracted; }));
+  for (const deck of visual) {
+    const pages = await renderDeck(deck);
+    const part = await extractOnce(subject, body, rest, [deck], pages).catch((e) => { console.error("israel intake: deck failed", deck.name, String(e).slice(0, 200)); return { project: null, apartments: [], agent: null } as Extracted; });
+    for (const a of part.apartments) planSource.set(a, { name: deck.name, pages });
+    parts.push(part);
+  }
   if (rest.some((f) => f.text || f.bytes) && !visual.length) parts.push(await extractOnce(subject, body, rest, []));
   return mergeExtracted(parts);
 }
 
 
-async function extractOnce(subject: string | null, body: string, files: IntakeFile[], docs: IntakeFile[]): Promise<Extracted> {
+async function extractOnce(subject: string | null, body: string, files: IntakeFile[], docs: IntakeFile[], rendered: import("@/lib/pdf-images").PageImage[] = []): Promise<Extracted> {
   const client = new Anthropic();
   const content: Anthropic.ContentBlockParam[] = [];
   const parts = [`Subject: ${subject ?? ""}`, `Message:\n${body.slice(0, 40_000)}`, ...files.filter((f) => f.text).map((f) => `Attachment ${f.name}:\n${(f.text ?? "").slice(0, 40_000)}`)];
   if (docs.length) parts.push(`The document${docs.length > 1 ? "s" : ""} attached below (${docs.map((d) => d.name).join(", ")}) ${docs.length > 1 ? "are" : "is"} a floor plan deck or brochure: look at the drawings, tables and compass rose on every page.`);
   content.push({ type: "text", text: parts.join("\n\n") });
   for (const d of docs) {
-    let pages: import("@/lib/pdf-images").PageImage[] = [];
-    try {
-      const { renderPdfPages } = await import("@/lib/pdf-images");
-      pages = await renderPdfPages(d.bytes!, { maxPages: 40, width: 1200 });
-    } catch (e) {
-      console.error("israel intake: could not render", d.name, String(e).slice(0, 160));
-    }
+    const pages = rendered.length ? rendered : await renderDeck(d);
     if (pages.length) {
       content.push({ type: "text", text: `Document ${d.name}, ${pages.length} page${pages.length === 1 ? "" : "s"}, one picture per page:` });
       for (const p of pages) {
@@ -283,10 +318,21 @@ const mergedExtra = (old: unknown, add: unknown) => {
   return Object.keys(o).length ? { extra: JSON.stringify(o) } : {};
 };
 
+/** A company name boiled down for matching: parentheticals (the Hebrew) and punctuation dropped, case ignored. */
+export const companyKey = (name: string) => name.toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\b(ltd|inc|llc|group|בע"מ|בעמ)\b/g, " ").replace(/\s+/g, " ").trim();
 async function findOrCreateCompany(name: string | null, role: string) {
   const n = name?.trim();
   if (!n) return null;
-  return (await prisma.ilCompany.findFirst({ where: { name: { equals: n, mode: "insensitive" } } })) ?? prisma.ilCompany.create({ data: { name: n, roles: JSON.stringify([role]) } });
+  const exact = await prisma.ilCompany.findFirst({ where: { name: { equals: n, mode: "insensitive" } } });
+  if (exact) return exact;
+  // Sep 23, 2026: "Ramot Ba'ir" was made twice next to "Ramot Ba'ir (רמות בעיר)"; the same name with or without the Hebrew is one company
+  const key = companyKey(n);
+  if (key) {
+    const all = await prisma.ilCompany.findMany({ select: { id: true, name: true, roles: true, createdAt: true }, orderBy: { createdAt: "asc" } });
+    const same = all.find((c) => companyKey(c.name) === key);
+    if (same) return prisma.ilCompany.findUnique({ where: { id: same.id } });
+  }
+  return prisma.ilCompany.create({ data: { name: n, roles: JSON.stringify([role]) } });
 }
 
 async function findOrCreateAgent(agent: Extracted["agent"], sender: IntakeInput["sender"], companyId: string | null) {
@@ -301,6 +347,24 @@ async function findOrCreateAgent(agent: Extracted["agent"], sender: IntakeInput[
   return prisma.ilContact.create({ data: { firstName: firstName || null, lastName: rest.join(" ") || null, email, phone, roles: '["Broker"]', companyId } });
 }
 
+/** Every developer named, as company ids (lead first): the lead already found, the rest found or made as Sponsor (Yazam). Null when there is only the lead. */
+async function developerIdsFor(names: string[], lead: { id: string } | null): Promise<string | null> {
+  const ids: string[] = lead ? [lead.id] : [];
+  for (const n of names) {
+    const c = await findOrCreateCompany(n, "Sponsor (Yazam)");
+    if (c && !ids.includes(c.id)) ids.push(c.id);
+  }
+  return ids.length > 1 ? JSON.stringify(ids) : null;
+}
+/** The unit's own plan page from the deck it was read from, when Claude pointed at one. */
+async function attachPlanPage(a: ExtractedApartment, unitId: string, kind: "apartments" | "houses" = "apartments"): Promise<boolean> {
+  const img = planImageFor(a);
+  if (!img) return false;
+  const data = { floorplan: Buffer.from(img.bytes), floorplanType: img.type, floorplanName: img.name };
+  if (kind === "houses") await prisma.ilHouse.update({ where: { id: unitId }, data });
+  else await prisma.ilApartment.update({ where: { id: unitId }, data });
+  return true;
+}
 /** The floorplan among the files: a plan by name, else the biggest photo when there is more than one. */
 async function attachFloorplan(files: IntakeFile[], unitId: string, kind: "apartments" | "houses" = "apartments") {
   const withBytes = files.filter((f) => f.bytes && f.size < 20 * 1024 * 1024);
@@ -354,12 +418,21 @@ async function attachBrochure(files: IntakeFile[], projectId: string) {
 const unitWords = (t: string) => new Set(t.toLowerCase().replace(/[^a-z0-9\u0590-\u05FF ]+/g, " ").split(/\s+/).filter((w) => w.length > 2 && !/^(the|apt|apartment|unit|by|of|in|st|street|rd|road|house|villa|cottage)$/.test(w)));
 const unitNumbers = (t: string) => new Set((t.match(/\d+[a-z]?/gi) ?? []).map((x) => x.toLowerCase()));
 type UnitKey = { name: string; street?: string | null; city?: string | null; rooms?: number | null; internalSqm?: number | null; degem?: string | null };
+/** Type codes match when equal, or when one names the building and the other does not ("A-UA7" and "UA7"); "A-D" and "B-D" are two units. */
+const degemCode = (d: string) => d.trim().toUpperCase().replace(/\s+/g, "").replace(/–/g, "-");
+function degemSame(x: string, y: string): boolean {
+  const a = degemCode(x), b = degemCode(y);
+  if (a === b) return true;
+  const ma = a.match(/^([A-Z])-(.+)$/), mb = b.match(/^([A-Z])-(.+)$/);
+  if (ma && mb) return false;
+  return (ma ? ma[2] : a) === (mb ? mb[2] : b);
+}
 export function sameUnit(a: UnitKey, b: UnitKey): boolean {
   if (a.city && b.city && a.city.trim().toLowerCase() !== b.city.trim().toLowerCase()) return false;
   const na = unitNumbers(a.name), nb = unitNumbers(b.name);
   if (na.size && nb.size && ![...na].some((n) => nb.has(n))) return false; // different unit numbers
   // two units of a building are two tickets: a different room count or a different size is a different unit (Mofet decks, Sep 23)
-  if (a.degem && b.degem && a.degem.trim().toLowerCase() !== b.degem.trim().toLowerCase()) return false; // a different type code is a different unit
+  if (a.degem && b.degem && !degemSame(a.degem, b.degem)) return false; // a different type code is a different unit
   if (a.rooms != null && b.rooms != null && a.rooms !== b.rooms) return false;
   if (a.internalSqm != null && b.internalSqm != null && Math.abs(a.internalSqm - b.internalSqm) > Math.max(2, 0.03 * b.internalSqm)) return false;
   const sized = a.rooms != null || b.rooms != null || a.internalSqm != null || b.internalSqm != null || Boolean(a.degem || b.degem);
@@ -397,7 +470,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   const proj = extracted.project?.name
     ? extracted.project
     : wants.has("projects")
-      ? { name: first?.projectName ?? (input.subject ?? "Project").replace(/^\s*(fwd?|re|fw)\s*:\s*/i, ""), developerName: first?.developerName ?? null, street: first?.street ?? null, city: first?.city ?? null, neighborhood: first?.neighborhood ?? null, totalUnits: first?.buildingUnits ?? null, stories: first?.buildingStories ?? null, parkingSpaces: null, completionDate: first?.completionDate ?? null, pool: null, doorman: null, gym: null, description: null }
+      ? { name: first?.projectName ?? (input.subject ?? "Project").replace(/^\s*(fwd?|re|fw)\s*:\s*/i, ""), developerName: first?.developerName ?? null, developerNames: first?.developerNames ?? [], street: first?.street ?? null, city: first?.city ?? null, neighborhood: first?.neighborhood ?? null, totalUnits: first?.buildingUnits ?? null, stories: first?.buildingStories ?? null, parkingSpaces: null, completionDate: first?.completionDate ?? null, pool: null, doorman: null, gym: null, description: null }
       : null;
   if (!extracted.apartments.length && !proj) {
     await mark("skipped: no apartment or house found");
@@ -406,6 +479,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   const agentCompany = await findOrCreateCompany(extracted.agent?.company ?? null, "Broker");
   const agent = await findOrCreateAgent(extracted.agent, senderIsInternal ? null : input.sender, agentCompany?.id ?? null);
   const rows: IntakeRow[] = [];
+  const touchedProjects = new Set<string>();
   const fileNames = input.files.map((f) => f.name);
   const origin = `Created from ${input.channel === "WHATSAPP" ? "a WhatsApp message" : `an email to ${input.mailbox}`}${input.subject ? `: "${input.subject}"` : ""}${fileNames.length ? ` with ${fileNames.join(", ")}` : ""}`;
   // a floorplan among the files satisfies the Floorplan line when there is one unit to give it to
@@ -416,9 +490,11 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     const pname = stripDashes(proj.name).trim();
     const existing = await findProject(pname, proj.city, proj.street);
     const dev = await findOrCreateCompany(proj.developerName ?? null, "Sponsor (Yazam)");
+    const devIds = await developerIdsFor(proj.developerNames ?? [], dev);
     const amen: string[] = "amenities" in proj && Array.isArray(proj.amenities) ? proj.amenities : [];
-    const pdata = { name: pname, developerId: dev?.id ?? null, street: proj.street ?? null, city: proj.city ?? null, neighborhood: proj.neighborhood ?? null, totalUnits: proj.totalUnits ?? null, stories: proj.stories ?? null, parkingSpaces: proj.parkingSpaces ?? null, completionDate: proj.completionDate ?? null, amenities: amen.length ? JSON.stringify(amen) : null, pool: amen.includes("Pool") ? "Yes" : proj.pool ?? null, doorman: amen.includes("Doorman") ? "Yes" : proj.doorman ?? null, gym: amen.includes("Gym") ? "Yes" : proj.gym ?? null, agentContactId: agent?.id ?? null, description: proj.description ? stripDashes(proj.description) : null };
+    const pdata = { name: pname, developerId: dev?.id ?? null, developerIds: devIds, street: proj.street ?? null, city: proj.city ?? null, neighborhood: proj.neighborhood ?? null, totalUnits: proj.totalUnits ?? null, stories: proj.stories ?? null, parkingSpaces: proj.parkingSpaces ?? null, completionDate: proj.completionDate ?? null, amenities: amen.length ? JSON.stringify(amen) : null, pool: amen.includes("Pool") ? "Yes" : proj.pool ?? null, doorman: amen.includes("Doorman") ? "Yes" : proj.doorman ?? null, gym: amen.includes("Gym") ? "Yes" : proj.gym ?? null, agentContactId: agent?.id ?? null, description: proj.description ? stripDashes(proj.description) : null };
     projectRow = existing ? await prisma.ilProject.update({ where: { id: existing.id }, data: fillFrom(pdata) }) : await prisma.ilProject.create({ data: { ...pdata, pendingApproval: true } });
+    touchedProjects.add(projectRow.id);
     await prisma.ilNote.create({ data: { projectId: projectRow.id, body: existing ? origin.replace(/^Created from/, "Updated from") : origin } });
     if (!existing?.brochureType) await attachBrochure(input.files, projectRow.id).catch(() => null);
     const fresh = await prisma.ilProject.findUnique({ where: { id: projectRow.id }, omit: { brochure: true } });
@@ -433,6 +509,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   };
   for (const a of extracted.apartments) {
     const developer = await findOrCreateCompany(a.developerName, "Sponsor (Yazam)");
+    const developerIds = await developerIdsFor(a.developerNames ?? [], developer);
     if (a.kind === "house") {
       let houseProject = null as { id: string } | null;
       if (a.projectName?.trim()) {
@@ -446,6 +523,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
           city: a.city,
           neighborhood: a.neighborhood,
           developerId: developer?.id ?? null,
+          developerIds,
           agentContactId: agent?.id ?? null,
           rooms: a.rooms,
           floors: a.floors,
@@ -473,9 +551,10 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         ? await prisma.ilHouse.update({ where: { id: found.id }, data: { ...fillFrom(houseData), ...mergedExtra(found.extra, a.extra) } })
         : await prisma.ilHouse.create({ data: houseData });
       await prisma.ilNote.create({ data: { houseId: house.id, body: found ? origin.replace(/^Created from/, "Updated from") : origin } });
-      if (extracted.apartments.length === 1 && !(found?.floorplanType)) await attachFloorplan(input.files, house.id, "houses").catch(() => null);
+      const housePlan = !found?.floorplanType && (await attachPlanPage(a, house.id, "houses").catch(() => false));
+      if (!housePlan && extracted.apartments.length === 1 && !(found?.floorplanType)) await attachFloorplan(input.files, house.id, "houses").catch(() => null);
       const { houseMissing } = await import("@/lib/israel");
-      rows.push({ id: house.id, kind: "houses", name: house.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, a.migrashSqm ? `${sqm(a.migrashSqm)} migrash` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: found ? houseMissing((await prisma.ilHouse.findUnique({ where: { id: house.id } })) as unknown as Record<string, unknown>) : missingForHouse(a, Boolean(developer), planFile) });
+      rows.push({ id: house.id, kind: "houses", name: house.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, a.migrashSqm ? `${sqm(a.migrashSqm)} migrash` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: found ? houseMissing((await prisma.ilHouse.findUnique({ where: { id: house.id } })) as unknown as Record<string, unknown>) : missingForHouse(a, Boolean(developer), planFile || Boolean(planImageFor(a))) });
       continue;
     }
     let project = null as { id: string } | null;
@@ -492,8 +571,10 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         projectId: project?.id ?? projectRow?.id ?? null,
         projectName: a.projectName,
         developerId: developer?.id ?? null,
+        developerIds,
         agentContactId: agent?.id ?? null,
         rooms: a.rooms,
+        bathrooms: a.bathrooms,
         completionDate: a.completionDate,
         floor: a.floor,
         totalFloors: a.buildingStories,
@@ -525,8 +606,19 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
       ? await prisma.ilApartment.update({ where: { id: foundApt.id }, data: { ...fillFrom(aptData), ...mergedExtra(foundApt.extra, a.extra) } })
       : await prisma.ilApartment.create({ data: aptData });
     await prisma.ilNote.create({ data: { apartmentId: created.id, body: foundApt ? origin.replace(/^Created from/, "Updated from") : origin } });
-    if (extracted.apartments.length === 1 && !(foundApt?.floorplanType)) await attachFloorplan(input.files, created.id).catch(() => null);
-    rows.push({ id: created.id, kind: "apartments", name: created.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: foundApt ? (await import("@/lib/israel")).apartmentMissing((await prisma.ilApartment.findUnique({ where: { id: created.id } })) as unknown as Record<string, unknown>) : missingFor(a, Boolean(developer), planFile) });
+    const ownPlan = !foundApt?.floorplanType && (await attachPlanPage(a, created.id).catch(() => false));
+    if (!ownPlan && extracted.apartments.length === 1 && !(foundApt?.floorplanType)) await attachFloorplan(input.files, created.id).catch(() => null);
+    if (aptData.projectId) touchedProjects.add(aptData.projectId);
+    rows.push({ id: created.id, kind: "apartments", name: created.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: foundApt ? (await import("@/lib/israel")).apartmentMissing((await prisma.ilApartment.findUnique({ where: { id: created.id } })) as unknown as Record<string, unknown>) : missingFor(a, Boolean(developer), planFile || Boolean(planImageFor(a))) });
+  }
+  // the project's building facts and developers flow to the units filed under it; the reply lists what is still missing after that
+  for (const pid of touchedProjects) await syncProjectToUnits(pid).catch(() => null);
+  if (touchedProjects.size) {
+    const { apartmentMissing: am, houseMissing: hm } = await import("@/lib/israel");
+    for (const r of rows) {
+      if (r.kind === "apartments") { const row = await prisma.ilApartment.findUnique({ where: { id: r.id }, omit: { floorplan: true } }); if (row) r.missing = am(row as unknown as Record<string, unknown>); }
+      if (r.kind === "houses") { const row = await prisma.ilHouse.findUnique({ where: { id: r.id }, omit: { floorplan: true } }); if (row) r.missing = hm(row as unknown as Record<string, unknown>); }
+    }
   }
   await mark(`created ${rows.length}`);
   const note = agent ? `Agent on file: ${[agent.firstName, agent.lastName].filter(Boolean).join(" ") || agent.email || agent.phone}.` : null;

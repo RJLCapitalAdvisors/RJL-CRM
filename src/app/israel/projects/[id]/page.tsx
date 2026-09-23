@@ -10,7 +10,7 @@ import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/r
 import { IlActivityLog } from "@/components/il-activity";
 import { IlRoleChips } from "@/components/il-role-cell";
 import { usdIls } from "@/lib/fx";
-import { apartmentLine, houseLine, nis, nisShort, projectMissing, sqm, usdFmt } from "@/lib/israel";
+import { apartmentLine, houseLine, nis, nisShort, projectMissing, sqm, usdFmt, developerIdList } from "@/lib/israel";
 import { IlExtraCard } from "@/components/il-extra-card";
 import { loadIlRequired } from "@/lib/required-items";
 import { priceRangeLine, projectRanges, type Range } from "@/lib/project-ranges";
@@ -47,7 +47,7 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
         notes: { orderBy: { createdAt: "desc" } },
       },
     }),
-    prisma.ilCompany.findMany({ where: { roles: { contains: "Sponsor" } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.ilCompany.findMany({ where: { OR: [{ roles: { contains: "Sponsor" } }, { projects: { some: { id } } }] }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     usdIls(),
     prisma.ilContact.findMany({ where: { roles: { contains: "Broker" } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { id: true, firstName: true, lastName: true, email: true, roles: true, company: { select: { name: true } } } }),
   ]);
@@ -158,7 +158,12 @@ export default async function IlProjectPage({ params }: { params: Promise<{ id: 
       }
       right={
         <>
-          <AssocCard title="Developer" count={p.developer ? 1 : 0} empty="Pick the developer in the form on the left.">
+          <AssocCard title={developerIdList(p).length > 1 ? "Developers" : "Developer"} count={developerIdList(p).length} empty="Tick the developers in the form on the left.">
+            {developerIdList(p).slice(1).length > 0 && (
+              <div className="px-4 pt-3 text-xs text-muted">
+                With {developerIdList(p).slice(1).map((id) => developers.find((d) => d.id === id)?.name ?? "another developer").join(", ")}
+              </div>
+            )}
             {p.developer && (
               <div className="p-4 text-sm">
                 <Link href={`/israel/companies/${p.developer.id}`} className="inline-flex items-center gap-2 font-semibold hover:underline">

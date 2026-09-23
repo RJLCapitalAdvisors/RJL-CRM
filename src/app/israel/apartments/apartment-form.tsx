@@ -5,6 +5,8 @@ import { AutoSaveForm } from "@/components/autosave-form";
 import { Calc, Group, Row, Select, Text } from "@/components/form-rows";
 /** Rooms are picked, 1 to 12 in half steps (3.5 rooms is a real Israeli listing), so a count is never mistyped (Jonathan, Sep 17). */
 const ROOMS = Array.from({ length: 23 }, (_, i) => String(1 + i / 2));
+/** 1 to 10 in halves (Jonathan, Sep 23, 2026). */
+const BATHROOMS = Array.from({ length: 19 }, (_, i) => String(1 + i / 2));
 
 import { NumberInput } from "@/components/number-input";
 import { SelectField } from "@/components/select-field";
@@ -17,7 +19,7 @@ const FLOORS = Array.from({ length: 101 }, (_, k) => String(k));
 const STORIES = Array.from({ length: 100 }, (_, k) => String(k + 1));
 
 export type IlApartmentForm = Partial<{
-  name: string; apartmentType: string | null; degem: string | null; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
+  name: string; apartmentType: string | null; degem: string | null; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; bathrooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
   internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpasot: string | null; levels: number | null; ceilingCms: string | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean | null;
   priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null; pool: string | null; poolSqm: number | null;
 }>;
@@ -82,6 +84,9 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         </Row>
         <Row label="Rooms">
           <Select name="rooms" value={a.rooms != null ? String(a.rooms) : ""} options={ROOMS} />
+        </Row>
+        <Row label="Bathrooms" hint="Full bathrooms; a toilet room alone counts as a half.">
+          <Select name="bathrooms" value={a.bathrooms != null ? String(a.bathrooms) : ""} options={BATHROOMS} />
         </Row>
         <Row label="Year of construction / expected date of delivery" hint="Pick the month and year. For an existing building the year is what matters; the month can be January.">
           <input type="month" name="completionDate" defaultValue={toMonthInput(a.completionDate)} className="input" />

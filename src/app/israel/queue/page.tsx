@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { CompanyLogo } from "@/components/company-logo";
 import { fmtDate } from "@/lib/format";
-import { apartmentMissing, houseMissing, ilFullName, nis, pricePerMeter, projectMissing } from "@/lib/israel";
+import { apartmentMissing, houseMissing, ilFullName, nis, pricePerMeter, projectMissing, coDeveloperNames } from "@/lib/israel";
 import { loadIlRequired } from "@/lib/required-items";
 import { QueueApprove } from "./approve-button";
 
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 /**
  * The Que (Sep 22, 2026): every deal that has entered RJL Israel and is not yet in the system, houses, apartments and
  * projects together, in the same table shape as the lists. Approve on a row sends it in; with data still missing
- * the approval goes to Jonathan's dashboard first (his own click admits it at once).
+ * the row is marked waiting on Jonathan and his own Approve admits it (his click admits at once).
  */
 export default async function IsraelQueuePage() {
   await loadIlRequired();
@@ -25,13 +25,14 @@ export default async function IsraelQueuePage() {
     prisma.ilHouse.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { ...dev, ...agent } }),
     prisma.ilProject.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { ...dev, ...agent } }),
   ]);
-  type Row = { kind: "apartments" | "houses" | "projects"; id: string; name: string; degem?: string | null; developer: { id: string; name: string; domain: string | null; website: string | null } | null; city: string | null; neighborhood: string | null; street: string | null; rooms: number | null; internal: number | null; mirpeset: number | null; floor: string | null; price: number | null; ppm: number | null; delivery: string | null; createdAt: Date; from: string | null; source: string | null; missing: string[]; requestedBy: string | null; requestedAt: Date | null };
+  type Row = { kind: "apartments" | "houses" | "projects"; id: string; name: string; degem?: string | null; developerId?: string | null; developerIds?: string | null; developer: { id: string; name: string; domain: string | null; website: string | null } | null; city: string | null; neighborhood: string | null; street: string | null; rooms: number | null; internal: number | null; mirpeset: number | null; floor: string | null; price: number | null; ppm: number | null; delivery: string | null; createdAt: Date; from: string | null; source: string | null; missing: string[]; requestedBy: string | null; requestedAt: Date | null };
   const rows: Row[] = [
-    ...apts.map((a): Row => ({ kind: "apartments", id: a.id, name: a.name, degem: a.degem, developer: a.developer, city: a.city, neighborhood: a.neighborhood, street: a.street, rooms: a.rooms, internal: a.internalSqm, mirpeset: a.mirpesetSqm, floor: a.floor != null ? `${a.floor}${a.totalFloors ? ` / ${a.totalFloors}` : ""}` : null, price: a.priceNis, ppm: pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm), delivery: a.completionDate, createdAt: a.createdAt, from: a.agent ? ilFullName(a.agent) : null, source: a.source, missing: apartmentMissing(a as unknown as Record<string, unknown>), requestedBy: a.approvalRequestedBy, requestedAt: a.approvalRequestedAt })),
-    ...houses.map((h): Row => ({ kind: "houses", id: h.id, name: h.name, developer: h.developer, city: h.city, neighborhood: h.neighborhood, street: h.street, rooms: h.rooms, internal: h.internalSqm, mirpeset: h.mirpesetSqm, floor: null, price: h.priceNis, ppm: pricePerMeter(h.priceNis, h.internalSqm, h.mirpesetSqm), delivery: null, createdAt: h.createdAt, from: h.agent ? ilFullName(h.agent) : null, source: h.source, missing: houseMissing(h as unknown as Record<string, unknown>), requestedBy: h.approvalRequestedBy, requestedAt: h.approvalRequestedAt })),
-    ...projects.map((p): Row => ({ kind: "projects", id: p.id, name: p.name, developer: p.developer, city: p.city, neighborhood: p.neighborhood, street: p.street, rooms: null, internal: null, mirpeset: null, floor: p.stories ? `${p.stories} stories` : null, price: null, ppm: null, delivery: p.completionDate, createdAt: p.createdAt, from: p.agent ? ilFullName(p.agent) : null, source: null, missing: projectMissing(p as unknown as Record<string, unknown>), requestedBy: p.approvalRequestedBy, requestedAt: p.approvalRequestedAt })),
+    ...apts.map((a): Row => ({ kind: "apartments", id: a.id, name: a.name, degem: a.degem, developerId: a.developerId, developerIds: a.developerIds, developer: a.developer, city: a.city, neighborhood: a.neighborhood, street: a.street, rooms: a.rooms, internal: a.internalSqm, mirpeset: a.mirpesetSqm, floor: a.floor != null ? `${a.floor}${a.totalFloors ? ` / ${a.totalFloors}` : ""}` : null, price: a.priceNis, ppm: pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm), delivery: a.completionDate, createdAt: a.createdAt, from: a.agent ? ilFullName(a.agent) : null, source: a.source, missing: apartmentMissing(a as unknown as Record<string, unknown>), requestedBy: a.approvalRequestedBy, requestedAt: a.approvalRequestedAt })),
+    ...houses.map((h): Row => ({ kind: "houses", id: h.id, name: h.name, developerId: h.developerId, developerIds: h.developerIds, developer: h.developer, city: h.city, neighborhood: h.neighborhood, street: h.street, rooms: h.rooms, internal: h.internalSqm, mirpeset: h.mirpesetSqm, floor: null, price: h.priceNis, ppm: pricePerMeter(h.priceNis, h.internalSqm, h.mirpesetSqm), delivery: null, createdAt: h.createdAt, from: h.agent ? ilFullName(h.agent) : null, source: h.source, missing: houseMissing(h as unknown as Record<string, unknown>), requestedBy: h.approvalRequestedBy, requestedAt: h.approvalRequestedAt })),
+    ...projects.map((p): Row => ({ kind: "projects", id: p.id, name: p.name, developerId: p.developerId, developerIds: p.developerIds, developer: p.developer, city: p.city, neighborhood: p.neighborhood, street: p.street, rooms: null, internal: null, mirpeset: null, floor: p.stories ? `${p.stories} stories` : null, price: null, ppm: null, delivery: p.completionDate, createdAt: p.createdAt, from: p.agent ? ilFullName(p.agent) : null, source: null, missing: projectMissing(p as unknown as Record<string, unknown>), requestedBy: p.approvalRequestedBy, requestedAt: p.approvalRequestedAt })),
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const label: Record<Row["kind"], string> = { apartments: "Apartment", houses: "House", projects: "Project" };
+  const devNames = new Map((await prisma.ilCompany.findMany({ select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   return (
     <>
       <PageHeader title="The Que" subtitle={`${rows.length} deal${rows.length === 1 ? "" : "s"} waiting · everything that came in and is not yet in the system`} />
@@ -74,7 +75,7 @@ export default async function IsraelQueuePage() {
                     {r.developer ? (
                       <Link href={`/israel/companies/${r.developer.id}`} className="flex items-center gap-2 hover:underline">
                         <CompanyLogo domain={r.developer.domain ?? r.developer.website?.replace(/^https?:\/\//, "").split("/")[0]} name={r.developer.name} />
-                        <span className="truncate">{r.developer.name}</span>
+                        <span className="truncate">{r.developer.name}{coDeveloperNames(r, devNames).length ? ` + ${coDeveloperNames(r, devNames).join(", ")}` : ""}</span>
                       </Link>
                     ) : (
                       <span className="text-muted">—</span>
@@ -104,7 +105,7 @@ export default async function IsraelQueuePage() {
                     )}
                     {r.requestedAt && <span className="ml-2 text-muted">· approved by {r.requestedBy}, waiting on Jonathan</span>}
                   </td>
-                  <td className="w-[150px] whitespace-nowrap text-right">{r.requestedAt ? <span className="text-xs text-muted">On the dashboard</span> : <QueueApprove kind={r.kind} id={r.id} missing={r.missing.length} />}</td>
+                  <td className="w-[150px] whitespace-nowrap text-right">{r.requestedAt ? <span className="text-xs text-muted">Waiting on Jonathan</span> : <QueueApprove kind={r.kind} id={r.id} missing={r.missing.length} />}</td>
                 </tr>
               ))}
               {rows.length === 0 && (

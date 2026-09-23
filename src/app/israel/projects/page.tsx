@@ -3,7 +3,7 @@ import { ZoomBox } from "@/components/zoom-box";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager } from "@/components/ui";
 import { str } from "@/lib/format";
-import { yearOf } from "@/lib/israel";
+import { yearOf, coDeveloperNames } from "@/lib/israel";
 import { ProjectFiltersRail, type ProjectFilters } from "./filters";
 import { CompanyLogo } from "@/components/company-logo";
 
@@ -48,7 +48,7 @@ export default async function IlProjectsPage({ searchParams }: { searchParams: P
   const all = await prisma.ilProject.findMany({
     where: { pendingApproval: false }, // projects still in The Que are not in the list
     orderBy: { updatedAt: "desc" },
-    select: { id: true, name: true, street: true, city: true, neighborhood: true, totalUnits: true, parkingSpaces: true, stories: true, completionDate: true, pool: true, brochureName: true, updatedAt: true, developer: { select: { id: true, name: true, domain: true, website: true } }, _count: { select: { apartments: true, houses: true } } },
+    select: { id: true, name: true, street: true, city: true, neighborhood: true, totalUnits: true, parkingSpaces: true, stories: true, completionDate: true, pool: true, brochureName: true, updatedAt: true, developerId: true, developerIds: true, developer: { select: { id: true, name: true, domain: true, website: true } }, _count: { select: { apartments: true, houses: true } } },
   });
   const cities = [...new Set(all.map((p) => p.city).filter((c): c is string => Boolean(c)))].sort();
   const neighborhoods = [...new Set(all.map((p) => p.neighborhood).filter((c): c is string => Boolean(c)))].sort();
@@ -100,6 +100,7 @@ export default async function IlProjectsPage({ searchParams }: { searchParams: P
     u.set("page", String(p));
     return `/israel/projects?${u}`;
   };
+  const devNames = new Map((await prisma.ilCompany.findMany({ select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   return (
     <>
       <PageHeader
@@ -146,7 +147,7 @@ export default async function IlProjectsPage({ searchParams }: { searchParams: P
                         {p.developer ? (
                           <Link href={`/israel/companies/${p.developer.id}`} className="inline-flex items-center gap-2 hover:underline">
                             <CompanyLogo domain={p.developer.domain ?? p.developer.website?.replace(/^https?:\/\//, "").split("/")[0]} name={p.developer.name} />
-                            {p.developer.name}
+                            {p.developer.name}{coDeveloperNames(p, devNames).length ? ` + ${coDeveloperNames(p, devNames).join(", ")}` : ""}
                           </Link>
                         ) : (
                           <span className="text-muted">—</span>

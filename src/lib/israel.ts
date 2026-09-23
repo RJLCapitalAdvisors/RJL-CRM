@@ -155,63 +155,63 @@ export const IL_CATEGORIES: { key: IlCategory; label: string }[] = [
 ];
 export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
   projects: [
-    { key: "developerId", label: "Developer" },
-    { key: "street", label: "Address" },
+    { key: "developerId", label: "Developer (the yazam building or selling it)" },
+    { key: "street", label: "Address (street and number)" },
     { key: "city", label: "City" },
     { key: "neighborhood", label: "Neighborhood" },
-    { key: "totalUnits", label: "Total units" },
-    { key: "stories", label: "Building stories" },
-    { key: "parkingSpaces", label: "Parking spaces" },
+    { key: "totalUnits", label: "Total units in the project" },
+    { key: "stories", label: "Building stories (floors per building)" },
+    { key: "parkingSpaces", label: "Parking spaces and configuration (how many in the project; underground or open)" },
     { key: "completionDate", label: "Expected delivery (month and year)" },
     { key: "amenities", label: "Amenities (doorman, pool, gym, jacuzzi, sauna, studio, co-working)" },
-    { key: "brochureName", label: "Brochure" },
+    { key: "brochureName", label: "Brochure (PDF)" },
   ],
   apartments: [
-    { key: "developerId", label: "Developer" },
+    { key: "developerId", label: "Developer (the yazam building or selling it)" },
     { key: "apartmentType", label: "Apartment type (regular, garden or penthouse)" },
-    { key: "street", label: "Building address" },
+    { key: "street", label: "Building address (street and number)" },
     { key: "city", label: "City" },
     { key: "neighborhood", label: "Neighborhood" },
-    { key: "rooms", label: "Rooms" },
+    { key: "rooms", label: "Number of rooms (e.g. 3.5)" },
     { key: "completionDate", label: "Year of construction or expected date of delivery (month and year)" },
-    { key: "floor", label: "Apartment floor" },
-    { key: "totalFloors", label: "Total stories" },
-    { key: "buildingUnits", label: "Total units" },
-    { key: "direction", label: "Apartment direction" },
+    { key: "floor", label: "Apartment floor (which floor the unit is on)" },
+    { key: "totalFloors", label: "Total stories in the building" },
+    { key: "buildingUnits", label: "Total units in the building" },
+    { key: "direction", label: "Apartment direction (which way the windows face: north, south, east or west)" },
     { key: "mamad", label: "Mamad (yes or no)" },
-    { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
-    { key: "internalSqm", label: "Internal m²" },
+    { key: "sellerType", label: "Seller type (yad rishona from the developer, or second hand)" },
+    { key: "internalSqm", label: "Internal size (m², without the mirpeset)" },
     { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
-    { key: "mirpesetDirection", label: "Mirpeset direction" },
+    { key: "mirpesetDirection", label: "Mirpeset direction (north, south, east or west)" },
     { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
     { key: "pool", label: "Private pool (yes or no)" },
     { key: "ceilingCm", label: "Ceiling height (cm)" },
-    { key: "parkingSpots", label: "Parking spots" },
-    { key: "machsanSqm", label: "Machsan size (m²)" },
-    { key: "machsanLocation", label: "Machsan location" },
-    { key: "priceNis", label: "Asking price" },
-    { key: "floorplanName", label: "Floorplan" },
+    { key: "parkingSpots", label: "Parking spots and configuration (how many; back to back or side by side; underground or open)" },
+    { key: "machsanSqm", label: "Machsan (storage room) size (m²)" },
+    { key: "machsanLocation", label: "Machsan location (in the unit, in the basement or by the parking)" },
+    { key: "priceNis", label: "Asking price (NIS)" },
+    { key: "floorplanName", label: "Floorplan (a picture or PDF of the unit's plan)" },
   ],
   houses: [
     { key: "houseType", label: "House type (villa, semi-attached or cottage)" },
-    { key: "street", label: "Address" },
+    { key: "street", label: "Address (street and number)" },
     { key: "city", label: "City" },
     { key: "neighborhood", label: "Neighborhood" },
-    { key: "rooms", label: "Rooms" },
+    { key: "rooms", label: "Number of rooms (e.g. 5.5)" },
     { key: "floors", label: "How many floors (miflasim)" },
     { key: "ceilingCms", label: "Ceiling height per floor (cm)" },
     { key: "completionDate", label: "Built or expected delivery (month and year)" },
-    { key: "parkingSpots", label: "Parking" },
-    { key: "sellerType", label: "Seller type (yad rishona or second hand)" },
+    { key: "parkingSpots", label: "Parking spots and configuration (how many; covered or open)" },
+    { key: "sellerType", label: "Seller type (yad rishona from the developer, or second hand)" },
     { key: "mamad", label: "Mamad (yes or no)" },
-    { key: "internalSqm", label: "Internal m²" },
+    { key: "internalSqm", label: "Internal size (m²)" },
     { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
-    { key: "mirpesetDirection", label: "Mirpeset direction" },
+    { key: "mirpesetDirection", label: "Mirpeset direction (north, south, east or west)" },
     { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
     { key: "pool", label: "Private pool (yes or no)" },
-    { key: "migrashSqm", label: "Migrash size (m²)" },
-    { key: "priceNis", label: "Asking price" },
-    { key: "floorplanName", label: "Floorplan" },
+    { key: "migrashSqm", label: "Migrash (plot) size (m²)" },
+    { key: "priceNis", label: "Asking price (NIS)" },
+    { key: "floorplanName", label: "Floorplan (a picture or PDF of the house's plan)" },
   ],
 };
 /** The live lists (swapped in by loadIlRequired). */
@@ -224,6 +224,13 @@ export function setIlRequired(lists: Partial<Record<IlCategory, IlRequiredItem[]
   for (const c of IL_CATEGORIES) if (lists[c.key]) IL_REQUIRED[c.key].splice(0, IL_REQUIRED[c.key].length, ...lists[c.key]!);
 }
 export const isCustomKey = (k: string) => k.startsWith("x_");
+/** Every developer on a ticket, the lead first: developerId plus the JSON list in developerIds (Jonathan, Sep 23, 2026: Mophet is Ramot Ba'ir with Adi Capital). */
+export function developerIdList(row: { developerId?: string | null; developerIds?: string | null } | null | undefined): string[] {
+  if (!row) return [];
+  return [...new Set([row.developerId, ...parseJsonList(row.developerIds)].filter((x): x is string => Boolean(x)))];
+}
+/** The names of the developers after the lead, for a list cell: " + Adi Capital". */
+export const coDeveloperNames = (row: { developerId?: string | null; developerIds?: string | null } | null | undefined, names: Map<string, string>) => developerIdList(row).slice(1).map((id) => names.get(id)).filter((x): x is string => Boolean(x));
 /** The answers to list questions with no field of their own, from a ticket's `extra` JSON. */
 export function parseExtra(v: unknown): Record<string, string> {
   try {

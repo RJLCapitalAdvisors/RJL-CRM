@@ -628,6 +628,7 @@ model IlApartment {
   projectId      String?
   project        IlProject? @relation(fields: [projectId], references: [id])
   rooms          Float?
+  bathrooms      Float?    // 1 to 10 in halves, picked under Rooms (Jonathan, Sep 23, 2026); the intake counts them on the plan
   floor          Int?
   totalFloors    Int?
   internalSqm    Float?
@@ -674,6 +675,7 @@ model IlApartment {
   source         String?
   developerId    String?
   developer      IlCompany? @relation(fields: [developerId], references: [id])
+  developerIds   String?   // JSON list of IlCompany ids when a project has more than one developer; developerId is the first (Sep 23, 2026)
   agentContactId String?
   agent          IlContact? @relation("IlAgent", fields: [agentContactId], references: [id])
   sellerContactId String?
@@ -814,6 +816,7 @@ model IlProject {
   name           String
   developerId    String?
   developer      IlCompany?    @relation(fields: [developerId], references: [id])
+  developerIds   String?   // JSON list of IlCompany ids when a project has more than one developer; developerId is the first (Sep 23, 2026)
   street         String?
   city           String?
   neighborhood   String?
@@ -1019,6 +1022,7 @@ model IlHouse {
   description     String?
   developerId     String?
   developer       IlCompany? @relation(fields: [developerId], references: [id])
+  developerIds   String?   // JSON list of IlCompany ids when a project has more than one developer; developerId is the first (Sep 23, 2026)
   agentContactId  String?
   agent           IlContact? @relation("IlHouseAgent", fields: [agentContactId], references: [id])
   sellerContactId String?

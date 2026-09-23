@@ -4,12 +4,11 @@ import { AutoSaveForm } from "@/components/autosave-form";
 import { MultiSelect } from "@/components/multi-select";
 import { Group, Row, Select, Text } from "@/components/form-rows";
 import { NumberInput } from "@/components/number-input";
-import { SelectField } from "@/components/select-field";
-import { IL_CITIES, toMonthInput, IL_AMENITIES, parseJsonList } from "@/lib/israel";
+import { IL_CITIES, toMonthInput, IL_AMENITIES, parseJsonList, developerIdList } from "@/lib/israel";
 
 /** 1 to 100, so a story count is picked, never mistyped (Jonathan, Sep 17). */
 const STORIES = Array.from({ length: 100 }, (_, i) => String(i + 1));
-type Proj = Partial<{ amenities: string | null; gym: string | null; doorman: string | null; pool: string | null; name: string; developerId: string | null; street: string | null; city: string | null; neighborhood: string | null; totalUnits: number | null; parkingSpaces: number | null; stories: number | null; completionDate: string | null; description: string | null }>;
+type Proj = Partial<{ developerIds: string | null; amenities: string | null; gym: string | null; doorman: string | null; pool: string | null; name: string; developerId: string | null; street: string | null; city: string | null; neighborhood: string | null; totalUnits: number | null; parkingSpaces: number | null; stories: number | null; completionDate: string | null; description: string | null }>;
 
 /** A whole project: the building or development, not one apartment in it. */
 export function IlProjectForm({ p = {}, developers, action, autosave = false, submitLabel = "Create project" }: { p?: Proj; developers: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
@@ -19,15 +18,9 @@ export function IlProjectForm({ p = {}, developers, action, autosave = false, su
         <Row label="Name">
           <Text name="name" value={p.name} placeholder="Rehavia Gardens" />
         </Row>
-        <Row label="Developer">
-          <SelectField name="developerId" defaultValue={p.developerId ?? ""}>
-            <option value="">No developer</option>
-            {developers.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </SelectField>
+        <Row label="Developers" hint="Tick every yazam on the project; the first is the lead. Companies with the role Sponsor (Yazam) are offered.">
+          <input type="hidden" name="developersSet" value="1" />
+          <MultiSelect name="developers" options={developers.map((d) => d.name)} selected={developerIdList(p).map((id) => developers.find((d) => d.id === id)?.name).filter((x): x is string => Boolean(x))} placeholder="No developer yet" />
         </Row>
         <Row label="Address">
           <Text name="street" value={p.street} placeholder="Ramban 12" />
