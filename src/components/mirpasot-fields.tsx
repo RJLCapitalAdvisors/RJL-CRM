@@ -66,6 +66,11 @@ export function MirpasotFields({ count: c0, sqm: single, directions, mirpasot, o
       <Row label={`How many ${plural}`}>
         <Select name="mirpesetCount" value={count === 0 ? "None" : String(count)} options={["None", "1", "2", "3"]} noBlank onChange={changeCount} />
       </Row>
+      {many && (
+        <Row label={`Total ${noun.toLowerCase()} size (m²)`} hint={`The one number price per meter uses: the total from the listing or the plan's Balcony Area. On save the ${plural} below are adjusted so they add up to it exactly; leave it blank to use their sum.`}>
+          <NumberInput name="mirpesetTotalSqm" defaultValue={stated} onValue={(v) => { setStated(v); onTotal(v ?? total(sizes)); }} />
+        </Row>
+      )}
       {Array.from({ length: count }, (_, k) => (
         <div key={k} className="contents">
           <Row label={label(k, "m²")}>
@@ -85,11 +90,6 @@ export function MirpasotFields({ count: c0, sqm: single, directions, mirpasot, o
           )}
         </div>
       ))}
-      {many && (
-        <Row label={`Total ${noun.toLowerCase()} (m²)`} hint={`The total from the listing or the plan's Balcony Area. On save the ${plural} are adjusted so they add up to it exactly; leave it blank to use their sum. The total matters more than the split.`}>
-          <NumberInput name="mirpesetTotalSqm" defaultValue={stated} onValue={(v) => { setStated(v); onTotal(v ?? total(sizes)); }} />
-        </Row>
-      )}
       {many && <Calc label={`Sum of the ${plural}`} value={sum != null ? `${sqm(sum)} · ${sqft(sum)}${stated != null && Math.abs(stated - sum) >= 0.05 ? ` · ${sqm(Math.abs(stated - sum))} ${stated > sum ? "short of" : "over"} the total, fitted on save` : ""}` : dash} hint={stated != null ? "used for price per meter: the total above" : `the sum of the ${plural}, used for price per meter`} />}
     </>
   );

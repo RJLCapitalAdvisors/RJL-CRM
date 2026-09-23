@@ -638,6 +638,7 @@ model IlApartment {
   parking        Int?
   parkingSpots   String?   // None, 1, 2 - back to back, 2 side by side, 3
   ceilingCm      Float?
+  machsan        String?   // Yes | No: is there a machsan at all (Jonathan, Sep 23, 2026); No folds the size and location away
   machsanSqm     Float?
   machsanLocation String?  // Attached to apartment, In basement
   mirpesetDirection String @default("[]") // JSON list of air directions (union of the mirpasot)

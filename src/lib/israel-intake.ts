@@ -53,6 +53,7 @@ const Apartment = z.object({
   houseType: z.enum(["Villa", "Semi-attached", "Cottage"]).nullish().default(null).describe("Houses only: וילה Villa, דו משפחתי Semi-attached, קוטג' Cottage; null when not stated"),
   ceilingCms: z.array(z.number()).default([]).describe("One ceiling height per floor or level, ground first, when the listing gives them; empty otherwise"),
   migrashSqm: z.number().nullish().default(null).describe("Houses only: the plot (migrash) in m²; a dunam is 1,000 m²"),
+  machsan: z.enum(["Yes", "No"]).nullish().default(null).describe("Is there a machsan (storage room): Yes when one is drawn, listed or priced, No when the documents say there is none; null when not stated"),
   machsanSqm: z.number().nullish().default(null),
   machsanLocation: z.enum(["Attached to apartment", "In basement"]).nullish().default(null),
   parkingSpots: z.enum(["None", "1", "2 - back to back", "2 side by side", "3"]).nullish().default(null),
@@ -98,7 +99,7 @@ Floor plan decks (a developer's marketing PDF, one page per unit type, mostly dr
 - Rooms: the big rooms badge ("5 Rooms") is rooms. Bedrooms are the rooms minus one (the living and kitchen area counts as a room); count the bathrooms into bathrooms: a bathroom is a small room drawn with a toilet (the bowl shape), a sink and a bathtub (a long rectangle, often with a tap end) or a shower (a square with a drain or diagonal); a toilet and sink with no tub or shower is a half bath (0.5); an en suite off a bedroom counts like any other; the mamad, the machsan and a laundry niche are not bathrooms. Type UA7 has two: one with a tub (the 246 / 160 room) and one with a shower by the bedrooms, so bathrooms is 2. Say in the description how many bedrooms and bathrooms there are.
 - Dimensions: every space carries its inner size in centimetres as "width / length" (366 / 160 is 3.66 m by 1.60 m, 5.8 m²). Count the mirpasot: each hatched or planked outdoor area outside the walls is one mirpeset, its direction the side of the building it sits on, its size from its printed dimensions. The balcony area left over after the measured ones belongs to the mirpeset without dimensions (Balcony Area 45.7 with a 5.8 m² south mirpeset means the west mirpeset is 39.9 m²). The stated total is the truth: the mirpasot sizes must add up to it exactly, so put any difference on the unmeasured or largest one; knowing the total matters more than the exact split. Fill mirpasot with one entry per mirpeset (sqm and direction), mirpesetSqm with the total and mirpesetDirection with all their directions; mirpesetCount is how many.
 - A mamad (the reinforced room: thick walls, a small window, a heavy door, marked ממ"ד) is mamad Yes when it is drawn.
-- A private pool or jacuzzi drawn on a mirpeset is pool Yes on that unit. Storage (machsan) drawn or listed gives machsanSqm and machsanLocation.
+- A private pool or jacuzzi drawn on a mirpeset is pool Yes on that unit. Storage (machsan) drawn, listed or priced gives machsan Yes with machsanSqm and machsanLocation; "no storage" gives machsan No.
 Read all of this off the drawing even when the side table is silent; the drawing is the source. A price list page maps unit types (or apartment numbers) to prices: put the matching price on each unit; when a type has a range, use the lowest and say so in the description. The street and city on the plans (e.g. Eliezer Yafe St. is in Ra'anana) give the project's address. For every unit give planPage: the page number (as captioned) whose drawing is that unit's floor plan; the CRM cuts that page out and files it as the unit's floorplan. When the decks describe a project, fill the project too: name, developer, address, total units, stories, delivery.
 
 Developers: a project often has two developers (יזמים) in a joint venture, e.g. a landowner with a capital partner; a website's "Developer & Architects" page names them. Put every developer in developerNames (lead first) and the lead in developerName; architects are not developers.
@@ -123,7 +124,7 @@ export type IntakeInput = {
   sourceLabel: string; // "Email from Yael Tzur" / "WhatsApp from +972 52 300 1122"
   mailbox: string; // where it arrived (address or WhatsApp number)
 };
-export type IntakeRow = { id: string; kind: "apartments" | "houses" | "projects"; name: string; line: string; price: string; missing: string[] };
+export type IntakeRow = { id: string; kind: "apartments" | "houses" | "projects"; name: string; degem?: string | null; line: string; price: string; missing: string[] };
 type Kind = "projects" | "apartments" | "houses";
 const kindWord = (k: Kind) => (k === "houses" ? "House" : k === "projects" ? "Project" : "Apartment");
 
@@ -290,6 +291,8 @@ const EXTRACT_KEY: Record<string, keyof ExtractedApartment> = { totalFloors: "bu
 function blankExtracted(a: ExtractedApartment, key: string, hasDeveloper: boolean, hasPlan = false): boolean {
   if (isCustomKey(key)) return !(a.extra?.[key] ?? "").trim();
   if (key === "floorplanName") return !hasPlan;
+  if (a.machsan !== "Yes" && (key === "machsanSqm" || key === "machsanLocation")) return false;
+  if (key === "machsan" && (a.machsan || a.machsanSqm != null || a.machsanLocation)) return false;
   if (key === "developerId") return !hasDeveloper;
   if (key === "brochureName") return false;
   if (key === "ceilingCms") return a.ceilingCms.length === 0 || (a.floors != null && a.ceilingCms.length < a.floors);
@@ -588,6 +591,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         levels: a.levels && a.levels > 1 ? Math.min(a.levels, 3) : null,
         ceilingCms: JSON.stringify(a.levels && a.levels > 1 ? a.ceilingCms : []),
         ceilingCm: a.ceilingCm ?? a.ceilingCms[0] ?? null,
+        machsan: a.machsan ?? (a.machsanSqm != null || a.machsanLocation ? "Yes" : null),
         machsanSqm: a.machsanSqm,
         machsanLocation: a.machsanLocation && (IL_MACHSAN_LOCATIONS as readonly string[]).includes(a.machsanLocation) ? a.machsanLocation : null,
         parkingSpots: a.parkingSpots && (IL_PARKING as readonly string[]).includes(a.parkingSpots) ? a.parkingSpots : null,
@@ -613,7 +617,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     const ownPlan = !foundApt?.floorplanType && (await attachPlanPage(a, created.id).catch(() => false));
     if (!ownPlan && extracted.apartments.length === 1 && !(foundApt?.floorplanType)) await attachFloorplan(input.files, created.id).catch(() => null);
     if (aptData.projectId) touchedProjects.add(aptData.projectId);
-    rows.push({ id: created.id, kind: "apartments", name: created.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: foundApt ? (await import("@/lib/israel")).apartmentMissing((await prisma.ilApartment.findUnique({ where: { id: created.id } })) as unknown as Record<string, unknown>) : missingFor(a, Boolean(developer), planFile || Boolean(planImageFor(a))) });
+    rows.push({ id: created.id, kind: "apartments", name: created.name, degem: created.degem ?? a.degem ?? null, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: foundApt ? (await import("@/lib/israel")).apartmentMissing((await prisma.ilApartment.findUnique({ where: { id: created.id } })) as unknown as Record<string, unknown>) : missingFor(a, Boolean(developer), planFile || Boolean(planImageFor(a))) });
   }
   // the project's building facts and developers flow to the units filed under it; the reply lists what is still missing after that
   for (const pid of touchedProjects) await syncProjectToUnits(pid).catch(() => null);
@@ -635,18 +639,52 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
 
 export const appBase = () => (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
 
+/** What tells one unit of a batch from another in the reply: the type code (degem), else the name with its rooms and size. */
+const unitTag = (r: IntakeRow) => r.degem?.trim() || [r.name, r.line].filter(Boolean).join(", ");
+/**
+ * The missing items of several units of one batch, grouped by item (Jonathan, Sep 23, 2026): "Floorplan (missing for
+ * A-D, A-J)" rather than the same list under every unit. An item every unit lacks says so. Items keep the order of the
+ * Required Items list (first appearance).
+ */
+function groupedMissing(units: IntakeRow[]): { item: string; tags: string[]; all: boolean; who: string }[] {
+  const order: string[] = [];
+  const by = new Map<string, string[]>();
+  for (const r of units) for (const m of r.missing) {
+    if (!by.has(m)) { by.set(m, []); order.push(m); }
+    by.get(m)!.push(unitTag(r));
+  }
+  return order.map((item) => {
+    const tags = by.get(item)!;
+    const all = tags.length === units.length && units.length > 1;
+    const except = units.map(unitTag).filter((t) => !tags.includes(t));
+    // "all 23 units", "all but A-J, A-UA1", or the units named
+    const who = all ? `all ${units.length} units` : units.length > 4 && except.length <= 3 ? `all but ${except.join(", ")}` : `missing for ${tags.join(", ")}`;
+    return { item, tags, all, who };
+  });
+}
+const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 function replyHtml(rows: IntakeRow[], base: string, note: string | null): string {
   const font = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
-  const blocks = rows
-    .map(
-      (r) => `<p style="margin:10pt 0 4pt 0;"><b><a href="${base}/israel/${r.kind}/${r.id}">${r.name}</a></b>${r.kind !== "apartments" ? ` <span style="color:#6b716e;">(${r.kind === "houses" ? "house" : "project"})</span>` : ""}${r.line ? ` <span style="color:#6b716e;">${r.line}</span>` : ""}${r.price ? ` <span style="color:#6b716e;">${r.price}</span>` : ""}</p>
-${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still needed to complete the ticket (${r.missing.length}):</div><ol style="margin:0 0 6pt 18pt;">${r.missing.map((m) => `<li>${m}</li>`).join("")}</ol>` : `<div style="margin:0 0 6pt 0;">Nothing missing. The ticket is complete.</div>`}`,
-    )
-    .join("");
+  const grey = 'style="color:#6b716e;"';
+  const head = (r: IntakeRow) => `<b><a href="${base}/israel/${r.kind}/${r.id}">${esc(r.name)}</a></b>${r.degem ? ` <span ${grey}>type ${esc(r.degem)}</span>` : ""}${r.kind !== "apartments" ? ` <span ${grey}>(${r.kind === "houses" ? "house" : "project"})</span>` : ""}${r.line ? ` <span ${grey}>${esc(r.line)}</span>` : ""}${r.price ? ` <span ${grey}>${esc(r.price)}</span>` : ""}`;
+  const perTicket = (r: IntakeRow) => `<p style="margin:10pt 0 4pt 0;">${head(r)}</p>
+${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still needed to complete the ticket (${r.missing.length}):</div><ol style="margin:0 0 6pt 18pt;">${r.missing.map((m) => `<li>${esc(m)}</li>`).join("")}</ol>` : `<div style="margin:0 0 6pt 0;">Nothing missing. The ticket is complete.</div>`}`;
+  const projects = rows.filter((r) => r.kind === "projects");
+  const units = rows.filter((r) => r.kind !== "projects");
+  let blocks = projects.map(perTicket).join("");
+  if (units.length <= 1) blocks += units.map(perTicket).join("");
+  else {
+    // a batch: the units in one list, then what is missing grouped by item and named by unit
+    const groups = groupedMissing(units);
+    blocks += `<p style="margin:10pt 0 4pt 0;"><b>${units.length} units</b></p><ul style="margin:0 0 6pt 18pt;">${units.map((r) => `<li>${head(r)}${r.missing.length ? "" : ` <span ${grey}>complete</span>`}</li>`).join("")}</ul>`;
+    blocks += groups.length
+      ? `<div style="margin:6pt 0 4pt 0;">Still needed across the units (${groups.length}):</div><ol style="margin:0 0 6pt 18pt;">${groups.map((g) => `<li>${esc(g.item)} <span ${grey}>(${esc(g.who)})</span></li>`).join("")}</ol>`
+      : `<div style="margin:0 0 6pt 0;">Nothing missing. Every unit is complete.</div>`;
+  }
   return `<div style="${font}">
-<p>${rows.length === 1 ? `${kindWord(rows[0].kind)} ticket updated in` : `${rows.length} tickets updated in`} RJL Israel (a new listing gets a new ticket; a second email about the same unit updates the one we have). ${rows.some((r) => r.missing.length) ? "Tickets with data missing wait under Deals to be approved on the dashboard until the data is in and Jonathan approves them." : ""}</p>
+<p>${rows.length === 1 ? `${kindWord(rows[0].kind)} ticket updated in` : `${rows.length} tickets updated in`} RJL Israel (a new listing gets a new ticket; a second email about the same unit updates the one we have). ${rows.some((r) => r.missing.length) ? "Everything waits in The Que until approved; the items below are what the tickets still need." : "Everything is complete and waits in The Que for approval."}</p>
 ${blocks}
-${note ? `<p style="color:#6b716e;">${note}</p>` : ""}
+${note ? `<p ${grey}>${esc(note)}</p>` : ""}
 <p style="color:#6b716e;font-size:9pt;">Reply to the agent for the missing items and forward their answer here; edit anything on the ticket in the CRM. A floorplan attached to the email is saved on the ticket.</p>
 </div>`;
 }
@@ -654,11 +692,20 @@ ${note ? `<p style="color:#6b716e;">${note}</p>` : ""}
 /** The same reply as plain text, for WhatsApp. */
 export function replyText(rows: IntakeRow[], base: string, note: string | null): string {
   const lines = [rows.length === 1 ? `${kindWord(rows[0].kind)} ticket created in RJL Israel.` : `${rows.length} tickets created in RJL Israel.`];
-  for (const r of rows) {
-    lines.push("", `*${r.name}*${r.kind !== "apartments" ? ` (${r.kind === "houses" ? "house" : "project"})` : ""}${r.line ? ` · ${r.line}` : ""}${r.price ? ` · ${r.price}` : ""}`, `${base}/israel/${r.kind}/${r.id}`);
-    lines.push(r.missing.length ? `Still missing: ${r.missing.join(", ")}` : "Nothing missing, the ticket is complete.");
+  const projects = rows.filter((r) => r.kind === "projects");
+  const units = rows.filter((r) => r.kind !== "projects");
+  const one = (r: IntakeRow) => {
+    lines.push("", `*${r.name}*${r.degem ? ` type ${r.degem}` : ""}${r.kind !== "apartments" ? ` (${r.kind === "houses" ? "house" : "project"})` : ""}${r.line ? ` · ${r.line}` : ""}${r.price ? ` · ${r.price}` : ""}`, `${base}/israel/${r.kind}/${r.id}`);
+  };
+  for (const r of projects) { one(r); lines.push(r.missing.length ? `Still missing: ${r.missing.join(", ")}` : "Nothing missing, the ticket is complete."); }
+  if (units.length <= 1) for (const r of units) { one(r); lines.push(r.missing.length ? `Still missing: ${r.missing.join(", ")}` : "Nothing missing, the ticket is complete."); }
+  else {
+    for (const r of units) one(r);
+    const groups = groupedMissing(units);
+    lines.push("", groups.length ? "Still needed across the units:" : "Nothing missing, every unit is complete.");
+    for (const g of groups) lines.push(`- ${g.item} (${g.who})`);
   }
-  if (rows.some((r) => r.missing.length)) lines.push("", "Tickets with data missing wait under Deals to be approved until the data is in.");
+  if (rows.some((r) => r.missing.length)) lines.push("", "Everything waits in The Que until approved.");
   if (note) lines.push(note);
   return lines.join("\n");
 }

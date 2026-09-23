@@ -20,7 +20,7 @@ const STORIES = Array.from({ length: 100 }, (_, k) => String(k + 1));
 
 export type IlApartmentForm = Partial<{
   name: string; apartmentType: string | null; degem: string | null; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; bathrooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
-  internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpasot: string | null; levels: number | null; ceilingCms: string | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean | null;
+  internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpasot: string | null; levels: number | null; ceilingCms: string | null; ceilingCm: number | null; machsan: string | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean | null;
   priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null; pool: string | null; poolSqm: number | null;
 }>;
 
@@ -44,6 +44,7 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
   const LEVEL = ["Lower level", "Middle level", "Upper level"];
   const levelName = (k: number) => (levelCount === 2 ? ["Lower level", "Upper level"][k] : LEVEL[k]) ?? `Level ${k + 1}`;
   const [machsan, setMachsan] = useState<number | null>(a.machsanSqm ?? null);
+  const [hasMachsan, setHasMachsan] = useState<string>(a.machsan ?? (a.machsanSqm != null || a.machsanLocation ? "Yes" : ""));
   const [price, setPrice] = useState<number | null>(a.priceNis ?? null);
   const [sellerType, setSellerType] = useState(a.sellerType ?? "");
   const [pool, setPool] = useState(a.pool ?? "");
@@ -160,13 +161,20 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         <Row label="Parking spots">
           <Select name="parkingSpots" value={a.parkingSpots ?? ""} options={IL_PARKING} />
         </Row>
-        <Row label="Machsan size (m²)">
-          <NumberInput name="machsanSqm" defaultValue={a.machsanSqm} onValue={setMachsan} />
+        <Row label="Machsan?" hint="Is there a storage room at all. No folds the size and location away.">
+          <Select name="machsan" value={hasMachsan} options={["Yes", "No"]} onChange={setHasMachsan} />
         </Row>
-        <Calc label="Machsan square feet" value={machsan != null ? sqft(machsan) : dash} />
-        <Row label="Machsan location">
-          <Select name="machsanLocation" value={a.machsanLocation ?? ""} options={IL_MACHSAN_LOCATIONS} />
-        </Row>
+        {hasMachsan !== "No" && (
+          <>
+            <Row label="Machsan size (m²)">
+              <NumberInput name="machsanSqm" defaultValue={a.machsanSqm} onValue={setMachsan} />
+            </Row>
+            <Calc label="Machsan square feet" value={machsan != null ? sqft(machsan) : dash} />
+            <Row label="Machsan location">
+              <Select name="machsanLocation" value={a.machsanLocation ?? ""} options={IL_MACHSAN_LOCATIONS} />
+            </Row>
+          </>
+        )}
       </Group>
 
       <Group title="Pricing">

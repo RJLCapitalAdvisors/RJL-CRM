@@ -196,6 +196,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "pool", label: "Private pool (yes or no)" },
     { key: "ceilingCm", label: "Ceiling height (cm)" },
     { key: "parkingSpots", label: "Parking spots and configuration (how many; back to back or side by side; underground or open)" },
+    { key: "machsan", label: "Machsan (storage room): yes or no" },
     { key: "machsanSqm", label: "Machsan (storage room) size (m²)" },
     { key: "machsanLocation", label: "Machsan location (in the unit, in the basement or by the parking)" },
     { key: "priceNis", label: "Asking price (NIS)" },
@@ -275,6 +276,8 @@ const MIRPESET_KEYS = new Set(["mirpesetSqm", "mirpesetDirection", "mirpasot", "
 function blankOn(row: Record<string, unknown>, key: string): boolean {
   if (isCustomKey(key)) return !parseExtra(row.extra)[key];
   if (row.mirpesetCount === 0 && MIRPESET_KEYS.has(key)) return false; // no mirpeset at all: nothing about one is missing (Sep 23, 2026)
+  if (row.machsan !== "Yes" && (key === "machsanSqm" || key === "machsanLocation") && !(row.machsan == null && (row.machsanSqm != null || row.machsanLocation))) return false; // size and place are asked once there is a machsan; No, or nothing said yet, asks only the yes or no
+  if (row.machsan == null && key === "machsan" && (row.machsanSqm != null || row.machsanLocation)) return false; // a size or place given means there is one
   if (!(key in row)) return false; // no column of that name on this kind of ticket (the rules below cover sukka and pool)
   const v = row[key];
   if (v == null || v === "" || v === "[]") return true;
