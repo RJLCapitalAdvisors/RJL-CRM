@@ -133,8 +133,6 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
   // the per-unit and per-foot figures follow the sellout (Jonathan, Sep 23, 2026) until typed over
   const [perUnitTyped, setPerUnitTyped] = useState<boolean>(d?.selloutPerUnit != null && (!d?.projectedSellout || !d?.units || Math.abs(d.selloutPerUnit - d.projectedSellout / d.units) > 1));
   const [perFootTyped, setPerFootTyped] = useState<boolean>(d?.selloutPerFoot != null && (!d?.projectedSellout || !d?.squareFeet || Math.abs(d.selloutPerFoot - d.projectedSellout / d.squareFeet) > 0.5));
-  const derivedPerUnit = sellout && count ? Math.round(sellout / count) : null;
-  const derivedPerFoot = sellout && sf ? Math.round((sellout / sf) * 100) / 100 : null;
   const [ask, setAsk] = useState<number | null>(d?.requestedAmount ?? null);
   const [t12, setT12] = useState<number | null>(d?.capRateT12 ?? null);
   const [yoc, setYoc] = useState<number | null>(d?.yieldOnCost ?? null);
@@ -143,6 +141,8 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
   const [debt, setDebt] = useState<number | null>(d?.totalDebt ?? null);
   const [count, setCount] = useState<number | null>(d?.units ?? null);
   const [sf, setSf] = useState<number | null>(d?.squareFeet ?? null);
+  const derivedPerUnit = sellout && count ? Math.round(sellout / count) : null;
+  const derivedPerFoot = sellout && sf ? Math.round((sellout / sf) * 100) / 100 : null;
   const [acres, setAcres] = useState<number | null>(num(details.acres));
   const p = useMemo(() => assetProfile(assetClass), [assetClass]);
   const per = perCountWord(p.countLabel);
