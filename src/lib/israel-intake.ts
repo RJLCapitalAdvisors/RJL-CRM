@@ -499,10 +499,15 @@ export function replyText(rows: IntakeRow[], base: string, note: string | null):
 }
 export const NO_APARTMENT_TEXT = "I could not find an apartment or a house in this message or its files, so no ticket was created. Send the listing with the details (address, size, price) or add it by hand under Apartments or Houses in RJL Israel.";
 
+/** Jonathan is copied on every reply the Israel deals mailbox sends, so he sees each deal as it comes in (Sep 23, 2026). ISRAEL_REPLY_CC overrides; empty turns it off. */
+const REPLY_CC = () => (process.env.ISRAEL_REPLY_CC ?? "jonathan@rjlisrael.com").split(/[,s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+
 async function replyOnThread(msg: Msg, html: string) {
   const draft = await graph<{ id: string }>(`/users/${q(ISRAEL_MAILBOX())}/messages/${q(msg.id)}/createReply`, { method: "POST", body: JSON.stringify({}) });
-  const to = msg.from?.emailAddress.address ? [{ emailAddress: { address: msg.from.emailAddress.address } }] : [];
-  await graph(`/users/${q(ISRAEL_MAILBOX())}/messages/${q(draft.id)}`, { method: "PATCH", body: JSON.stringify({ body: { contentType: "html", content: html }, toRecipients: to }) });
+  const sender = msg.from?.emailAddress.address?.toLowerCase() ?? "";
+  const to = sender ? [{ emailAddress: { address: sender } }] : [];
+  const cc = REPLY_CC().filter((x) => x !== sender).map((address) => ({ emailAddress: { address } }));
+  await graph(`/users/${q(ISRAEL_MAILBOX())}/messages/${q(draft.id)}`, { method: "PATCH", body: JSON.stringify({ body: { contentType: "html", content: html }, toRecipients: to, ccRecipients: cc }) });
   await graph(`/users/${q(ISRAEL_MAILBOX())}/messages/${q(draft.id)}/send`, { method: "POST" });
 }
 
