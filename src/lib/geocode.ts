@@ -26,13 +26,27 @@ async function lookup(q: string): Promise<{ lat: number; lng: number; label: str
   return { lat: Number(hit.lat), lng: Number(hit.lon), label: hit.display_name };
 }
 
-/** Street and city first; the neighborhood when the street is unknown; the city alone as a last resort. */
+/**
+ * The street as the geocoder wants it (Sep 23, 2026, Mophet: "Eliezer Yaffe 6-8 (אליעזר יפה)" found nothing): the Hebrew in
+ * parentheses dropped, "St." and "Street" dropped, a range of numbers cut to its first number.
+ */
+export function cleanStreet(street: string): { full: string; name: string } {
+  let s = street.replace(/\([^)]*\)/g, " ").replace(/\b(st\.?|street|rd\.?|road|blvd\.?|ave\.?|avenue)\b/gi, " ").replace(/\s+/g, " ").trim();
+  s = s.replace(/(\d+)\s*[-–\/]\s*\d+/, "$1"); // 6-8 → 6
+  const name = s.replace(/\d+[a-zא-ת]?\b/g, " ").replace(/\s+/g, " ").trim();
+  return { full: s, name: name || s };
+}
+/** Street and number, then the street alone, then the neighborhood, then the city as a last resort. */
 export async function geocode(row: { street: string | null; neighborhood: string | null; city: string | null }): Promise<Geo | null> {
   const tries: { q: string; precision: Geo["precision"] }[] = [];
-  if (row.street && row.city) tries.push({ q: `${row.street}, ${row.city}, Israel`, precision: "street" });
+  const st = row.street ? cleanStreet(row.street) : null;
+  if (st && row.city) {
+    tries.push({ q: `${st.full}, ${row.city}, Israel`, precision: "street" });
+    if (st.name !== st.full) tries.push({ q: `${st.name}, ${row.city}, Israel`, precision: "street" });
+  }
   if (row.neighborhood && row.city) tries.push({ q: `${row.neighborhood}, ${row.city}, Israel`, precision: "area" });
   if (row.city) tries.push({ q: `${row.city}, Israel`, precision: "city" });
-  if (row.street && !row.city) tries.push({ q: `${row.street}, Israel`, precision: "street" });
+  if (st && !row.city) tries.push({ q: `${st.full}, Israel`, precision: "street" });
   for (const t of tries) {
     const hit = await lookup(t.q).catch(() => null);
     if (hit) return { ...hit, precision: t.precision };
