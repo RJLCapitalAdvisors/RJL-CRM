@@ -5,7 +5,7 @@ import { addTrackerContactAction, searchContactsForTracker } from "./actions";
 
 type Opt = { id: string; name: string; city: string | null; state: string | null };
 
-export function TrackerContactPicker({ dealId }: { dealId: string }) {
+export function TrackerContactPicker({ dealId, autoFocus = false, onAdded }: { dealId: string; autoFocus?: boolean; onAdded?: () => void }) {
   const [q, setQ] = useState("");
   const [opts, setOpts] = useState<Opt[]>([]);
   const [, start] = useTransition();
@@ -20,7 +20,7 @@ export function TrackerContactPicker({ dealId }: { dealId: string }) {
 
   return (
     <div className="relative w-72">
-      <input value={q} onChange={(e) => onChange(e.target.value)} placeholder="Add investor by name, email, or firm…" className="input text-sm" />
+      <input value={q} onChange={(e) => onChange(e.target.value)} placeholder="Add investor by name, email, or firm…" className="input text-sm" autoFocus={autoFocus} />
       {opts.length > 0 && (
         <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-line bg-paper shadow-lg">
           {opts.map((o) => (
@@ -33,7 +33,10 @@ export function TrackerContactPicker({ dealId }: { dealId: string }) {
                   fd.set("contactId", o.id);
                   setQ("");
                   setOpts([]);
-                  start(() => addTrackerContactAction(dealId, fd));
+                  start(async () => {
+                    await addTrackerContactAction(dealId, fd);
+                    onAdded?.();
+                  });
                 }}
               >
                 {o.name}

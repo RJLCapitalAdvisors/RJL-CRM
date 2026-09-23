@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { RefreshButton } from "./refresh-button";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -16,9 +16,10 @@ import { loadReport } from "@/lib/tracker-report";
 import { syncSendDrafts } from "@/lib/send-deal";
 import { signContactToken, signFileToken } from "@/lib/tokens";
 import { missingFor, itemLabel } from "@/lib/checklist";
-import { forgetRemovalAction, removeTrackerRow, saveTrackerMeta, undoRemovalAction } from "./actions";
+import { forgetRemovalAction, saveTrackerMeta, undoRemovalAction } from "./actions";
 import { NoteCell, StatusBadge } from "./tracker-row";
 import { TrackerContactPicker } from "./contact-picker";
+import { RowActions } from "./row-actions";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -50,8 +51,8 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
   return (
     <>
       <PageHeader
-        title={`${name} â€” Progress Report`}
-        subtitle={`${deal.investors.length} investors Â· ${awaiting} awaiting response Â· last updated ${fmtReportDate(lastUpdated)}`}
+        title={`${name} — Progress Report`}
+        subtitle={`${deal.investors.length} investors · ${awaiting} awaiting response · last updated ${fmtReportDate(lastUpdated)}`}
         actions={
           <>
             <RefreshButton dealId={deal.id} />
@@ -142,13 +143,7 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
             ),
             statusCell: (r) => <StatusBadge rowId={r.id} status={r.status} />,
             noteCell: (r) => <NoteCell rowId={r.id} note={r.note} />,
-            rowEnd: (r) => (
-              <form action={removeTrackerRow.bind(null, r.id)}>
-                <button type="submit" className="hover:text-red-700" title="Remove from report">
-                  Ã—
-                </button>
-              </form>
-            ),
+            rowEnd: (r) => <RowActions dealId={deal.id} rowId={r.id} label={r.contact ? investorLabel(r.contact) : "this row"} />,
           }}
         />
       </div>

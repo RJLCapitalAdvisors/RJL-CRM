@@ -47,7 +47,7 @@ export function ReportView({ report, slots = {} }: { report: Report; slots?: Rep
   const themes = (deal.trackerThemes ?? "").split(/\n+/).map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
   const items = (deal.trackerItemsNote ?? "").split(/\n+/).map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
   const showSections = themes.length > 0 || items.length > 0;
-  const cols = slots.rowEnd ? ["31%", "31%", "34%", "4%"] : ["32%", "32%", "36%"];
+  const cols = slots.rowEnd ? ["30%", "30%", "33%", "7%"] : ["32%", "32%", "36%"];
 
   return (
     <div className="report" style={S.page}>
