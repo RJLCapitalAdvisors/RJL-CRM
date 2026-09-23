@@ -233,6 +233,25 @@ export function setIlRequired(lists: Partial<Record<IlCategory, IlRequiredItem[]
   for (const c of IL_CATEGORIES) if (lists[c.key]) IL_REQUIRED[c.key].splice(0, IL_REQUIRED[c.key].length, ...lists[c.key]!);
 }
 export const isCustomKey = (k: string) => k.startsWith("x_");
+/**
+ * The total mirpeset size is the truth (Jonathan, Sep 23, 2026): when a ticket has a stated total and several mirpasot,
+ * their sizes are made to add up to it exactly. A mirpeset with no size takes the remainder (split when several have
+ * none); otherwise the largest one absorbs the difference. Knowing the total matters more than the exact split.
+ */
+export function reconcileMirpasot<T extends { sqm: number | null }>(total: number | null | undefined, list: T[]): T[] {
+  if (total == null || list.length < 2) return list;
+  const r1 = (x: number) => Math.round(x * 10) / 10;
+  const known = list.filter((m) => m.sqm != null).reduce((t, m) => t + (m.sqm ?? 0), 0);
+  const blanks = list.filter((m) => m.sqm == null).length;
+  if (blanks) {
+    const each = Math.max(0, r1((total - known) / blanks));
+    return list.map((m) => (m.sqm == null ? { ...m, sqm: each } : m));
+  }
+  const diff = total - known;
+  if (Math.abs(diff) < 0.05) return list;
+  const big = list.reduce((b, m) => ((m.sqm ?? 0) > (b.sqm ?? 0) ? m : b), list[0]);
+  return list.map((m) => (m === big ? { ...m, sqm: Math.max(0, r1((m.sqm ?? 0) + diff)) } : m));
+}
 /** Every developer on a ticket, the lead first: developerId plus the JSON list in developerIds (Jonathan, Sep 23, 2026: Mophet is Ramot Ba'ir with Adi Capital). */
 export function developerIdList(row: { developerId?: string | null; developerIds?: string | null } | null | undefined): string[] {
   if (!row) return [];

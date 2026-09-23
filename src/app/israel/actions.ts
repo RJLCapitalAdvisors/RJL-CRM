@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { syncProjectToUnits as syncUnits } from "@/lib/israel-sync";
-import { IL_COMPANY_ROLES, IL_DEAL_STAGES, IL_ROLES, IL_SPONSOR, IL_SPONSOR_FOCUS, mergeIlRoles, monthFromForm, IL_AMENITIES, amenityFlags } from "@/lib/israel";
+import { IL_COMPANY_ROLES, IL_DEAL_STAGES, IL_ROLES, IL_SPONSOR, IL_SPONSOR_FOCUS, mergeIlRoles, monthFromForm, IL_AMENITIES, amenityFlags, reconcileMirpasot } from "@/lib/israel";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -45,9 +45,12 @@ function mirpasotFrom(fd: FormData) {
     const sukka = s(fd, `mirpasotSukka_${k}`);
     return { sqm: sizes[k] ?? null, direction: fd.getAll(`mirpasotDir_${k}`).map(String).filter(Boolean), sukka, sukkaSqm: sukka && sukka !== "No" ? n(fd, `mirpasotSukkaSqm_${k}`) : null, pool: null, poolSqm: null };
   });
-  const total = items.reduce((a, m) => a + (m.sqm ?? 0), 0);
-  const dirs = [...new Set(items.flatMap((m) => m.direction))];
-  return { mirpesetCount: count, mirpesetSqm: items.some((m) => m.sqm != null) ? total : null, mirpesetDirection: JSON.stringify(dirs), mirpasot: JSON.stringify(items) };
+  // a typed total is the truth: the parts are fitted to it (Jonathan, Sep 23, 2026)
+  const stated = n(fd, "mirpesetTotalSqm");
+  const fitted = stated != null ? reconcileMirpasot(stated, items) : items;
+  const total = fitted.reduce((a, m) => a + (m.sqm ?? 0), 0);
+  const dirs = [...new Set(fitted.flatMap((m) => m.direction))];
+  return { mirpesetCount: count, mirpesetSqm: stated ?? (fitted.some((m) => m.sqm != null) ? total : null), mirpesetDirection: JSON.stringify(dirs), mirpasot: JSON.stringify(fitted) };
 }
 /** Ceiling heights typed one per floor or level, in the order the form shows them. */
 function ceilingsFrom(fd: FormData, count: number | null) {

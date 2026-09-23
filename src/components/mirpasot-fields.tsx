@@ -32,6 +32,8 @@ export function MirpasotFields({ count: c0, sqm: single, directions, mirpasot, o
   const [sizes, setSizes] = useState<(number | null)[]>(() => (mirpasot.length ? mirpasot.map((m) => m.sqm) : [single ?? null]));
   const [sukkas, setSukkas] = useState<string[]>(() => Array.from({ length: 3 }, (_, k) => mirpasot[k]?.sukka ?? ""));
   const many = count > 1;
+  // the stated total (the listing's or the plan's Balcony Area); the server fits the parts to it on save
+  const [stated, setStated] = useState<number | null>(() => (mirpasot.length > 1 && single != null ? single : null));
   const total = (list: (number | null)[], n = count) => {
     const nums = list.slice(0, n).filter((x): x is number => x != null);
     return nums.length ? nums.reduce((a, b) => a + b, 0) : null;
@@ -41,13 +43,13 @@ export function MirpasotFields({ count: c0, sqm: single, directions, mirpasot, o
       const next = [...cur];
       while (next.length <= k) next.push(null);
       next[k] = v;
-      onTotal(total(next));
+      onTotal(stated ?? total(next));
       return next;
     });
   const changeCount = (v: string) => {
     const n = v === "None" ? 0 : Math.min(Math.max(Number(v) || 1, 1), 3);
     setCount(n);
-    onTotal(n === 0 ? null : total(sizes, n));
+    onTotal(n === 0 ? null : n > 1 ? stated ?? total(sizes, n) : total(sizes, n));
   };
   const setAt = (set: (f: (cur: string[]) => string[]) => void, k: number, v: string) =>
     set((cur) => {
@@ -83,7 +85,12 @@ export function MirpasotFields({ count: c0, sqm: single, directions, mirpasot, o
           )}
         </div>
       ))}
-      {many && <Calc label={`Total ${noun.toLowerCase()}`} value={sum != null ? `${sqm(sum)} · ${sqft(sum)}` : dash} hint={`the sum of the ${plural}, used for price per meter`} />}
+      {many && (
+        <Row label={`Total ${noun.toLowerCase()} (m²)`} hint={`The total from the listing or the plan's Balcony Area. On save the ${plural} are adjusted so they add up to it exactly; leave it blank to use their sum. The total matters more than the split.`}>
+          <NumberInput name="mirpesetTotalSqm" defaultValue={stated} onValue={(v) => { setStated(v); onTotal(v ?? total(sizes)); }} />
+        </Row>
+      )}
+      {many && <Calc label={`Sum of the ${plural}`} value={sum != null ? `${sqm(sum)} · ${sqft(sum)}${stated != null && Math.abs(stated - sum) >= 0.05 ? ` · ${sqm(Math.abs(stated - sum))} ${stated > sum ? "short of" : "over"} the total, fitted on save` : ""}` : dash} hint={stated != null ? "used for price per meter: the total above" : `the sum of the ${plural}, used for price per meter`} />}
     </>
   );
 }
