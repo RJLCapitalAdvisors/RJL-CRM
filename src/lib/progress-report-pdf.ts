@@ -39,7 +39,9 @@ export function progressReportFileName(dealName: string) {
 }
 
 export async function buildProgressReportPdf(dealId: string): Promise<{ name: string; bytes: Uint8Array } | null> {
-  const report = await loadReport(dealId, { refresh: false }); // the PDF is the page as it stands
+  // the same load as the tracker page, sections brought up to date the same way, so the PDF is the page (Sep 23, 2026: a draft
+  // reopened with an old attachment showed EVCap at Taking A Look while the page said Pass)
+  const report = await loadReport(dealId);
   if (!report) return null;
   const { deal, name, rows } = report;
   const cityState = [deal.city, deal.state].filter(Boolean).join(", ");

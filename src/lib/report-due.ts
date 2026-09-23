@@ -99,9 +99,9 @@ export async function openReportDraft(dealId: string, mailbox: string): Promise<
     const box = deal.reportDraftMailbox;
     const d = await getMessage(box, deal.reportDraftId, "id,isDraft,webLink,internetMessageId,lastModifiedDateTime").catch(() => null);
     if (d?.isDraft) {
-      const changed = await prisma.dealInvestor.aggregate({ where: { dealId }, _max: { updatedAt: true } });
-      const draftAt = d.lastModifiedDateTime ? new Date(d.lastModifiedDateTime) : deal.reportDraftAt;
-      if (changed._max.updatedAt && draftAt && changed._max.updatedAt > draftAt) {
+      // always today's report: the sections can move without any row moving (a rewrite after a request lands), and a
+      // sponsor must never get yesterday's PDF (Jonathan, Sep 23, 2026)
+      {
         const pdf = await buildProgressReportPdf(dealId);
         if (pdf) {
           // swap the stale report for today's; the draft, its recipients and its thread stay as they are

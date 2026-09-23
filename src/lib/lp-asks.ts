@@ -65,9 +65,11 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const byName = preferReal(candidates.filter((x) => subjectMatchesDeal(a.subject, x) || houseSubjectMatches(a.subject, x)));
     let dealId: string | null = a.dealId && candidates.some((x) => x.id === a.dealId) && (onReport.has(a.dealId) || stageOf.get(a.dealId) !== "Deal Mentioned" || !byName.length) ? a.dealId : null;
     if (!dealId) dealId = byName[0]?.id ?? null;
-    // the sponsor answering about their own deal is not an LP response
+    // the sponsor answering about their own deal is not an LP response (Sep 23, 2026: Pearl Capital's "call to discuss gameplan" had
+    // landed in Items Needed from Sponsor on its own Galleria Trace report)
     const sponsorOf = await prisma.deal.findFirst({ where: { sponsorCompanyId: a.companyId!, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true } });
-    if (sponsorOf && !candidates.some((x) => x.id !== sponsorOf.id)) {
+    const pinnedSponsor = dealId ? (await prisma.deal.findUnique({ where: { id: dealId }, select: { sponsorCompanyId: true } }))?.sponsorCompanyId === a.companyId : false;
+    if (pinnedSponsor || (sponsorOf && !candidates.some((x) => x.id !== sponsorOf.id))) {
       await prisma.lpAskScan.create({ data: { externalId: a.externalId!, result: "sponsor" } }).catch(() => {});
       continue;
     }

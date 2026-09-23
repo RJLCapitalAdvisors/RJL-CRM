@@ -22,7 +22,11 @@ export async function generateTrackerSummary(dealId: string): Promise<{ themes: 
   if (!process.env.ANTHROPIC_API_KEY) return null;
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { investors: { include: { contact: { include: { company: true } } } } } });
   if (!deal) return null;
-  const rows = deal.investors.filter((r) => r.note?.trim()).map((r) => `- ${investorLabel(r.contact)} | ${statusOf(r.status).label} | ${r.note!.trim()}`);
+  const norm0 = (x: string | null | undefined) => (x ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const sponsorNames = [deal.sponsorName, deal.sponsorCompanyId ? (await prisma.company.findUnique({ where: { id: deal.sponsorCompanyId }, select: { name: true } }))?.name : null].map(norm0).filter((x) => x.length >= 3);
+  const isSponsor = (party: string | null | undefined) => { const q = norm0(party); return q.length >= 3 && sponsorNames.some((n) => n === q || n.includes(q) || q.includes(n)); };
+  // the sponsor's own people are never investor rows or askers on their own report (Pearl Capital, Sep 23, 2026)
+  const rows = deal.investors.filter((r) => r.note?.trim() && !isSponsor(r.contact.company?.name) && r.contact.companyId !== deal.sponsorCompanyId).map((r) => `- ${investorLabel(r.contact)} | ${statusOf(r.status).label} | ${r.note!.trim()}`);
   // a group that passed or is not a fit is owed nothing: its requests leave Items Needed from Sponsor (Jonathan, Sep 17)
   const norm = (x: string | null | undefined) => (x ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const passedNames = deal.investors.filter((r) => owedNothing(r.status)).flatMap((r) => [norm(r.contact.company?.name), norm(investorLabel(r.contact))]).filter((x) => x.length >= 3);
@@ -31,7 +35,7 @@ export async function generateTrackerSummary(dealId: string): Promise<{ themes: 
   // the dashboard; the sponsor still owes the answer, so the ask stays here until the ticket answers it.
   const asks = await prisma.momentum.findMany({ where: { dealId, kind: "LP_ASK", updatedAt: { gte: new Date(Date.now() - 90 * 86_400_000) } }, select: { party: true, summary: true } });
   const { parseAsks } = await import("@/lib/momentum");
-  const askRows = asks.filter((m) => !fromPassed(m.party)).map((m) => ({ party: m.party, asks: parseAsks(m.summary).asks })).filter((m) => m.asks.length).map((m) => `- ${m.party} asked for: ${m.asks.join("; ")}`);
+  const askRows = asks.filter((m) => !fromPassed(m.party) && !isSponsor(m.party)).map((m) => ({ party: m.party, asks: parseAsks(m.summary).asks })).filter((m) => m.asks.length).map((m) => `- ${m.party} asked for: ${m.asks.join("; ")}`);
   // text Jonathan wrote by hand is the text: the writer keeps it and only adjusts it
   const manualBlock = deal.trackerManualAt
     ? `\n\nCurrent sections, written by hand by RJL on ${deal.trackerManualAt.toISOString().slice(0, 10)} (keep this wording; only drop items that are now answered or were asked only by groups who passed or are not a fit, and only add themes or items the notes and requests above bring in):\nThemes:\n${(deal.trackerThemes ?? "").split("\n").filter(Boolean).map((x) => `- ${x}`).join("\n") || "(none)"}\nItems:\n${(deal.trackerItemsNote ?? "").split("\n").filter(Boolean).map((x) => `- ${x}`).join("\n") || "(none)"}`
