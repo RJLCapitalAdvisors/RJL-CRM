@@ -174,7 +174,19 @@ async function extract(subject: string | null, body: string, files: IntakeFile[]
   const parts: Extracted[] = [];
   for (const deck of visual) parts.push(await extractOnce(subject, body, rest, [deck]).catch((e) => { console.error("israel intake: deck failed", deck.name, String(e).slice(0, 200)); return { project: null, apartments: [], agent: null } as Extracted; }));
   if (rest.some((f) => f.text || f.bytes) && !visual.length) parts.push(await extractOnce(subject, body, rest, []));
-  return mergeExtracted(parts);
+  return distinctNames(mergeExtracted(parts));
+}
+
+/** Two units with the same name in one batch get their room count and size appended, so each keeps its own ticket. */
+function distinctNames(x: Extracted): Extracted {
+  const counts = new Map<string, number>();
+  for (const a of x.apartments) counts.set(a.name.trim().toLowerCase(), (counts.get(a.name.trim().toLowerCase()) ?? 0) + 1);
+  for (const a of x.apartments) {
+    if ((counts.get(a.name.trim().toLowerCase()) ?? 0) < 2) continue;
+    const tag = [a.rooms != null ? `${a.rooms} rooms` : null, a.internalSqm != null ? `${a.internalSqm} m²` : null, a.floor != null ? `floor ${a.floor}` : null].filter(Boolean).join(", ");
+    if (tag && !a.name.includes(tag)) a.name = `${a.name.replace(/,?s*d+(.d+)?s*rooms?,?s*d+(.d+)?s*m²s*$/i, "").trim()}, ${tag}`;
+  }
+  return x;
 }
 
 async function extractOnce(subject: string | null, body: string, files: IntakeFile[], docs: IntakeFile[]): Promise<Extracted> {
@@ -351,11 +363,16 @@ async function attachBrochure(files: IntakeFile[], projectId: string) {
  */
 const unitWords = (t: string) => new Set(t.toLowerCase().replace(/[^a-z0-9\u0590-\u05FF ]+/g, " ").split(/\s+/).filter((w) => w.length > 2 && !/^(the|apt|apartment|unit|by|of|in|st|street|rd|road|house|villa|cottage)$/.test(w)));
 const unitNumbers = (t: string) => new Set((t.match(/\d+[a-z]?/gi) ?? []).map((x) => x.toLowerCase()));
-export function sameUnit(a: { name: string; street?: string | null; city?: string | null }, b: { name: string; street?: string | null; city?: string | null }): boolean {
+type UnitKey = { name: string; street?: string | null; city?: string | null; rooms?: number | null; internalSqm?: number | null };
+export function sameUnit(a: UnitKey, b: UnitKey): boolean {
   if (a.city && b.city && a.city.trim().toLowerCase() !== b.city.trim().toLowerCase()) return false;
   const na = unitNumbers(a.name), nb = unitNumbers(b.name);
   if (na.size && nb.size && ![...na].some((n) => nb.has(n))) return false; // different unit numbers
-  if (a.street && b.street && a.street.trim().toLowerCase() === b.street.trim().toLowerCase()) return true;
+  // two units of a building are two tickets: a different room count or a different size is a different unit (Mofet decks, Sep 23)
+  if (a.rooms != null && b.rooms != null && a.rooms !== b.rooms) return false;
+  if (a.internalSqm != null && b.internalSqm != null && Math.abs(a.internalSqm - b.internalSqm) > Math.max(2, 0.03 * b.internalSqm)) return false;
+  const sized = a.rooms != null || b.rooms != null || a.internalSqm != null || b.internalSqm != null;
+  if (a.street && b.street && a.street.trim().toLowerCase() === b.street.trim().toLowerCase() && !sized) return true; // the same building, no unit facts on either side
   const A = unitWords(`${a.name} ${a.street ?? ""}`), B = unitWords(`${b.name} ${b.street ?? ""}`);
   if (!A.size || !B.size) return false;
   let hit = 0;
@@ -459,8 +476,8 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
           sourceMessageId: input.key,
           pendingApproval: true,
       };
-      const candidates = await prisma.ilHouse.findMany({ select: { id: true, name: true, street: true, city: true, floorplanType: true, extra: true } });
-      const found = candidates.find((h) => sameUnit({ name: houseData.name, street: a.street, city: a.city }, h));
+      const candidates = await prisma.ilHouse.findMany({ select: { id: true, name: true, street: true, city: true, rooms: true, internalSqm: true, floorplanType: true, extra: true } });
+      const found = candidates.find((h) => sameUnit({ name: houseData.name, street: a.street, city: a.city, rooms: a.rooms, internalSqm: a.internalSqm }, h));
       const house = found
         ? await prisma.ilHouse.update({ where: { id: found.id }, data: { ...fillFrom(houseData), ...mergedExtra(found.extra, a.extra) } })
         : await prisma.ilHouse.create({ data: houseData });
@@ -510,8 +527,8 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         sourceMessageId: input.key,
         pendingApproval: true,
     };
-    const aptCandidates = await prisma.ilApartment.findMany({ select: { id: true, name: true, street: true, city: true, floorplanType: true, extra: true } });
-    const foundApt = aptCandidates.find((x) => sameUnit({ name: aptData.name, street: a.street, city: a.city }, x));
+    const aptCandidates = await prisma.ilApartment.findMany({ select: { id: true, name: true, street: true, city: true, rooms: true, internalSqm: true, floorplanType: true, extra: true } });
+    const foundApt = aptCandidates.find((x) => sameUnit({ name: aptData.name, street: a.street, city: a.city, rooms: a.rooms, internalSqm: a.internalSqm }, x));
     const created = foundApt
       ? await prisma.ilApartment.update({ where: { id: foundApt.id }, data: { ...fillFrom(aptData), ...mergedExtra(foundApt.extra, a.extra) } })
       : await prisma.ilApartment.create({ data: aptData });
