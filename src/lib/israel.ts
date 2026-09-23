@@ -236,8 +236,10 @@ export function parseExtra(v: unknown): Record<string, string> {
 }
 const listHas = (cat: IlCategory, key: string) => IL_REQUIRED[cat].some((i) => i.key === key);
 /** Whether a listed item is still blank on a ticket row (a Prisma record as a plain object). */
+const MIRPESET_KEYS = new Set(["mirpesetSqm", "mirpesetDirection", "mirpasot", "sukka", "sukkaSqm", "mirpesetCount"]);
 function blankOn(row: Record<string, unknown>, key: string): boolean {
   if (isCustomKey(key)) return !parseExtra(row.extra)[key];
+  if (row.mirpesetCount === 0 && MIRPESET_KEYS.has(key)) return false; // no mirpeset at all: nothing about one is missing (Sep 23, 2026)
   if (!(key in row)) return false; // no column of that name on this kind of ticket (the rules below cover sukka and pool)
   const v = row[key];
   if (v == null || v === "" || v === "[]") return true;

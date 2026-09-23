@@ -25,9 +25,9 @@ export default async function IsraelQueuePage() {
     prisma.ilHouse.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { ...dev, ...agent } }),
     prisma.ilProject.findMany({ where: { pendingApproval: true }, orderBy: { createdAt: "desc" }, include: { ...dev, ...agent } }),
   ]);
-  type Row = { kind: "apartments" | "houses" | "projects"; id: string; name: string; developer: { id: string; name: string; domain: string | null; website: string | null } | null; city: string | null; neighborhood: string | null; street: string | null; rooms: number | null; internal: number | null; mirpeset: number | null; floor: string | null; price: number | null; ppm: number | null; delivery: string | null; createdAt: Date; from: string | null; source: string | null; missing: string[]; requestedBy: string | null; requestedAt: Date | null };
+  type Row = { kind: "apartments" | "houses" | "projects"; id: string; name: string; degem?: string | null; developer: { id: string; name: string; domain: string | null; website: string | null } | null; city: string | null; neighborhood: string | null; street: string | null; rooms: number | null; internal: number | null; mirpeset: number | null; floor: string | null; price: number | null; ppm: number | null; delivery: string | null; createdAt: Date; from: string | null; source: string | null; missing: string[]; requestedBy: string | null; requestedAt: Date | null };
   const rows: Row[] = [
-    ...apts.map((a): Row => ({ kind: "apartments", id: a.id, name: a.name, developer: a.developer, city: a.city, neighborhood: a.neighborhood, street: a.street, rooms: a.rooms, internal: a.internalSqm, mirpeset: a.mirpesetSqm, floor: a.floor != null ? `${a.floor}${a.totalFloors ? ` / ${a.totalFloors}` : ""}` : null, price: a.priceNis, ppm: pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm), delivery: a.completionDate, createdAt: a.createdAt, from: a.agent ? ilFullName(a.agent) : null, source: a.source, missing: apartmentMissing(a as unknown as Record<string, unknown>), requestedBy: a.approvalRequestedBy, requestedAt: a.approvalRequestedAt })),
+    ...apts.map((a): Row => ({ kind: "apartments", id: a.id, name: a.name, degem: a.degem, developer: a.developer, city: a.city, neighborhood: a.neighborhood, street: a.street, rooms: a.rooms, internal: a.internalSqm, mirpeset: a.mirpesetSqm, floor: a.floor != null ? `${a.floor}${a.totalFloors ? ` / ${a.totalFloors}` : ""}` : null, price: a.priceNis, ppm: pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm), delivery: a.completionDate, createdAt: a.createdAt, from: a.agent ? ilFullName(a.agent) : null, source: a.source, missing: apartmentMissing(a as unknown as Record<string, unknown>), requestedBy: a.approvalRequestedBy, requestedAt: a.approvalRequestedAt })),
     ...houses.map((h): Row => ({ kind: "houses", id: h.id, name: h.name, developer: h.developer, city: h.city, neighborhood: h.neighborhood, street: h.street, rooms: h.rooms, internal: h.internalSqm, mirpeset: h.mirpesetSqm, floor: null, price: h.priceNis, ppm: pricePerMeter(h.priceNis, h.internalSqm, h.mirpesetSqm), delivery: null, createdAt: h.createdAt, from: h.agent ? ilFullName(h.agent) : null, source: h.source, missing: houseMissing(h as unknown as Record<string, unknown>), requestedBy: h.approvalRequestedBy, requestedAt: h.approvalRequestedAt })),
     ...projects.map((p): Row => ({ kind: "projects", id: p.id, name: p.name, developer: p.developer, city: p.city, neighborhood: p.neighborhood, street: p.street, rooms: null, internal: null, mirpeset: null, floor: p.stories ? `${p.stories} stories` : null, price: null, ppm: null, delivery: p.completionDate, createdAt: p.createdAt, from: p.agent ? ilFullName(p.agent) : null, source: null, missing: projectMissing(p as unknown as Record<string, unknown>), requestedBy: p.approvalRequestedBy, requestedAt: p.approvalRequestedAt })),
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -35,7 +35,8 @@ export default async function IsraelQueuePage() {
   return (
     <>
       <PageHeader title="The Que" subtitle={`${rows.length} deal${rows.length === 1 ? "" : "s"} waiting · everything that came in and is not yet in the system`} />
-      <div className="mx-6 mt-3 flex h-[calc(100vh-100px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+      <div className="mx-6 mt-2 flex items-center gap-3"><span className="text-xs text-muted">Newest first. Approve sends a deal to Jonathan when something is missing, into the system when nothing is.</span><div id="zoom-tools" className="ml-auto" /></div>
+      <div className="mx-6 mt-2 flex h-[calc(100vh-136px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <div className="min-h-0 flex-1 overflow-auto">
           <ZoomBox id="israel-queue"><table className="table dense w-full min-w-[1300px]">
             <thead>
@@ -66,6 +67,7 @@ export default async function IsraelQueuePage() {
                     <Link href={`/israel/${r.kind}/${r.id}`} className="font-medium hover:underline">
                       {r.name}
                     </Link>
+                    {r.degem && <span className="ml-2 chip bg-cream text-[10px]">{r.degem}</span>}
                     {r.street && !r.name.includes(r.street) && <span className="ml-2 text-xs text-muted">{r.street}</span>}
                   </td>
                   <td className="max-w-[220px]">
@@ -91,25 +93,18 @@ export default async function IsraelQueuePage() {
                     {r.from ? ` · ${r.from}` : ""}
                     {r.source ? ` · ${r.source}` : ""}
                   </td>
-                  <td className="w-[340px] max-w-[340px] whitespace-normal text-xs leading-5">
+                  <td className="w-[340px] max-w-[340px] whitespace-nowrap text-xs" title={r.missing.length ? `Still needed: ${r.missing.join(", ")}${r.requestedAt ? `. Approved by ${r.requestedBy} ${fmtDate(r.requestedAt)}; waiting on Jonathan.` : ""}` : "Nothing missing"}>
                     {r.missing.length === 0 ? (
                       <span className="chip bg-emerald-100 text-[11px] text-emerald-900">Complete</span>
                     ) : (
-                      <details className="group">
-                        <summary className="cursor-pointer list-none">
-                          <span className="chip bg-amber-100 text-[11px] text-amber-900">{r.missing.length} missing</span>
-                          <span className="ml-2 text-muted group-open:hidden">{r.missing.slice(0, 3).join(", ")}{r.missing.length > 3 ? ", …" : ""}</span>
-                        </summary>
-                        <ul className="mt-1 list-disc pl-5 text-ink-soft">
-                          {r.missing.map((m) => (
-                            <li key={m}>{m}</li>
-                          ))}
-                        </ul>
-                      </details>
+                      <span className="inline-flex max-w-full items-center gap-2">
+                        <span className="chip shrink-0 bg-amber-100 text-[11px] text-amber-900">{r.missing.length} missing</span>
+                        <span className="truncate text-muted">{r.missing.join(", ")}</span>
+                      </span>
                     )}
-                    {r.requestedAt && <div className="mt-1 text-muted">Approved by {r.requestedBy} {fmtDate(r.requestedAt)}; waiting on Jonathan</div>}
+                    {r.requestedAt && <span className="ml-2 text-muted">· approved by {r.requestedBy}, waiting on Jonathan</span>}
                   </td>
-                  <td className="w-[150px] whitespace-nowrap text-right align-top">{r.requestedAt ? <span className="text-xs text-muted">On the dashboard</span> : <QueueApprove kind={r.kind} id={r.id} missing={r.missing.length} />}</td>
+                  <td className="w-[150px] whitespace-nowrap text-right">{r.requestedAt ? <span className="text-xs text-muted">On the dashboard</span> : <QueueApprove kind={r.kind} id={r.id} missing={r.missing.length} />}</td>
                 </tr>
               ))}
               {rows.length === 0 && (

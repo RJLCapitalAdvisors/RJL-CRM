@@ -145,13 +145,15 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
         <ApartmentFilters f={f} cities={cities} neighborhoods={neighborhoods} total={total} />
         <div className="min-w-0">
           <Body compare={compare}>
-          <div className="flex h-[calc(100vh-150px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+          <div className="mb-2 flex items-center gap-3"><div id="zoom-tools" className="ml-auto" /></div>
+          <div className="flex h-[calc(100vh-186px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
             <div className="min-h-0 flex-1 overflow-auto">
               <ZoomBox id="israel-apartments"><table className="table dense w-full min-w-[1200px]">
                 <thead>
                   <tr>
                     {compare && <th className="w-8"></th>}
                     <th>Apartment</th>
+                    <th>Degem</th>
                     <th>Developer</th>
                     <th>City</th>
                     <th className="text-right">Rooms</th>
@@ -179,6 +181,7 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
                         </Link>
                         {a.street && !a.name.includes(a.street) && <span className="ml-2 text-xs text-muted">{a.street}</span>}
                       </td>
+                      <td className="whitespace-nowrap text-xs">{a.degem ?? <span className="text-muted">—</span>}</td>
                       <td className="max-w-[220px]">
                         {a.developer ? (
                           <Link href={`/israel/companies/${a.developer.id}`} className="flex items-center gap-2 hover:underline">
@@ -203,7 +206,7 @@ export default async function ApartmentsPage({ searchParams }: { searchParams: P
                   ))}
                   {pageRows.length === 0 && (
                     <tr>
-                      <td colSpan={compare ? 13 : 12} className="py-10 text-center text-muted">
+                      <td colSpan={compare ? 14 : 13} className="py-10 text-center text-muted">
                         No apartments match these filters.
                       </td>
                     </tr>

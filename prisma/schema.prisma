@@ -620,6 +620,7 @@ model IlApartment {
   name           String
   stage          String    @default("Apartment Received")
   apartmentType  String?
+  degem          String?   // the unit type code on a developer's plans (UA1, D, PH4); the name is the project's
   city           String?
   neighborhood   String?
   street         String?
@@ -977,6 +978,7 @@ model IlHouse {
   id              String    @id @default(cuid())
   name            String
   houseType       String?   // Villa, Semi-attached, Cottage
+  degem           String?   // the unit type code on a developer's plans
   projectId       String?
   project         IlProject? @relation(fields: [projectId], references: [id])
   city            String?

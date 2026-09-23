@@ -26,8 +26,9 @@ export function Directions({ name, chosen }: { name: string; chosen: string[] })
  * working on totals. Every field of item k in the multi case carries _k so the rows never misalign.
  */
 export function MirpasotFields({ count: c0, sqm: single, directions, mirpasot, onTotal, noun = "Mirpeset", plural = "mirpasot" }: { count: number | null | undefined; sqm: number | null | undefined; directions: string[]; mirpasot: Mirpeset[]; onTotal: (total: number | null) => void; noun?: string; plural?: string }) {
-  const initial = c0 && c0 > 1 ? c0 : mirpasot.length > 1 ? mirpasot.length : 1;
-  const [count, setCount] = useState<number>(Math.min(Math.max(initial, 1), 3));
+  // None (Jonathan, Sep 23, 2026): a unit with no mirpeset at all; every mirpeset question folds away
+  const initial = c0 === 0 ? 0 : c0 && c0 > 1 ? c0 : mirpasot.length > 1 ? mirpasot.length : 1;
+  const [count, setCount] = useState<number>(Math.min(Math.max(initial, 0), 3));
   const [sizes, setSizes] = useState<(number | null)[]>(() => (mirpasot.length ? mirpasot.map((m) => m.sqm) : [single ?? null]));
   const [sukkas, setSukkas] = useState<string[]>(() => Array.from({ length: 3 }, (_, k) => mirpasot[k]?.sukka ?? ""));
   const many = count > 1;
@@ -44,9 +45,9 @@ export function MirpasotFields({ count: c0, sqm: single, directions, mirpasot, o
       return next;
     });
   const changeCount = (v: string) => {
-    const n = Math.min(Math.max(Number(v) || 1, 1), 3);
+    const n = v === "None" ? 0 : Math.min(Math.max(Number(v) || 1, 1), 3);
     setCount(n);
-    onTotal(total(sizes, n));
+    onTotal(n === 0 ? null : total(sizes, n));
   };
   const setAt = (set: (f: (cur: string[]) => string[]) => void, k: number, v: string) =>
     set((cur) => {
@@ -61,7 +62,7 @@ export function MirpasotFields({ count: c0, sqm: single, directions, mirpasot, o
   return (
     <>
       <Row label={`How many ${plural}`}>
-        <Select name="mirpesetCount" value={String(count)} options={["1", "2", "3"]} noBlank onChange={changeCount} />
+        <Select name="mirpesetCount" value={count === 0 ? "None" : String(count)} options={["None", "1", "2", "3"]} noBlank onChange={changeCount} />
       </Row>
       {Array.from({ length: count }, (_, k) => (
         <div key={k} className="contents">

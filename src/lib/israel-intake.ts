@@ -24,6 +24,7 @@ const Direction = z.enum(["North", "South", "East", "West"]);
 const Apartment = z.object({
   kind: z.enum(["apartment", "house"]).default("apartment").describe("house: a private house on its own plot (בית פרטי, וילה, קוטג', דו משפחתי, צמוד קרקע, בית קרקע). Everything in a building, including a duplex, penthouse or garden apartment, is an apartment."),
   name: z.string().describe("Short name in English: project or street plus apartment number, e.g. 'Rehavia Gardens, Apt 12'; for a house the street and city, e.g. 'HaPalmach 8, Jerusalem'"),
+  degem: z.string().nullish().default(null).describe("The unit type code (degem) on a developer's plans or price list, e.g. UA1, D, PH4; null when there is none"),
   apartmentType: z.enum(["Regular apartment", "Garden apartment", "Penthouse"]).nullish().default(null).describe("Apartments only: דירת גן Garden apartment, פנטהאוז Penthouse, otherwise Regular apartment when the listing describes a normal unit; null when unclear"),
   projectName: z.string().nullish().default(null),
   developerName: z.string().nullish().default(null),
@@ -85,7 +86,7 @@ type Extracted = z.infer<typeof Output>;
 type ExtractedApartment = Extracted["apartments"][number];
 
 const FLOOR_PLANS = `
-Floor plan decks (a developer's marketing PDF, one page per unit type, mostly drawings): read them as pictures. Each page is a unit type, usually with a small table: Building, Type (a code such as A, UA1, PH2), Floor, Rooms, Apartment Area (the internal m²), Balcony Area (the mirpeset m²), and the street. Make one apartment per unit type per building (not per page: the same type drawn on several floors is one apartment named for the type, with the floor range in the description), named "<project>, Building <x>, Type <code>, <rooms> rooms, <internal m²> m²" so that no two units share a name; when two pages show the same type code with different sizes they are two units. The compass rose on the plan (the north arrow, usually bottom left) gives the orientation: read which way the apartment's windows face for direction and which way the balcony faces for mirpesetDirection. Count mirpasot and read their sizes from the plan when the table does not give them. A price list page maps unit types (or apartment numbers) to prices: put the matching price on each unit; when a type has a range, use the lowest and say so in the description. The street and city on the plans (e.g. Eliezer Yafe St. is in Ra'anana) give the project's address. When the decks describe a project, fill the project too: name, developer, address, total units, stories, delivery.`;
+Floor plan decks (a developer's marketing PDF, one page per unit type, mostly drawings): read them as pictures. Each page is a unit type, usually with a small table: Building, Type (a code such as A, UA1, PH2), Floor, Rooms, Apartment Area (the internal m²), Balcony Area (the mirpeset m²), and the street. Make one apartment per unit type per building (not per page: the same type drawn on several floors is one apartment, with the floor range in the description). Its name is the project's name only (e.g. "Mophet Ra'anana"); the type code goes in degem (UA1, D, PH4, with the building letter when the project has several buildings, e.g. "B-PH4"); the sizes go in internalSqm and mirpesetSqm, never in the name. Two pages with the same code and different sizes are two units. The compass rose on the plan (the north arrow, usually bottom left) gives the orientation: read which way the apartment's windows face for direction and which way the balcony faces for mirpesetDirection. Count mirpasot and read their sizes from the plan when the table does not give them. A price list page maps unit types (or apartment numbers) to prices: put the matching price on each unit; when a type has a range, use the lowest and say so in the description. The street and city on the plans (e.g. Eliezer Yafe St. is in Ra'anana) give the project's address. When the decks describe a project, fill the project too: name, developer, address, total units, stories, delivery.`;
 
 const SYSTEM = `You read messages and documents about apartments for sale in Israel and fill in apartment tickets for RJL Israel.
 Rules: one entry per distinct apartment or house, with kind set (a private house on its own plot is a house; anything inside a building is an apartment). A building with several units for sale is several apartments; a whole project description with no specific unit is one apartment named after the project with the unit fields blank). Only record what the documents state; leave a field null when it is not stated. Never use placeholders like TBD. Square metres: internal excludes the mirpeset (balcony); if only a total is given, put it in internalSqm and say so in the description. Prices in shekels; if a price is in dollars, convert only if the document gives the rate, else leave priceNis null and mention the dollar price in the description. Parking must be one of the allowed values. Direction is the apartment's air directions. Mamad is the safe room. The subject line is often stale; trust the body, the attachments and the photos. No dashes as punctuation in text you write.
@@ -155,7 +156,7 @@ function mergeExtracted(parts: Extracted[]): Extracted {
   const seen = new Set<string>();
   for (const p of parts) {
     for (const a of p.apartments) {
-      const k = `${a.name.trim().toLowerCase()}|${a.rooms ?? ""}|${a.internalSqm ?? ""}`;
+      const k = `${a.name.trim().toLowerCase()}|${(a.degem ?? "").trim().toLowerCase()}|${a.rooms ?? ""}|${a.internalSqm ?? ""}`;
       if (seen.has(k)) continue;
       seen.add(k);
       out.apartments.push(a);
@@ -174,20 +175,9 @@ async function extract(subject: string | null, body: string, files: IntakeFile[]
   const parts: Extracted[] = [];
   for (const deck of visual) parts.push(await extractOnce(subject, body, rest, [deck]).catch((e) => { console.error("israel intake: deck failed", deck.name, String(e).slice(0, 200)); return { project: null, apartments: [], agent: null } as Extracted; }));
   if (rest.some((f) => f.text || f.bytes) && !visual.length) parts.push(await extractOnce(subject, body, rest, []));
-  return distinctNames(mergeExtracted(parts));
+  return mergeExtracted(parts);
 }
 
-/** Two units with the same name in one batch get their room count and size appended, so each keeps its own ticket. */
-function distinctNames(x: Extracted): Extracted {
-  const counts = new Map<string, number>();
-  for (const a of x.apartments) counts.set(a.name.trim().toLowerCase(), (counts.get(a.name.trim().toLowerCase()) ?? 0) + 1);
-  for (const a of x.apartments) {
-    if ((counts.get(a.name.trim().toLowerCase()) ?? 0) < 2) continue;
-    const tag = [a.rooms != null ? `${a.rooms} rooms` : null, a.internalSqm != null ? `${a.internalSqm} m²` : null, a.floor != null ? `floor ${a.floor}` : null].filter(Boolean).join(", ");
-    if (tag && !a.name.includes(tag)) a.name = `${a.name.replace(/,?s*d+(.d+)?s*rooms?,?s*d+(.d+)?s*m²s*$/i, "").trim()}, ${tag}`;
-  }
-  return x;
-}
 
 async function extractOnce(subject: string | null, body: string, files: IntakeFile[], docs: IntakeFile[]): Promise<Extracted> {
   const client = new Anthropic();
@@ -363,15 +353,16 @@ async function attachBrochure(files: IntakeFile[], projectId: string) {
  */
 const unitWords = (t: string) => new Set(t.toLowerCase().replace(/[^a-z0-9\u0590-\u05FF ]+/g, " ").split(/\s+/).filter((w) => w.length > 2 && !/^(the|apt|apartment|unit|by|of|in|st|street|rd|road|house|villa|cottage)$/.test(w)));
 const unitNumbers = (t: string) => new Set((t.match(/\d+[a-z]?/gi) ?? []).map((x) => x.toLowerCase()));
-type UnitKey = { name: string; street?: string | null; city?: string | null; rooms?: number | null; internalSqm?: number | null };
+type UnitKey = { name: string; street?: string | null; city?: string | null; rooms?: number | null; internalSqm?: number | null; degem?: string | null };
 export function sameUnit(a: UnitKey, b: UnitKey): boolean {
   if (a.city && b.city && a.city.trim().toLowerCase() !== b.city.trim().toLowerCase()) return false;
   const na = unitNumbers(a.name), nb = unitNumbers(b.name);
   if (na.size && nb.size && ![...na].some((n) => nb.has(n))) return false; // different unit numbers
   // two units of a building are two tickets: a different room count or a different size is a different unit (Mofet decks, Sep 23)
+  if (a.degem && b.degem && a.degem.trim().toLowerCase() !== b.degem.trim().toLowerCase()) return false; // a different type code is a different unit
   if (a.rooms != null && b.rooms != null && a.rooms !== b.rooms) return false;
   if (a.internalSqm != null && b.internalSqm != null && Math.abs(a.internalSqm - b.internalSqm) > Math.max(2, 0.03 * b.internalSqm)) return false;
-  const sized = a.rooms != null || b.rooms != null || a.internalSqm != null || b.internalSqm != null;
+  const sized = a.rooms != null || b.rooms != null || a.internalSqm != null || b.internalSqm != null || Boolean(a.degem || b.degem);
   if (a.street && b.street && a.street.trim().toLowerCase() === b.street.trim().toLowerCase() && !sized) return true; // the same building, no unit facts on either side
   const A = unitWords(`${a.name} ${a.street ?? ""}`), B = unitWords(`${b.name} ${b.street ?? ""}`);
   if (!A.size || !B.size) return false;
@@ -494,6 +485,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     const aptData = {
         name: stripDashes(a.name) || a.street || "Apartment",
         apartmentType: a.apartmentType,
+        degem: a.degem ?? null,
         street: a.street,
         city: a.city,
         neighborhood: a.neighborhood,
@@ -527,8 +519,8 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         sourceMessageId: input.key,
         pendingApproval: true,
     };
-    const aptCandidates = await prisma.ilApartment.findMany({ select: { id: true, name: true, street: true, city: true, rooms: true, internalSqm: true, floorplanType: true, extra: true } });
-    const foundApt = aptCandidates.find((x) => sameUnit({ name: aptData.name, street: a.street, city: a.city, rooms: a.rooms, internalSqm: a.internalSqm }, x));
+    const aptCandidates = await prisma.ilApartment.findMany({ select: { id: true, name: true, street: true, city: true, rooms: true, internalSqm: true, degem: true, floorplanType: true, extra: true } });
+    const foundApt = aptCandidates.find((x) => sameUnit({ name: aptData.name, street: a.street, city: a.city, rooms: a.rooms, internalSqm: a.internalSqm, degem: a.degem }, x));
     const created = foundApt
       ? await prisma.ilApartment.update({ where: { id: foundApt.id }, data: { ...fillFrom(aptData), ...mergedExtra(foundApt.extra, a.extra) } })
       : await prisma.ilApartment.create({ data: aptData });

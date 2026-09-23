@@ -28,6 +28,8 @@ const yesNo = (fd: FormData, k: string) => (fd.has(k) ? s(fd, k) === "Yes" : und
  * so price per meter, filters and compare work on the totals.
  */
 function mirpasotFrom(fd: FormData) {
+  const raw = s(fd, "mirpesetCount");
+  if (raw === "None") return { mirpesetCount: 0, mirpesetSqm: null, mirpesetDirection: "[]", mirpasot: "[]" }; // no mirpeset at all
   const count = i(fd, "mirpesetCount");
   if (!count || count <= 1) {
     const sukka = s(fd, "sukka");
@@ -62,6 +64,7 @@ function apartmentData(fd: FormData) {
   return {
     name: s(fd, "name") ?? (s(fd, "street") || "Apartment"),
     apartmentType: s(fd, "apartmentType"),
+    degem: s(fd, "degem"),
     street: s(fd, "street"),
     city: s(fd, "city"),
     neighborhood: s(fd, "neighborhood"),

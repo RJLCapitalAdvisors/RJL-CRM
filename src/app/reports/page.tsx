@@ -43,7 +43,8 @@ export default async function ReportsPage() {
   return (
     <>
       <PageHeader title="Active progress reports" subtitle={`${rows.length} deals out to their investor lists. Sorted by who has been waiting longest. Not active takes a report off this page until the deal moves again.`} />
-      <div className="mx-8 my-6 flex h-[calc(100vh-100px)] min-h-[420px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+      <div className="mx-8 mt-3 flex items-center gap-3"><div id="zoom-tools" className="ml-auto" /></div>
+      <div className="mx-8 mb-6 mt-2 flex h-[calc(100vh-136px)] min-h-[420px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
         <div className="min-h-0 flex-1 overflow-auto">
           <ZoomBox id="reports"><table className="table dense w-full min-w-[900px]">
             <thead>

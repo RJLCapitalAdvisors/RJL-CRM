@@ -17,7 +17,7 @@ const FLOORS = Array.from({ length: 101 }, (_, k) => String(k));
 const STORIES = Array.from({ length: 100 }, (_, k) => String(k + 1));
 
 export type IlApartmentForm = Partial<{
-  name: string; apartmentType: string | null; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
+  name: string; apartmentType: string | null; degem: string | null; projectId: string | null; street: string | null; city: string | null; neighborhood: string | null; rooms: number | null; completionDate: string | null; floor: number | null; totalFloors: number | null; buildingUnits: number | null;
   internalSqm: number | null; mirpesetSqm: number | null; mirpesetCount: number | null; mirpasot: string | null; levels: number | null; ceilingCms: string | null; ceilingCm: number | null; machsanSqm: number | null; machsanLocation: string | null; parkingSpots: string | null; direction: string | null; mirpesetDirection: string | null; mamad: boolean | null;
   priceNis: number | null; sellerType: string | null; renovationYear: number | null; description: string | null; pool: string | null; poolSqm: number | null;
 }>;
@@ -89,6 +89,9 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         </Row>
         <Row label="Apartment type">
           <Select name="apartmentType" value={aptType} options={IL_APARTMENT_TYPES} onChange={setAptType} />
+        </Row>
+        <Row label="Type / Degem" hint="The unit type code on the developer's plans, e.g. UA1, D, PH4.">
+          <Text name="degem" value={a.degem} placeholder="PH4" />
         </Row>
         <Row label="Apartment levels" hint="One for a regular apartment. Two or three for a duplex or triplex; each level then gets its own ceiling height.">
           <Select name="levels" value={levels} options={IL_APARTMENT_LEVELS} noBlank onChange={setLevels} />
