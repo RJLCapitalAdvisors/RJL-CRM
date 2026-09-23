@@ -392,7 +392,7 @@ export async function sendDealsReply(dealId: string): Promise<boolean> {
   if (!deal) return false;
   let msg: Msg | undefined;
   if (it?.messageId) {
-    const found = await graph<{ value: Msg[] }>(`/users/${q(MAILBOX())}/messages?$filter=internetMessageId eq '${it.messageId.replace(/'/g, "''")}'&$select=id,subject,from,receivedDateTime`).catch(() => ({ value: [] as Msg[] }));
+    const found = await graph<{ value: Msg[] }>(`/users/${q(MAILBOX())}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${it.messageId.replace(/'/g, "''")}'`)}&$select=id,subject,from,receivedDateTime`).catch(() => ({ value: [] as Msg[] }));
     msg = found.value[0];
   }
   if (!msg) {
@@ -432,7 +432,7 @@ export async function rereadDealFromIntake(dealId: string): Promise<{ changes: {
   if (!intake?.messageId) return { skipped: "no deals@ email on file for this deal" };
   if (!graphConfigured()) return { skipped: "Graph not configured" };
   await loadChecklist();
-  const found = await graph<{ value: Msg[] }>(`/users/${q(MAILBOX())}/messages?$filter=internetMessageId eq '${q(intake.messageId).replace(/'/g, "''")}'&$select=id,subject,hasAttachments,body`);
+  const found = await graph<{ value: Msg[] }>(`/users/${q(MAILBOX())}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${q(intake.messageId).replace(/'/g, "''")}'`)}&$select=id,subject,hasAttachments,body`);
   const msg = found.value?.[0];
   if (!msg) return { skipped: "the email is no longer in the deals@ mailbox" };
   const bodyText = msg.body?.contentType === "html" ? emailHtmlToText(msg.body.content) : (msg.body?.content ?? "");

@@ -82,7 +82,7 @@ export async function detectIsraelMentions(): Promise<{ threads: number; created
       let body = m.body ?? "";
       if (meta.mailbox) {
         try {
-          const r = await graph<{ value: { body: { content: string } }[] }>(`/users/${q(meta.mailbox)}/messages?$filter=internetMessageId eq '${m.externalId!.replace(/'/g, "''")}'&$select=body`);
+          const r = await graph<{ value: { body: { content: string } }[] }>(`/users/${q(meta.mailbox)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${m.externalId!.replace(/'/g, "''")}'`)}&$select=body`);
           const html = r.value[0]?.body?.content;
           if (html) body = html.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000);
         } catch {

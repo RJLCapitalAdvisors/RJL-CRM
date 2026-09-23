@@ -207,7 +207,7 @@ export async function syncFollowUpDrafts(): Promise<number> {
 /** Reply-all draft on the latest message of a thread (found by Internet Message-ID), body = just the signature. */
 export async function createThreadReplyDraft(mailbox: string, internetMessageId: string, greeting?: string): Promise<FollowUpResult> {
   if (!graphConfigured()) return { ok: false, reason: "Microsoft 365 is not connected" };
-  const found = await graph<{ value: (GraphMessage & { isDraft?: boolean })[] }>(`/users/${encodeURIComponent(mailbox)}/messages?$filter=internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'&$select=id,subject,isDraft`);
+  const found = await graph<{ value: (GraphMessage & { isDraft?: boolean })[] }>(`/users/${encodeURIComponent(mailbox)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'`)}&$select=id,subject,isDraft`);
   // a discarded reply draft (often left in Deleted Items) cannot be replied to; only a real sent or received message will do
   const msg = found.value.find((m) => !m.isDraft);
   if (!msg) return { ok: false, reason: found.value.length ? "That message is only a draft here." : "That email is not in your mailbox (it may be in a teammate's)." };
@@ -265,7 +265,7 @@ export async function replyViaTeammateCopy(mailbox: string, internetMessageId: s
   for (const box of boxes) {
     let found: { value: (GraphMessage & { body?: { content: string } })[] };
     try {
-      found = await graph(`/users/${encodeURIComponent(box)}/messages?$filter=internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'&$select=id,subject,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime,body`);
+      found = await graph(`/users/${encodeURIComponent(box)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'`)}&$select=id,subject,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime,body`);
     } catch {
       continue;
     }

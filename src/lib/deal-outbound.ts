@@ -85,7 +85,7 @@ export async function relinkRecentOutbound(days = 30): Promise<{ linked: number;
     const meta = a.meta ? (JSON.parse(a.meta) as { mailbox?: string; to?: { address: string }[]; hasAttachments?: boolean; graphId?: string }) : {};
     if (!meta.mailbox) continue;
     // the Graph id is not stored on the activity: look the message up by its Message-ID
-    const found = a.externalId ? await graph<{ value: { id: string }[] }>(`/users/${q(meta.mailbox)}/messages?$filter=internetMessageId eq '${a.externalId.replace(/'/g, "''")}'&$select=id`).catch(() => ({ value: [] })) : { value: [] };
+    const found = a.externalId ? await graph<{ value: { id: string }[] }>(`/users/${q(meta.mailbox)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${a.externalId.replace(/'/g, "''")}'`)}&$select=id`).catch(() => ({ value: [] })) : { value: [] };
     const graphId = found.value[0]?.id;
     if (!graphId) continue;
     if (await noteDealSent({ dealId, contactId: a.contactId, companyId: a.companyId, mailbox: meta.mailbox, graphId, hasAttachments: meta.hasAttachments ?? false, when: a.occurredAt, toEmails: (meta.to ?? []).map((t) => t.address) }).catch(() => false)) rows++;

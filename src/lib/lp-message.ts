@@ -11,7 +11,7 @@ export async function findMessageCopy(internetMessageId: string, preferMailbox: 
   const boxes = [preferMailbox, ...users.map((u) => u.email).filter((e): e is string => Boolean(e)), process.env.DEALS_MAILBOX ?? "deals@rjlcapadvisors.com", ...users.map((u) => u.israelEmail).filter((e): e is string => Boolean(e)), process.env.ISRAEL_DEALS_MAILBOX ?? "deals@rjlisrael.com"].filter((b, i, arr) => b && arr.findIndex((x) => x.toLowerCase() === b.toLowerCase()) === i);
   for (const box of boxes) {
     try {
-      const r = await graph<{ value: { id: string; body?: { content: string }; hasAttachments?: boolean; receivedDateTime?: string; from?: MessageCopy["from"] }[] }>(`/users/${encodeURIComponent(box)}/messages?$filter=internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'&$select=id,body,hasAttachments,receivedDateTime,from`);
+      const r = await graph<{ value: { id: string; body?: { content: string }; hasAttachments?: boolean; receivedDateTime?: string; from?: MessageCopy["from"] }[] }>(`/users/${encodeURIComponent(box)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'`)}&$select=id,body,hasAttachments,receivedDateTime,from`);
       const m = r.value?.[0];
       if (m) return { box, id: m.id, body: m.body?.content ?? "", hasAttachments: Boolean(m.hasAttachments), receivedDateTime: m.receivedDateTime, from: m.from };
     } catch {

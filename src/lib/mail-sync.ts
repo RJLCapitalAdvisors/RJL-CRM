@@ -37,7 +37,7 @@ type Msg = GraphMessage & { internetMessageId?: string; bodyPreview?: string; cc
 
 /** Worth a departure check: an auto-reply or bounce subject, or a preview that reads like "no longer with the firm" (a colleague answering a blast). */
 const departureHint = (m: Msg) => DEPARTURE_SUBJECT.test((m.subject ?? "").trim()) || HUMAN_DEPARTURE.test(m.bodyPreview ?? "");
-/** The whole message, not the 255-character preview: the replacement's name and email are usually a line or two down. */
+/** The whole message, not the 255-character preview: what the sender wrote above the quoted thread, up to 6,000 characters. Used for departures and for every inbound email kept on the log. */
 async function departureText(mailbox: string, m: Msg): Promise<string> {
   try {
     const full = await graph<{ body?: { contentType: string; content: string } }>(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(m.id)}?$select=body`);
@@ -195,7 +195,9 @@ export async function syncMailbox(mailbox: string, opts: { sinceDays?: number } 
         type: "EMAIL",
         direction: outbound ? "OUTBOUND" : "INBOUND",
         subject: m.subject ?? "(no subject)",
-        body: m.bodyPreview ?? null,
+        // an investor's reply is kept whole (the part they wrote, up to 6,000 characters), not Graph's 255-character preview, so the
+        // report and the LP ask scan read what they said (EVCap's pass on Galleria Trace was cut off mid-sentence, Sep 22, 2026)
+        body: outbound ? m.bodyPreview ?? null : await departureText(mailbox, m),
         occurredAt: when,
         externalId: ext,
         contactId,

@@ -80,7 +80,7 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const meta = a.meta ? (JSON.parse(a.meta) as { mailbox?: string; to?: { address: string; name?: string }[]; cc?: { address: string; name?: string }[] }) : {};
     if (meta.mailbox) {
       try {
-        const r = await graph<{ value: { body: { content: string } }[] }>(`/users/${q(meta.mailbox)}/messages?$filter=internetMessageId eq '${a.externalId!.replace(/'/g, "''")}'&$select=body`);
+        const r = await graph<{ value: { body: { content: string } }[] }>(`/users/${q(meta.mailbox)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${a.externalId!.replace(/'/g, "''")}'`)}&$select=body`);
         const html = r.value[0]?.body?.content;
         if (html) body = html.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().slice(0, 5000);
       } catch {

@@ -292,7 +292,7 @@ async function openIntroDraftInner(introId: string) {
     const { signatureFor } = await import("@/lib/followup");
     if (first.ok && first.messageId) {
       // replyToLatestWith already made a fresh draft to the first person; swap it for one addressed to everyone
-      const f = await graph(`/users/${encodeURIComponent(me.email)}/messages?$filter=internetMessageId eq '${first.messageId.replace(/'/g, "''")}'&$select=id`) as { value: { id: string }[] };
+      const f = await graph(`/users/${encodeURIComponent(me.email)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${first.messageId.replace(/'/g, "''")}'`)}&$select=id`) as { value: { id: string }[] };
       if (f.value[0]) await graph(`/users/${encodeURIComponent(me.email)}/messages/${encodeURIComponent(f.value[0].id)}`, { method: "DELETE" }).catch(() => {});
     }
     const draft = await createDraft(me.email, { subject: `RE: ${intro.subject}`, toRecipients: to, bodyHtml: `<html><body><div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p><br></p>${await signatureFor(me.email)}</div></body></html>` });

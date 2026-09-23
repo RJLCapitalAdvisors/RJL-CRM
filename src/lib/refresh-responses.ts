@@ -28,7 +28,7 @@ export async function refreshResponses(dealId: string): Promise<{ synced: number
     if (a.direction === "OUTBOUND" && a.contactId && a.externalId) {
       const meta = a.meta ? (JSON.parse(a.meta) as { mailbox?: string; to?: { address: string }[]; hasAttachments?: boolean }) : {};
       if (meta.mailbox) {
-        const found = await graph<{ value: { id: string }[] }>(`/users/${encodeURIComponent(meta.mailbox)}/messages?$filter=internetMessageId eq '${a.externalId.replace(/'/g, "''")}'&$select=id`).catch(() => ({ value: [] }));
+        const found = await graph<{ value: { id: string }[] }>(`/users/${encodeURIComponent(meta.mailbox)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${a.externalId.replace(/'/g, "''")}'`)}&$select=id`).catch(() => ({ value: [] }));
         if (found.value[0]) await noteDealSent({ dealId, contactId: a.contactId, companyId: a.companyId, mailbox: meta.mailbox, graphId: found.value[0].id, hasAttachments: meta.hasAttachments ?? false, when: a.occurredAt, toEmails: (meta.to ?? []).map((t) => t.address) }).catch(() => false);
       }
     }

@@ -127,7 +127,7 @@ export async function dealFiles(dealId: string): Promise<DealFile[]> {
   if (!it?.messageId || !graphConfigured()) return [];
   const q = encodeURIComponent;
   const mb = DEALS_MAILBOX();
-  const found = await graph<{ value: { id: string; conversationId?: string }[] }>(`/users/${q(mb)}/messages?$filter=internetMessageId eq '${it.messageId.replace(/'/g, "''")}'&$select=id,conversationId`);
+  const found = await graph<{ value: { id: string; conversationId?: string }[] }>(`/users/${q(mb)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${it.messageId.replace(/'/g, "''")}'`)}&$select=id,conversationId`);
   const first = found.value[0];
   if (!first) return [];
   let msgs: { id: string; from?: { emailAddress: { address: string } }; receivedDateTime?: string; hasAttachments?: boolean }[] = [];
@@ -172,7 +172,7 @@ export async function usualRecipients(companyId: string, candidates: { id: strin
 async function dealAttachments(dealId: string): Promise<{ mailbox: string; messageId: string; atts: GraphAttachment[] } | null> {
   const it = await prisma.dealIntake.findFirst({ where: { dealId, messageId: { not: null } } });
   if (!it?.messageId) return null;
-  const found = await graph<{ value: { id: string }[] }>(`/users/${encodeURIComponent(DEALS_MAILBOX())}/messages?$filter=internetMessageId eq '${it.messageId.replace(/'/g, "''")}'&$select=id`);
+  const found = await graph<{ value: { id: string }[] }>(`/users/${encodeURIComponent(DEALS_MAILBOX())}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${it.messageId.replace(/'/g, "''")}'`)}&$select=id`);
   const msg = found.value[0];
   if (!msg) return null;
   const atts = (await listAttachments(DEALS_MAILBOX(), msg.id)).filter((a) => !a.isInline && a["@odata.type"] === "#microsoft.graph.fileAttachment");

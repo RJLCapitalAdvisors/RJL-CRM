@@ -25,7 +25,7 @@ const Confirmation = z.object({
 
 async function fullBody(mailbox: string, internetMessageId: string): Promise<string | null> {
   try {
-    const r = await graph<{ value: { body: { content: string } }[] }>(`/users/${q(mailbox)}/messages?$filter=internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'&$select=body`);
+    const r = await graph<{ value: { body: { content: string } }[] }>(`/users/${q(mailbox)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'`)}&$select=body`);
     const html = r.value[0]?.body?.content;
     if (!html) return null;
     // the sponsor's own words: everything above the first quoted header
