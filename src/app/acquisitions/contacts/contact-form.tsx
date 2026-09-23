@@ -5,9 +5,11 @@ import { AutoSaveForm } from "@/components/autosave-form";
 import { Group, Row, Select, Text } from "@/components/form-rows";
 import { SelectField } from "@/components/select-field";
 import { BulletTextarea } from "@/components/bullet-textarea";
+import { JunkTarget, phoneUnderPointer } from "@/components/junk-target";
 import { AQ_BUYER_STAGES, AQ_OPERATOR_STAGES, AQ_OPERATOR_STATUSES, AQ_ROLES, AQ_STAGES, aqRoleColor, lines, parseJsonList } from "@/lib/acquisitions";
 
 type Ct = Partial<{
+  id: string;
   firstName: string | null;
   lastName: string | null;
   email: string | null;
@@ -56,6 +58,8 @@ export function AqContactForm({ c = {}, companies, propertyId, action, autosave 
   const [followUp, setFollowUp] = useState(toDateInput(c.followUpAt ?? c.callBackAt));
   const [followUpTouched, setFollowUpTouched] = useState(Boolean(c.followUpAt && c.callBackAt && toDateInput(c.followUpAt) !== toDateInput(c.callBackAt)));
   const [mailing, setMailing] = useState(c.mailingAddress ?? "");
+  // right-click a number to send it to junk (only on a saved contact); the line under the caret in Other Phones
+  const junkable = (field: string, node: React.ReactNode) => (c.id ? <JunkTarget target={{ kind: "phone", contactId: c.id, field, phone: "" }} phoneOf={phoneUnderPointer} block>{node}</JunkTarget> : node);
   const numbers = [phones.primary, phones.secondary, ...lines(others), phones.store, phones.directory].map((x) => x.trim()).filter(Boolean).filter((x, i, a) => a.indexOf(x) === i);
   const body = (
     <>
@@ -98,14 +102,14 @@ export function AqContactForm({ c = {}, companies, propertyId, action, autosave 
           </SelectField>
         </Row>
         <Row label="Primary Phone">
-          <input name="phone" type="tel" value={phones.primary} onChange={(e) => setPhones((p) => ({ ...p, primary: e.target.value }))} placeholder="(718) 555-0100" className="input" />
+          {junkable("phone", <input name="phone" type="tel" value={phones.primary} onChange={(e) => setPhones((p) => ({ ...p, primary: e.target.value }))} placeholder="(718) 555-0100" className="input" title="Right-click to send this number to junk" />)}
         </Row>
         <Row label="Secondary Phone">
-          <input name="secondaryPhone" type="tel" value={phones.secondary} onChange={(e) => setPhones((p) => ({ ...p, secondary: e.target.value }))} className="input" />
+          {junkable("secondaryPhone", <input name="secondaryPhone" type="tel" value={phones.secondary} onChange={(e) => setPhones((p) => ({ ...p, secondary: e.target.value }))} className="input" title="Right-click to send this number to junk" />)}
         </Row>
         <Row label="Other Phones" hint="One per line.">
           <div onInput={(e) => setOthers((e.currentTarget.querySelector("input[type=hidden]") as HTMLInputElement | null)?.value ?? "")}>
-            <BulletTextarea name="otherPhones" value={c.otherPhones} placeholder="• (718) 555-0101" />
+            {junkable("otherPhones", <BulletTextarea name="otherPhones" value={c.otherPhones} placeholder="• (718) 555-0101" />)}
           </div>
         </Row>
         <Row label="Primary Email">
@@ -140,10 +144,10 @@ export function AqContactForm({ c = {}, companies, propertyId, action, autosave 
             <Text name="directoryOperatorName" value={c.directoryOperatorName} />
           </Row>
           <Row label="Store Phone" hint="The store's public number, as on Google.">
-            <input name="storePhone" type="tel" value={phones.store} onChange={(e) => setPhones((p) => ({ ...p, store: e.target.value }))} className="input" />
+            {junkable("storePhone", <input name="storePhone" type="tel" value={phones.store} onChange={(e) => setPhones((p) => ({ ...p, store: e.target.value }))} className="input" title="Right-click to send this number to junk" />)}
           </Row>
           <Row label="Directory Operator Phone">
-            <input name="directoryOperatorPhone" type="tel" value={phones.directory} onChange={(e) => setPhones((p) => ({ ...p, directory: e.target.value }))} className="input" />
+            {junkable("directoryOperatorPhone", <input name="directoryOperatorPhone" type="tel" value={phones.directory} onChange={(e) => setPhones((p) => ({ ...p, directory: e.target.value }))} className="input" title="Right-click to send this number to junk" />)}
           </Row>
           <Row label="Operator Total Locations">
             <input name="operatorTotalLocations" type="number" min={0} defaultValue={c.operatorTotalLocations ?? ""} className="input w-32" />

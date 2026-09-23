@@ -1102,6 +1102,9 @@ model AqContact {
 model AqProperty {
   id                  String   @id @default(cuid())
   address             String
+  junkedAt            DateTime? // sent to junk (Settings > Junk Properties): hidden from lists, map, pipeline and the assistant until restored (Shawn, Sep 23, 2026)
+  junkedBy            String?
+  junkReason          String?
   neighborhood        String?
   city                String?
   state               String?
@@ -1169,6 +1172,19 @@ model AqTranscript {
 
   @@index([propertyId, createdAt])
   @@index([contactId, createdAt])
+}
+
+/** A phone number declared junk (Shawn, Sep 23, 2026): taken off every contact, never written onto one again; from a right-click, the Junk Phone Numbers page or an import that marks it. */
+model AqJunkPhone {
+  id          String   @id @default(cuid())
+  digits      String   @unique // the number as digits only
+  raw         String
+  contactId   String?
+  contactName String?
+  field       String?  // phone | secondaryPhone | otherPhones | storePhone | directoryOperatorPhone | import | by hand
+  reason      String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
 }
 
 model AqPropertyCompany {

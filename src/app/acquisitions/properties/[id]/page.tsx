@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { JunkTarget } from "@/components/junk-target";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
@@ -7,7 +8,7 @@ import { SelectField } from "@/components/select-field";
 import { CompanyLogo } from "@/components/company-logo";
 import { AqMapCard } from "@/components/aq-map-card";
 import { fmtDate } from "@/lib/format";
-import { aqFullName, aqStageTone, parseJsonList, propertyLine, usd } from "@/lib/acquisitions";
+import { aqFullName, aqStageTone, parseJsonList, propertyLine, usd, lines } from "@/lib/acquisitions";
 import { addAqNote, deleteAqProperty, linkAqProperty, updateAqProperty } from "../../actions";
 import { AqPropertyForm } from "../property-form";
 import { getAqDealStages } from "@/lib/acquisitions-stages";
@@ -21,7 +22,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 }
 
 const tel = (p: string) => `tel:${p.replace(/[^\d+]/g, "")}`;
-type Person = { id: string; firstName: string | null; lastName: string | null; email: string | null; phone: string | null; roles: string; callResult: string | null; followUpAt: Date | null; callBackAt: Date | null; company: { name: string } | null };
+type Person = { id: string; firstName: string | null; lastName: string | null; email: string | null; phone: string | null; secondaryPhone: string | null; otherPhones: string | null; roles: string; callResult: string | null; followUpAt: Date | null; callBackAt: Date | null; company: { name: string } | null };
 
 /**
  * A property ticket (Sep 22, 2026): the property, its physical facts and whether it is a deal on the left; emails and
@@ -35,7 +36,7 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
       where: { id },
       include: {
         companies: { include: { company: { select: { id: true, name: true, domain: true, website: true, roles: true, phone: true } } } },
-        contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, roles: true, callResult: true, followUpAt: true, callBackAt: true, company: { select: { name: true } } } } } },
+        contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, secondaryPhone: true, otherPhones: true, roles: true, callResult: true, followUpAt: true, callBackAt: true, company: { select: { name: true } } } } } },
         aqNotes: { orderBy: { createdAt: "desc" } },
         activities: { orderBy: { occurredAt: "desc" }, take: 200, include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
       },
@@ -71,7 +72,24 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
                 <Link href={`/acquisitions/contacts/${c.id}`} className="font-medium hover:underline">
                   {aqFullName(c)}
                 </Link>
-                <div className="truncate text-xs text-muted">{[c.company?.name, c.phone, c.email].filter(Boolean).join(" · ")}</div>
+                <div className="truncate text-xs text-muted">{[c.company?.name, c.email].filter(Boolean).join(" · ")}</div>
+                {/* every number on its own, right-click sends one to junk (Shawn, Sep 23, 2026) */}
+                <ul className="mt-0.5 flex flex-wrap gap-x-3 text-xs">
+                  {[
+                    ...(c.phone ? [{ field: "phone", n: c.phone }] : []),
+                    ...(c.secondaryPhone ? [{ field: "secondaryPhone", n: c.secondaryPhone }] : []),
+                    ...lines(c.otherPhones).map((n) => ({ field: "otherPhones", n })),
+                  ].map((x, i) => (
+                    <li key={`${x.field}-${i}`}>
+                      <JunkTarget target={{ kind: "phone", contactId: c.id, field: x.field, phone: x.n }}>
+                        <a href={tel(x.n)} className="tabular-nums text-sky-700 hover:underline" title="Right-click to send this number to junk">
+                          {x.n}
+                        </a>
+                      </JunkTarget>
+                      {x.field === "otherPhones" && <span className="ml-1 text-[10px] text-muted">other</span>}
+                    </li>
+                  ))}
+                </ul>
                 {c.callResult && (
                   <div className="mt-0.5 flex items-center gap-1 text-[11px]">
                     <span className={`chip text-[10px] ${aqStageTone(c.callResult)}`}>{c.callResult}</span>
@@ -122,7 +140,7 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
             backHref="/acquisitions/properties"
             backLabel="Properties"
             initial={(p.city?.[0] ?? p.address[0] ?? "P").toUpperCase()}
-            title={p.address}
+            title={<JunkTarget target={{ kind: "property", propertyId: p.id, label: p.address }}>{p.address}</JunkTarget>}
             subtitle={[p.businessName, propertyLine(p), p.county ? `${p.county} County` : null].filter(Boolean).join(" · ") || undefined}
             lines={[
               facts ? <span key="f">{facts}</span> : null,

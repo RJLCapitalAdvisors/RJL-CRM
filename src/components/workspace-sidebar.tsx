@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks, BookOpen, Table2, Inbox, Map } from "lucide-react";
+import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks, BookOpen, Table2, Inbox, Map, Trash2 } from "lucide-react";
 import { NavLink } from "@/components/nav-link";
 import { DealContextNav } from "@/components/deal-context-nav";
 import { ApartmentContextNav } from "@/components/apartment-context-nav";
@@ -251,9 +251,13 @@ function SideSettingsSubnav({ base }: { base: string }) {
   const pathname = usePathname();
   if (!pathname.startsWith(base)) return null;
   const onData = pathname.startsWith(base + "/data-rules");
+  const onJunkPhones = pathname.startsWith(base + "/junk-phones");
+  const onJunkProps = pathname.startsWith(base + "/junk-properties");
   const items = [
-    { href: base, label: "Users", icon: Users, on: !onData },
+    { href: base, label: "Users", icon: Users, on: !onData && !onJunkPhones && !onJunkProps },
     { href: base + "/data-rules", label: "Data rules", icon: Table2, on: onData },
+    // Acquisitions only (Shawn, Sep 23, 2026): numbers and properties sent to junk
+    ...(base.startsWith("/acquisitions") ? [{ href: base + "/junk-phones", label: "Junk Phone Numbers", icon: Trash2, on: onJunkPhones }, { href: base + "/junk-properties", label: "Junk Properties", icon: Trash2, on: onJunkProps }] : []),
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">

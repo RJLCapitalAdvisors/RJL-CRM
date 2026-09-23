@@ -14,7 +14,7 @@ export function RecordLayout({ left, center, right }: { left: React.ReactNode; c
   );
 }
 
-export function RecordHeader({ backHref, backLabel, initial, avatar, title, subtitle, lines, actions }: { backHref: string; backLabel: string; initial: string; avatar?: React.ReactNode; title: string; subtitle?: React.ReactNode; lines?: React.ReactNode[]; actions?: React.ReactNode }) {
+export function RecordHeader({ backHref, backLabel, initial, avatar, title, subtitle, lines, actions }: { backHref: string; backLabel: string; initial: string; avatar?: React.ReactNode; title: React.ReactNode; subtitle?: React.ReactNode; lines?: React.ReactNode[]; actions?: React.ReactNode }) {
   return (
     <div className="card p-4">
       <Link href={backHref} className="text-xs text-muted hover:underline">

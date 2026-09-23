@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { JunkTarget } from "@/components/junk-target";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
@@ -31,7 +32,7 @@ export default async function AqPipelinePage({ params }: { params: Promise<{ pip
   let cards: Card[];
   if (pipeline === "deals") {
     const deals = await prisma.aqProperty.findMany({
-      where: { stages: { contains: '"Deal"' } },
+      where: { stages: { contains: '"Deal"' }, junkedAt: null },
       orderBy: { updatedAt: "desc" },
       include: { companies: { include: { company: { select: { id: true, name: true } } } }, contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } } },
     });
@@ -41,9 +42,11 @@ export default async function AqPipelinePage({ params }: { params: Promise<{ pip
       updatedAt: d.updatedAt,
       body: (
         <>
-          <Link href={`/acquisitions/properties/${d.id}`} className="font-medium hover:underline">
-            {d.address}
-          </Link>
+          <JunkTarget target={{ kind: "property", propertyId: d.id, label: d.address }}>
+            <Link href={`/acquisitions/properties/${d.id}`} className="font-medium hover:underline">
+              {d.address}
+            </Link>
+          </JunkTarget>
           <div className="text-xs text-muted">{propertyLine(d)}</div>
           {d.askingPrice != null && <div className="text-xs">asking {usd(d.askingPrice)}</div>}
           {d.companies.length > 0 && <div className="mt-1 truncate text-xs text-muted">{d.companies.map((x) => x.company.name).join(", ")}</div>}

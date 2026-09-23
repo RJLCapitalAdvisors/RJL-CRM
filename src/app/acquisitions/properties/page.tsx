@@ -29,6 +29,7 @@ export default async function AqPropertiesPage({ searchParams }: { searchParams:
   const states = list(sp.state);
   const page = Math.max(1, Number(str(sp.page)) || 1);
   const where: Prisma.AqPropertyWhereInput = {
+    junkedAt: null, // junk properties live under Settings > Junk Properties (Shawn, Sep 23, 2026)
     AND: [
       q
         ? {
@@ -63,7 +64,7 @@ export default async function AqPropertiesPage({ searchParams }: { searchParams:
         aqNotes: { orderBy: { createdAt: "desc" }, take: 1, select: { body: true } },
       },
     }),
-    prisma.aqProperty.findMany({ select: { city: true, state: true } }),
+    prisma.aqProperty.findMany({ where: { junkedAt: null }, select: { city: true, state: true } }),
     getAqDealStages(),
     prisma.aqCompany.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, domain: true, website: true } }),
   ]);

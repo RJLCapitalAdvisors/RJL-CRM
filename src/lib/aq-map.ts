@@ -13,6 +13,7 @@ const LOOKUPS_PER_LOAD = 8;
 
 export async function loadAqMapPins(): Promise<{ pins: AqMapPin[]; unplaced: number }> {
   const rows = await prisma.aqProperty.findMany({
+    where: { junkedAt: null },
     include: { contacts: { include: { contact: { select: { id: true, firstName: true, lastName: true, email: true } } } }, companies: { include: { company: { select: { id: true, name: true } } } } },
     orderBy: { updatedAt: "desc" },
   });

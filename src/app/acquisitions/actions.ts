@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { AQ_ASSET_TYPES, AQ_OPERATOR_STATUSES, AQ_ROLES, AQ_STAGES, digitsOf, ensureLlc, lines, mergeAqRoles, parseJsonList, toJsonList, AQ_PIPELINES, type AqPipeline } from "@/lib/acquisitions";
 import { US_STATES } from "@/lib/taxonomy";
 import { forgetAqGeo } from "@/lib/aq-geocode";
+import { junkPhoneDigits } from "./junk-actions";
 import { getAqDealStages, getAqStages, saveAqStages } from "@/lib/acquisitions-stages";
 
 const s = (fd: FormData, k: string) => {
@@ -27,6 +28,15 @@ const touchAll = () => {
   for (const p of ["/acquisitions", "/acquisitions/contacts", "/acquisitions/companies", "/acquisitions/properties", "/acquisitions/pipeline"]) revalidatePath(p);
 };
 
+/** Junk numbers (Settings > Junk Phone Numbers) are never written onto a contact: single fields blank, bulleted lists lose the line (Shawn, Sep 23, 2026). */
+async function scrubJunkPhones<T extends Record<string, unknown>>(data: T): Promise<T> {
+  const junk = await junkPhoneDigits();
+  if (!junk.size) return data;
+  const out: Record<string, unknown> = { ...data };
+  for (const f of ["phone", "secondaryPhone", "storePhone", "directoryOperatorPhone"]) if (typeof out[f] === "string" && junk.has(digitsOf(out[f] as string))) out[f] = null;
+  if (typeof out.otherPhones === "string") out.otherPhones = lines(out.otherPhones as string).filter((l) => !junk.has(digitsOf(l))).join("\n") || null;
+  return out as T;
+}
 // ---------- companies ----------
 function companyData(fd: FormData) {
   const website = s(fd, "website");
@@ -120,7 +130,7 @@ function contactData(fd: FormData) {
   };
 }
 export async function createAqContact(fd: FormData) {
-  const data = contactData(fd);
+  const data = await scrubJunkPhones(contactData(fd));
   const co = data.companyId ? await prisma.aqCompany.findUnique({ where: { id: data.companyId }, select: { roles: true } }) : null;
   const c = await prisma.aqContact.create({ data: { ...data, roles: mergeAqRoles(data.roles, co?.roles) } });
   // from a property's Owners or Operators window: linked to that property straight away
@@ -130,7 +140,7 @@ export async function createAqContact(fd: FormData) {
   redirect(propertyId ? `/acquisitions/properties/${propertyId}` : `/acquisitions/contacts/${c.id}`);
 }
 export async function updateAqContact(id: string, fd: FormData) {
-  const data = contactData(fd);
+  const data = await scrubJunkPhones(contactData(fd));
   const co = data.companyId ? await prisma.aqCompany.findUnique({ where: { id: data.companyId }, select: { roles: true } }) : null;
   const before = await prisma.aqContact.findUnique({ where: { id }, select: { callBackAt: true } });
   // an unchanged callback date keeps its dismissal; a new date brings the reminder back
@@ -220,7 +230,7 @@ const stagesChanged = () => {
 };
 /** How many things sit in a stage: deals are properties carrying Deal, buyers and operators are contacts with the role. */
 async function inStage(pipeline: AqPipeline, name: string) {
-  if (pipeline === "deals") return prisma.aqProperty.count({ where: { dealStage: name, stages: { contains: '"Deal"' } } });
+  if (pipeline === "deals") return prisma.aqProperty.count({ where: { dealStage: name, stages: { contains: '"Deal"' }, junkedAt: null } });
   const def = AQ_PIPELINES[pipeline];
   return prisma.aqContact.count({ where: { [def.field]: name, roles: { contains: `"${def.role}"` } } });
 }
@@ -410,7 +420,7 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
         if (!cur?.followUpAt || (cur.callBackAt && cur.followUpAt.getTime() === cur.callBackAt.getTime())) data.followUpAt = d;
       }
     }
-    await prisma.aqContact.update({ where: { id }, data });
+    await prisma.aqContact.update({ where: { id }, data: await scrubJunkPhones(data) });
     revalidatePath(`/acquisitions/contacts/${id}`);
     touchAll();
     const row: Record<string, unknown> = {};

@@ -3,7 +3,7 @@ import { Search } from "lucide-react";
 import { parseList, roleColor } from "@/lib/taxonomy";
 
 /** The strip at the top of every page, kept to one line so the window below gets the room (Jonathan, Sep 18, 2026). `compact` is accepted for older callers and changes nothing. */
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: React.ReactNode; actions?: React.ReactNode; compact?: boolean }) {
+export function PageHeader({ title, subtitle, actions }: { title: React.ReactNode; subtitle?: React.ReactNode; actions?: React.ReactNode; compact?: boolean }) {
   return (
     <div className="flex min-h-[44px] items-center justify-between gap-4 border-b border-line bg-paper px-6 py-1.5">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3">

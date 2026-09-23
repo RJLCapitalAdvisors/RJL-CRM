@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import type { Workspace } from "@/lib/access";
 import { SYSTEM as CA_SYSTEM, TOOLS as CA_TOOLS, run as runCa } from "@/lib/ask-crm";
 import { IL_SYSTEM, IL_TOOLS, runIl } from "@/lib/ask-israel";
-import { AQ_ASSET_TYPES, AQ_ROLES, AQ_STAGES, aqFullName, ensureLlc, mergeAqRoles, parseJsonList, propertyLine, toJsonList } from "@/lib/acquisitions";
+import { AQ_ASSET_TYPES, AQ_ROLES, AQ_STAGES, aqFullName, ensureLlc, mergeAqRoles, parseJsonList, propertyLine, toJsonList, digitsOf } from "@/lib/acquisitions";
 import { getAqDealStages } from "@/lib/acquisitions-stages";
 import { IL_ROLES, ilFullName } from "@/lib/israel";
 import { ROLES as CA_ROLES } from "@/lib/taxonomy";
@@ -23,9 +23,9 @@ export type Sheet = { name: string; rows: number; csv: string };
 export type Attachment = { name: string; rows: number; sheets: Sheet[]; truncated: boolean };
 
 export type CompanyRow = { name: string; roles?: string[]; website?: string; phone?: string; city?: string; state?: string; notes?: string };
-export type ContactRow = { firstName?: string; lastName?: string; email?: string; emails?: string[]; phone?: string; secondaryPhone?: string; otherPhones?: string[]; mailingAddress?: string; company?: string; roles?: string[]; title?: string; notes?: string; operatorBrandName?: string; website?: string; operatorEntityName?: string; directoryOperatorName?: string; storePhone?: string; directoryOperatorPhone?: string; operatorTotalLocations?: number; lastCallDate?: string; callResult?: string; callBackAt?: string; callNotes?: string; properties?: string[] };
-export type PropertyRow = { address: string; neighborhood?: string; city?: string; state?: string; businessName?: string; assetType?: string; parcelId?: string; ownerEntity?: string; ownerName?: string; primaryPhone?: string; secondaryPhone?: string; otherPhones?: string[]; primaryEmail?: string; emails?: string[]; ownerMailingAddress?: string; operatorEntity?: string; operatorName?: string; operatorPhone?: string; operatorEmail?: string; acreage?: number; squareFeet?: number; yearBuilt?: number; lastSaleDate?: string; lastSalePrice?: number; lastCallDate?: string; callResult?: string; callBackAt?: string; callNotes?: string; dealStage?: string; askingPrice?: number; units?: number; notes?: string; companies?: string[]; contacts?: string[] };
-export type Proposal = { summary: string; properties?: PropertyRow[]; companies?: CompanyRow[]; contacts?: ContactRow[] };
+export type ContactRow = { junkPhones?: string[]; firstName?: string; lastName?: string; email?: string; emails?: string[]; phone?: string; secondaryPhone?: string; otherPhones?: string[]; mailingAddress?: string; company?: string; roles?: string[]; title?: string; notes?: string; operatorBrandName?: string; website?: string; operatorEntityName?: string; directoryOperatorName?: string; storePhone?: string; directoryOperatorPhone?: string; operatorTotalLocations?: number; lastCallDate?: string; callResult?: string; callBackAt?: string; callNotes?: string; properties?: string[] };
+export type PropertyRow = { address: string; junk?: boolean; junkReason?: string; neighborhood?: string; city?: string; state?: string; businessName?: string; assetType?: string; parcelId?: string; ownerEntity?: string; ownerName?: string; primaryPhone?: string; secondaryPhone?: string; otherPhones?: string[]; primaryEmail?: string; emails?: string[]; ownerMailingAddress?: string; operatorEntity?: string; operatorName?: string; operatorPhone?: string; operatorEmail?: string; acreage?: number; squareFeet?: number; yearBuilt?: number; lastSaleDate?: string; lastSalePrice?: number; lastCallDate?: string; callResult?: string; callBackAt?: string; callNotes?: string; dealStage?: string; askingPrice?: number; units?: number; notes?: string; companies?: string[]; contacts?: string[] };
+export type Proposal = { summary: string; properties?: PropertyRow[]; companies?: CompanyRow[]; contacts?: ContactRow[]; junkPhones?: string[] };
 export type ImportResult = { created: { properties: number; companies: number; contacts: number }; matched: { properties: number; companies: number; contacts: number }; links: { label: string; href: string }[]; skipped: string[] };
 export type TurnResult = { answer: string; lookups: string[]; proposal: Proposal | null; savedRules: string[] };
 
@@ -95,7 +95,7 @@ async function runAq(name: string, input: Record<string, unknown>): Promise<unkn
   switch (name) {
     case "search_properties": {
       const rows = await prisma.aqProperty.findMany({
-        where: { OR: [{ address: { contains: q, mode: ci } }, { neighborhood: { contains: q, mode: ci } }, { city: { contains: q, mode: ci } }, { state: { contains: q, mode: ci } }, { businessName: { contains: q, mode: ci } }, { ownerEntity: { contains: q, mode: ci } }, { ownerName: { contains: q, mode: ci } }, { primaryPhone: { contains: q } }, { parcelId: { contains: q, mode: ci } }, { companies: { some: { company: { name: { contains: q, mode: ci } } } } }, { contacts: { some: { contact: { OR: [{ firstName: { contains: q, mode: ci } }, { lastName: { contains: q, mode: ci } }] } } } }] },
+        where: { junkedAt: null, OR: [{ address: { contains: q, mode: ci } }, { neighborhood: { contains: q, mode: ci } }, { city: { contains: q, mode: ci } }, { state: { contains: q, mode: ci } }, { businessName: { contains: q, mode: ci } }, { ownerEntity: { contains: q, mode: ci } }, { ownerName: { contains: q, mode: ci } }, { primaryPhone: { contains: q } }, { parcelId: { contains: q, mode: ci } }, { companies: { some: { company: { name: { contains: q, mode: ci } } } } }, { contacts: { some: { contact: { OR: [{ firstName: { contains: q, mode: ci } }, { lastName: { contains: q, mode: ci } }] } } } }] },
         take: 25,
         include: { companies: { include: { company: { select: { name: true } } } }, contacts: { include: { contact: { select: { firstName: true, lastName: true, email: true, phone: true } } } } },
       });
@@ -110,12 +110,12 @@ async function runAq(name: string, input: Record<string, unknown>): Promise<unkn
       return rows.map((c) => ({ name: aqFullName(c), email: c.email, phone: c.phone, roles: parseJsonList(c.roles), company: c.company?.name, link: `/acquisitions/contacts/${c.id}` }));
     }
     case "call_backs": {
-      const rows = await prisma.aqProperty.findMany({ where: { stages: { contains: '"Callback"' }, callBackDismissedAt: null }, orderBy: { callBackAt: "asc" }, take: 50, include: { contacts: { include: { contact: { select: { firstName: true, lastName: true, email: true, phone: true } } } } } });
+      const rows = await prisma.aqProperty.findMany({ where: { junkedAt: null, stages: { contains: '"Callback"' }, callBackDismissedAt: null }, orderBy: { callBackAt: "asc" }, take: 50, include: { contacts: { include: { contact: { select: { firstName: true, lastName: true, email: true, phone: true } } } } } });
       return rows.map((p) => ({ address: p.address, where: propertyLine(p), callBackAt: p.callBackAt?.toISOString().slice(0, 10), people: p.contacts.map((x) => `${aqFullName(x.contact)}${x.contact.phone ? " " + x.contact.phone : ""}`), link: `/acquisitions/properties/${p.id}` }));
     }
     case "pipeline": {
       const stages = await getAqDealStages();
-      const rows = await prisma.aqProperty.findMany({ where: { stages: { contains: '"Deal"' } }, select: { id: true, address: true, city: true, state: true, dealStage: true, askingPrice: true } });
+      const rows = await prisma.aqProperty.findMany({ where: { junkedAt: null, stages: { contains: '"Deal"' } }, select: { id: true, address: true, city: true, state: true, dealStage: true, askingPrice: true } });
       return { stages, deals: rows.map((d) => ({ address: d.address, city: d.city, state: d.state, stage: d.dealStage ?? stages[0], askingPrice: d.askingPrice, link: `/acquisitions/properties/${d.id}` })) };
     }
     default:
@@ -140,6 +140,7 @@ const ROW_CONTACT = {
     phone: { type: "string" },
     secondaryPhone: { type: "string" },
     otherPhones: { type: "array", items: { type: "string" } },
+    junkPhones: { type: "array", items: { type: "string" }, description: "numbers of this person the file marks junk, bad, wrong or disconnected: they are junked and never put on the contact" },
     mailingAddress: { type: "string" },
     company: { type: "string", description: "company name (the owner's LLC, the operator's business), matching a row in companies when there is one" },
     roles: { type: "array", items: { type: "string" } },
@@ -174,6 +175,8 @@ const ROW_PROPERTY = {
     primaryPhone: { type: "string" },
     secondaryPhone: { type: "string" },
     otherPhones: { type: "array", items: { type: "string" } },
+    junk: { type: "boolean", description: "true when the row is marked junk, dead or do-not-pursue: the property is filed under Junk Properties, hidden from the lists" },
+    junkReason: { type: "string" },
     primaryEmail: { type: "string" },
     emails: { type: "array", items: { type: "string" }, description: "other emails, e.g. from public record" },
     ownerMailingAddress: { type: "string" },
@@ -201,7 +204,7 @@ const ROW_PROPERTY = {
 };
 
 function importTool(ws: Workspace): Anthropic.Tool {
-  const props: Record<string, unknown> = { summary: { type: "string", description: "one or two plain sentences on what the file held and how it was read" }, companies: { type: "array", items: ROW_COMPANY }, contacts: { type: "array", items: ROW_CONTACT } };
+  const props: Record<string, unknown> = { junkPhones: { type: "array", items: { type: "string" }, description: "every phone number the file marks junk, bad, wrong or disconnected (a junk column, a strike-through, a note): junked, never written onto a contact" }, summary: { type: "string", description: "one or two plain sentences on what the file held and how it was read" }, companies: { type: "array", items: ROW_COMPANY }, contacts: { type: "array", items: ROW_CONTACT } };
   if (ws === "AQ") props.properties = { type: "array", items: ROW_PROPERTY };
   return {
     name: "propose_import",
@@ -224,6 +227,8 @@ function importGuide(ws: Workspace, rules: string[]): string {
         ? `Companies: name, roles (${IL_ROLES.join(", ")}), website, phone, city, notes. Contacts: firstName, lastName, email, phone, company (name), roles (${IL_ROLES.join(", ")}), notes.`
         : `Companies: name, roles (${CA_ROLES.join(", ")}), website, phone, city, state, notes. Contacts: firstName, lastName, email, phone, company (name), roles (${CA_ROLES.join(", ")}), title, notes.`;
   return `
+JUNK (Acquisitions). A spreadsheet often marks phone numbers as junk, bad, wrong, disconnected or DNC, and rows as junk, dead or do not pursue. Put every such number in junkPhones (top level or on the person) and never in phone, secondaryPhone or otherPhones; set junk true on such a property row. The CRM keeps them under Settings > Junk Phone Numbers and Junk Properties and never writes a junk number onto a contact.
+
 FILES. When a file is attached, read it with the Data rules below, work out what each column means from its header and its values, and call propose_import once with every usable row. Then tell the user in a few lines what the file held, how you read the columns, and anything you were unsure about (a column you skipped, rows with no address). Do not list every row in text; the user sees the rows in the proposal. If the file cannot be read as records, say what you see and ask what they want done with it. If the user asks a question about the file rather than to load it, answer the question.
 Fields you can fill: ${fields}
 Never invent a value; leave the field out. Phone numbers as written. Do not fill a field from a guess about a name.
@@ -307,7 +312,7 @@ const list = (v: unknown, allowed?: readonly string[]) => (Array.isArray(v) ? v.
 /** Only fields we know, only values that are there. */
 function cleanProposal(ws: Workspace, p: Proposal, dealStages: string[]): Proposal {
   const roles = ws === "AQ" ? AQ_ROLES : ws === "IL" ? IL_ROLES : CA_ROLES;
-  const out: Proposal = { summary: str(p.summary, 600) ?? "" };
+  const out: Proposal = { summary: str(p.summary, 600) ?? "", junkPhones: list(p.junkPhones) };
   const companies = (Array.isArray(p.companies) ? p.companies : []).flatMap((c): CompanyRow[] => {
     const name = str(c.name, 160);
     return name ? [{ name, roles: list(c.roles, roles), website: str(c.website), phone: str(c.phone, 60), city: str(c.city, 80), state: str(c.state, 40), notes: str(c.notes, 1000) }] : [];
@@ -321,6 +326,7 @@ function cleanProposal(ws: Workspace, p: Proposal, dealStages: string[]): Propos
       phone: str(c.phone, 60),
       secondaryPhone: str(c.secondaryPhone, 60),
       otherPhones: list(c.otherPhones),
+      junkPhones: list(c.junkPhones),
       mailingAddress: str(c.mailingAddress, 240),
       company: str(c.company, 160),
       roles: list(c.roles, roles),
@@ -361,6 +367,8 @@ function cleanProposal(ws: Workspace, p: Proposal, dealStages: string[]): Propos
           primaryPhone: str(r.primaryPhone, 40),
           secondaryPhone: str(r.secondaryPhone, 40),
           otherPhones: list(r.otherPhones),
+          junk: r.junk === true ? true : undefined,
+          junkReason: str(r.junkReason, 200),
           primaryEmail: str(r.primaryEmail, 160)?.toLowerCase(),
           emails: list(r.emails)?.map((e) => e.toLowerCase()),
           ownerMailingAddress: str(r.ownerMailingAddress, 240),
@@ -398,6 +406,16 @@ const domainOfUrl = (w: string | undefined) => (w ? w.replace(/^https?:\/\//i, "
 /** Write a proposal into the side. Existing rows are matched (company by name, person by email or name at the company, property by address and city) and only their empty fields are filled; new ones are created. */
 export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResult> {
   const result: ImportResult = { created: { properties: 0, companies: 0, contacts: 0 }, matched: { properties: 0, companies: 0, contacts: 0 }, links: [], skipped: [] };
+  // junk (Shawn, Sep 23, 2026): the numbers the file marks junk are junked first, then no junk number is written onto anyone
+  if (ws === "AQ") {
+    const { addJunkPhone, junkPhoneDigits } = await import("@/app/acquisitions/junk-actions");
+    for (const n of [...(p.junkPhones ?? []), ...(p.contacts ?? []).flatMap((c) => c.junkPhones ?? [])]) await addJunkPhone(n, { field: "import", reason: "marked junk in the imported file" });
+    const junk = await junkPhoneDigits();
+    const ok = (v?: string) => (v && !junk.has(digitsOf(v)) ? v : undefined);
+    const okList = (l?: string[]) => l?.filter((x) => !junk.has(digitsOf(x)));
+    for (const c of p.contacts ?? []) { c.phone = ok(c.phone); c.secondaryPhone = ok(c.secondaryPhone); c.otherPhones = okList(c.otherPhones); c.storePhone = ok(c.storePhone); c.directoryOperatorPhone = ok(c.directoryOperatorPhone); }
+    for (const r of p.properties ?? []) { r.primaryPhone = ok(r.primaryPhone); r.secondaryPhone = ok(r.secondaryPhone); r.otherPhones = okList(r.otherPhones); r.operatorPhone = ok(r.operatorPhone); }
+  }
   const link = (label: string, href: string) => {
     if (result.links.length < 40) result.links.push({ label, href });
   };
@@ -558,6 +576,11 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
       const propertyId = propertyIds.get(norm(l.address)) ?? (await prisma.aqProperty.findFirst({ where: { address: { equals: l.address, mode: ci } }, select: { id: true } }))?.id;
       if (propertyId) await prisma.aqPropertyContact.upsert({ where: { propertyId_contactId: { propertyId, contactId: l.contactId } }, create: { propertyId, contactId: l.contactId }, update: {} });
       else result.skipped.push(`No property at ${l.address} to tie the contact to`);
+    }
+    // rows the file marks junk: filed under Junk Properties once written (Shawn, Sep 23, 2026)
+    for (const r of p.properties ?? []) {
+      if (!r.junk) continue;
+      await prisma.aqProperty.updateMany({ where: { address: { equals: r.address, mode: ci }, ...(r.city ? { city: { equals: r.city, mode: ci } } : {}), junkedAt: null }, data: { junkedAt: new Date(), junkedBy: "import", junkReason: r.junkReason ?? "marked junk in the imported file" } });
     }
     return result;
   }

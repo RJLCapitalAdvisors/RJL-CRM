@@ -174,7 +174,7 @@ function Editor({ col, value, onCommit, onCancel, onTab }: { col: GridColumn; va
 }
 
 /** `linkKey` names the one column that opens the ticket instead of editing (the name); with it there is no separate open-arrow column. */
-export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothing here.", linkKey, zoom: zoomProp, onZoom, showTools = true, title }: { id: string; columns: GridColumn[]; rows: GridRow[]; save: (rowId: string, key: string, value: string | null) => Promise<SaveResult>; empty?: string; linkKey?: string; zoom?: number; onZoom?: (z: number) => void; showTools?: boolean; title?: string }) {
+export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothing here.", linkKey, linkWrap, zoom: zoomProp, onZoom, showTools = true, title }: { id: string; columns: GridColumn[]; rows: GridRow[]; save: (rowId: string, key: string, value: string | null) => Promise<SaveResult>; empty?: string; linkKey?: string; linkWrap?: (row: GridRow, node: React.ReactNode) => React.ReactNode; zoom?: number; onZoom?: (z: number) => void; showTools?: boolean; title?: string }) {
   const storageKey = `grid:${id}`;
   const [order, setOrder] = useState<string[]>(columns.map((c) => c.key));
   const [widths, setWidths] = useState<Record<string, number>>({});
@@ -409,9 +409,14 @@ export function DataGrid({ id, columns, rows: initialRows, save, empty = "Nothin
                       style={{ maxWidth: widthOf(c) }}
                     >
                       {c.key === linkKey && r.href ? (
-                        <Link href={r.href} className="block truncate font-medium hover:underline" title="Open the ticket">
-                          <Display col={c} value={r[c.key]} row={r} />
-                        </Link>
+                        (() => {
+                          const node = (
+                            <Link href={r.href} className="block truncate font-medium hover:underline" title="Open the ticket">
+                              <Display col={c} value={r[c.key]} row={r} />
+                            </Link>
+                          );
+                          return linkWrap ? linkWrap(r, node) : node;
+                        })()
                       ) : on ? (
                         <Editor col={c} value={r[c.key]} onCommit={(v) => commit(r.id, c.key, v)} onCancel={() => setEditing(null)} onTab={(back) => moveEdit(r.id, c.key, back)} />
                       ) : (

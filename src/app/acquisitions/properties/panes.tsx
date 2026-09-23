@@ -1,5 +1,6 @@
 "use client";
 
+import { JunkTarget } from "@/components/junk-target";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DataGrid, type GridColumn, type GridRow } from "@/components/data-grid";
@@ -135,7 +136,7 @@ export function PropertyPanes({ rows, columns }: { rows: PaneRows; columns: Pane
   );
   const pane = (id: string, title: string, cols: GridColumn[], data: GridRow[], save: (rowId: string, key: string, value: string | null) => ReturnType<typeof updateAqCell>, linkKey: string, empty: string) => (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-paper">
-      <DataGrid key={`${id}-${epoch}`} id={id} title={title} columns={tone(cols)} rows={data} save={save} empty={empty} linkKey={linkKey} zoom={zoom} onZoom={setZoom} showTools={false} />
+      <DataGrid key={`${id}-${epoch}`} id={id} title={title} columns={tone(cols)} rows={data} save={save} empty={empty} linkKey={linkKey} linkWrap={linkKey === "address" ? (row, node) => <JunkTarget target={{ kind: "property", propertyId: row.id, label: String(row.address ?? "") }} block>{node}</JunkTarget> : undefined} zoom={zoom} onZoom={setZoom} showTools={false} />
     </div>
   );
   return (
