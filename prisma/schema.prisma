@@ -850,13 +850,15 @@ model IlProject {
 
 // Emails handled from the RJL Israel deals mailbox, each once
 model IlInbound {
-  id        String   @id @default(cuid())
-  messageId String   @unique
-  mailbox   String
-  subject   String?
-  fromEmail String?
-  result    String
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  messageId    String   @unique
+  mailbox      String
+  subject      String?
+  fromEmail    String?
+  result       String
+  pendingReply String?  // the reply that failed to send (HTML); the next inbox pass sends it and clears this
+  graphId      String?  // the message in the Israel mailbox, for that retry
+  createdAt    DateTime @default(now())
 }
 
 // LAUNCH queue: one deal email per firm, sent one every 30 seconds from the sender mailbox (src/lib/launch-queue.ts)

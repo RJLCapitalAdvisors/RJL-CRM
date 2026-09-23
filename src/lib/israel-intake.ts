@@ -500,7 +500,7 @@ export function replyText(rows: IntakeRow[], base: string, note: string | null):
 export const NO_APARTMENT_TEXT = "I could not find an apartment or a house in this message or its files, so no ticket was created. Send the listing with the details (address, size, price) or add it by hand under Apartments or Houses in RJL Israel.";
 
 /** Jonathan is copied on every reply the Israel deals mailbox sends, so he sees each deal as it comes in (Sep 23, 2026). ISRAEL_REPLY_CC overrides; empty turns it off. */
-const REPLY_CC = () => (process.env.ISRAEL_REPLY_CC ?? "jonathan@rjlisrael.com").split(/[,s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+const REPLY_CC = () => (process.env.ISRAEL_REPLY_CC ?? "jonathan@rjlisrael.com").split(/[,;\s]+/).map((x) => x.trim().toLowerCase()).filter((x) => x.includes("@"));
 
 async function replyOnThread(msg: Msg, html: string) {
   const draft = await graph<{ id: string }>(`/users/${q(ISRAEL_MAILBOX())}/messages/${q(msg.id)}/createReply`, { method: "POST", body: JSON.stringify({}) });
@@ -523,19 +523,56 @@ export async function processIsraelMessage(messageId: string): Promise<{ apartme
   }
   const bodyText = msg.body?.contentType?.toLowerCase() === "html" ? emailHtmlToText(msg.body.content) : (msg.body?.content ?? "");
   const files = msg.hasAttachments ? await readAttachments(msg.id) : [];
+  // OneDrive / SharePoint / Dropbox / Google Drive / Box links in the email: their documents count as attachments
+  // (Jonathan's Mofet email on Sep 23 carried a OneDrive folder and nothing else, and the intake read only the text)
+  const { findCloudLinks, fetchCloudFiles } = await import("@/lib/cloud-links");
+  const cloud = await fetchCloudFiles(findCloudLinks(msg.body?.content, bodyText)).catch(() => ({ files: [], notes: [] as string[] }));
+  for (const cf of cloud.files) {
+    if (files.some((x) => x.name.toLowerCase() === cf.name.toLowerCase())) continue;
+    files.push(await describeFile(cf.name, cf.contentType, cf.bytes).catch(() => ({ name: cf.name, type: cf.contentType, size: cf.size })));
+  }
+  const linkNotes = cloud.notes.map((n) => n.replace(/^OneDrive folder had no/, "The OneDrive folder had no")).join(" ");
   const r = await intakeApartments({ channel: "EMAIL", key, subject: msg.subject, body: bodyText, files, sender: { name: msg.from?.emailAddress.name, email: from || null }, sourceLabel: `Email from ${msg.from?.emailAddress.name ?? from}`, mailbox: ISRAEL_MAILBOX() });
+  // the reply always goes; when Microsoft refuses it, it is kept and sent on the next inbox pass
+  const send = async (html: string) => {
+    try {
+      await replyOnThread(msg, html);
+      await prisma.ilInbound.updateMany({ where: { messageId: key }, data: { pendingReply: null, graphId: msg.id } }).catch(() => null);
+    } catch (e) {
+      console.error("israel intake reply failed", e);
+      await prisma.ilInbound.updateMany({ where: { messageId: key }, data: { pendingReply: html, graphId: msg.id } }).catch(() => null);
+    }
+  };
   if ("skipped" in r) {
-    if (r.skipped === "no apartments") await replyOnThread(msg, `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p>${NO_APARTMENT_TEXT}</p></div>`).catch(() => null);
+    if (r.skipped === "no apartments") await send(`<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p>${NO_APARTMENT_TEXT}</p>${linkNotes ? `<p style="color:#6b716e;">${linkNotes}</p>` : ""}</div>`);
     return r;
   }
-  await replyOnThread(msg, replyHtml(r.rows, appBase(), r.note)).catch((e) => console.error("israel intake reply failed", e));
+  await send(replyHtml(r.rows, appBase(), [r.note, linkNotes].filter(Boolean).join(" ") || null));
   return { apartments: r.rows.length };
+}
+
+/** Replies Microsoft refused earlier go out now. */
+async function sendPendingReplies(): Promise<number> {
+  const pending = await prisma.ilInbound.findMany({ where: { pendingReply: { not: null }, graphId: { not: null } }, take: 10 });
+  let sent = 0;
+  for (const p of pending) {
+    try {
+      const msg = await graph<Msg>(`/users/${q(ISRAEL_MAILBOX())}/messages/${q(p.graphId!)}?$select=id,internetMessageId,subject,receivedDateTime,hasAttachments,from,body`);
+      await replyOnThread(msg, p.pendingReply!);
+      await prisma.ilInbound.update({ where: { id: p.id }, data: { pendingReply: null } });
+      sent++;
+    } catch (e) {
+      console.error("israel pending reply failed", p.messageId, e);
+    }
+  }
+  return sent;
 }
 
 export async function processIsraelInbox(): Promise<{ processed: number; skipped: number } | { skipped: string }> {
   if (!graphConfigured()) return { skipped: "Graph not configured" };
   const r = await graph<{ value: Msg[] }>(`/users/${q(ISRAEL_MAILBOX())}/mailFolders/inbox/messages?$top=25&$orderby=receivedDateTime desc&$select=id,internetMessageId,from`).catch((e) => ({ error: String(e) }) as { value?: Msg[]; error?: string });
   if (!("value" in r) || !r.value) return { skipped: `mailbox unreachable: ${(r as { error?: string }).error ?? "unknown"}` };
+  await sendPendingReplies().catch(() => 0);
   let processed = 0, skipped = 0;
   for (const m of r.value) {
     const res = await processIsraelMessage(m.id).catch((e) => ({ skipped: String(e).slice(0, 120) }));
