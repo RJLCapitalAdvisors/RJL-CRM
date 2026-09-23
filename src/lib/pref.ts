@@ -14,6 +14,8 @@ import { assetProfile, perCountWord } from "@/lib/asset-profile";
 
 export const PREF_TYPES = ["Preferred Equity", "Mezz Debt"];
 export const isPref = (executionType: unknown) => typeof executionType === "string" && PREF_TYPES.includes(executionType);
+/** A condo development sells its units: there is no NOI, so no yield on cost, no cash on cash, no yield on the last dollar; the basis on the last pref dollar is quoted per foot (Jonathan, Sep 23, 2026). */
+export const isCondo = (assetClass: unknown) => assetClass === "Condo";
 
 type D = Record<string, unknown>;
 const n = (v: unknown) => (typeof v === "number" && !isNaN(v) ? v : typeof v === "string" && v.trim() ? Number(v.replace(/[^0-9.-]/g, "")) || null : null);
@@ -42,13 +44,14 @@ export function prefMetrics(d: D): PrefMetrics {
   const pct = (x: number | null) => (x == null ? null : Math.round(x * 10000) / 100);
   const t12Noi = t12 != null && price ? (t12 / 100) * price : null;
   const stabNoi = yoc != null && cap ? (yoc / 100) * cap : null;
-  const perCount = p.perCount && units;
+  const condo = isCondo(d.assetClass);
+  const perCount = p.perCount && units && !condo; // a condo's basis reads per foot
   return {
     lastDollar,
     prefLtc: lastDollar && cap ? pct(lastDollar / cap) : null,
     prefLtv: lastDollar && price ? pct(lastDollar / price) : null,
-    goingInYieldLD: lastDollar && t12Noi ? pct(t12Noi / lastDollar) : null,
-    stabilizedYieldLD: lastDollar && stabNoi ? pct(stabNoi / lastDollar) : null,
+    goingInYieldLD: lastDollar && t12Noi && !condo && d.strategy !== "Development" ? pct(t12Noi / lastDollar) : null,
+    stabilizedYieldLD: lastDollar && stabNoi && !condo ? pct(stabNoi / lastDollar) : null,
     basisLD: lastDollar ? (perCount ? lastDollar / units! : sf ? lastDollar / sf : null) : null,
     basisUnit: perCount ? perCountWord(p.countLabel) : "SF",
   };

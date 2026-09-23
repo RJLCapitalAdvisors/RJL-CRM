@@ -15,7 +15,7 @@ export type ChecklistItem = {
   strategy: ("Acquisitions" | "Development")[];
   onlyAssetClasses?: string[]; // include only for these classes
   excludeAssetClasses?: string[]; // skip for these classes
-  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose" | "purchasePrice" | "yieldOnCost"; // maps to a Deal column
+  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose" | "purchasePrice" | "yieldOnCost" | "projectedSellout" | "selloutPerUnit" | "selloutPerFoot"; // maps to a Deal column
 };
 
 const RESIDENTIAL = ["Multifamily", "Build-For-Rent (SFR)", "Student Housing", "Senior Housing", "Mixed Use"];
@@ -26,7 +26,11 @@ export const DEFAULT_CHECKLIST: ChecklistItem[] = [
   { key: "occupancy", label: "Current occupancy", question: "Current physical/economic occupancy (%)", kind: "number", strategy: ["Acquisitions"], excludeAssetClasses: ["Land"], core: "occupancy" },
   { key: "leaseTradeOut", label: "Lease trade-out report", question: "Recent lease trade-out report showing new vs. expiring rents", kind: "doc", strategy: ["Acquisitions"], onlyAssetClasses: RESIDENTIAL },
   { key: "insuranceTaxes", label: "How insurance and taxes are underwritten", devLabel: "How stabilized insurance and taxes are calculated", question: "Color on how insurance and real estate taxes are underwritten (basis, reassessment, quotes)", kind: "text", strategy: ["Acquisitions", "Development"] },
-  { key: "yieldOnCost", label: "Yield on cost at stabilization", devLabel: "Stabilized yield on cost (stabilized NOI over total project cost)", question: "Stabilized NOI over total all-in cost, or the cap rate on all-in cost basis", kind: "number", strategy: ["Acquisitions", "Development"], excludeAssetClasses: ["Land"], core: "yieldOnCost" },
+  { key: "yieldOnCost", label: "Yield on cost at stabilization", devLabel: "Stabilized yield on cost (stabilized NOI over total project cost)", question: "Stabilized NOI over total all-in cost, or the cap rate on all-in cost basis", kind: "number", strategy: ["Acquisitions", "Development"], excludeAssetClasses: ["Land", "Condo"], core: "yieldOnCost" },
+  // a condo sells out instead of stabilizing (Jonathan, Sep 23, 2026): the sellout figures replace yield on cost and cash on cash
+  { key: "projectedSellout", label: "Projected sellout (whole dollar figure)", question: "Total projected gross sellout of all units, in whole dollars", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Condo"], core: "projectedSellout" },
+  { key: "selloutPerUnit", label: "Average sellout per unit", question: "Average projected sale price per unit", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Condo"], core: "selloutPerUnit" },
+  { key: "selloutPerFoot", label: "Sellout price per foot", question: "Projected sale price per sellable square foot", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Condo"], core: "selloutPerFoot" },
   { key: "businessPlan", label: "Business plan", question: "Explanation of the business plan (value-add, hold period, exit)", kind: "text", strategy: ["Acquisitions"], core: "summary" },
   { key: "capexBudget", label: "Capex budget", question: "Capital expenditure budget and scope", kind: "doc", strategy: ["Acquisitions"], excludeAssetClasses: ["Land"] },
   { key: "sponsorBio", label: "Sponsor bio (overall and local market experience)", question: "Sponsor track record: overall experience and experience in this market", kind: "text", strategy: ["Acquisitions", "Development"], core: "sponsorExperience" },
@@ -91,6 +95,9 @@ export type DealLikeForChecklist = {
   assetClass?: string | null;
   occupancy?: number | null;
   yieldOnCost?: number | null;
+  projectedSellout?: number | null;
+  selloutPerUnit?: number | null;
+  selloutPerFoot?: number | null;
   summary?: string | null;
   sponsorExperience?: string | null;
   onMarket?: boolean | null;
@@ -159,6 +166,12 @@ export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): stri
       return deal.occupancy != null ? `${deal.occupancy}%` : null;
     case "yieldOnCost":
       return deal.yieldOnCost != null ? `${deal.yieldOnCost}%` : null;
+    case "projectedSellout":
+      return deal.projectedSellout != null ? `${deal.projectedSellout.toLocaleString("en-US")}` : null;
+    case "selloutPerUnit":
+      return deal.selloutPerUnit != null ? `${deal.selloutPerUnit.toLocaleString("en-US")} per unit` : null;
+    case "selloutPerFoot":
+      return deal.selloutPerFoot != null ? `${deal.selloutPerFoot.toLocaleString("en-US")} per SF` : null;
     case "summary":
       return deal.summary ?? null;
     case "sponsorExperience":

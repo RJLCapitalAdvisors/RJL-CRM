@@ -199,6 +199,9 @@ model Deal {
   capRateY1           Float?
   capRateT12          Float?
   cashOnCash          Float?
+  projectedSellout    Float?   // Condo: projected gross sellout of every unit, whole dollars (Jonathan, Sep 23, 2026); NOI-based yields do not apply
+  selloutPerUnit      Float?   // Condo: average sellout per unit
+  selloutPerFoot      Float?   // Condo: sellout price per square foot
   projectedReturns    String?
   units               Int?
   squareFeet          Float?

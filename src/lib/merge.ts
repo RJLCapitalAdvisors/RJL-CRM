@@ -44,6 +44,9 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.capRateY1", label: "Year 1 cap rate %" },
   { key: "deal.capRateT12", label: "T12 cap rate %" },
   { key: "deal.cashOnCash", label: "Stabilized cash-on-cash %" },
+  { key: "deal.projectedSellout", label: "Projected sellout ($, condo)" },
+  { key: "deal.selloutPerUnit", label: "Average sellout per unit ($, condo)" },
+  { key: "deal.selloutPerFoot", label: "Sellout price per foot ($, condo)" },
   { key: "deal.projectedReturns", label: "Projected returns (text)" },
   { key: "deal.units", label: "Units" },
   { key: "deal.squareFeet", label: "Square feet" },
@@ -79,7 +82,8 @@ export type MergeContext = {
 function fmt(key: string, v: unknown): string {
   if (key === "deal.summary" && typeof v === "string") return cleanBusinessPlan(v) ?? ""; // the business plan never carries fielded facts, however old the ticket
   if (v == null || v === "") return "";
-  if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization"].includes(key)) return usd(Number(v));
+  if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization", "deal.projectedSellout", "deal.selloutPerUnit"].includes(key)) return usd(Number(v));
+  if (key === "deal.selloutPerFoot") return `${Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   if (["deal.ltv", "deal.ltc", "deal.occupancy", "deal.irr", "deal.yieldOnCost", "deal.capRateY1", "deal.capRateT12", "deal.cashOnCash"].includes(key)) return `${v}%`;
   if (key === "deal.units" || key === "deal.squareFeet") return Number(v).toLocaleString("en-US");
   if (v instanceof Date) return v.toLocaleDateString("en-US");

@@ -22,6 +22,7 @@ const BASE: AssetProfile = { countLabel: null, perCount: false, perFoot: true, p
 const PROFILES: Record<string, Partial<AssetProfile>> = {
   Multifamily: { countLabel: "Units", perCount: true, perFoot: true, showUnitMix: true },
   "Build-For-Rent (SFR)": { countLabel: "Units", perCount: true, perFoot: true, showUnitMix: true },
+  Condo: { countLabel: "Units", perCount: true, perFoot: true, showUnitMix: true, showOccupancy: false }, // for-sale units: sellout, not NOI (Jonathan, Sep 23, 2026)
   "Senior Housing": { countLabel: "Units", perCount: true, perFoot: true, showUnitMix: true },
   "Student Housing": { countLabel: "Beds", perCount: true, perFoot: false, showUnitMix: true },
   Hospitality: { countLabel: "Keys", perCount: true, perFoot: false },

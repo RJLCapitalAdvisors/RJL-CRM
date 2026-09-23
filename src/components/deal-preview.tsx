@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { renderTemplate, toHtml, type MergeContext } from "@/lib/merge";
 
 type Tpl = { id: string; name: string; subject: string; bodyHtml: string };
-const NUMERIC = new Set(["requestedAmount", "totalEquity", "totalDebt", "totalCapitalization", "purchasePrice", "ltv", "ltc", "equityMultiple", "irr", "yieldOnCost", "capRateY1", "capRateT12", "cashOnCash", "occupancy", "units", "squareFeet"]);
+const NUMERIC = new Set(["projectedSellout", "selloutPerUnit", "selloutPerFoot", "requestedAmount", "totalEquity", "totalDebt", "totalCapitalization", "purchasePrice", "ltv", "ltc", "equityMultiple", "irr", "yieldOnCost", "capRateY1", "capRateT12", "cashOnCash", "occupancy", "units", "squareFeet"]);
 
 /** Live rendering of a deal email template from whatever is currently typed in #deal-form. */
 /** Best-guess template for a deal: multifamily vs not, development vs existing, JV vs pref vs debt. */

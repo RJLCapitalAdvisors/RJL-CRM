@@ -1,7 +1,7 @@
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
 import { parseDetails } from "@/lib/checklist";
 import { US_STATES } from "@/lib/taxonomy";
-import { isPref, prefMetrics } from "@/lib/pref";
+import { isCondo, isPref, prefMetrics } from "@/lib/pref";
 
 /**
  * Generates the pieces of RJL's deal email exactly in the house style of the sent emails
@@ -128,6 +128,15 @@ export function metrics(d: D): string[] {
   const price = n(d.purchasePrice);
   if (price && !dev) out.push(`Purchase Price: ${usd(price)}${perBits(price)}`);
   if (price && dev) out.push(`Land Price: ${usd(price)}${perBits(price)}`);
+  // a condo sells out (Jonathan, Sep 23, 2026): the sellout stands where yield on cost and cash on cash would
+  const condo = isCondo(d.assetClass);
+  const sellout = n(d.projectedSellout);
+  if (condo && sellout) {
+    const perUnit = n(d.selloutPerUnit) ?? (count ? sellout / count : null);
+    const perFoot = n(d.selloutPerFoot) ?? (sf ? sellout / sf : null);
+    const bits = [perFoot ? `${usdCents(perFoot)} per foot` : null, perUnit ? `${usd(perUnit)} per unit` : null].filter(Boolean);
+    out.push(`Projected Sellout: ${usd(sellout)}${bits.length ? ` (${bits.join(" | ")})` : ""}`);
+  }
   // an operating asset always shows where it stands today; the deals@ checklist chases the number when it is missing
   const occ = n((d as { occupancy?: number | null }).occupancy);
   if (!dev && occ != null) out.push(`Current Occupancy: ${pct(occ)}`);
@@ -156,7 +165,7 @@ export function metrics(d: D): string[] {
   const y1 = n(d.capRateY1);
   if (!dev && t12) out.push(`T12 Cap Rate: ${pct(t12)}`);
   if (!dev && y1) out.push(`Year 1 Cap Rate: ${pct(y1)}`);
-  const yoc = n(d.yieldOnCost);
+  const yoc = condo ? null : n(d.yieldOnCost);
   if (yoc) out.push(`Yield on Cost at Stabilization: ${pct(yoc)}`);
   else if (!dev && t12 && n(d.purchasePrice) && n(d.totalCapitalization)) {
     // no yield on cost stated: in-place NOI over all-in cost, from the going-in cap rate and the purchase price
@@ -169,7 +178,7 @@ export function metrics(d: D): string[] {
   const coc = n(d.cashOnCash);
   if ((irr || em) && !isPref(d.executionType)) {
     const ret = [irr ? `${pct(irr)} IRR` : null, em ? `${irr ? "a " : ""}${em}x EM` : null].filter(Boolean).join(" and ");
-    out.push(`Expected Returns: ${ret}${hold ? ` on a ${hold.replace(/\s*hold$/i, "")} hold` : ""}.${coc && !dev ? ` Stabilized cash on cash of ${pct(coc)}` : ""}`);
+    out.push(`Expected Returns: ${ret}${hold ? ` on a ${hold.replace(/\s*hold$/i, "")} hold` : ""}.${coc && !dev && !condo ? ` Stabilized cash on cash of ${pct(coc)}` : ""}`);
   }
   const close = s(d.expectedClose);
   if (close) out.push(`Closing Date: ${close}`);

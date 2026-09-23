@@ -47,6 +47,9 @@ export const ExtractedDealSchema = z.object({
   capRateY1: z.number().nullable(),
   yieldOnCost: z.number().nullable(),
   cashOnCash: z.number().nullable(),
+  projectedSellout: z.number().nullable(),
+  selloutPerUnit: z.number().nullable(),
+  selloutPerFoot: z.number().nullable(),
   holdPeriod: z.string().nullable(),
   expectedClose: z.string().nullable(),
   amortization: z.string().nullable(),
@@ -62,7 +65,7 @@ export const EMPTY: ExtractedDeal = {
   occupancy: null, onMarket: null, sponsorExperience: null, summary: null,
   details: {} as ExtractedDeal["details"],
   units: null, squareFeet: null, yearBuilt: null, unitMix: null, totalCapitalization: null, totalDebt: null, executionType: null, interestRate: null,
-  lenderType: null, irr: null, capRateT12: null, capRateY1: null, yieldOnCost: null, cashOnCash: null, holdPeriod: null, expectedClose: null, amortization: null,
+  lenderType: null, irr: null, capRateT12: null, capRateY1: null, yieldOnCost: null, cashOnCash: null, projectedSellout: null, selloutPerUnit: null, selloutPerFoot: null, holdPeriod: null, expectedClose: null, amortization: null,
   contactName: null, contactEmail: null, confidenceNotes: null,
 };
 
@@ -131,7 +134,10 @@ const claudeOutput = () => z.object({
   capRateT12: str("T12 / trailing / going-in cap rate percent as a number."),
   capRateY1: str("Year 1 cap rate percent as a number."),
   yieldOnCost: str("Yield on cost, percent as a number, ALWAYS filled when the material allows: stabilized NOI over total all-in cost (total capitalization). Models label it yield on cost, return on cost, stabilized yield, cap rate on all-in cost, cap rate on total cost, or untrended/trended yield; take the stabilized figure if shown, else the going-in cap rate on all-in cost, else compute it from stabilized (or year 3) NOI and total capitalization and say so in confidenceNotes. If pad/outparcel sales pay down basis during the hold: stabilized NOI excluding pad income divided by (total capitalization minus total pad sale net proceeds). Development deals: stabilized NOI over total project cost."),
-  cashOnCash: str("Stabilized cash-on-cash percent as a number."),
+  cashOnCash: str("Stabilized cash-on-cash percent as a number. Empty on a condo (for-sale) development: condos have no NOI."),
+  projectedSellout: str("Condo / for-sale developments only: total projected gross sellout of all units in US dollars, digits only (sum of projected unit sale prices)."),
+  selloutPerUnit: str("Condo only: average projected sale price per unit, dollars, digits only."),
+  selloutPerFoot: str("Condo only: projected sale price per sellable square foot, dollars, digits only."),
   holdPeriod: z.enum([...DEAL_HOLD_PERIODS, ""]).describe("Hold period snapped to the closest option (a 3.2-year hold is '3 year'). Empty if not stated."),
   contactName: str("Name of the person who sent the deal."),
   contactEmail: str("Email of the person who sent the deal."),
@@ -157,7 +163,7 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     details, contactName: t(o.contactName), contactEmail: t(o.contactEmail), confidenceNotes: t(o.confidenceNotes),
     units: n(o.units), squareFeet: n(o.squareFeet), yearBuilt: t(o.yearBuilt), unitMix: t(o.unitMix), totalCapitalization: n(o.totalCapitalization),
     totalDebt: n(o.totalDebt), executionType: t(o.executionType), interestRate: t(o.interestRate), lenderType: t(o.lenderType), irr: n(o.irr),
-    capRateT12: n(o.capRateT12), capRateY1: n(o.capRateY1), yieldOnCost: n(o.yieldOnCost), cashOnCash: n(o.cashOnCash), holdPeriod: t(o.holdPeriod),
+    capRateT12: n(o.capRateT12), capRateY1: n(o.capRateY1), yieldOnCost: n(o.yieldOnCost), cashOnCash: n(o.cashOnCash), projectedSellout: n(o.projectedSellout), selloutPerUnit: n(o.selloutPerUnit), selloutPerFoot: n(o.selloutPerFoot), holdPeriod: t(o.holdPeriod),
     expectedClose: t(o.expectedClose), amortization: t(o.amortization),
   };
   // an operating building is never a development, whatever the renovation budget says

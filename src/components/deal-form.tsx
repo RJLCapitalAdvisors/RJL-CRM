@@ -40,6 +40,9 @@ type DealLike = {
   irr: number | null;
   holdPeriod: string | null;
   yieldOnCost: number | null;
+  projectedSellout: number | null;
+  selloutPerUnit: number | null;
+  selloutPerFoot: number | null;
   capRateY1: number | null;
   capRateT12: number | null;
   cashOnCash: number | null;
@@ -125,6 +128,8 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
   const [execType, setExecType] = useState(d?.executionType ?? "");
   const [strategy, setStrategy] = useState(d?.strategy ?? "");
   const isDev = strategy === "Development";
+  const isCondo = assetClass === "Condo"; // sellout instead of NOI (Jonathan, Sep 23, 2026)
+  const [sellout, setSellout] = useState<number | null>(d?.projectedSellout ?? null);
   const [ask, setAsk] = useState<number | null>(d?.requestedAmount ?? null);
   const [t12, setT12] = useState<number | null>(d?.capRateT12 ?? null);
   const [yoc, setYoc] = useState<number | null>(d?.yieldOnCost ?? null);
@@ -281,16 +286,30 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
             </Row>
           </>
         )}
-        <Row label="Yield on cost at stabilization %">
-          <NumberInput name="yieldOnCost" defaultValue={d?.yieldOnCost} onValue={setYoc} />
-        </Row>
+        {isCondo ? (
+          <>
+            <Row label="Projected sellout ($)" hint="Gross sellout of every unit, whole dollars. A condo has no NOI, so no yield on cost or cash on cash.">
+              <NumberInput name="projectedSellout" defaultValue={d?.projectedSellout} decimals={false} onValue={setSellout} />
+            </Row>
+            <Row label="Average sellout per unit ($)" hint={sellout && count ? `Sellout ÷ units is ${money(sellout / count)}; type to override.` : "Sellout ÷ units when both are known."}>
+              <NumberInput name="selloutPerUnit" defaultValue={d?.selloutPerUnit} decimals={false} />
+            </Row>
+            <Row label="Sellout price per foot ($)" hint={sellout && sf ? `Sellout ÷ square feet is ${money(sellout / sf)}; type to override.` : "Sellout ÷ sellable square feet when both are known."}>
+              <NumberInput name="selloutPerFoot" defaultValue={d?.selloutPerFoot} />
+            </Row>
+          </>
+        ) : (
+          <Row label="Yield on cost at stabilization %">
+            <NumberInput name="yieldOnCost" defaultValue={d?.yieldOnCost} onValue={setYoc} />
+          </Row>
+        )}
         {pref ? (
           <>
             <Calc label="Last dollar exposure" value={money(pm.lastDollar)} hint="requested pref / mezz amount + total debt" />
             <Calc label="Pref LTC" value={pct(pm.prefLtc)} hint="(total debt + pref amount) ÷ total capitalization" />
             <Calc label="Pref LTV" value={pct(pm.prefLtv)} hint="(total debt + pref amount) ÷ purchase price" />
-            <Calc label="Going-in yield on last dollar" value={pct(pm.goingInYieldLD)} hint="T12 NOI ÷ last dollar (T12 NOI = T12 cap rate × purchase price)" />
-            <Calc label="Stabilized yield on last dollar" value={pct(pm.stabilizedYieldLD)} hint="stabilized NOI ÷ last dollar (stabilized NOI = yield on cost × total capitalization)" />
+            {!isDev && !isCondo && <Calc label="Going-in yield on last dollar" value={pct(pm.goingInYieldLD)} hint="T12 NOI ÷ last dollar (T12 NOI = T12 cap rate × purchase price)" />}
+            {!isCondo && <Calc label="Stabilized yield on last dollar" value={pct(pm.stabilizedYieldLD)} hint="stabilized NOI ÷ last dollar (stabilized NOI = yield on cost × total capitalization)" />}
             <Calc label={`Stabilized basis on last pref dollar per ${pm.basisUnit}`} value={money(pm.basisLD)} hint={`last dollar ÷ ${pm.basisUnit === "SF" ? "square feet" : pm.basisUnit + "s"}`} />
           </>
         ) : (
@@ -301,9 +320,11 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
             <Row label="Equity multiple (x)">
               <NumberInput name="equityMultiple" defaultValue={d?.equityMultiple} />
             </Row>
-            <Row label="Stabilized cash-on-cash %">
-              <NumberInput name="cashOnCash" defaultValue={d?.cashOnCash} />
-            </Row>
+            {!isCondo && (
+              <Row label="Stabilized cash-on-cash %">
+                <NumberInput name="cashOnCash" defaultValue={d?.cashOnCash} />
+              </Row>
+            )}
           </>
         )}
         <Row label={pref ? "Pref / mezz term" : "Hold period"}>
