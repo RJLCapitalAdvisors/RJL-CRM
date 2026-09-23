@@ -20,6 +20,21 @@ export const ensureLlc = (s: string | null | undefined): string | null => {
 export const digitsOf = (p: string | null | undefined) => (p ?? "").replace(/\D/g, "");
 /** Pipeline columns for properties marked Deal. Placeholders until Jonathan and Shawn settle the stages. */
 export const AQ_DEAL_STAGES = ["New", "Underwriting", "Offer Made", "Under Contract", "Closed", "Dead"] as const;
+/**
+ * Three pipelines on the Acquisitions side (Jonathan, Sep 23, 2026): Buyers and Operators hold contacts with that role,
+ * Deals holds properties whose Call Result carries Deal. Each has its own stages, kept as data in a Setting and edited
+ * from its board; these are the placeholders until the first edit.
+ */
+export const AQ_BUYER_STAGES = ["New", "Contacted", "Qualified", "Touring", "Offer Made", "Closed", "Dead"] as const;
+export const AQ_OPERATOR_STAGES = ["New", "Contacted", "Interested", "Negotiating", "Signed", "Dead"] as const;
+export type AqPipeline = "buyers" | "operators" | "deals";
+export const AQ_PIPELINES: Record<AqPipeline, { label: string; noun: string; setting: string; defaults: readonly string[]; field: "buyerStage" | "operatorStage" | "dealStage"; role: "Buyer" | "Operator" | null }> = {
+  buyers: { label: "Buyers Pipeline", noun: "buyer", setting: "aqBuyerStages", defaults: AQ_BUYER_STAGES, field: "buyerStage", role: "Buyer" },
+  operators: { label: "Operators Pipeline", noun: "operator", setting: "aqOperatorStages", defaults: AQ_OPERATOR_STAGES, field: "operatorStage", role: "Operator" },
+  deals: { label: "Deal Pipeline", noun: "deal", setting: "aqDealStages", defaults: AQ_DEAL_STAGES, field: "dealStage", role: null },
+};
+export const AQ_PIPELINE_ORDER: AqPipeline[] = ["buyers", "operators", "deals"];
+export const isAqPipeline = (s: string | undefined): s is AqPipeline => s === "buyers" || s === "operators" || s === "deals";
 
 export const parseJsonList = (s: string | null | undefined): string[] => {
   try {
@@ -69,6 +84,7 @@ export function aqDealStageTone(stage: string | null | undefined): string {
     case "Dead":
       return "bg-red-100 text-red-800";
     case "Under Contract":
+    case "Signed":
       return "bg-ink text-white";
     default:
       return "bg-cream text-ink";

@@ -2,10 +2,11 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { setAqDealStage } from "../actions";
+import { setAqContactStage, setAqDealStage } from "../actions";
+import type { AqPipeline } from "@/lib/acquisitions";
 
 /** The stage picker on a pipeline card: pick, and the card moves. */
-export function StageSelect({ id, stage, stages }: { id: string; stage: string; stages: string[] }) {
+export function StageSelect({ pipeline = "deals", id, stage, stages }: { pipeline?: AqPipeline; id: string; stage: string; stages: string[] }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   return (
@@ -14,7 +15,8 @@ export function StageSelect({ id, stage, stages }: { id: string; stage: string; 
       disabled={pending}
       onChange={(e) =>
         start(async () => {
-          await setAqDealStage(id, e.target.value);
+          if (pipeline === "deals") await setAqDealStage(id, e.target.value);
+          else await setAqContactStage(pipeline, id, e.target.value);
           router.refresh();
         })
       }

@@ -30,7 +30,7 @@ const AQ_NAV = [
   { href: "/acquisitions/companies", label: "Companies", icon: Building2 },
   { href: "/acquisitions/properties", label: "Properties", icon: Home, except: ["/acquisitions/properties/map"] },
   { href: "/acquisitions/properties/map", label: "Map View", icon: Map },
-  { href: "/acquisitions/pipeline", label: "Deal Pipeline", icon: KanbanSquare },
+  { href: "/acquisitions/pipeline", label: "Pipeline", icon: KanbanSquare },
   { href: "/acquisitions/settings", label: "Settings", icon: Settings },
 ];
 
@@ -135,6 +135,7 @@ function Nav({ items, dealSteps = false, apartmentSteps = false, propertySteps =
           {apartmentSteps && n.href === "/israel/templates" && <IlTemplatesSubnav />}
           {apartmentSteps && n.href === "/israel/settings" && <SideSettingsSubnav base="/israel/settings" />}
           {propertySteps && n.href === "/acquisitions/settings" && <SideSettingsSubnav base="/acquisitions/settings" />}
+          {propertySteps && n.href === "/acquisitions/pipeline" && <AqPipelineSubnav />}
           {propertySteps && n.href === "/acquisitions/contacts" && (
             <Suspense fallback={null}>
               <AqContactsSubnav />
@@ -195,6 +196,26 @@ function SettingsSubnav() {
       {items.map((s) => (
         <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${s.on ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
           <s.icon className="h-3.5 w-3.5" />
+          {s.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/** Under Pipeline on the Acquisitions side, always open: the Buyers, Operators and Deals boards (Jonathan, Sep 23, 2026). */
+function AqPipelineSubnav() {
+  const pathname = usePathname();
+  const items = [
+    { href: "/acquisitions/pipeline/buyers", label: "Buyers" },
+    { href: "/acquisitions/pipeline/operators", label: "Operators" },
+    { href: "/acquisitions/pipeline/deals", label: "Deals" },
+  ];
+  return (
+    <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
+      {items.map((s) => (
+        <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${pathname.startsWith(s.href) ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
+          <KanbanSquare className="h-3.5 w-3.5" />
           {s.label}
         </Link>
       ))}

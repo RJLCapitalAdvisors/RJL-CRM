@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getAqStages } from "@/lib/acquisitions-stages";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { PageHeader, Pager, SearchForm } from "@/components/ui";
@@ -65,9 +66,11 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
     return `/acquisitions/contacts?${u}`;
   };
   const operatorsOnly = roles.length === 1 && roles[0] === "Operator";
+  const [buyerStages, operatorStages] = await Promise.all([getAqStages("buyers"), getAqStages("operators")]);
   const columns: GridColumn[] = [
     { key: "fullName", label: "Name", type: "readonly", width: 180 },
     { key: "roles", label: "Roles", type: "tokens", options: AQ_ROLES, width: 160 },
+    { key: "buyerStage", label: "Buyer Pipeline Stage", type: "select", options: buyerStages, width: 150 },
     { key: "firstName", label: "First Name", type: "text", width: 120 },
     { key: "lastName", label: "Last Name", type: "text", width: 130 },
     { key: "companyId", label: "Company", type: "select", options: companies.map((c) => ({ value: c.id, label: c.name, domain: c.domain ?? c.website?.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] ?? null })), width: 200, logoKey: "companyId" },
@@ -91,6 +94,7 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
     { key: "directoryOperatorPhone", label: "Directory Operator Phone", type: "tel", width: 160 },
     { key: "operatorTotalLocations", label: "Operator Total Locations", type: "number", width: 120 },
     { key: "operatorPipelineStatus", label: "Operator Pipeline Status", type: "select", options: AQ_OPERATOR_STATUSES, width: 160 },
+    { key: "operatorStage", label: "Operator Pipeline Stage", type: "select", options: operatorStages, width: 150 },
     { key: "notes", label: "Notes", type: "multiline", width: 240 },
     { key: "lastActivityAt", label: "Last Activity", type: "readonly", width: 120 },
   ];
@@ -128,6 +132,8 @@ export default async function AqContactsPage({ searchParams }: { searchParams: P
     directoryOperatorPhone: c.directoryOperatorPhone,
     operatorTotalLocations: c.operatorTotalLocations,
     operatorPipelineStatus: c.operatorPipelineStatus,
+    buyerStage: c.buyerStage,
+    operatorStage: c.operatorStage,
     notes: c.notes,
     lastActivityAt: iso(c.lastActivityAt),
   }));

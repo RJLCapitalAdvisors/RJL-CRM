@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { AQ_ASSET_TYPES, AQ_OPERATOR_STATUSES, AQ_ROLES, AQ_STAGES, digitsOf, ensureLlc, lines, mergeAqRoles, parseJsonList, toJsonList } from "@/lib/acquisitions";
+import { AQ_ASSET_TYPES, AQ_OPERATOR_STATUSES, AQ_ROLES, AQ_STAGES, digitsOf, ensureLlc, lines, mergeAqRoles, parseJsonList, toJsonList, AQ_PIPELINES, type AqPipeline } from "@/lib/acquisitions";
 import { US_STATES } from "@/lib/taxonomy";
 import { forgetAqGeo } from "@/lib/aq-geocode";
-import { getAqDealStages, saveAqDealStages } from "@/lib/acquisitions-stages";
+import { getAqDealStages, getAqStages, saveAqStages } from "@/lib/acquisitions-stages";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -89,6 +89,7 @@ function contactData(fd: FormData) {
   const deletePhone = result === "Wrong number" ? s(fd, "deletePhone") : null;
   const drop = (p: string | null) => (p && deletePhone && digitsOf(p) === digitsOf(deletePhone) ? null : p);
   const total = s(fd, "operatorTotalLocations");
+  const roles = parseJsonList(list(fd, "roles", AQ_ROLES));
   return {
     firstName: s(fd, "firstName"),
     lastName: s(fd, "lastName"),
@@ -109,6 +110,8 @@ function contactData(fd: FormData) {
     directoryOperatorPhone: drop(s(fd, "directoryOperatorPhone")),
     operatorTotalLocations: total && Number.isFinite(Number(total)) ? Math.round(Number(total)) : null,
     operatorPipelineStatus: (AQ_OPERATOR_STATUSES as readonly string[]).includes(s(fd, "operatorPipelineStatus") ?? "") ? s(fd, "operatorPipelineStatus") : null,
+    ...(fd.has("buyerStage") || !roles.includes("Buyer") ? { buyerStage: roles.includes("Buyer") ? s(fd, "buyerStage") : null } : {}),
+    ...(fd.has("operatorStage") || !roles.includes("Operator") ? { operatorStage: roles.includes("Operator") ? s(fd, "operatorStage") : null } : {}),
     lastCallDate: dateOf(fd, "lastCallDate") ?? (result ? new Date() : null),
     callResult: result,
     callBackAt: callBack,
@@ -199,54 +202,72 @@ export async function setAqDealStage(id: string, stage: string) {
   revalidatePath(`/acquisitions/properties/${id}`);
   touchAll();
 }
-// ---------- pipeline stages (data: Setting aqDealStages) ----------
+/** A buyer or operator moves to another column of its pipeline; the role goes on if it was missing (Sep 23, 2026). */
+export async function setAqContactStage(pipeline: "buyers" | "operators", id: string, stage: string) {
+  if (!(await getAqStages(pipeline)).includes(stage)) return;
+  const def = AQ_PIPELINES[pipeline];
+  const cur = await prisma.aqContact.findUnique({ where: { id }, select: { roles: true } });
+  const roles = parseJsonList(cur?.roles);
+  await prisma.aqContact.update({ where: { id }, data: { [def.field]: stage, roles: JSON.stringify(def.role && !roles.includes(def.role) ? [...roles, def.role] : roles) } });
+  revalidatePath(`/acquisitions/contacts/${id}`);
+  touchAll();
+}
+// ---------- pipeline stages (data: Setting aqBuyerStages, aqOperatorStages, aqDealStages) ----------
 type StageResult = { ok: true } | { ok: false; reason: string };
 const stagesChanged = () => {
-  revalidatePath("/acquisitions/pipeline");
+  revalidatePath("/acquisitions/pipeline", "layout");
   touchAll();
 };
-export async function addAqDealStage(name: string): Promise<StageResult> {
+/** How many things sit in a stage: deals are properties carrying Deal, buyers and operators are contacts with the role. */
+async function inStage(pipeline: AqPipeline, name: string) {
+  if (pipeline === "deals") return prisma.aqProperty.count({ where: { dealStage: name, stages: { contains: '"Deal"' } } });
+  const def = AQ_PIPELINES[pipeline];
+  return prisma.aqContact.count({ where: { [def.field]: name, roles: { contains: `"${def.role}"` } } });
+}
+export async function addAqStage(pipeline: AqPipeline, name: string): Promise<StageResult> {
   const clean = name.trim();
   if (!clean) return { ok: false, reason: "Give the stage a name." };
-  const cur = await getAqDealStages();
+  const cur = await getAqStages(pipeline);
   if (cur.some((x) => x.toLowerCase() === clean.toLowerCase())) return { ok: false, reason: "There is already a stage called " + clean + "." };
-  await saveAqDealStages([...cur, clean]);
+  await saveAqStages(pipeline, [...cur, clean]);
   stagesChanged();
   return { ok: true };
 }
-/** Rename a stage; every deal sitting in it moves with the name. */
-export async function renameAqDealStage(from: string, to: string): Promise<StageResult> {
+/** Rename a stage; everything sitting in it moves with the name. */
+export async function renameAqStage(pipeline: AqPipeline, from: string, to: string): Promise<StageResult> {
   const clean = to.trim();
   if (!clean) return { ok: false, reason: "Give the stage a name." };
-  const cur = await getAqDealStages();
+  const cur = await getAqStages(pipeline);
   if (!cur.includes(from)) return { ok: false, reason: "That stage is gone; reload the page." };
   if (clean !== from && cur.some((x) => x.toLowerCase() === clean.toLowerCase())) return { ok: false, reason: "There is already a stage called " + clean + "." };
   if (clean === from) return { ok: true };
-  await saveAqDealStages(cur.map((x) => (x === from ? clean : x)));
-  await prisma.aqProperty.updateMany({ where: { dealStage: from }, data: { dealStage: clean } });
+  await saveAqStages(pipeline, cur.map((x) => (x === from ? clean : x)));
+  if (pipeline === "deals") await prisma.aqProperty.updateMany({ where: { dealStage: from }, data: { dealStage: clean } });
+  else await prisma.aqContact.updateMany({ where: { [AQ_PIPELINES[pipeline].field]: from }, data: { [AQ_PIPELINES[pipeline].field]: clean } });
   stagesChanged();
   return { ok: true };
 }
 /** Move a stage one column left (-1) or right (+1). */
-export async function moveAqDealStage(name: string, dir: -1 | 1): Promise<StageResult> {
-  const cur = await getAqDealStages();
+export async function moveAqStage(pipeline: AqPipeline, name: string, dir: -1 | 1): Promise<StageResult> {
+  const cur = await getAqStages(pipeline);
   const i = cur.indexOf(name);
   const j = i + dir;
   if (i < 0 || j < 0 || j >= cur.length) return { ok: true };
   const next = [...cur];
   [next[i], next[j]] = [next[j], next[i]];
-  await saveAqDealStages(next);
+  await saveAqStages(pipeline, next);
   stagesChanged();
   return { ok: true };
 }
-/** Remove an empty stage. A stage with deals in it stays until they are moved. */
-export async function deleteAqDealStage(name: string): Promise<StageResult> {
-  const cur = await getAqDealStages();
+/** Remove an empty stage. A stage with cards in it stays until they are moved. */
+export async function deleteAqStage(pipeline: AqPipeline, name: string): Promise<StageResult> {
+  const cur = await getAqStages(pipeline);
   if (!cur.includes(name)) return { ok: true };
   if (cur.length === 1) return { ok: false, reason: "The pipeline needs at least one stage." };
-  const inIt = await prisma.aqProperty.count({ where: { dealStage: name, stages: { contains: '"Deal"' } } });
-  if (inIt) return { ok: false, reason: inIt + (inIt === 1 ? " deal is" : " deals are") + " in " + name + ". Move them first." };
-  await saveAqDealStages(cur.filter((x) => x !== name));
+  const n = await inStage(pipeline, name);
+  const noun = AQ_PIPELINES[pipeline].noun;
+  if (n) return { ok: false, reason: n + (n === 1 ? ` ${noun} is` : ` ${noun}s are`) + " in " + name + ". Move them first." };
+  await saveAqStages(pipeline, cur.filter((x) => x !== name));
   stagesChanged();
   return { ok: true };
 }
@@ -258,9 +279,9 @@ const PROPERTY_CELLS: Record<string, "text" | "state" | "assetType" | "number" |
   deal: "deal", dealStage: "dealStage",
 };
 const COMPANY_CELLS: Record<string, "text" | "state" | "roles" | "name"> = { name: "name", website: "text", phone: "text", city: "text", state: "state", notes: "text", roles: "roles" };
-const CONTACT_CELLS: Record<string, "text" | "email" | "roles" | "companyId" | "lines" | "int" | "date" | "callResult" | "operatorStatus"> = {
+const CONTACT_CELLS: Record<string, "text" | "email" | "roles" | "companyId" | "lines" | "int" | "date" | "callResult" | "operatorStatus" | "stage"> = {
   firstName: "text", lastName: "text", email: "email", emails: "lines", phone: "text", secondaryPhone: "text", otherPhones: "lines", mailingAddress: "text", notes: "text", roles: "roles", companyId: "companyId",
-  operatorBrandName: "text", website: "text", operatorEntityName: "text", directoryOperatorName: "text", storePhone: "text", directoryOperatorPhone: "text", operatorTotalLocations: "int", operatorPipelineStatus: "operatorStatus",
+  operatorBrandName: "text", website: "text", operatorEntityName: "text", directoryOperatorName: "text", storePhone: "text", directoryOperatorPhone: "text", operatorTotalLocations: "int", operatorPipelineStatus: "operatorStatus", buyerStage: "stage", operatorStage: "stage",
   lastCallDate: "date", callResult: "callResult", callBackAt: "date", followUpAt: "date",
 };
 const numOf = (v: string | null) => {
@@ -363,6 +384,15 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
     else if (t === "int") {
       const v = numOf(text);
       data[key] = v == null ? null : Math.round(v);
+    } else if (t === "stage") {
+      const pipeline = key === "buyerStage" ? "buyers" : "operators";
+      if (text && !(await getAqStages(pipeline)).includes(text)) return { ok: false, reason: "Pick a stage from the list." };
+      if (text) {
+        await setAqContactStage(pipeline, id, text);
+        const after = await prisma.aqContact.findUnique({ where: { id }, select: { roles: true } });
+        return { ok: true, row: { [key]: text, roles: after?.roles ?? "[]" } };
+      }
+      data[key] = null;
     } else if (t === "operatorStatus") {
       if (text && !(AQ_OPERATOR_STATUSES as readonly string[]).includes(text)) return { ok: false, reason: `Operator Pipeline Status is one of ${AQ_OPERATOR_STATUSES.join(", ")}.` };
       data.operatorPipelineStatus = text;

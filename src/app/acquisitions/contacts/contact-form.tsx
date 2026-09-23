@@ -5,7 +5,7 @@ import { AutoSaveForm } from "@/components/autosave-form";
 import { Group, Row, Select, Text } from "@/components/form-rows";
 import { SelectField } from "@/components/select-field";
 import { BulletTextarea } from "@/components/bullet-textarea";
-import { AQ_OPERATOR_STATUSES, AQ_ROLES, AQ_STAGES, aqRoleColor, lines, parseJsonList } from "@/lib/acquisitions";
+import { AQ_BUYER_STAGES, AQ_OPERATOR_STAGES, AQ_OPERATOR_STATUSES, AQ_ROLES, AQ_STAGES, aqRoleColor, lines, parseJsonList } from "@/lib/acquisitions";
 
 type Ct = Partial<{
   firstName: string | null;
@@ -27,6 +27,8 @@ type Ct = Partial<{
   directoryOperatorPhone: string | null;
   operatorTotalLocations: number | null;
   operatorPipelineStatus: string | null;
+  buyerStage: string | null;
+  operatorStage: string | null;
   lastCallDate: Date | string | null;
   callResult: string | null;
   callBackAt: Date | string | null;
@@ -42,10 +44,11 @@ const maps = (q: string | null | undefined) => (q?.trim() ? `https://www.google.
  * asks for the target date that feeds the dashboard's Call Me Back window and the Follow Up Date; Wrong number asks
  * which number to drop), Follow Up Date. Call Notes and Transcripts are cards under this on the contact page.
  */
-export function AqContactForm({ c = {}, companies, propertyId, action, autosave = false, submitLabel = "Create contact" }: { c?: Ct; companies: { id: string; name: string }[]; propertyId?: string | null; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
+export function AqContactForm({ c = {}, companies, propertyId, action, autosave = false, submitLabel = "Create contact", buyerStages = AQ_BUYER_STAGES, operatorStages = AQ_OPERATOR_STAGES }: { c?: Ct; companies: { id: string; name: string }[]; propertyId?: string | null; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string; buyerStages?: readonly string[]; operatorStages?: readonly string[] }) {
   const [roles, setRoles] = useState<string[]>(parseJsonList(c.roles));
   const toggle = (r: string) => setRoles((cur) => (cur.includes(r) ? cur.filter((x) => x !== r) : [...cur, r]));
   const operator = roles.includes("Operator");
+  const buyer = roles.includes("Buyer");
   const [phones, setPhones] = useState({ primary: c.phone ?? "", secondary: c.secondaryPhone ?? "", store: c.storePhone ?? "", directory: c.directoryOperatorPhone ?? "" });
   const [others, setOthers] = useState(c.otherPhones ?? "");
   const [result, setResult] = useState(c.callResult ?? "");
@@ -71,6 +74,11 @@ export function AqContactForm({ c = {}, companies, propertyId, action, autosave 
             })}
           </div>
         </Row>
+        {buyer && (
+          <Row label="Buyer Pipeline Stage" hint="The column on the Buyers pipeline.">
+            <Select name="buyerStage" value={buyerStages.includes(c.buyerStage ?? "") ? c.buyerStage! : buyerStages[0]} options={buyerStages} noBlank />
+          </Row>
+        )}
       </Group>
       <Group title="Contact">
         <Row label="First name">
@@ -142,6 +150,9 @@ export function AqContactForm({ c = {}, companies, propertyId, action, autosave 
           </Row>
           <Row label="Operator Pipeline Status">
             <Select name="operatorPipelineStatus" value={(AQ_OPERATOR_STATUSES as readonly string[]).includes(c.operatorPipelineStatus ?? "") ? c.operatorPipelineStatus! : ""} options={AQ_OPERATOR_STATUSES} blank="—" />
+          </Row>
+          <Row label="Operator Pipeline Stage" hint="The column on the Operators pipeline.">
+            <Select name="operatorStage" value={operatorStages.includes(c.operatorStage ?? "") ? c.operatorStage! : operatorStages[0]} options={operatorStages} noBlank />
           </Row>
         </Group>
       )}

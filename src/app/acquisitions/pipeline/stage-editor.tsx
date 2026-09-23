@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
-import { aqDealStageTone } from "@/lib/acquisitions";
-import { addAqDealStage, deleteAqDealStage, moveAqDealStage, renameAqDealStage } from "../actions";
+import { aqDealStageTone, type AqPipeline } from "@/lib/acquisitions";
+import { addAqStage, deleteAqStage, moveAqStage, renameAqStage } from "../actions";
 
 type R = { ok: true } | { ok: false; reason: string };
 
@@ -12,7 +12,7 @@ type R = { ok: true } | { ok: false; reason: string };
  * Edit stages: a panel under the pipeline header where a stage is added, renamed, moved left or right (Dead to the
  * front, say) or removed once empty. Every change saves at once and the columns redraw.
  */
-export function StageEditor({ stages, counts }: { stages: string[]; counts: Record<string, number> }) {
+export function StageEditor({ pipeline = "deals", noun = "deal", stages, counts }: { pipeline?: AqPipeline; noun?: string; stages: string[]; counts: Record<string, number> }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +53,7 @@ export function StageEditor({ stages, counts }: { stages: string[]; counts: Reco
                 className="flex flex-1 items-center gap-2"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  run(() => renameAqDealStage(st, draft));
+                  run(() => renameAqStage(pipeline, st, draft));
                 }}
               >
                 <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} className="input flex-1 py-1" />
@@ -68,18 +68,18 @@ export function StageEditor({ stages, counts }: { stages: string[]; counts: Reco
               <>
                 <span className={`chip text-[11px] ${aqDealStageTone(st)}`}>{st}</span>
                 <span className="flex-1 text-xs text-muted">
-                  {counts[st] ?? 0} deal{(counts[st] ?? 0) === 1 ? "" : "s"}
+                  {counts[st] ?? 0} {noun}{(counts[st] ?? 0) === 1 ? "" : "s"}
                 </span>
                 <button type="button" title="Rename" disabled={pending} onClick={() => { setEditing(st); setDraft(st); }} className="btn-ghost p-1">
                   <Pencil size={14} />
                 </button>
-                <button type="button" title="Move left" disabled={pending || i === 0} onClick={() => run(() => moveAqDealStage(st, -1))} className="btn-ghost p-1 disabled:opacity-30">
+                <button type="button" title="Move left" disabled={pending || i === 0} onClick={() => run(() => moveAqStage(pipeline, st, -1))} className="btn-ghost p-1 disabled:opacity-30">
                   <ChevronLeft size={14} />
                 </button>
-                <button type="button" title="Move right" disabled={pending || i === stages.length - 1} onClick={() => run(() => moveAqDealStage(st, 1))} className="btn-ghost p-1 disabled:opacity-30">
+                <button type="button" title="Move right" disabled={pending || i === stages.length - 1} onClick={() => run(() => moveAqStage(pipeline, st, 1))} className="btn-ghost p-1 disabled:opacity-30">
                   <ChevronRight size={14} />
                 </button>
-                <button type="button" title={(counts[st] ?? 0) ? "Move its deals out first" : "Remove this stage"} disabled={pending || Boolean(counts[st])} onClick={() => run(() => deleteAqDealStage(st))} className="btn-ghost p-1 text-red-700 disabled:opacity-30">
+                <button type="button" title={(counts[st] ?? 0) ? `Move its ${noun}s out first` : "Remove this stage"} disabled={pending || Boolean(counts[st])} onClick={() => run(() => deleteAqStage(pipeline, st))} className="btn-ghost p-1 text-red-700 disabled:opacity-30">
                   <Trash2 size={14} />
                 </button>
               </>
@@ -92,7 +92,7 @@ export function StageEditor({ stages, counts }: { stages: string[]; counts: Reco
         onSubmit={(e) => {
           e.preventDefault();
           run(async () => {
-            const r = await addAqDealStage(adding);
+            const r = await addAqStage(pipeline, adding);
             if (r.ok) setAdding("");
             return r;
           });
@@ -104,7 +104,7 @@ export function StageEditor({ stages, counts }: { stages: string[]; counts: Reco
         </button>
       </form>
       {error && <div className="mt-2 text-xs text-red-700">{error}</div>}
-      <div className="mt-2 text-[11px] text-muted">Renaming a stage carries its deals with it. A stage can be removed once it is empty. The order here is the column order.</div>
+      <div className="mt-2 text-[11px] text-muted">Renaming a stage carries its {noun}s with it. A stage can be removed once it is empty. The order here is the column order.</div>
     </div>
   );
 }

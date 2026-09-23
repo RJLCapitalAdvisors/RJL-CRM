@@ -1,15 +1,14 @@
 import { prisma } from "@/lib/db";
-import { AQ_DEAL_STAGES } from "@/lib/acquisitions";
-
-const KEY = "aqDealStages";
+import { AQ_PIPELINES, type AqPipeline } from "@/lib/acquisitions";
 
 /**
- * The Deal Pipeline's stages are data (Sep 18, 2026): Jonathan and Shawn add, rename and reorder them from the
- * pipeline page. Stored as a JSON list in Setting `aqDealStages`; the defaults in AQ_DEAL_STAGES apply until the
- * first edit. Order is the column order left to right.
+ * A pipeline's stages are data (Sep 18, 2026; three pipelines since Sep 23): Jonathan and Shawn add, rename and reorder
+ * them from the board (Edit stages). Stored as a JSON list in the pipeline's Setting (aqBuyerStages, aqOperatorStages,
+ * aqDealStages); the defaults in AQ_PIPELINES apply until the first edit. Order is the column order left to right.
  */
-export async function getAqDealStages(): Promise<string[]> {
-  const row = await prisma.setting.findUnique({ where: { key: KEY } }).catch(() => null);
+export async function getAqStages(pipeline: AqPipeline): Promise<string[]> {
+  const def = AQ_PIPELINES[pipeline];
+  const row = await prisma.setting.findUnique({ where: { key: def.setting } }).catch(() => null);
   if (row?.value) {
     try {
       const v = JSON.parse(row.value) as unknown;
@@ -18,12 +17,16 @@ export async function getAqDealStages(): Promise<string[]> {
       /* fall through to the defaults */
     }
   }
-  return [...AQ_DEAL_STAGES];
+  return [...def.defaults];
 }
 
-export async function saveAqDealStages(list: string[]) {
+export async function saveAqStages(pipeline: AqPipeline, list: string[]) {
+  const key = AQ_PIPELINES[pipeline].setting;
   const clean = list.map((x) => x.trim()).filter((x, i, a) => x && a.indexOf(x) === i);
   if (!clean.length) throw new Error("The pipeline needs at least one stage.");
-  await prisma.setting.upsert({ where: { key: KEY }, create: { key: KEY, value: JSON.stringify(clean) }, update: { value: JSON.stringify(clean) } });
+  await prisma.setting.upsert({ where: { key }, create: { key, value: JSON.stringify(clean) }, update: { value: JSON.stringify(clean) } });
   return clean;
 }
+
+export const getAqDealStages = () => getAqStages("deals");
+export const saveAqDealStages = (list: string[]) => saveAqStages("deals", list);
