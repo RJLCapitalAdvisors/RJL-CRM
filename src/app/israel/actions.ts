@@ -354,7 +354,7 @@ async function projectData(fd: FormData) {
     parkingSpaces: i(fd, "parkingSpaces"),
     stories: i(fd, "stories"),
     completionDate: monthFromForm(s(fd, "completionDate"), s(fd, "completionDateOrig")),
-    ...(fd.has("amenitiesSet") ? (() => { const list = fd.getAll("amenities").map(String).filter((x) => (IL_AMENITIES as readonly string[]).includes(x)); return { amenities: JSON.stringify(list), ...amenityFlags(list) }; })() : { doorman: s(fd, "doorman") }),
+    ...(fd.has("amenitiesSet") ? (() => { const ticked = fd.getAll("amenities").map(String); const yes = IL_AMENITIES.filter((x) => ticked.includes(x) || fd.get(`amenity:${x}`) === "Yes"); const no = IL_AMENITIES.filter((x) => fd.get(`amenity:${x}`) === "No" && !yes.includes(x)); return { amenities: JSON.stringify(yes), amenitiesNo: JSON.stringify(no), ...amenityFlags(yes, no) }; })() : { doorman: s(fd, "doorman") }),
     ...(fd.has("amenitiesSet") ? {} : { pool: s(fd, "pool") }),
     ...(fd.has("amenitiesSet") ? {} : { gym: s(fd, "gym") }),
     description: s(fd, "description"),

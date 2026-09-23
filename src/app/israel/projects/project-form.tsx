@@ -8,7 +8,7 @@ import { IL_CITIES, toMonthInput, IL_AMENITIES, parseJsonList, developerIdList }
 
 /** 1 to 100, so a story count is picked, never mistyped (Jonathan, Sep 17). */
 const STORIES = Array.from({ length: 100 }, (_, i) => String(i + 1));
-type Proj = Partial<{ developerIds: string | null; amenities: string | null; gym: string | null; doorman: string | null; pool: string | null; name: string; developerId: string | null; street: string | null; city: string | null; neighborhood: string | null; totalUnits: number | null; parkingSpaces: number | null; stories: number | null; completionDate: string | null; description: string | null }>;
+type Proj = Partial<{ developerIds: string | null; amenities: string | null; amenitiesNo: string | null; gym: string | null; doorman: string | null; pool: string | null; name: string; developerId: string | null; street: string | null; city: string | null; neighborhood: string | null; totalUnits: number | null; parkingSpaces: number | null; stories: number | null; completionDate: string | null; description: string | null }>;
 
 /** A whole project: the building or development, not one apartment in it. */
 export function IlProjectForm({ p = {}, developers, action, autosave = false, submitLabel = "Create project" }: { p?: Proj; developers: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
@@ -43,9 +43,20 @@ export function IlProjectForm({ p = {}, developers, action, autosave = false, su
         <Row label="Total stories">
           <Select name="stories" value={p.stories != null ? String(p.stories) : ""} options={STORIES} />
         </Row>
-        <Row label="Amenities" hint="Tick what the project offers its residents. A private pool on a unit is asked on the unit.">
+        <Row label="Amenities" hint="Yes when the project offers it, No when it does not. An amenity left blank is still asked of the agent. A private pool on a unit is asked on the unit.">
           <input type="hidden" name="amenitiesSet" value="1" />
-          <MultiSelect name="amenities" options={IL_AMENITIES} selected={parseJsonList(p.amenities)} placeholder="None yet" />
+          <div className="grid gap-x-6 gap-y-1 py-1 sm:grid-cols-2">
+            {IL_AMENITIES.map((a) => (
+              <label key={a} className="flex items-center justify-between gap-2 text-sm">
+                <span>{a}</span>
+                <select name={`amenity:${a}`} defaultValue={parseJsonList(p.amenities).includes(a) ? "Yes" : parseJsonList(p.amenitiesNo).includes(a) ? "No" : ""} className="input w-24 py-1 text-xs">
+                  <option value="">—</option>
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </label>
+            ))}
+          </div>
         </Row>
         <Row label="Year of construction / expected date of delivery" hint="Pick the month and year; the day does not matter.">
           <input type="month" name="completionDate" defaultValue={toMonthInput(p.completionDate)} className="input" />

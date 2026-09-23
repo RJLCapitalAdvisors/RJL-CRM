@@ -79,7 +79,16 @@ export const PRICE_PER_METER_NOTE = "asking price ÷ (internal m² + ⅓ of the 
 export const IL_SUKKA = ["Yes", "Partial", "No"] as const;
 /** What a project offers its residents, ticked as a set (Jonathan, Sep 23, 2026); doorman, pool and gym stay as Yes/No fields derived from it. */
 export const IL_AMENITIES = ["Doorman", "Pool", "Gym", "Jacuzzi", "Sauna", "Yoga/Pilates Studio", "Co-working spaces"] as const;
-export const amenityFlags = (list: readonly string[]) => ({ doorman: list.includes("Doorman") ? "Yes" : "No", pool: list.includes("Pool") ? "Yes" : "No", gym: list.includes("Gym") ? "Yes" : "No" });
+/** The Yes/No fields kept in step with the two lists: Yes when offered, No when confirmed absent, blank when nobody has said (Sep 23, 2026). */
+export const amenityFlags = (yes: readonly string[], no: readonly string[] = []) => {
+  const flag = (a: string) => (yes.includes(a) ? "Yes" : no.includes(a) ? "No" : null);
+  return { doorman: flag("Doorman"), pool: flag("Pool"), gym: flag("Gym") };
+};
+/** Amenities nobody has answered yet on a project: not ticked as offered, not marked absent. Each is asked on its own ("Gym (yes or no)"). */
+export const amenitiesUnanswered = (row: { amenities?: string | null; amenitiesNo?: string | null }): string[] => {
+  const yes = parseJsonList(row.amenities), no = parseJsonList(row.amenitiesNo);
+  return IL_AMENITIES.filter((a) => !yes.includes(a) && !no.includes(a));
+};
 export const IL_HOUSE_TYPES = ["Villa", "Semi-attached", "Cottage"] as const;
 export const IL_APARTMENT_TYPES = ["Regular apartment", "Garden apartment", "Penthouse"] as const;
 export const isGardenApartment = (t: string | null | undefined) => t === "Garden apartment";
@@ -281,7 +290,8 @@ export function houseMissing(h: Record<string, unknown>): string[] {
   return [...base, ...extra];
 }
 export function projectMissing(p: Record<string, unknown>): string[] {
-  return IL_REQUIRED.projects.filter(({ key }) => blankOn(p, key)).map((f) => f.label);
+  // the Amenities line asks each amenity nobody has answered, one by one (Jonathan, Sep 23, 2026: ticking five does not mean the other two are absent)
+  return IL_REQUIRED.projects.flatMap(({ key, label }) => (key === "amenities" ? amenitiesUnanswered(p as { amenities?: string | null; amenitiesNo?: string | null }).map((a) => `${a} (yes or no)`) : blankOn(p, key) ? [label] : []));
 }
 
 /** The year in "2016" or "06/2027" or "Q2 2028"; null when there is none. */

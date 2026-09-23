@@ -47,10 +47,10 @@ export function FloorplanWindow({ apartmentId, kind = "apartments", endpoint, ti
         if (f) upload(f);
       }}
     >
-      <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <div className="text-sm font-semibold">{title}</div>
-        <div className="flex items-center gap-2 text-xs">
-          {name && <span className="max-w-[240px] truncate text-muted">{name}</span>}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-2">
+        <div className="shrink-0 text-sm font-semibold">{title}</div>
+        {name && <span className="min-w-0 flex-1 truncate text-xs text-muted" title={name}>{name}</span>}
+        <div className="ml-auto flex shrink-0 items-center gap-2 text-xs">
           {has && (
             <a href={src} target="_blank" className="btn-secondary px-2 py-1 text-xs">
               Open
