@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { graph, graphConfigured, realmFor } from "@/lib/graph";
 import { attachmentToText, emailHtmlToText } from "@/lib/attachments";
-import { IL_MACHSAN_LOCATIONS, IL_PARKING, IL_REQUIRED, isCustomKey, nis, parseExtra, pricePerMeter, sqm, reconcileMirpasot } from "@/lib/israel";
+import { IL_MACHSAN_LOCATIONS, IL_PARKING, IL_REQUIRED, isCustomKey, nis, parseExtra, pricePerMeter, sqm, reconcileMirpasot, hasHouseNumber } from "@/lib/israel";
 import { loadIlRequired } from "@/lib/required-items";
 import { stripDashes } from "@/lib/style";
 
@@ -291,6 +291,7 @@ const EXTRACT_KEY: Record<string, keyof ExtractedApartment> = { totalFloors: "bu
 function blankExtracted(a: ExtractedApartment, key: string, hasDeveloper: boolean, hasPlan = false): boolean {
   if (isCustomKey(key)) return !(a.extra?.[key] ?? "").trim();
   if (key === "floorplanName") return !hasPlan;
+  if (key === "street") return !hasHouseNumber(a.street); // mappable or missing
   if (a.machsan !== "Yes" && (key === "machsanSqm" || key === "machsanLocation")) return false;
   if (key === "machsan" && (a.machsan || a.machsanSqm != null || a.machsanLocation)) return false;
   if (key === "developerId") return !hasDeveloper;

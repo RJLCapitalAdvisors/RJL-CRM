@@ -165,7 +165,7 @@ export const IL_CATEGORIES: { key: IlCategory; label: string }[] = [
 export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
   projects: [
     { key: "developerId", label: "Developer (the yazam building or selling it)" },
-    { key: "street", label: "Address (street and number)" },
+    { key: "street", label: "Address (street and house number, enough to find on Google Maps)" },
     { key: "city", label: "City" },
     { key: "neighborhood", label: "Neighborhood" },
     { key: "totalUnits", label: "Total units in the project" },
@@ -178,7 +178,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
   apartments: [
     { key: "developerId", label: "Developer (the yazam building or selling it)" },
     { key: "apartmentType", label: "Apartment type (regular, garden or penthouse)" },
-    { key: "street", label: "Building address (street and number)" },
+    { key: "street", label: "Building address (street and house number, enough to find on Google Maps)" },
     { key: "city", label: "City" },
     { key: "neighborhood", label: "Neighborhood" },
     { key: "rooms", label: "Number of rooms (e.g. 3.5)" },
@@ -204,7 +204,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
   ],
   houses: [
     { key: "houseType", label: "House type (villa, semi-attached or cottage)" },
-    { key: "street", label: "Address (street and number)" },
+    { key: "street", label: "Address (street and house number, enough to find on Google Maps)" },
     { key: "city", label: "City" },
     { key: "neighborhood", label: "Neighborhood" },
     { key: "rooms", label: "Number of rooms (e.g. 5.5)" },
@@ -234,6 +234,8 @@ export function setIlRequired(lists: Partial<Record<IlCategory, IlRequiredItem[]
   for (const c of IL_CATEGORIES) if (lists[c.key]) IL_REQUIRED[c.key].splice(0, IL_REQUIRED[c.key].length, ...lists[c.key]!);
 }
 export const isCustomKey = (k: string) => k.startsWith("x_");
+/** An address is complete only when Google Maps could find it: a street with a house number (Jonathan, Sep 23, 2026). "Eliezer Yafe St." alone is not. */
+export const hasHouseNumber = (street: string | null | undefined) => Boolean(street && /d/.test(street));
 /**
  * The total mirpeset size is the truth (Jonathan, Sep 23, 2026): when a ticket has a stated total and several mirpasot,
  * their sizes are made to add up to it exactly. A mirpeset with no size takes the remainder (split when several have
@@ -279,6 +281,7 @@ function blankOn(row: Record<string, unknown>, key: string): boolean {
   if (row.machsan !== "Yes" && (key === "machsanSqm" || key === "machsanLocation") && !(row.machsan == null && (row.machsanSqm != null || row.machsanLocation))) return false; // size and place are asked once there is a machsan; No, or nothing said yet, asks only the yes or no
   if (row.machsan == null && key === "machsan" && (row.machsanSqm != null || row.machsanLocation)) return false; // a size or place given means there is one
   if (!(key in row)) return false; // no column of that name on this kind of ticket (the rules below cover sukka and pool)
+  if (key === "street" && typeof row[key] === "string" && !hasHouseNumber(row[key] as string)) return true; // an address counts only when it can be mapped: street and number (Jonathan, Sep 23, 2026)
   const v = row[key];
   if (v == null || v === "" || v === "[]") return true;
   if (key === "ceilingCms" && typeof v === "string") {
