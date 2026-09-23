@@ -1,0 +1,10 @@
+# Who must review what (Jonathan, Sep 23, 2026). Everything is Jonathan's, except the RJL Acquisitions side, which has
+# no owner here so Shawn's pull requests that stay inside it need no review from Jonathan (the Scope guard check keeps
+# them inside). Turn on "Require review from Code Owners" on main under Settings > Branches for this to bite.
+*                              @RJLCapitalAdvisors
+src/app/acquisitions/
+src/app/api/acquisitions/
+src/lib/acquisitions.ts
+src/lib/acquisitions-stages.ts
+src/lib/aq-map.ts
+src/lib/aq-geocode.ts

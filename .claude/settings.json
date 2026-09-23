@@ -1,0 +1,16 @@
+{
+  "$comment": "Project hooks (Jonathan, Sep 23, 2026). The scope guard only bites when the environment has CRM_SCOPE=AQ (Shawn's Acquisitions sessions): it refuses edits outside the Acquisitions side, production deploys, pushes to main and destructive database commands. See scripts/claude-scope-guard.mjs and ONBOARDING.md.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/claude-scope-guard.mjs"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+# The wall between the three CRMs (Jonathan, Sep 23, 2026): a pull request from anyone but Jonathan may change only the
+# RJL Acquisitions side (see scripts/scope-guard.mjs). Make this check required on main under Settings > Branches.
+name: Scope guard
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  acquisitions-scope:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Only the Acquisitions side may change
+        if: github.event.pull_request.user.login != 'RJLCapitalAdvisors'
+        run: node scripts/scope-guard.mjs --base origin/${{ github.base_ref }}
+      - name: Jonathan's own pull request
+        if: github.event.pull_request.user.login == 'RJLCapitalAdvisors'
+        run: echo "Jonathan's change; the whole codebase is his."
