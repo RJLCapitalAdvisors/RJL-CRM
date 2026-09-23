@@ -46,6 +46,7 @@ export default async function IlProjectsPage({ searchParams }: { searchParams: P
   const page = Math.max(1, Number(str(sp.page)) || 1);
 
   const all = await prisma.ilProject.findMany({
+    where: { pendingApproval: false }, // projects still in The Que are not in the list
     orderBy: { updatedAt: "desc" },
     select: { id: true, name: true, street: true, city: true, neighborhood: true, totalUnits: true, parkingSpaces: true, stories: true, completionDate: true, pool: true, brochureName: true, updatedAt: true, developer: { select: { id: true, name: true, domain: true, website: true } }, _count: { select: { apartments: true, houses: true } } },
   });

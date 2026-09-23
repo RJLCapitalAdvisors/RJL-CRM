@@ -350,7 +350,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     const existing = await findProject(pname, proj.city, proj.street);
     const dev = await findOrCreateCompany(proj.developerName ?? null, "Sponsor (Yazam)");
     const pdata = { name: pname, developerId: dev?.id ?? null, street: proj.street ?? null, city: proj.city ?? null, neighborhood: proj.neighborhood ?? null, totalUnits: proj.totalUnits ?? null, stories: proj.stories ?? null, parkingSpaces: proj.parkingSpaces ?? null, completionDate: proj.completionDate ?? null, pool: proj.pool ?? null, doorman: proj.doorman ?? null, gym: proj.gym ?? null, agentContactId: agent?.id ?? null, description: proj.description ? stripDashes(proj.description) : null };
-    projectRow = existing ? await prisma.ilProject.update({ where: { id: existing.id }, data: fillFrom(pdata) }) : await prisma.ilProject.create({ data: pdata });
+    projectRow = existing ? await prisma.ilProject.update({ where: { id: existing.id }, data: fillFrom(pdata) }) : await prisma.ilProject.create({ data: { ...pdata, pendingApproval: true } });
     await prisma.ilNote.create({ data: { projectId: projectRow.id, body: existing ? origin.replace(/^Created from/, "Updated from") : origin } });
     if (!existing?.brochureType) await attachBrochure(input.files, projectRow.id).catch(() => null);
     const fresh = await prisma.ilProject.findUnique({ where: { id: projectRow.id }, omit: { brochure: true } });
@@ -368,7 +368,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     if (a.kind === "house") {
       let houseProject = null as { id: string } | null;
       if (a.projectName?.trim()) {
-        houseProject = (await findProject(a.projectName.trim(), a.city)) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, completionDate: a.completionDate } }));
+        houseProject = (await findProject(a.projectName.trim(), a.city)) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, completionDate: a.completionDate, pendingApproval: true } }));
       }
       const houseData = {
           name: stripDashes(a.name) || a.street || "House",
@@ -412,7 +412,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     }
     let project = null as { id: string } | null;
     if (a.projectName?.trim()) {
-      project = (await findProject(a.projectName.trim(), a.city)) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, stories: a.buildingStories, totalUnits: a.buildingUnits, completionDate: a.completionDate } }));
+      project = (await findProject(a.projectName.trim(), a.city)) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, stories: a.buildingStories, totalUnits: a.buildingUnits, completionDate: a.completionDate, pendingApproval: true } }));
     }
     const aptData = {
         name: stripDashes(a.name) || a.street || "Apartment",
