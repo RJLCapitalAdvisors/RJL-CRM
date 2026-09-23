@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CA_TEAM } from "@/lib/access";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { templateForDeal } from "@/lib/deal-template";
 import { currentUser } from "@/lib/current-user";
 import { PageHeader } from "@/components/ui";
 import { dealFiles, syncSendDrafts, usualRecipients } from "@/lib/send-deal";
@@ -29,7 +30,8 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   ]);
   if (!deal) notFound();
   const name = deal.propertyName ?? deal.name;
-  const house = templates.find((t) => t.name.startsWith("Deal email (house")) ?? templates[0];
+  const fitting = deal ? await templateForDeal(deal).catch(() => null) : null;
+  const house = (fitting && templates.find((t) => t.id === fitting.id)) ?? templates.find((t) => t.name.startsWith("Deal email (house")) ?? templates[0];
 
   const files = await dealFiles(deal.id).catch(() => []);
   const me = await currentUser();

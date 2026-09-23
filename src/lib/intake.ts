@@ -227,6 +227,18 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
     out.capRateT12 = null;
     out.capRateY1 = null;
   }
+  // a condo (for-sale) development sells out: no NOI, so no yields or cash on cash; the per-unit and per-foot sellout follow the total (Jonathan, Sep 23, 2026)
+  if (out.assetClass === "Condo") {
+    out.yieldOnCost = null;
+    out.cashOnCash = null;
+    out.capRateT12 = null;
+    out.capRateY1 = null;
+    out.occupancy = null;
+    if (out.projectedSellout) {
+      if (out.selloutPerUnit == null && out.units) out.selloutPerUnit = Math.round(out.projectedSellout / out.units);
+      if (out.selloutPerFoot == null && out.squareFeet) out.selloutPerFoot = Math.round((out.projectedSellout / out.squareFeet) * 100) / 100;
+    }
+  }
   return out;
 }
 

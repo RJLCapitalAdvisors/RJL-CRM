@@ -5,6 +5,7 @@ import { assembleDealText, attachmentToText, emailHtmlToText } from "@/lib/attac
 import { missingFor, itemLabel } from "@/lib/checklist";
 import { loadChecklist } from "@/lib/required-items";
 import { intro, metricsHtml, subjectLine } from "@/lib/deal-copy";
+import { renderDealTemplate, templateForDeal } from "@/lib/deal-template";
 import { processIntake } from "@/app/intake/actions";
 import { applyForwarderInstructions } from "@/lib/forwarder-notes";
 import { detectMultipleDeals, extractDealFacts, matchExistingDeal, mergeIntoDeal, recordDealEmail, recordDealFiles, recordLinkFiles, type MergeResult } from "@/lib/deal-knowledge";
@@ -50,10 +51,13 @@ async function readAttachments(messageId: string): Promise<{ names: string[]; te
   return { names, texts };
 }
 
-function replyHtml(deal: Record<string, unknown>, dealUrl: string, linkNotes: string[] = []): string {
+async function replyHtml(deal: Record<string, unknown>, dealUrl: string, linkNotes: string[] = []): Promise<string> {
   const missing = missingFor(deal as never);
   const strategy = (deal.strategy as string | null) ?? null;
   const font = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
+  // the deal as the fitting template would send it (Sep 23, 2026: a condo pref development reads from its own template); the house copy when none fits
+  const tpl = await templateForDeal(deal as never).catch(() => null);
+  const drafted = tpl ? renderDealTemplate(tpl, deal) : null;
   const list = missing.length
     ? `<ol style="margin:4pt 0 0 18pt;${font}">${missing.map((it) => `<li>${itemLabel(it, strategy)}</li>`).join("")}</ol>`
     : `<p style="${font}">Nothing. The ${strategy === "Development" ? "development" : "acquisitions"} checklist is complete.</p>`;
@@ -61,9 +65,9 @@ function replyHtml(deal: Record<string, unknown>, dealUrl: string, linkNotes: st
 <p>Deal ticket created: <a href="${dealUrl}">${deal.propertyName ?? deal.name}</a> (Deal Received).</p>
 <p><b>How it would read to investors</b></p>
 <div style="border-left:3px solid #b7cfe8;padding:6pt 10pt;margin:0 0 12pt 0;">
-<p style="margin:0 0 8pt 0;"><b>Subject:</b> ${subjectLine(deal)}</p>
+${drafted ? `<p style="margin:0 0 8pt 0;"><b>Subject:</b> ${drafted.subject}</p>${drafted.html}<p style="margin:8pt 0 0 0;color:#6b716e;font-size:9pt;">Written with the template "${tpl!.name}". A blank is a placeholder the ticket could not fill yet.</p>` : `<p style="margin:0 0 8pt 0;"><b>Subject:</b> ${subjectLine(deal)}</p>
 <p style="margin:0 0 8pt 0;white-space:pre-wrap;">${intro(deal)}</p>
-${metricsHtml(deal)}
+${metricsHtml(deal)}`}
 </div>
 <p><b>Still missing${strategy ? ` (${strategy.toLowerCase()} checklist)` : ""}</b></p>
 ${list}
@@ -187,7 +191,7 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     const still = missingFor(deal).map((it) => itemLabel(it, deal.strategy));
     let replied = false;
     try {
-      await replyOnThread(msg, wasMentioned ? replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes) : followUpReplyHtml(deal.propertyName ?? deal.name, `${base}/deals/${deal.id}`, files, facts, filled, still, cloud.notes, merged), fileSources);
+      await replyOnThread(msg, wasMentioned ? await replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes) : followUpReplyHtml(deal.propertyName ?? deal.name, `${base}/deals/${deal.id}`, files, facts, filled, still, cloud.notes, merged), fileSources);
       replied = true;
     } catch (e) {
       console.error("deals@ follow-up reply failed", e);
@@ -270,7 +274,7 @@ ${text.slice(0, 2000)}` });
           perProperty.push(`<p style="margin:8pt 0 2pt 0;${F}"><b><a href="${base}/deals/${dl.id}">${dl.propertyName ?? dl.name}</a></b></p>${still.length ? `<ol style="margin:0 0 6pt 18pt;${F}">${still.map((x) => `<li>${x}</li>`).join("")}</ol>` : `<p style="margin:0 0 6pt 0;${F}">Checklist complete.</p>`}`);
         }
         const head = `<p style="margin:0 0 12pt 0;${F}">This email carried ${created.length} properties, taken out together as one portfolio: <a href="${base}/deals/${portfolio.id}"><b>${portfolio.name}</b></a>. Each property keeps its own ticket underneath for its data and files; the portfolio is the deal that gets sent and tracked.</p>`;
-        const body = replyHtml(parent as unknown as Record<string, unknown>, `${base}/deals/${portfolio.id}`, cloud.notes).replace(/<p><b>Still missing[\s\S]*$/, `<p><b>Still missing, by property</b></p>${perProperty.join("")}<p style="color:#6b716e;font-size:9pt;">Reply to the sponsor for the missing items; answers that come back to this mailbox update the property tickets and the portfolio. Edit anything on the tickets in the CRM.</p></div>`);
+        const body = (await replyHtml(parent as unknown as Record<string, unknown>, `${base}/deals/${portfolio.id}`, cloud.notes)).replace(/<p><b>Still missing[\s\S]*$/, `<p><b>Still missing, by property</b></p>${perProperty.join("")}<p style="color:#6b716e;font-size:9pt;">Reply to the sponsor for the missing items; answers that come back to this mailbox update the property tickets and the portfolio. Edit anything on the tickets in the CRM.</p></div>`);
         await replyOnThread(msg, `<div style="${F}">${head}${body}`, fileSources);
         replied = true;
       } catch (e) {
@@ -282,7 +286,7 @@ ${text.slice(0, 2000)}` });
         const sections: string[] = [];
         for (const c of created) {
           const dl = await prisma.deal.findUniqueOrThrow({ where: { id: c.id } });
-          sections.push(replyHtml(dl as unknown as Record<string, unknown>, `${base}/deals/${dl.id}`, sections.length === 0 ? cloud.notes : []));
+          sections.push(await replyHtml(dl as unknown as Record<string, unknown>, `${base}/deals/${dl.id}`, sections.length === 0 ? cloud.notes : []));
         }
         await replyOnThread(msg, `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p style="margin:0 0 12pt 0;">This email carried ${created.length} deals; a ticket was created for each.</p>${sections.join('<hr style="border:0;border-top:1px solid #ddd;margin:16pt 0;">')}</div>`, fileSources);
         replied = true;
@@ -321,7 +325,7 @@ ${text.slice(0, 2000)}` });
   const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
   let replied = false;
   try {
-    await replyOnThread(msg, replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes), fileSources);
+    await replyOnThread(msg, await replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes), fileSources);
     replied = true;
   } catch (e) {
     console.error("deals@ reply failed", e);
@@ -340,7 +344,7 @@ async function finishUnreplied(msg: Msg, ext: string): Promise<{ dealId: string;
   const sections: string[] = [];
   for (const id of ids) {
     const dl = await prisma.deal.findUnique({ where: { id } });
-    if (dl) sections.push(replyHtml(dl as unknown as Record<string, unknown>, `${base}/deals/${dl.id}`));
+    if (dl) sections.push(await replyHtml(dl as unknown as Record<string, unknown>, `${base}/deals/${dl.id}`));
   }
   let replied = false;
   try {
@@ -404,7 +408,7 @@ export async function sendDealsReply(dealId: string): Promise<boolean> {
   const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
   // every file the ticket knows (the forward itself, later follow-ups, pulled cloud files) rides on the re-sent summary
   const fileMsgs = await prisma.dealFile.findMany({ where: { dealId }, select: { mailbox: true, graphId: true }, distinct: ["mailbox", "graphId"] });
-  await replyOnThread(msg, replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`), fileMsgs.filter((f) => f.graphId !== msg.id).map((f) => ({ mailbox: f.mailbox, messageId: f.graphId })));
+  await replyOnThread(msg, await replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`), fileMsgs.filter((f) => f.graphId !== msg.id).map((f) => ({ mailbox: f.mailbox, messageId: f.graphId })));
   return true;
 }
 
