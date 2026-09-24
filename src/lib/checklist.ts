@@ -39,7 +39,7 @@ export const DEFAULT_CHECKLIST: ChecklistItem[] = [
   { key: "gcBio", label: "GC bio", question: "General contractor background and relevant projects", kind: "text", strategy: ["Development"] },
   { key: "gcContract", label: "Signed GC contract? GMP?", question: "Is there a signed contract with the GC and is it a guaranteed maximum price (GMP)?", kind: "short", strategy: ["Development"] },
   { key: "locationInfo", label: "Info on location", question: "Location overview: submarket, drivers, demographics", kind: "text", strategy: ["Acquisitions", "Development"] },
-  { key: "acres", label: "How many acres does the property sit on?", question: "Site size in acres", kind: "number", strategy: ["Acquisitions"] },
+  { key: "acres", label: "How many acres does the property sit on?", devLabel: "Land acreage (how many acres the site sits on)", question: "Site size in acres", kind: "number", strategy: ["Acquisitions", "Development"] }, // developments too (Jonathan, Sep 24, 2026: the Mann Brothers deal never asked)
   { key: "opportunityZone", label: "Is it in an Opportunity Zone?", question: "Whether the site is in a qualified Opportunity Zone", kind: "yesno", strategy: ["Development"] },
   { key: "sourcing", label: "How the deal was sourced", devLabel: "How the land was sourced", question: "Off market, through a broker, fully on market, lightly marketed? Reason the seller is selling, the story.", kind: "text", strategy: ["Acquisitions", "Development"] },
   { key: "sellerProfile", label: "Seller profile", question: "Seller type: mom and pop, institutional, family office, distressed, etc.", kind: "short", strategy: ["Acquisitions", "Development"] },
