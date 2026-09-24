@@ -16,11 +16,19 @@ export const QUIET_INTRO_DAYS = 30;
 export const UNANSWERED_INTRO_DAYS = 3;
 const q = (s: string) => encodeURIComponent(s);
 const INTRO_RE = /^\s*intro\b\s*[-:–—]?\s*(.*)$/i;
+/** Aviel's style (Sep 24, 2026): "Stablewood | Cross Development - Intro", "RJL Capital Advisors | SunCap Property Group - Intro". */
+const INTRO_SUFFIX_RE = /^(.*?)\s*[-:–—]\s*intro\s*$/i;
+/** Is this subject an introduction we made: "Intro - A | B", "Intro: A | B", "A | B - Intro". Replies, forwards and calendar traffic are not. */
+export function isIntroSubject(subject: string | null | undefined): boolean {
+  const s = (subject ?? "").trim();
+  if (!s || /^\s*(re|fw|fwd|accepted|declined|tentative|automatic reply|new time proposed)\b/i.test(s)) return false;
+  return INTRO_RE.test(s) || INTRO_SUFFIX_RE.test(s);
+}
 
 type Msg = { id: string; internetMessageId?: string; subject: string | null; sentDateTime?: string; receivedDateTime?: string; conversationId?: string; toRecipients?: { emailAddress: { address: string } }[]; ccRecipients?: { emailAddress: { address: string } }[]; from?: { emailAddress: { address: string } } };
 
 export function parseParties(subject: string): { a: string | null; b: string | null } {
-  const m = subject.match(INTRO_RE);
+  const m = subject.match(INTRO_RE) ?? subject.match(INTRO_SUFFIX_RE);
   const rest = (m?.[1] ?? "").trim();
   const parts = rest.split(/\s*[|\/]\s*|\s+x\s+|\s+&\s+|\s+and\s+/i).map((s) => s.trim()).filter(Boolean);
   return { a: parts[0] ?? null, b: parts[1] ?? null };
@@ -39,10 +47,11 @@ async function pageAll(url: string | null, max = 400): Promise<Msg[]> {
 /** Scan one mailbox: new intros get recorded; known ones get their thread activity refreshed. */
 export async function scanIntros(mailbox: string): Promise<{ found: number; updated: number }> {
   const since = new Date(Date.now() - LOOKBACK_DAYS * DAY).toISOString();
-  const sent = (await pageAll(`/users/${q(mailbox)}/mailFolders/sentitems/messages?$filter=startswith(subject,'Intro')&$top=50&$select=id,internetMessageId,subject,sentDateTime,conversationId,toRecipients,ccRecipients`)).filter((m) => (m.sentDateTime ?? "") >= since);
+  // every sent subject with "Intro" in it (Jonathan writes "Intro - A | B", Aviel writes "A | B - Intro"); isIntroSubject sorts out the replies
+  const sent = (await pageAll(`/users/${q(mailbox)}/mailFolders/sentitems/messages?$filter=contains(subject,'Intro')&$top=50&$select=id,internetMessageId,subject,sentDateTime,conversationId,toRecipients,ccRecipients`)).filter((m) => (m.sentDateTime ?? "") >= since);
   let found = 0, updated = 0;
   for (const m of sent) {
-    if (!/^\s*intro\b/i.test(m.subject ?? "") || /^\s*(re|fw|fwd):/i.test(m.subject ?? "")) continue;
+    if (!isIntroSubject(m.subject)) continue;
     const ext = m.internetMessageId ?? m.id;
     const parties = parseParties(m.subject ?? "");
     const recipients = [...(m.toRecipients ?? []), ...(m.ccRecipients ?? [])].map((r) => r.emailAddress.address.toLowerCase()).filter((a) => !/@(rjlcapadvisors|rjlequities)\.com$/i.test(a));
