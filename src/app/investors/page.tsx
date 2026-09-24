@@ -18,12 +18,15 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   // AI suggestions are a nice-to-have on the engagement page: cap the wait so the page never stalls on them
   const suggestions = mode === "engagement" && dealId ? await Promise.race([suggestInvestors(dealId, { force: str(sp.refresh) === "1" }).catch(() => []), new Promise<never[]>((r) => setTimeout(() => r([]), 40_000))]) : [];
   // Flat queries joined in code: SQLite caps query parameters, so nested includes over ~1,300 companies fail.
-  const [companies, allCriteria, deal, deals] = await Promise.all([
+  const [companies, allCriteria, deal, deals, onReportRows] = await Promise.all([
     prisma.company.findMany({ where: { roles: { contains: "Investor" } }, select: { id: true, name: true, roles: true, domain: true, city: true, state: true, lastActivityAt: true }, orderBy: { name: "asc" } }),
     prisma.investorCriteria.findMany({ where: { companyId: { not: null } } }),
     dealId ? prisma.deal.findUnique({ where: { id: dealId } }) : null,
     prisma.deal.findMany({ where: { stage: { notIn: ["Deal Lost", "Deal Closed"] } }, orderBy: { updatedAt: "desc" }, select: { id: true, propertyName: true, name: true }, take: 60 }),
+    dealId ? prisma.dealInvestor.findMany({ where: { dealId }, select: { contact: { select: { companyId: true } } } }) : [],
   ]);
+  // groups already on this deal's report start ticked; the letter only adds (Jonathan, Sep 24, 2026: the second Certes list)
+  const onReport = [...new Set(onReportRows.map((r) => r.contact.companyId).filter((x): x is string => Boolean(x)))];
 
   const critByCompany = new Map(allCriteria.map((c) => [c.companyId!, c]));
   const rows: InvestorRow[] = companies.map((c) => {
@@ -67,7 +70,7 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <PageHeader title="Investor search" compact={mode === "engagement"} subtitle={mode === "engagement" ? `${rows.length.toLocaleString()} investors` : `${rows.length.toLocaleString()} companies marked Investor. Type your deal specs on the left; the list updates as you go.`} />
-      <InvestorSearch rows={rows} preset={preset} presetDealName={deal ? deal.propertyName ?? deal.name : null} presetPlace={deal ? { city: deal.city, state: deal.state } : null} deals={deals.map((d) => ({ id: d.id, name: d.propertyName ?? d.name }))}  mode={mode} dealId={dealId || null} suggestions={suggestions} />
+      <InvestorSearch rows={rows} preset={preset} presetDealName={deal ? deal.propertyName ?? deal.name : null} presetPlace={deal ? { city: deal.city, state: deal.state } : null} deals={deals.map((d) => ({ id: d.id, name: d.propertyName ?? d.name }))}  mode={mode} dealId={dealId || null} suggestions={suggestions} onReport={onReport} />
     </>
   );
 }

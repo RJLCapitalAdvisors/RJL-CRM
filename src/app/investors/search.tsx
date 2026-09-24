@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DraftButton } from "@/app/draft-button";
@@ -73,12 +73,37 @@ function passes(c: InvestorRow["crit"], s: Spec, where: { city: string | null; s
 
 export type Suggestion = { companyId: string; name: string; reason: string };
 
-export function InvestorSearch({ rows, preset, presetDealName, presetPlace = null, deals, mode = "search", dealId = null, suggestions = [] }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; presetPlace?: { city: string | null; state: string | null } | null; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] }) {
+export function InvestorSearch({ rows, preset, presetDealName, presetPlace = null, deals, mode = "search", dealId = null, suggestions = [], onReport = [] }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; presetPlace?: { city: string | null; state: string | null } | null; onReport?: string[]; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] }) {
   const PAGE = 100;
   const router = useRouter();
   const engagement = mode === "engagement" && Boolean(dealId);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
+  // the ticks survive leaving the page (Jonathan, Sep 24, 2026): kept in the browser per deal until Done; groups already on
+  // the report start ticked, so a second pass only adds
+  const storeKey = dealId ? `engagement-picks:${dealId}` : null;
+  const [picked, setPicked] = useState<Set<string>>(() => {
+    const base = new Set(onReport);
+    if (storeKey && typeof window !== "undefined") {
+      try {
+        for (const id of JSON.parse(window.localStorage.getItem(storeKey) ?? "[]") as string[]) base.add(id);
+      } catch {
+        /* nothing remembered */
+      }
+    }
+    return base;
+  });
+  const onReportSet = useMemo(() => new Set(onReport), [onReport]);
+  useEffect(() => {
+    if (!storeKey) return;
+    try {
+      const extra = [...picked].filter((id) => !onReportSet.has(id));
+      if (extra.length) window.localStorage.setItem(storeKey, JSON.stringify(extra));
+      else window.localStorage.removeItem(storeKey);
+    } catch {
+      /* private window */
+    }
+  }, [picked, storeKey, onReportSet]);
   const togglePick = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const forget = () => { try { if (storeKey) window.localStorage.removeItem(storeKey); } catch { /* nothing to forget */ } };
   const [spec, setSpec] = useState<Spec>({ ...EMPTY, ...(preset ?? {}) });
   const [page, setPage] = useState(1);
   const set = (k: Exclude<keyof Spec, "checkMM" | "city">, v: string[]) => {
@@ -113,8 +138,13 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
             <span className="text-xs text-muted">Tick the groups to carve out; Done drafts the letter in your Outlook and seeds the progress report.</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted">{picked.size} group{picked.size === 1 ? "" : "s"}</span>
-            <DraftButton label="Done" readyLabel="Open letter in Outlook" disabled={picked.size === 0} action={() => createEngagementLetter(dealId, [...picked])} title="Drafts the engagement letter with the ticked groups" />
+            <span className="text-sm text-muted">{picked.size} group{picked.size === 1 ? "" : "s"}{onReport.length ? ` · ${onReport.length} already on the report` : ""}{picked.size > onReport.length ? ` · ${picked.size - onReport.length} new` : ""}</span>
+            {picked.size > onReport.length && (
+              <button type="button" className="text-xs text-muted hover:underline" onClick={() => { setPicked(new Set(onReport)); forget(); }} title="Drop the ticks made since the last letter">
+                Clear new ticks
+              </button>
+            )}
+            <DraftButton label="Done" readyLabel="Open letter in Outlook" disabled={picked.size === 0} action={async () => { const r = await createEngagementLetter(dealId, [...picked]); if (r.ok) forget(); return r; }} title="Drafts the engagement letter with the ticked groups" />
           </div>
         </div>
       )}
