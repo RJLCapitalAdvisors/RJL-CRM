@@ -1,5 +1,6 @@
 "use server";
 
+import { cleanInterestRate } from "@/lib/rates";
 /** LTV = total debt / purchase price, LTC = total debt / total capitalization, two decimals; null when a side is missing. */
 const pctCalc = (a: number | null, b: number | null) => (a != null && b ? Math.round((a / b) * 10000) / 100 : null);
 
@@ -79,7 +80,7 @@ async function dealData(fd: FormData) {
     totalDebt: num(fd, "totalDebt"),
     totalCapitalization: num(fd, "totalCapitalization"),
     ltc: fd.has("totalDebt") ? pctCalc(num(fd, "totalDebt"), num(fd, "totalCapitalization")) : num(fd, "ltc"),
-    interestRate: s(fd, "interestRate"),
+    interestRate: cleanInterestRate(s(fd, "interestRate")), // one simple rate, whatever was typed (Jonathan, Sep 24, 2026)
     lenderType: s(fd, "lenderType"),
     irr: num(fd, "irr"),
     holdPeriod: s(fd, "holdPeriod"),

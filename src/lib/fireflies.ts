@@ -6,6 +6,7 @@ import { houseText, cleanBusinessPlan } from "@/lib/style";
 import { missingFor, parseDetails, type ChecklistItem } from "@/lib/checklist";
 import { loadChecklist } from "@/lib/required-items";
 import { ACTIVE_STAGES, LENDER_TYPES, LOAN_TERMS, UNIT_MIXES } from "@/lib/taxonomy";
+import { cleanInterestRate } from "@/lib/rates";
 
 /**
  * Fireflies call transcripts. Before a deal's sponsor bio and business plan are final, look for calls with
@@ -125,7 +126,7 @@ export async function enrichFromCalls(dealId: string, transcripts?: Transcript[]
   if (blankFields.onMarket && (f.onMarket === "on" || f.onMarket === "off")) { data.onMarket = f.onMarket === "on"; filled.push("onMarket"); }
   if (blankFields.lenderType && clean(f.lenderType) && (LENDER_TYPES as readonly string[]).includes(clean(f.lenderType)!)) { data.lenderType = clean(f.lenderType); filled.push("lenderType"); }
   if (blankFields.loanTerm && clean(f.loanTerm) && (LOAN_TERMS as readonly string[]).includes(clean(f.loanTerm)!)) { data.loanTerm = clean(f.loanTerm); filled.push("loanTerm"); }
-  if (blankFields.interestRate && clean(f.interestRate)) { data.interestRate = clean(f.interestRate); filled.push("interestRate"); }
+  if (blankFields.interestRate && cleanInterestRate(f.interestRate)) { data.interestRate = cleanInterestRate(f.interestRate); filled.push("interestRate"); }
   const details = parseDetails(deal.details);
   const openKeys = new Set(open.map((it) => it.key));
   let detailsChanged = false;

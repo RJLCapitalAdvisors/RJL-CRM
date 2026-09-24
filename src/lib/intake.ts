@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { cleanInterestRate } from "@/lib/rates";
 import { FORMAT_RULES, loadUnderwritingRules } from "@/lib/underwriting-rules";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
@@ -128,7 +129,7 @@ const claudeOutput = () => z.object({
   totalCapitalization: str("Total capitalization / total project cost in US dollars, digits only."),
   totalDebt: str("Total debt in US dollars, digits only."),
   executionType: z.enum(["JV Equity", "LP Equity", "Co-GP Equity", "Preferred Equity", "Senior Debt", "Mezz Debt", "Fund Investment", ""]).describe("Position in the capital stack being raised. Any equity raise that is the majority of total equity is JV Equity; LP Equity only for a minority slice."),
-  interestRate: str("Debt interest rate as written (6.1% fixed, SOFR + 300)."),
+  interestRate: str("The senior debt's all-in rate as one short figure: \"6.1% fixed\", \"6.65% floating\", or the spread (\"SOFR + 300\") only when no all-in rate is given. Never a sentence, never the pref or mezz return, never two loans; the CRM keeps only the first rate anyway."),
   lenderType: z.enum([...LENDER_TYPES, ""]).describe("The kind of lender, one of the listed options, ONLY when the documents state it (a debt fund is \"(Debt Fund)\"; a bridge loan from a bank is \"(Bridge)\"; a bank loan is \"(Bank Execution)\"); never inferred. The lender's own name (BridgeInvest, WesBanco) goes in details.lender, never here."),
   irr: str("Projected IRR percent as a number (18.4)."),
   capRateT12: str("T12 / trailing / going-in cap rate percent as a number."),
@@ -162,7 +163,7 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     onMarket: o.onMarket === "on" ? true : o.onMarket === "off" ? false : null, sponsorExperience: t(o.sponsorExperience), summary: cleanBusinessPlan(t(o.summary)),
     details, contactName: t(o.contactName), contactEmail: t(o.contactEmail), confidenceNotes: t(o.confidenceNotes),
     units: n(o.units), squareFeet: n(o.squareFeet), yearBuilt: t(o.yearBuilt), unitMix: t(o.unitMix), totalCapitalization: n(o.totalCapitalization),
-    totalDebt: n(o.totalDebt), executionType: t(o.executionType), interestRate: t(o.interestRate), lenderType: t(o.lenderType), irr: n(o.irr),
+    totalDebt: n(o.totalDebt), executionType: t(o.executionType), interestRate: cleanInterestRate(t(o.interestRate)), lenderType: t(o.lenderType), irr: n(o.irr),
     capRateT12: n(o.capRateT12), capRateY1: n(o.capRateY1), yieldOnCost: n(o.yieldOnCost), cashOnCash: n(o.cashOnCash), projectedSellout: n(o.projectedSellout), selloutPerUnit: n(o.selloutPerUnit), selloutPerFoot: n(o.selloutPerFoot), holdPeriod: t(o.holdPeriod),
     expectedClose: t(o.expectedClose), amortization: t(o.amortization),
   };
