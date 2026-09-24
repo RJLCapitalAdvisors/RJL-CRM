@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Bold, File, FileImage, FileSpreadsheet, FileText, Italic, List, ListOrdered, PenLine, Presentation, Underline } from "lucide-react";
 import { CompanyLogo } from "@/components/company-logo";
 import { hasMarker, withFirstName, withoutName } from "@/lib/first-name-marker";
+import { refreshDealFields } from "@/lib/merge";
 import { launchAction, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction } from "./actions";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
@@ -57,6 +58,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   const [pending, start] = useTransition();
   const [rendering, setRendering] = useState(false);
   const [reload, setReload] = useState(0); // bump to re-render General from the template
+  const [refresh, setRefresh] = useState(0); // bump to pull the ticket's latest numbers into the saved emails (every open, and when the tab comes back)
   const [version, setVersion] = useState(0); // bump to push html into the editor (never on keystrokes, so the caret stays put)
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved">("idle");
   const editor = useRef<HTMLDivElement>(null);
@@ -74,18 +76,43 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   const draftFor = (f: Firm): Draft | null => drafts[f.rowId] ?? (general ? { subject: general.subject, html: withFirstName(general.html, firstNameOf(f)), touched: false } : null);
   const shown: Draft | null = cur ? draftFor(cur) : general;
 
-  // the General email, from the template (unless a saved, edited one came with the page; again after "reset to template")
+  // the General email, from the template. A saved, hand-edited one is kept, but the ticket's numbers in it are
+  // replaced by the current ones every time the page opens or the tab comes back (Jonathan, Sep 24, 2026: the ticket
+  // autosaves and the email must follow). "reset to template" renders it afresh.
   useEffect(() => {
-    if (reload === 0 && saved?.general?.touched && saved.templateId === templateId) {
-      const t = setTimeout(() => setVersion((v) => v + 1), 0);
-      return () => clearTimeout(t);
-    }
     let cancelled = false;
+    const keepEdits = reload === 0 && Boolean(saved?.general?.touched) && saved?.templateId === templateId;
     const t = setTimeout(() => !cancelled && setRendering(true), 0);
     previewGeneralEmail(dealId, templateId)
       .then((r) => {
         if (cancelled) return;
-        setGeneral({ subject: r.subject, html: r.html, touched: false });
+        if (keepEdits) {
+          let stale = false;
+          setGeneral((g) => {
+            if (!g) return { subject: r.subject, html: r.html, touched: false };
+            const merged = refreshDealFields(g.html, r.html);
+            if (merged == null) {
+              stale = true; // saved before the fields were marked: the fresh email replaces it
+              return { subject: r.subject, html: r.html, touched: false };
+            }
+            return merged === g.html ? g : { ...g, html: merged };
+          });
+          setDrafts((s) => {
+            let changed = false;
+            const n: typeof s = {};
+            for (const [k, d] of Object.entries(s)) {
+              const merged = refreshDealFields(d.html, r.html);
+              if (merged == null) {
+                changed = true; // an old, unmarked firm edit gives way to the General email
+                continue;
+              }
+              n[k] = merged === d.html ? d : { ...d, html: merged };
+              if (n[k] !== d) changed = true;
+            }
+            return changed ? n : s;
+          });
+          if (stale) setNote("The email was rebuilt from the template with the ticket's current numbers; it had been saved before the ticket fields could be refreshed in place, so earlier hand edits were not kept.");
+        } else setGeneral({ subject: r.subject, html: r.html, touched: false });
         setVersion((v) => v + 1);
       })
       .catch(() => null)
@@ -95,7 +122,20 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dealId, templateId, reload]);
+  }, [dealId, templateId, reload, refresh]);
+
+  // back from the ticket (another tab, or the browser's back button): the numbers are read again
+  useEffect(() => {
+    const onShow = () => {
+      if (document.visibilityState === "visible") setRefresh((n) => n + 1);
+    };
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("focus", onShow);
+    return () => {
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("focus", onShow);
+    };
+  }, []);
 
   // put the html into the editor when the token changes or a fresh version arrives
   useEffect(() => {

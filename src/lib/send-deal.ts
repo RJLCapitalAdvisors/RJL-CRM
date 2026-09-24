@@ -89,7 +89,7 @@ export async function renderDealEmail(opts: { templateId: string; deal: Record<s
   const tpl = await prisma.emailTemplate.findUniqueOrThrow({ where: { id: opts.templateId } });
   const ctx: MergeContext = { contact: opts.contact, company: opts.company, deal: opts.deal, sender: { name: opts.senderName }, unsubscribeUrl: unsubscribeUrl(opts.contact.id), openingLine: opts.openingLine };
   const subject = renderTemplate(tpl.subject, ctx);
-  const body = renderTemplate(stripTemplateSignoff(opts.bodyOverride ?? tpl.bodyHtml), ctx);
+  const body = renderTemplate(stripTemplateSignoff(opts.bodyOverride ?? tpl.bodyHtml), ctx, { mark: true });
   const html = `<div style="${FONT}">${outlookHtml(toHtml(body))}${await signatureFor(opts.mailbox)}</div>`;
   return { subject, html, text: body };
 }
@@ -350,7 +350,7 @@ export async function reviseDealEmail(opts: { dealId: string; subject: string; h
       max_tokens: 6000,
       system: [
         "You edit an outbound deal email for RJL Capital Advisors, a real estate capital advisor emailing institutional investors. Apply the requested change and nothing else.",
-        "Keep: the HTML structure and inline styles, the greeting line with its empty <span data-first-name> placeholder, the bold lead-ins, the signature block at the end (verbatim), and every fact and number. Never invent figures; if the request needs information you do not have, work with what is in the email and the deal notes.",
+        "Keep: the HTML structure and inline styles, every data-deal attribute (those elements take the ticket's latest numbers), the greeting line with its empty <span data-first-name> placeholder, the bold lead-ins, the signature block at the end (verbatim), and every fact and number. Never invent figures; if the request needs information you do not have, work with what is in the email and the deal notes.",
         "Tone: concise, direct, professional, one-to-one (not a blast). Return the complete email HTML.",
       ].join(" "),
       messages: [{ role: "user", content: ["REQUEST:", opts.instruction.trim(), "", "SUBJECT:", opts.subject, "", "EMAIL HTML:", opts.html, "", "DEAL NOTES (Questions answered on the ticket, for reference):", facts || "(none)"].join("\n") }],

@@ -130,11 +130,51 @@ function lookup(ctx: MergeContext, path: string): unknown {
   return cur;
 }
 
-export function renderTemplate(text: string, ctx: MergeContext): string {
+/**
+ * Fill the merge fields. With `mark`, every deal field is wrapped in an element carrying data-deal="<field>", so an email
+ * that was saved and edited by hand can still take the ticket's latest numbers (the Send deal page swaps those elements
+ * on every open; Jonathan, Sep 24, 2026). Marks only go into html bodies, never a subject line.
+ */
+export function renderTemplate(text: string, ctx: MergeContext, opts?: { mark?: boolean }): string {
+  const mark = Boolean(opts?.mark) && /<[a-z][\s\S]*>/i.test(text);
   return text.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*(?:\|\s*([^}]*?)\s*)?\}\}/g, (_, path: string, fallback?: string) => {
-    const v = fmt(path, lookup(ctx, path));
-    return v || fallback || "";
+    const v = fmt(path, lookup(ctx, path)) || fallback || "";
+    if (!mark || !path.startsWith("deal.")) return v;
+    const tag = /^\s*<(ul|ol|p|div|table)/i.test(v) ? "div" : "span";
+    return `<${tag} data-deal="${path}">${v}</${tag}>`;
   });
+}
+
+/** Put the ticket's current values into an email that was saved earlier: each marked element is replaced by its fresh twin. Null when the saved html carries no marks. */
+export function refreshDealFields(savedHtml: string, freshHtml: string): string | null {
+  const re = /<(span|div) data-deal="([^"]+)">/g;
+  const freshOf = new Map<string, string>();
+  for (const m of freshHtml.matchAll(re)) {
+    const end = closeOf(freshHtml, m.index! + m[0].length, m[1]);
+    if (end >= 0) freshOf.set(m[2], freshHtml.slice(m.index!, end));
+  }
+  let out = "", at = 0, hits = 0;
+  for (const m of savedHtml.matchAll(re)) {
+    if (m.index! < at) continue; // a mark inside one already replaced
+    const end = closeOf(savedHtml, m.index! + m[0].length, m[1]);
+    const fresh = freshOf.get(m[2]);
+    if (end < 0 || fresh == null) continue;
+    out += savedHtml.slice(at, m.index!) + fresh;
+    at = end;
+    hits++;
+  }
+  return hits ? out + savedHtml.slice(at) : null;
+}
+/** Index just past the close tag that matches an open <tag> whose contents start at `from`. */
+function closeOf(html: string, from: number, tag: string): number {
+  const re = new RegExp(`<(/?)${tag}\\b[^>]*>`, "gi");
+  re.lastIndex = from;
+  let depth = 1, m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    depth += m[1] ? -1 : 1;
+    if (depth === 0) return m.index + m[0].length;
+  }
+  return -1;
 }
 
 /**
