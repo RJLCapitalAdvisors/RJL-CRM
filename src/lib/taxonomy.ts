@@ -343,7 +343,7 @@ export const AMORTIZATIONS = [
   "40 year amortization (HUD)",
 ] as const;
 // HubSpot's "Lender Type" options, word for word (Jonathan, Sep 16: a specific lender such as BridgeInvest is never a type; it goes in the Lender field)
-export const LENDER_TYPES = ["(Agency)", "(Fannie Mae)", "(Freddie Mac)", "(Life Co.)", "(Bank Execution)", "(Credit Union)", "(CMBS)", "(Bridge)", "(Seller Financing)"] as const;
+export const LENDER_TYPES = ["(Agency)", "(Fannie Mae)", "(Freddie Mac)", "(Life Co.)", "(Bank Execution)", "(Credit Union)", "(CMBS)", "(Bridge)", "(Debt Fund)", "(Seller Financing)"] as const; // Debt Fund added Sep 24, 2026 (Jonathan)
 
 /** Pipeline order, for "has this deal reached stage X yet" checks. */
 export const STAGE_ORDER = ["Deal Mentioned", "Deal Received", "Deal Underwritten", "Engagement Letter Sent", "Engagement Letter Signed", "Deal Taken To Market", "Intro To Capital Made", "Term Sheet Issued", "Term Sheet Signed", "Deal Closed"];

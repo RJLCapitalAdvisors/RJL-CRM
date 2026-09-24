@@ -149,7 +149,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
   const equity = cap != null && debt != null ? cap - debt : cap != null && debt == null ? null : null;
   const lost = d?.stage === "Deal Lost";
   const pref = isPref(execType);
-  const pm = prefMetrics({ totalDebt: debt, requestedAmount: ask, totalCapitalization: cap, purchasePrice: price, capRateT12: t12, yieldOnCost: yoc, units: count, squareFeet: sf, assetClass });
+  const pm = prefMetrics({ totalDebt: debt, requestedAmount: ask, totalCapitalization: cap, purchasePrice: price, capRateT12: t12, yieldOnCost: yoc, units: count, squareFeet: sf, assetClass, projectedSellout: sellout, strategy });
   const pct = (v: number | null) => (v == null ? "—" : `${v.toFixed(2)}%`);
 
   const Wrapper = autosave ? AutoSaveForm : (props: { action: (fd: FormData) => void | Promise<void>; children: React.ReactNode }) => <form id="deal-form" action={props.action}>{props.children}</form>;
@@ -312,7 +312,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
           <>
             <Calc label="Last dollar exposure" value={money(pm.lastDollar)} hint="requested pref / mezz amount + total debt" />
             <Calc label="Pref LTC" value={pct(pm.prefLtc)} hint="(total debt + pref amount) ÷ total capitalization" />
-            <Calc label="Pref LTV" value={pct(pm.prefLtv)} hint="(total debt + pref amount) ÷ purchase price" />
+            <Calc label={isCondo ? "Pref LTV on gross sellout" : "Pref LTV"} value={pct(pm.prefLtv)} hint={isCondo ? "(total debt + pref amount) ÷ projected gross sellout, the condo's terminal value" : "(total debt + pref amount) ÷ purchase price"} />
             {!isDev && !isCondo && <Calc label="Going-in yield on last dollar" value={pct(pm.goingInYieldLD)} hint="T12 NOI ÷ last dollar (T12 NOI = T12 cap rate × purchase price)" />}
             {!isCondo && <Calc label="Stabilized yield on last dollar" value={pct(pm.stabilizedYieldLD)} hint="stabilized NOI ÷ last dollar (stabilized NOI = yield on cost × total capitalization)" />}
             <Calc label={`Stabilized basis on last pref dollar per ${pm.basisUnit}`} value={money(pm.basisLD)} hint={`last dollar ÷ ${pm.basisUnit === "SF" ? "square feet" : pm.basisUnit + "s"}`} />

@@ -23,7 +23,8 @@ const n = (v: unknown) => (typeof v === "number" && !isNaN(v) ? v : typeof v ===
 export type PrefMetrics = {
   lastDollar: number | null;
   prefLtc: number | null; // percent
-  prefLtv: number | null; // percent
+  prefLtv: number | null; // percent: last dollar over purchase price, or over the gross sellout on a condo (its terminal value; Jonathan, Sep 24, 2026)
+  prefLtvBase: "price" | "sellout";
   goingInYieldLD: number | null; // percent
   stabilizedYieldLD: number | null; // percent
   basisLD: number | null; // $ per unit/key/bed or per SF
@@ -45,11 +46,13 @@ export function prefMetrics(d: D): PrefMetrics {
   const t12Noi = t12 != null && price ? (t12 / 100) * price : null;
   const stabNoi = yoc != null && cap ? (yoc / 100) * cap : null;
   const condo = isCondo(d.assetClass);
+  const sellout = n(d.projectedSellout);
   const perCount = p.perCount && units && !condo; // a condo's basis reads per foot
   return {
     lastDollar,
     prefLtc: lastDollar && cap ? pct(lastDollar / cap) : null,
-    prefLtv: lastDollar && price ? pct(lastDollar / price) : null,
+    prefLtv: condo ? (lastDollar && sellout ? pct(lastDollar / sellout) : null) : lastDollar && price ? pct(lastDollar / price) : null,
+    prefLtvBase: condo ? "sellout" : "price",
     goingInYieldLD: lastDollar && t12Noi && !condo && d.strategy !== "Development" ? pct(t12Noi / lastDollar) : null,
     stabilizedYieldLD: lastDollar && stabNoi && !condo ? pct(stabNoi / lastDollar) : null,
     basisLD: lastDollar ? (perCount ? lastDollar / units! : sf ? lastDollar / sf : null) : null,

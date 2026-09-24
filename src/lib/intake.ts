@@ -129,7 +129,7 @@ const claudeOutput = () => z.object({
   totalDebt: str("Total debt in US dollars, digits only."),
   executionType: z.enum(["JV Equity", "LP Equity", "Co-GP Equity", "Preferred Equity", "Senior Debt", "Mezz Debt", "Fund Investment", ""]).describe("Position in the capital stack being raised. Any equity raise that is the majority of total equity is JV Equity; LP Equity only for a minority slice."),
   interestRate: str("Debt interest rate as written (6.1% fixed, SOFR + 300)."),
-  lenderType: z.enum([...LENDER_TYPES, ""]).describe("The kind of lender, one of the listed options, ONLY when the documents state it (a debt fund or bridge loan is \"(Bridge)\"; a bank loan is \"(Bank Execution)\"); never inferred. The lender's own name (BridgeInvest, WesBanco) goes in details.lender, never here."),
+  lenderType: z.enum([...LENDER_TYPES, ""]).describe("The kind of lender, one of the listed options, ONLY when the documents state it (a debt fund is \"(Debt Fund)\"; a bridge loan from a bank is \"(Bridge)\"; a bank loan is \"(Bank Execution)\"); never inferred. The lender's own name (BridgeInvest, WesBanco) goes in details.lender, never here."),
   irr: str("Projected IRR percent as a number (18.4)."),
   capRateT12: str("T12 / trailing / going-in cap rate percent as a number."),
   capRateY1: str("Year 1 cap rate percent as a number."),
