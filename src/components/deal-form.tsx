@@ -8,6 +8,7 @@ import { SponsorPicker } from "./sponsor-picker";
 import { SelectField } from "@/components/select-field";
 import { AutoSaveForm } from "./autosave-form";
 import { isPref, prefMetrics } from "@/lib/pref";
+import { interestRateNumber } from "@/lib/rates";
 
 export const EXECUTION_TYPES = ["Senior Debt", "Mezz Debt", "Preferred Equity", "JV Equity", "Co-GP Equity", "LP Equity", "Fund Investment"] as const;
 
@@ -266,8 +267,8 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
       <Group title="Debt terms">
         {!isDev && <Calc label="LTV %" value={pctOf(debt, price)} hint="total debt ÷ purchase price" />}
         <Calc label="LTC %" value={pctOf(debt, cap)} hint="total debt ÷ total capitalization" />
-        <Row label="Interest rate">
-          <Text name="interestRate" value={d?.interestRate} placeholder="6.75% fixed or SOFR + 300" />
+        <Row label="Interest rate %" hint="Numbers only; the % is added. Fixed or floating, spreads and a second loan go in the debt terms.">
+          <NumberInput name="interestRate" defaultValue={interestRateNumber(d?.interestRate)} placeholder="6.75" />
         </Row>
         <Row label="Loan term">
           <Select name="loanTerm" value={d?.loanTerm ?? ""} options={LOAN_TERMS} />
