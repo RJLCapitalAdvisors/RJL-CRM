@@ -148,7 +148,7 @@ export function metrics(d: D): string[] {
   const amort = s(d.amortization);
   const lender = s(d.lenderType)?.replace(/^\((.*)\)$/, "$1") ?? null; // the list stores "(Debt Fund)"; the line adds its own parentheses
   // a condo's senior LTV is on the gross sellout, like the pref's; an LTV above 100% (a loan measured against the land alone) says nothing to an investor and stays off the line
-  const ltvShown = condo && sellout && debt ? { v: (debt / sellout) * 100, base: " on gross sellout" } : ltv && ltv <= 100 ? { v: ltv, base: "" } : null;
+  const ltvShown = condo && sellout && debt ? { v: Math.round((debt / sellout) * 10000) / 100, base: " on gross sellout" } : ltv && ltv <= 100 ? { v: ltv, base: "" } : null;
   if (debt || ltc || ltvShown || rate) {
     const lev = ltc ? `${pct(ltc)} LTC${ltvShown ? ` (${pct(ltvShown.v)} LTV${ltvShown.base})` : ""}` : ltvShown ? `${pct(ltvShown.v)} LTV${ltvShown.base}` : "";
     const structure = amort && term ? ` - ${amort} on a ${term}` : amort ? ` - ${amort}` : term ? ` - ${term}` : "";
