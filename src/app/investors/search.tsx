@@ -14,6 +14,8 @@ export type InvestorRow = {
   id: string;
   name: string;
   domain: string | null;
+  city: string | null; // where the firm sits (the company card), for "investors near this deal" (Jonathan, Sep 24, 2026)
+  state: string | null;
   crit: {
     assetClasses: string[];
     checkSizes: string[];
@@ -42,14 +44,19 @@ export type Spec = {
   oz: string[];
   closing: string[];
   minority: string[];
+  state: string[]; // the firm's own location: state codes
+  city: string; // the firm's own location: city, contains
 };
 
-const EMPTY: Spec = { assetClass: [], checkMM: null, investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [] };
+const EMPTY: Spec = { assetClass: [], checkMM: null, investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [], state: [], city: "" };
 const any = (have: string[], want: string[]) => want.some((w) => have.includes(w));
 
 
 /** A firm passes when, for every spec with something checked, its criteria contain at least one of the checked values. Empty specs are ignored. */
-function passes(c: InvestorRow["crit"], s: Spec): boolean {
+function passes(c: InvestorRow["crit"], s: Spec, where: { city: string | null; state: string | null } = { city: null, state: null }): boolean {
+  // the firm's own location (its company card), so a deal's neighbourhood can be worked: state codes, a city by name
+  if (s.state.length && !(where.state && s.state.includes(where.state))) return false;
+  if (s.city.trim() && !(where.city && where.city.toLowerCase().includes(s.city.trim().toLowerCase()))) return false;
   if (s.assetClass.length && !(c && any(c.assetClasses, s.assetClass))) return false;
   // exact check: the firm's range must cover it (an open top end, $100MM+, covers anything above)
   if (s.checkMM != null && !(c && c.checkMin != null && c.checkMax != null && s.checkMM >= c.checkMin && (c.checkMax >= CHECK_MAX || s.checkMM <= c.checkMax))) return false;
@@ -66,7 +73,7 @@ function passes(c: InvestorRow["crit"], s: Spec): boolean {
 
 export type Suggestion = { companyId: string; name: string; reason: string };
 
-export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "search", dealId = null, suggestions = [] }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] }) {
+export function InvestorSearch({ rows, preset, presetDealName, presetPlace = null, deals, mode = "search", dealId = null, suggestions = [] }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; presetPlace?: { city: string | null; state: string | null } | null; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] }) {
   const PAGE = 100;
   const router = useRouter();
   const engagement = mode === "engagement" && Boolean(dealId);
@@ -74,7 +81,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
   const togglePick = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const [spec, setSpec] = useState<Spec>({ ...EMPTY, ...(preset ?? {}) });
   const [page, setPage] = useState(1);
-  const set = (k: Exclude<keyof Spec, "checkMM">, v: string[]) => {
+  const set = (k: Exclude<keyof Spec, "checkMM" | "city">, v: string[]) => {
     setSpec((s) => ({ ...s, [k]: v }));
     setPage(1);
   };
@@ -82,12 +89,13 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
     setSpec((s) => ({ ...s, checkMM: v }));
     setPage(1);
   };
-  const active = Object.values(spec).filter((v) => (Array.isArray(v) ? v.length > 0 : v != null)).length;
-  const out = useMemo(() => rows.filter((r) => passes(r.crit, spec)), [rows, spec]);
+  const active = Object.values(spec).filter((v) => (Array.isArray(v) ? v.length > 0 : typeof v === "string" ? v.trim() !== "" : v != null)).length;
+  const out = useMemo(() => rows.filter((r) => passes(r.crit, spec, { city: r.city, state: r.state })), [rows, spec]);
+  const stateOptions = useMemo(() => [...new Set(rows.map((r) => r.state).filter((x): x is string => Boolean(x)))].sort(), [rows]);
   const pages = Math.max(1, Math.ceil(out.length / PAGE));
   const pageRows = out.slice((page - 1) * PAGE, page * PAGE);
 
-  const sel = (k: Exclude<keyof Spec, "checkMM">, label: string, options: readonly string[]) => (
+  const sel = (k: Exclude<keyof Spec, "checkMM" | "city">, label: string, options: readonly string[]) => (
     <div key={k} className="mb-2.5 text-xs text-muted">
       {label}
       <div className="mt-1">
@@ -132,6 +140,20 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
             </select>
           </label>
         )}
+        <div className="mb-2.5 text-xs text-muted">
+          <div className="flex items-center justify-between">
+            <span>Company location</span>
+            {presetPlace && (presetPlace.city || presetPlace.state) && (
+              <button type="button" className="text-sky-600 hover:underline" title="Firms whose office is in this deal's state" onClick={() => setSpec((s) => ({ ...s, state: presetPlace.state ? [presetPlace.state] : s.state, city: "" }))}>
+                Near {presetPlace.city ? `${presetPlace.city}, ` : ""}{presetPlace.state}
+              </button>
+            )}
+          </div>
+          <div className="mt-1">
+            <MultiSelect options={stateOptions} value={spec.state} onChange={(v) => set("state", v)} placeholder="Any state" />
+          </div>
+          <input value={spec.city} onChange={(e) => setSpec((s) => ({ ...s, city: e.target.value }))} placeholder="City" className="input mt-1 py-1 text-xs" />
+        </div>
         {sel("assetClass", "Asset class", ASSET_CLASSES)}
         <div className="mb-2.5 text-xs text-muted">
           <div className="flex items-center justify-between">
@@ -207,6 +229,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
               <tr>
                 {engagement && <th className="w-8"></th>}
                 <th className="w-[240px]">Company name</th>
+                <th className="w-[130px]">Based in</th>
                 <th className="w-[260px]">Deal locations</th>
                 <th className="w-[170px]">Check size</th>
                 <th className="w-[230px]">Asset classes</th>
@@ -230,6 +253,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
                       <span className="truncate">{r.name}</span>
                     </Link>
                   </td>
+                  <td className="whitespace-nowrap text-xs">{[r.city, r.state].filter(Boolean).join(", ") || <span className="text-muted">—</span>}</td>
                   <Cell text={r.crit?.geographyNotes} />
                   <td className="whitespace-nowrap">{r.crit && r.crit.checkMin != null ? rangeLabel(CHECK_STOPS, r.crit.checkMin, r.crit.checkMax) : <span className="text-muted">—</span>}</td>
                   <Cell items={r.crit?.assetClasses} />
@@ -241,7 +265,7 @@ export function InvestorSearch({ rows, preset, presetDealName, deals, mode = "se
               ))}
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-muted">
+                  <td colSpan={9} className="py-10 text-center text-muted">
                     No firms match all of these specs.
                   </td>
                 </tr>

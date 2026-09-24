@@ -32,6 +32,8 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
       id: c.id,
       name: c.name,
       domain: c.domain,
+      city: c.city,
+      state: c.state,
       crit: cr
         ? {
             assetClasses: parseList(cr.assetClasses),
@@ -65,7 +67,7 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <PageHeader title="Investor search" compact={mode === "engagement"} subtitle={mode === "engagement" ? `${rows.length.toLocaleString()} investors` : `${rows.length.toLocaleString()} companies marked Investor. Type your deal specs on the left; the list updates as you go.`} />
-      <InvestorSearch rows={rows} preset={preset} presetDealName={deal ? deal.propertyName ?? deal.name : null} deals={deals.map((d) => ({ id: d.id, name: d.propertyName ?? d.name }))}  mode={mode} dealId={dealId || null} suggestions={suggestions} />
+      <InvestorSearch rows={rows} preset={preset} presetDealName={deal ? deal.propertyName ?? deal.name : null} presetPlace={deal ? { city: deal.city, state: deal.state } : null} deals={deals.map((d) => ({ id: d.id, name: d.propertyName ?? d.name }))}  mode={mode} dealId={dealId || null} suggestions={suggestions} />
     </>
   );
 }
