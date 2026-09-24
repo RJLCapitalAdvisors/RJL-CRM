@@ -186,7 +186,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
             ))}
           </SelectField>
         </Row>
-        <Row label="Expected close" hint="e.g. November 2026 or Q1 2027">
+        <Row label="Critical dates: expected close" hint="e.g. November 2026 or Q1 2027; LOI, PSA and hard money dates go in the notes">
           <Text name="expectedClose" value={d?.expectedClose} />
         </Row>
       </Group>
