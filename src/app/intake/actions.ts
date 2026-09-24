@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { reconcileDocuments } from "@/lib/checklist";
+import { reconcileDocuments, parseDetails } from "@/lib/checklist";
 import { loadChecklist } from "@/lib/required-items";
 import { logActivity } from "@/lib/activity";
 import { extractDeal, missingItems, type ExtractedDeal, EMPTY, applyDealRules } from "@/lib/intake";
@@ -113,27 +113,14 @@ export async function updateExtracted(id: string, fd: FormData) {
   revalidatePath(`/intake/${id}`);
 }
 
-/** Create the deal from an intake record. Returns the deal id (existing one if already converted). */
-export async function createDealFromIntake(id: string): Promise<string> {
-  await loadChecklist();
-  const it = await prisma.dealIntake.findUniqueOrThrow({ where: { id } });
-  if (it.dealId) return it.dealId;
-  const d = applyDealRules({ ...EMPTY, ...(JSON.parse(it.extracted) as Partial<ExtractedDeal>) } as ExtractedDeal);
-  const sponsor = d.sponsorName ? await prisma.company.findFirst({ where: { name: { contains: d.sponsorName } }, select: { id: true } }) : null;
-  const propertyName = d.propertyName ?? it.subject ?? "New deal";
-  // one deal, one ticket: if we already track this deal, attach the intake to it instead of creating another
-  const { findSameDeal } = await import("@/lib/deal-knowledge");
-  const same = await findSameDeal(propertyName, undefined, { sponsorCompanyId: sponsor?.id ?? null, sponsorName: d.sponsorName, city: d.city, state: d.state, address: d.propertyAddress, text: it.rawText.slice(0, 3000) });
-  if (same) {
-    await prisma.dealIntake.update({ where: { id }, data: { dealId: same.id, status: "CONVERTED", notes: `Matched existing deal ${same.name}` } }).catch(() => null);
-    return same.id;
-  }
-  const deal = await prisma.deal.create({
-    data: {
+
+/** Every ticket column an extraction can fill, as the create data (Sep 24, 2026: shared with the fill below so a matched ticket gets the same figures a new one would). */
+function dealDataFrom(d: ExtractedDeal, propertyName: string, sponsorCompanyId: string | null) {
+  return {
       name: d.sponsorName ? `${d.sponsorName} | ${propertyName}` : propertyName,
       stage: "Deal Received",
       sponsorName: d.sponsorName,
-      sponsorCompanyId: sponsor?.id ?? null,
+      sponsorCompanyId,
       propertyName,
       propertyAddress: d.propertyAddress,
       city: d.city,
@@ -174,8 +161,60 @@ export async function createDealFromIntake(id: string): Promise<string> {
       // LTV (debt over price) and LTC (debt over total capitalization) are separate figures; a development is quoted on cost
       ltc: d.ltc ?? (d.strategy === "Development" ? d.ltv : null),
       ltv: d.strategy === "Development" ? null : d.ltv,
-    },
-  });
+  };
+}
+
+/**
+ * An extraction that matched a ticket we already have (often a "Deal Mentioned" stub made from an email that only
+ * named the deal) fills that ticket's blanks instead of being filed and forgotten (Park Station, Sep 24, 2026: the
+ * model and teaser were read, the figures never landed). A value already on the ticket stands; details merge by key;
+ * a stub moves to Deal Received.
+ */
+export async function fillDealFromExtraction(dealId: string, d: ExtractedDeal): Promise<string[]> {
+  const cur = await prisma.deal.findUnique({ where: { id: dealId } });
+  if (!cur) return [];
+  const propertyName = d.propertyName ?? cur.propertyName ?? cur.name;
+  const fresh = dealDataFrom(d, propertyName, cur.sponsorCompanyId) as Record<string, unknown>;
+  const data: Record<string, unknown> = {};
+  const filled: string[] = [];
+  // a Deal Mentioned stub only knows what an email in passing said: the documents' city, narrative and bio replace its guesses
+  const stub = cur.stage === "Deal Mentioned";
+  const stubWeak = new Set(["city", "state", "summary", "sponsorExperience", "propertyAddress"]);
+  for (const [k, v] of Object.entries(fresh)) {
+    if (["name", "stage", "details", "sponsorCompanyId"].includes(k)) continue;
+    if (v == null || v === "") continue;
+    const have = (cur as Record<string, unknown>)[k];
+    if (have == null || have === "" || have === "[]" || (stub && stubWeak.has(k))) { data[k] = v; filled.push(k); }
+  }
+  const details = parseDetails(cur.details);
+  let detailsChanged = false;
+  for (const [k, v] of Object.entries(d.details ?? {})) {
+    if (v && !details[k]) { details[k] = v; detailsChanged = true; filled.push(`details.${k}`); }
+  }
+  if (detailsChanged) data.details = JSON.stringify(details);
+  if (cur.stage === "Deal Mentioned") { data.stage = "Deal Received"; filled.push("stage"); }
+  if (!cur.sponsorName && d.sponsorName) { data.sponsorName = d.sponsorName; filled.push("sponsorName"); }
+  if (Object.keys(data).length) await prisma.deal.update({ where: { id: dealId }, data });
+  return filled;
+}
+
+/** Create the deal from an intake record. Returns the deal id (existing one if already converted). */
+export async function createDealFromIntake(id: string): Promise<string> {
+  await loadChecklist();
+  const it = await prisma.dealIntake.findUniqueOrThrow({ where: { id } });
+  if (it.dealId) return it.dealId;
+  const d = applyDealRules({ ...EMPTY, ...(JSON.parse(it.extracted) as Partial<ExtractedDeal>) } as ExtractedDeal);
+  const sponsor = d.sponsorName ? await prisma.company.findFirst({ where: { name: { contains: d.sponsorName } }, select: { id: true } }) : null;
+  const propertyName = d.propertyName ?? it.subject ?? "New deal";
+  // one deal, one ticket: if we already track this deal, attach the intake to it instead of creating another
+  const { findSameDeal } = await import("@/lib/deal-knowledge");
+  const same = await findSameDeal(propertyName, undefined, { sponsorCompanyId: sponsor?.id ?? null, sponsorName: d.sponsorName, city: d.city, state: d.state, address: d.propertyAddress, text: it.rawText.slice(0, 3000) });
+  if (same) {
+    const filled = await fillDealFromExtraction(same.id, d).catch(() => [] as string[]);
+    await prisma.dealIntake.update({ where: { id }, data: { dealId: same.id, status: "CONVERTED", notes: `Matched existing deal ${same.name}${filled.length ? `; filled ${filled.join(", ")}` : ""}` } }).catch(() => null);
+    return same.id;
+  }
+  const deal = await prisma.deal.create({ data: dealDataFrom(d, propertyName, sponsor?.id ?? null) });
   // The person who sent the deal: find or create the contact, tie them to their email-domain company,
   // mark that company (and its people) as a Sponsor, and use it as the deal's sponsor if we had no match.
   let senderContactId: string | null = null;
