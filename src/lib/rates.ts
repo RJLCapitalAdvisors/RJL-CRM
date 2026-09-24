@@ -1,6 +1,6 @@
 /**
- * The interest rate on a ticket is one simple rate (Jonathan, Sep 24, 2026): "6.75% fixed", "6.65% floating",
- * "SOFR + 285" when no all-in rate is given. Extractors and hands alike write sentences ("10.0% construction loan
+ * The interest rate on a ticket is one number with a % sign (Jonathan, Sep 24, 2026): "6.75%". Fixed or floating,
+ * spreads ("SOFR + 285") and second loans belong in the debt terms text. Extractors and hands alike write sentences ("10.0% construction loan
  * rate; preferred equity return left open"); this keeps the rate and drops the rest.
  */
 const SPREAD = /(?:1-?\s*mo(?:nth)?\.?\s*)?(?:term\s*)?(?:SOFR|LIBOR|prime|treasur(?:y|ies)|\d+\s*-?\s*yr\.?\s*t(?:reasury)?)\s*(?:index[^+]*)?\+\s*\d+(?:\.\d+)?\s*(?:%|bps|basis points)?/i;
@@ -28,6 +28,6 @@ export function cleanInterestRate(raw: string | null | undefined): string | null
     void before;
     return value; // numbers only: fixed or floating belongs in the debt terms text
   }
-  if (spread) return spread.replace(/\s*(bps|basis points)$/i, "").replace(/(\d)\s*%$/, "$1%");
-  return text.length <= 24 ? text : null;
+  void spread; // a spread alone is not a rate the numeric box can hold: it stays in the debt terms text
+  return null;
 }
