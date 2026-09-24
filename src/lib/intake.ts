@@ -70,7 +70,7 @@ export const EMPTY: ExtractedDeal = {
 };
 
 export function toChecklistDeal(d: ExtractedDeal): DealLikeForChecklist {
-  return { strategy: d.strategy, assetClass: d.assetClass, occupancy: d.occupancy, summary: d.summary, sponsorExperience: d.sponsorExperience, onMarket: d.onMarket, ltv: d.ltv, loanTerm: d.loanTerm, amortization: d.amortization, expectedClose: d.expectedClose, purchasePrice: d.purchasePrice, details: d.details as Record<string, string | null> };
+  return { strategy: d.strategy, assetClass: d.assetClass, occupancy: d.occupancy, summary: d.summary, sponsorExperience: d.sponsorExperience, onMarket: d.onMarket, ltv: d.ltv, loanTerm: d.loanTerm, amortization: d.amortization, expectedClose: d.expectedClose, purchasePrice: d.purchasePrice, yieldOnCost: d.yieldOnCost, projectedSellout: d.projectedSellout, selloutPerUnit: d.selloutPerUnit, selloutPerFoot: d.selloutPerFoot, unitMix: d.unitMix, details: d.details as Record<string, string | null> };
 }
 
 /** Keys of checklist items still unanswered, given the deal's strategy and asset class. */

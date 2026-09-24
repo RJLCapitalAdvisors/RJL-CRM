@@ -15,7 +15,7 @@ export type ChecklistItem = {
   strategy: ("Acquisitions" | "Development")[];
   onlyAssetClasses?: string[]; // include only for these classes
   excludeAssetClasses?: string[]; // skip for these classes
-  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose" | "purchasePrice" | "yieldOnCost" | "projectedSellout" | "selloutPerUnit" | "selloutPerFoot"; // maps to a Deal column
+  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose" | "purchasePrice" | "yieldOnCost" | "projectedSellout" | "selloutPerUnit" | "selloutPerFoot" | "unitMix"; // maps to a Deal column
 };
 
 const RESIDENTIAL = ["Multifamily", "Build-For-Rent (SFR)", "Student Housing", "Senior Housing", "Mixed Use"];
@@ -24,6 +24,7 @@ export const DEFAULT_CHECKLIST: ChecklistItem[] = [
   { key: "proforma", label: "Excel underwriting model (proforma)", devLabel: "Excel underwriting model (proforma, with equity-broker fee included)", question: "Has the sponsor provided the Excel underwriting model?", kind: "doc", strategy: ["Acquisitions", "Development"] },
   { key: "rentRollT12", label: "Rent roll and T12", question: "Current rent roll and trailing-12 operating statement", kind: "doc", strategy: ["Acquisitions"], excludeAssetClasses: ["Land"] },
   { key: "occupancy", label: "Current occupancy", question: "Current physical/economic occupancy (%)", kind: "number", strategy: ["Acquisitions"], excludeAssetClasses: ["Land"], core: "occupancy" },
+  { key: "unitMix", label: "Unit mix (bedroom types)", question: "Which bedroom types the property has (studios, 1BR, 2BR, 3BR), with counts when stated", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: [...RESIDENTIAL, "Condo"], core: "unitMix" },
   { key: "leaseTradeOut", label: "Lease trade-out report", question: "Recent lease trade-out report showing new vs. expiring rents", kind: "doc", strategy: ["Acquisitions"], onlyAssetClasses: RESIDENTIAL },
   { key: "insuranceTaxes", label: "How insurance and taxes are underwritten", devLabel: "How stabilized insurance and taxes are calculated", question: "Color on how insurance and real estate taxes are underwritten (basis, reassessment, quotes)", kind: "text", strategy: ["Acquisitions", "Development"] },
   { key: "yieldOnCost", label: "Yield on cost at stabilization", devLabel: "Stabilized yield on cost (stabilized NOI over total project cost)", question: "Stabilized NOI over total all-in cost, or the cap rate on all-in cost basis", kind: "number", strategy: ["Acquisitions", "Development"], excludeAssetClasses: ["Land", "Condo"], core: "yieldOnCost" },
@@ -98,6 +99,7 @@ export type DealLikeForChecklist = {
   projectedSellout?: number | null;
   selloutPerUnit?: number | null;
   selloutPerFoot?: number | null;
+  unitMix?: string | null;
   summary?: string | null;
   sponsorExperience?: string | null;
   onMarket?: boolean | null;
@@ -167,11 +169,13 @@ export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): stri
     case "yieldOnCost":
       return deal.yieldOnCost != null ? `${deal.yieldOnCost}%` : null;
     case "projectedSellout":
-      return deal.projectedSellout != null ? `${deal.projectedSellout.toLocaleString("en-US")}` : null;
+      return deal.projectedSellout != null ? `$${deal.projectedSellout.toLocaleString("en-US")}` : null;
     case "selloutPerUnit":
-      return deal.selloutPerUnit != null ? `${deal.selloutPerUnit.toLocaleString("en-US")} per unit` : null;
+      return deal.selloutPerUnit != null ? `$${deal.selloutPerUnit.toLocaleString("en-US")} per unit` : null;
     case "selloutPerFoot":
-      return deal.selloutPerFoot != null ? `${deal.selloutPerFoot.toLocaleString("en-US")} per SF` : null;
+      return deal.selloutPerFoot != null ? `$${deal.selloutPerFoot.toLocaleString("en-US")} per SF` : null;
+    case "unitMix":
+      return deal.unitMix ?? null;
     case "summary":
       return deal.summary ?? null;
     case "sponsorExperience":
