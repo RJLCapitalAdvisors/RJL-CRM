@@ -9,6 +9,7 @@ import { proposeNamingConventions } from "@/lib/naming";
 import { refreshMomentum } from "@/lib/momentum";
 import { scanAllIntros } from "@/lib/intros";
 import { detectIntroCalls } from "@/lib/intro-calls";
+import { enrichActiveDealsFromCalls } from "@/lib/fireflies";
 
 export const maxDuration = 800; // a forward with three deals and a dozen PDFs needs more than five minutes (Sep 17)
 
@@ -25,11 +26,12 @@ export async function GET(req: Request) {
   const momentum = await refreshMomentum().catch((e) => String(e));
   const intros = await scanAllIntros().catch((e) => String(e));
   const introCalls = await detectIntroCalls().catch((e) => String(e));
+  const calls = await enrichActiveDealsFromCalls().catch((e) => String(e)); // a call with the sponsor after intake still fills the ticket
   const israel = await processIsraelInbox().catch((e) => String(e));
   const israelMail = await syncIsraelMailboxes().catch((e) => String(e));
   const acquisitionsMail = await syncAcquisitionsMailboxes().catch((e) => String(e));
   const israelMentions = await detectIsraelMentions().catch((e) => String(e));
   await closeLandedMentions().catch(() => 0);
   const israelSubscription = await ensureIsraelSubscription().catch((e) => String(e));
-  return Response.json({ ok: true, result, deals, subscription, stray, momentum, intros, introCalls, israel, israelMail, acquisitionsMail, israelMentions, israelSubscription, naming });
+  return Response.json({ ok: true, result, deals, subscription, stray, momentum, intros, introCalls, calls, israel, israelMail, acquisitionsMail, israelMentions, israelSubscription, naming });
 }

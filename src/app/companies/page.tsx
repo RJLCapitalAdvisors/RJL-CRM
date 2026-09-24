@@ -7,6 +7,7 @@ import { PageHeader, Pager } from "@/components/ui";
 import { ListFilters } from "@/components/list-filters";
 import { RoleCell } from "@/components/role-cell";
 import { AssetCell } from "@/components/asset-cell";
+import { LocationCell } from "@/components/location-cell";
 import { parseList } from "@/lib/taxonomy";
 import { fmtDate, str } from "@/lib/format";
 import { CompanyLogo } from "@/components/company-logo";
@@ -77,6 +78,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
               <th>Company</th>
               <th>Roles</th>
               <th>Asset classes</th>
+              <th>Deal locations</th>
               <th>Check size</th>
               <th className="text-right">Contacts</th>
               <th className="text-right">Deals</th>
@@ -100,6 +102,9 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                 <td>
                   <AssetCell companyId={c.id} assetClasses={parseList(c.criteria?.assetClasses)} />
                 </td>
+                <td>
+                  <LocationCell companyId={c.id} text={c.criteria?.geographyNotes ?? null} />
+                </td>
                 <td className="whitespace-nowrap">{c.criteria && checkLabel(c.criteria, "") ? checkLabel(c.criteria) : <span className="text-muted">—</span>}</td>
                 <td className="text-right">{c._count.contacts}</td>
                 <td className="text-right">{c._count.deals}</td>
@@ -110,7 +115,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-10 text-center text-muted">
+                <td colSpan={10} className="py-10 text-center text-muted">
                   No companies match.
                 </td>
               </tr>

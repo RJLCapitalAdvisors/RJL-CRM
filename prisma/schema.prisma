@@ -208,6 +208,7 @@ model Deal {
   yearBuilt           String?
   unitMix             String?
   expectedClose       String?
+  callsEnrichedAt     DateTime? // Fireflies calls with the sponsor last read into the ticket; a newer call reads again (Sep 24, 2026)
   closedLostReason    String?
   closedWonReason     String?
 

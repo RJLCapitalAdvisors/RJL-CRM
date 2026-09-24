@@ -152,6 +152,25 @@ export async function setCompanyRoles(id: string, roles: string[]) {
   return { proposed: false };
 }
 
+/** Deal locations from the list row (Jonathan, Sep 24, 2026): the criteria's free text plus the region tags it maps to. Sponsors: written directly. Investors: Jonathan writes, everyone else proposes. */
+export async function setCompanyGeography(id: string, text: string) {
+  const notes = text.trim() || null;
+  const co = await prisma.company.findUnique({ where: { id }, select: { roles: true } });
+  const roles = parseList(co?.roles);
+  const investor = roles.some((r) => r === "Investor" || r === "Retail Investor" || r === "Lender");
+  const me = await currentUser();
+  if (investor && !me?.canEditCriteria) {
+    await proposeManualChanges(id, { geographyNotes: notes ?? "" }, me?.name ?? "A teammate");
+    revalidatePath("/");
+    return { proposed: true };
+  }
+  const data = { geographyNotes: notes, geographies: toJson(normalizeGeographies(notes)) };
+  await prisma.investorCriteria.upsert({ where: { companyId: id }, create: { companyId: id, ...data }, update: data });
+  revalidatePath("/companies");
+  revalidatePath(`/companies/${id}`);
+  return { proposed: false };
+}
+
 /** Asset classes from the list row. Sponsors: written directly. Investors: Jonathan writes, everyone else proposes. */
 export async function setCompanyAssetClasses(id: string, classes: string[]) {
   const { ASSET_CLASSES } = await import("@/lib/taxonomy");
