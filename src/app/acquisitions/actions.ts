@@ -120,8 +120,6 @@ function contactData(fd: FormData) {
     directoryOperatorPhone: drop(s(fd, "directoryOperatorPhone")),
     operatorTotalLocations: total && Number.isFinite(Number(total)) ? Math.round(Number(total)) : null,
     operatorPipelineStatus: (AQ_OPERATOR_STATUSES as readonly string[]).includes(s(fd, "operatorPipelineStatus") ?? "") ? s(fd, "operatorPipelineStatus") : null,
-    ...(fd.has("buyerStage") || !roles.includes("Buyer") ? { buyerStage: roles.includes("Buyer") ? s(fd, "buyerStage") : null } : {}),
-    ...(fd.has("operatorStage") || !roles.includes("Operator") ? { operatorStage: roles.includes("Operator") ? s(fd, "operatorStage") : null } : {}),
     lastCallDate: dateOf(fd, "lastCallDate") ?? (result ? new Date() : null),
     callResult: result,
     callBackAt: callBack,
@@ -212,6 +210,23 @@ export async function setAqDealStage(id: string, stage: string) {
   revalidatePath(`/acquisitions/properties/${id}`);
   touchAll();
 }
+/** Send to pipeline (Jonathan, Sep 24, 2026): the record joins its pipeline list and stays where it was; off again with on=false. */
+export async function setAqPipeline(kind: "contact" | "property", id: string, on: boolean) {
+  const data = { pipelineAt: on ? new Date() : null, ...(on ? {} : { pipelinePriority: null }) };
+  if (kind === "contact") await prisma.aqContact.update({ where: { id }, data });
+  else await prisma.aqProperty.update({ where: { id }, data });
+  revalidatePath(kind === "contact" ? `/acquisitions/contacts/${id}` : `/acquisitions/properties/${id}`);
+  revalidatePath("/acquisitions/pipeline", "layout");
+  touchAll();
+}
+/** The 1 to 5 priority on the pipeline list; null clears it. */
+export async function setAqPipelinePriority(kind: "contact" | "property", id: string, priority: number | null) {
+  const p = priority == null ? null : Math.min(5, Math.max(1, Math.round(priority)));
+  if (kind === "contact") await prisma.aqContact.update({ where: { id }, data: { pipelinePriority: p } });
+  else await prisma.aqProperty.update({ where: { id }, data: { pipelinePriority: p } });
+  revalidatePath("/acquisitions/pipeline", "layout");
+  touchAll();
+}
 /** A buyer or operator moves to another column of its pipeline; the role goes on if it was missing (Sep 23, 2026). */
 export async function setAqContactStage(pipeline: "buyers" | "operators", id: string, stage: string) {
   if (!(await getAqStages(pipeline)).includes(stage)) return;
@@ -283,15 +298,15 @@ export async function deleteAqStage(pipeline: AqPipeline, name: string): Promise
 }
 // ---------- the list pages' grid (one cell at a time) ----------
 type CellResult = { ok: true; row?: Record<string, unknown> } | { ok: false; reason: string };
-const PROPERTY_CELLS: Record<string, "text" | "state" | "assetType" | "number" | "int" | "date" | "deal" | "dealStage"> = {
+const PROPERTY_CELLS: Record<string, "text" | "state" | "assetType" | "number" | "int" | "date" | "deal" | "dealStage" | "pipeline" | "priority"> = {
   address: "text", city: "text", state: "state", county: "text", businessName: "text", assetType: "assetType", parcelId: "text", neighborhood: "text", notes: "text",
   acreage: "number", squareFeet: "int", yearBuilt: "int", lastSaleDate: "date", lastSalePrice: "number", askingPrice: "number", units: "int",
-  deal: "deal", dealStage: "dealStage",
+  deal: "deal", dealStage: "dealStage", pipeline: "pipeline", pipelinePriority: "priority",
 };
 const COMPANY_CELLS: Record<string, "text" | "state" | "roles" | "name"> = { name: "name", website: "text", phone: "text", city: "text", state: "state", notes: "text", roles: "roles" };
-const CONTACT_CELLS: Record<string, "text" | "email" | "roles" | "companyId" | "lines" | "int" | "date" | "callResult" | "operatorStatus" | "stage"> = {
+const CONTACT_CELLS: Record<string, "text" | "email" | "roles" | "companyId" | "lines" | "int" | "date" | "callResult" | "operatorStatus" | "pipeline" | "priority"> = {
   firstName: "text", lastName: "text", email: "email", emails: "lines", phone: "text", secondaryPhone: "text", otherPhones: "lines", mailingAddress: "text", notes: "text", roles: "roles", companyId: "companyId",
-  operatorBrandName: "text", website: "text", operatorEntityName: "text", directoryOperatorName: "text", storePhone: "text", directoryOperatorPhone: "text", operatorTotalLocations: "int", operatorPipelineStatus: "operatorStatus", buyerStage: "stage", operatorStage: "stage",
+  operatorBrandName: "text", website: "text", operatorEntityName: "text", directoryOperatorName: "text", storePhone: "text", directoryOperatorPhone: "text", operatorTotalLocations: "int", operatorPipelineStatus: "operatorStatus", pipeline: "pipeline", pipelinePriority: "priority",
   lastCallDate: "date", callResult: "callResult", callBackAt: "date", followUpAt: "date",
 };
 const numOf = (v: string | null) => {
@@ -321,6 +336,16 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
     if (kind === "property") {
       const t = PROPERTY_CELLS[key];
       if (!t) return { ok: false, reason: `${key} cannot be edited here.` };
+      if (t === "pipeline") {
+        await setAqPipeline("property", id, text === "Yes");
+        return { ok: true, row: { pipeline: text === "Yes" ? "Yes" : "No", ...(text === "Yes" ? {} : { pipelinePriority: null }) } };
+      }
+      if (t === "priority") {
+        const n = text ? Number(text) : null;
+        if (n != null && (isNaN(n) || n < 1 || n > 5)) return { ok: false, reason: "Priority is 1 to 5." };
+        await setAqPipelinePriority("property", id, n);
+        return { ok: true, row: { pipelinePriority: n == null ? null : String(n) } };
+      }
       if (t === "deal") {
         await setAqPropertyStages(id, text === "Deal" ? ["Deal"] : []);
         const p = await prisma.aqProperty.findUnique({ where: { id }, select: { dealStage: true, stages: true } });
@@ -394,15 +419,14 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
     else if (t === "int") {
       const v = numOf(text);
       data[key] = v == null ? null : Math.round(v);
-    } else if (t === "stage") {
-      const pipeline = key === "buyerStage" ? "buyers" : "operators";
-      if (text && !(await getAqStages(pipeline)).includes(text)) return { ok: false, reason: "Pick a stage from the list." };
-      if (text) {
-        await setAqContactStage(pipeline, id, text);
-        const after = await prisma.aqContact.findUnique({ where: { id }, select: { roles: true } });
-        return { ok: true, row: { [key]: text, roles: after?.roles ?? "[]" } };
-      }
-      data[key] = null;
+    } else if (t === "pipeline") {
+      await setAqPipeline("contact", id, text === "Yes");
+      return { ok: true, row: { pipeline: text === "Yes" ? "Yes" : "No", ...(text === "Yes" ? {} : { pipelinePriority: null }) } };
+    } else if (t === "priority") {
+      const n = text ? Number(text) : null;
+      if (n != null && (isNaN(n) || n < 1 || n > 5)) return { ok: false, reason: "Priority is 1 to 5." };
+      await setAqPipelinePriority("contact", id, n);
+      return { ok: true, row: { pipelinePriority: n == null ? null : String(n) } };
     } else if (t === "operatorStatus") {
       if (text && !(AQ_OPERATOR_STATUSES as readonly string[]).includes(text)) return { ok: false, reason: `Operator Pipeline Status is one of ${AQ_OPERATOR_STATUSES.join(", ")}.` };
       data.operatorPipelineStatus = text;

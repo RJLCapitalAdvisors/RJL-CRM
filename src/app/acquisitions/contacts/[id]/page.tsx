@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { getAqStages } from "@/lib/acquisitions-stages";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
@@ -41,7 +40,6 @@ export default async function AqContactPage({ params }: { params: Promise<{ id: 
   const name = aqFullName(c);
   const roles = parseJsonList(c.roles);
   const reminder = c.followUpAt ?? c.callBackAt;
-  const [buyerStages, operatorStages] = await Promise.all([getAqStages("buyers"), getAqStages("operators")]);
   return (
     <RecordLayout
       left={
@@ -77,7 +75,7 @@ export default async function AqContactPage({ params }: { params: Promise<{ id: 
             </div>
           )}
           <AboutCard title="About this contact">
-            <AqContactForm buyerStages={buyerStages} operatorStages={operatorStages} c={c} companies={companies} action={updateAqContact.bind(null, c.id)} autosave />
+            <AqContactForm c={c} companies={companies} action={updateAqContact.bind(null, c.id)} autosave />
           </AboutCard>
           <div className="card">
             <div className="flex items-center justify-between border-b border-line px-4 py-3">

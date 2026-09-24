@@ -1083,8 +1083,10 @@ model AqContact {
   directoryOperatorPhone String?
   operatorTotalLocations Int?
   operatorPipelineStatus String?  // Pipeline | Corporate | Not interested
-  buyerStage     String?  // Buyers pipeline column while the role Buyer is on (Setting aqBuyerStages; Sep 23, 2026)
-  operatorStage  String?  // Operators pipeline column while the role Operator is on (Setting aqOperatorStages)
+  buyerStage     String?  // unused since Sep 24, 2026 (the boards became lists); kept so nothing is lost
+  operatorStage  String?  // unused since Sep 24, 2026
+  pipelineAt     DateTime? // on the Buyers / Operators pipeline list since (Send to pipeline); null when not (Jonathan, Sep 24, 2026)
+  pipelinePriority Int?    // 1 to 5, the highest first on the pipeline list
   // the call, tracked per person: result, callback target (the dashboard's Call Me Back), follow-up
   lastCallDate        DateTime?
   callResult          String?  // Deal | Callback | Not interested | No answer | Wrong number
@@ -1105,6 +1107,8 @@ model AqContact {
 model AqProperty {
   id                  String   @id @default(cuid())
   address             String
+  pipelineAt          DateTime? // on the Deals Pipeline list since (Send to pipeline on the ticket); the Deal call result and dealStage are the board (Jonathan, Sep 24, 2026)
+  pipelinePriority    Int?      // 1 to 5, the highest first on the pipeline list
   junkedAt            DateTime? // sent to junk (Settings > Junk Properties): hidden from lists, map, pipeline and the assistant until restored (Shawn, Sep 23, 2026)
   junkedBy            String?
   junkReason          String?

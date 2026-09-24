@@ -30,7 +30,8 @@ const AQ_NAV = [
   { href: "/acquisitions/companies", label: "Companies", icon: Building2 },
   { href: "/acquisitions/properties", label: "Properties", icon: Home, except: ["/acquisitions/properties/map"] },
   { href: "/acquisitions/properties/map", label: "Map View", icon: Map },
-  { href: "/acquisitions/pipeline", label: "Pipeline", icon: KanbanSquare },
+  { href: "/acquisitions/deals", label: "Deals", icon: KanbanSquare },
+  { href: "/acquisitions/pipeline", label: "Pipeline", icon: ListChecks },
   { href: "/acquisitions/settings", label: "Settings", icon: Settings },
 ];
 
@@ -203,19 +204,19 @@ function SettingsSubnav() {
   );
 }
 
-/** Under Pipeline on the Acquisitions side, always open: the Buyers, Operators and Deals boards (Jonathan, Sep 23, 2026). */
+/** Under Pipeline on the Acquisitions side, always open: the Buyers, Operators and Deals pipeline lists (Jonathan, Sep 24, 2026); the Deals board is its own entry. */
 function AqPipelineSubnav() {
   const pathname = usePathname();
   const items = [
-    { href: "/acquisitions/pipeline/buyers", label: "Buyers" },
-    { href: "/acquisitions/pipeline/operators", label: "Operators" },
-    { href: "/acquisitions/pipeline/deals", label: "Deals" },
+    { href: "/acquisitions/pipeline/buyers", label: "Buyers Pipeline" },
+    { href: "/acquisitions/pipeline/operators", label: "Operators Pipeline" },
+    { href: "/acquisitions/pipeline/deals", label: "Deals Pipeline" },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
       {items.map((s) => (
         <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${pathname.startsWith(s.href) ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
-          <KanbanSquare className="h-3.5 w-3.5" />
+          <ListChecks className="h-3.5 w-3.5" />
           {s.label}
         </Link>
       ))}

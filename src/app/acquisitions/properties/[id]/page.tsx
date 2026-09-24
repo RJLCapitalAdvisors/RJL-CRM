@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { JunkTarget } from "@/components/junk-target";
+import { PipelineToggle } from "../../pipeline-toggle";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
@@ -149,6 +150,7 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
             ].filter(Boolean)}
             actions={
               <>
+                <PipelineToggle kind="property" id={p.id} at={p.pipelineAt} priority={p.pipelinePriority} compact />
                 {stages.includes("Deal") ? (
                   <Link href={`/acquisitions/pipeline#${encodeURIComponent(p.dealStage ?? dealStages[0])}`} className="btn-secondary">
                     Pipeline · {p.dealStage ?? dealStages[0]}
