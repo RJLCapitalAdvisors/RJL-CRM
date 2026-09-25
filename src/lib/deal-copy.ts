@@ -161,7 +161,7 @@ export function metrics(d: D): string[] {
     if (pm.lastDollar) out.push(`Last Dollar Exposure: ${usd(pm.lastDollar)}${pm.prefLtc != null ? ` | ${pm.prefLtc.toFixed(2)}% LTC` : ""}${pm.prefLtv != null ? ` (${pm.prefLtv.toFixed(2)}% LTV${pm.prefLtvBase === "sellout" ? " on gross sellout" : ""})` : ""}`);
     if (pm.goingInYieldLD != null) out.push(`Going-In Yield on Last Dollar: ${pm.goingInYieldLD.toFixed(2)}%`);
     if (pm.stabilizedYieldLD != null) out.push(`Stabilized Yield on Last Dollar: ${pm.stabilizedYieldLD.toFixed(2)}%`);
-    if (pm.basisLD != null) out.push(`Stabilized Basis on Last Pref Dollar: ${usd(pm.basisLD)} per ${pm.basisUnit}`);
+    if (pm.basisLD != null) out.push(`Stabilized Basis on Last Pref Dollar: ${usd(pm.basisLD)} per ${pm.basisUnit}${pm.basisPerUnitLD ? ` | ${usd(pm.basisPerUnitLD)} per unit` : ""}`);
   }
   const t12 = n(d.capRateT12);
   const y1 = n(d.capRateY1);

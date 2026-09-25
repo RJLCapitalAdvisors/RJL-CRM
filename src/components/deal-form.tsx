@@ -317,6 +317,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
             {!isDev && !isCondo && <Calc label="Going-in yield on last dollar" value={pct(pm.goingInYieldLD)} hint="T12 NOI ÷ last dollar (T12 NOI = T12 cap rate × purchase price)" />}
             {!isCondo && <Calc label="Stabilized yield on last dollar" value={pct(pm.stabilizedYieldLD)} hint="stabilized NOI ÷ last dollar (stabilized NOI = yield on cost × total capitalization)" />}
             <Calc label={`Stabilized basis on last pref dollar per ${pm.basisUnit}`} value={money(pm.basisLD)} hint={`last dollar ÷ ${pm.basisUnit === "SF" ? "square feet" : pm.basisUnit + "s"}`} />
+            {pm.basisUnit === "SF" && <Calc label="Stabilized basis on last pref dollar per unit" value={money(pm.basisPerUnitLD)} hint="last dollar ÷ number of units" />}
           </>
         ) : (
           <>

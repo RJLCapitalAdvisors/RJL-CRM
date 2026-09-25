@@ -62,7 +62,7 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.prefLtv", label: "Pref LTV %" },
   { key: "deal.goingInYieldLD", label: "Going-in yield on last dollar %" },
   { key: "deal.stabilizedYieldLD", label: "Stabilized yield on last dollar %" },
-  { key: "deal.basisLD", label: "Stabilized basis on last pref dollar" },
+  { key: "deal.basisLD", label: "Stabilized basis on last pref dollar (per foot | per unit on a condo)" },
   { key: "deal.facts", label: "Bulleted list of every answered checklist item" },
   ...uniqueChecklist().filter((it) => !it.core).map((it) => ({ key: `deal.details.${it.key}`, label: it.label })),
   { key: "openingLine", label: "Personal opening line (set per recipient in deal outreach)" },
@@ -101,7 +101,7 @@ function lookup(ctx: MergeContext, path: string): unknown {
     const v = pm[k];
     if (v == null || typeof v !== "number") return "";
     if (k === "lastDollar") return usd(v);
-    if (k === "basisLD") return `${usd(v)} per ${pm.basisUnit}`;
+    if (k === "basisLD") return `${usd(v)} per ${pm.basisUnit}${pm.basisPerUnitLD ? ` | ${usd(pm.basisPerUnitLD)} per unit` : ""}`;
     return `${v.toFixed(2)}%`;
   }
   if (path === "deal.subjectLine") return ctx.deal ? subjectLine(ctx.deal) : "";

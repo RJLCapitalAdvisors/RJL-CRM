@@ -29,6 +29,7 @@ export type PrefMetrics = {
   stabilizedYieldLD: number | null; // percent
   basisLD: number | null; // $ per unit/key/bed or per SF
   basisUnit: string; // "unit" | "key" | "bed" | "SF"
+  basisPerUnitLD: number | null; // when the basis reads per SF (a condo): last dollar over the unit count as well (Jonathan, Sep 25, 2026)
 };
 
 export function prefMetrics(d: D): PrefMetrics {
@@ -57,5 +58,6 @@ export function prefMetrics(d: D): PrefMetrics {
     stabilizedYieldLD: lastDollar && stabNoi && !condo ? pct(stabNoi / lastDollar) : null,
     basisLD: lastDollar ? (perCount ? lastDollar / units! : sf ? lastDollar / sf : null) : null,
     basisUnit: perCount ? perCountWord(p.countLabel) : "SF",
+    basisPerUnitLD: lastDollar && !perCount && units ? lastDollar / units : null,
   };
 }
