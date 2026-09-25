@@ -74,7 +74,7 @@ function sameSponsorAndCity(ctx: DealCtx, d: Cand): boolean {
 export async function findSameDeal(name: string | null | undefined, excludeId?: string, ctx: DealCtx = {}): Promise<{ id: string; name: string } | null> {
   const n = (name ?? "").trim();
   if (n.length < 3 && !ctx.address) return null;
-  const deals: Cand[] = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] }, ...(excludeId ? { id: { not: excludeId } } : {}) }, select });
+  const deals: Cand[] = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES, "Deal Lost"] }, ...(excludeId ? { id: { not: excludeId } } : {}) }, select }); // a lost deal that comes back is revived, not duplicated
   const certain = deals.find((d) => certainMatch(n, ctx, d));
   if (certain) return { id: certain.id, name: certain.name };
   const maybe = deals.filter((d) => sameSponsorAndCity(ctx, d));

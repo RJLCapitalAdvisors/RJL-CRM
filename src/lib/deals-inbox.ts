@@ -51,7 +51,7 @@ async function readAttachments(messageId: string): Promise<{ names: string[]; te
   return { names, texts };
 }
 
-async function replyHtml(deal: Record<string, unknown>, dealUrl: string, linkNotes: string[] = []): Promise<string> {
+export async function replyHtml(deal: Record<string, unknown>, dealUrl: string, linkNotes: string[] = []): Promise<string> {
   const missing = missingFor(deal as never);
   const strategy = (deal.strategy as string | null) ?? null;
   const font = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
@@ -81,7 +81,7 @@ ${linkNotes.length ? `<p><b>Links I could not open</b></p><ul style="margin:0 0 
  * the documents pulled from Dropbox / Drive / OneDrive links (stashed on a "CRM Files" message), so the reply is
  * the one email that carries the parsed deal and its documents together.
  */
-async function replyOnThread(msg: Msg, html: string, fileSources: { mailbox: string; messageId: string }[] = []) {
+export async function replyOnThread(msg: Msg, html: string, fileSources: { mailbox: string; messageId: string }[] = []) {
   const draft = await graph<{ id: string }>(`/users/${q(MAILBOX())}/messages/${q(msg.id)}/createReply`, { method: "POST", body: JSON.stringify({}) });
   const to = msg.from?.emailAddress.address ? [{ emailAddress: { address: msg.from.emailAddress.address } }] : [];
   await graph(`/users/${q(MAILBOX())}/messages/${q(draft.id)}`, { method: "PATCH", body: JSON.stringify({ body: { contentType: "html", content: html }, toRecipients: to }) });
@@ -181,17 +181,20 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     await recordDealEmail(existingId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "FOLLOWUP" });
     const files = (msg.hasAttachments ? await recordDealFiles(existingId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0) : 0) + (await recordPulled(existingId, ext));
     const facts = await extractDealFacts(existingId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, { mayEnterFaq: true }).catch(() => 0);
-    const merged = await mergeIntoDeal(existingId, rawText, cleanSubject, { modelAttached: names.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: names }).catch(() => ({ filled: 0, changes: [], model: null }));
+    // a deal that was lost and comes back: the new documents overwrite the old figures (Jonathan, Sep 25, 2026)
+    const wasLost = (await prisma.deal.findUniqueOrThrow({ where: { id: existingId }, select: { stage: true } })).stage === "Deal Lost";
+    const merged = await mergeIntoDeal(existingId, rawText, cleanSubject, { modelAttached: names.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: names, overwrite: wasLost }).catch(() => ({ filled: 0, changes: [], model: null }));
     const filled = merged.filled;
     if (!external) await applyForwarderInstructions(existingId, bodyText).catch(() => null);
     let deal = await prisma.deal.findUniqueOrThrow({ where: { id: existingId } });
     const wasMentioned = deal.stage === "Deal Mentioned";
-    if (wasMentioned) deal = await prisma.deal.update({ where: { id: existingId }, data: { stage: "Deal Received" } }); // the deal we only heard about has arrived
+    if (wasMentioned || wasLost) deal = await prisma.deal.update({ where: { id: existingId }, data: { stage: "Deal Received" } }); // the deal we only heard about has arrived; the deal we lost is back
+    if (wasLost) await prisma.activity.create({ data: { type: "NOTE", body: `The deal came back (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })}): brought back to Deal Received and the ticket re-read from the new email, ${filled} field${filled === 1 ? "" : "s"} updated.`, dealId: existingId, occurredAt: received } }).catch(() => null);
     const base = (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
     const still = missingFor(deal).map((it) => itemLabel(it, deal.strategy));
     let replied = false;
     try {
-      await replyOnThread(msg, wasMentioned ? await replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes) : followUpReplyHtml(deal.propertyName ?? deal.name, `${base}/deals/${deal.id}`, files, facts, filled, still, cloud.notes, merged), fileSources);
+      await replyOnThread(msg, wasMentioned || wasLost ? await replyHtml(deal as unknown as Record<string, unknown>, `${base}/deals/${deal.id}`, cloud.notes) : followUpReplyHtml(deal.propertyName ?? deal.name, `${base}/deals/${deal.id}`, files, facts, filled, still, cloud.notes, merged), fileSources);
       replied = true;
     } catch (e) {
       console.error("deals@ follow-up reply failed", e);
@@ -232,9 +235,10 @@ ${text.slice(0, 2000)}` });
           await recordDealFiles(same.id, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received, all.value.filter((x) => part.attachments.some((n) => n.toLowerCase() === x.name.toLowerCase())) as never).catch(() => 0);
         }
         await recordPulled(same.id, key, part.attachments);
-        await mergeIntoDeal(same.id, text, `${cleanSubject} - ${part.name}`, { modelAttached: part.attachments.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: part.attachments }).catch(() => null);
+        await mergeIntoDeal(same.id, text, `${cleanSubject} - ${part.name}`, { modelAttached: part.attachments.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: part.attachments, overwrite: before.stage === "Deal Lost" }).catch(() => null);
         await extractDealFacts(same.id, text, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, { mayEnterFaq: true }).catch(() => 0);
-        if (before.stage === "Deal Mentioned") await prisma.deal.update({ where: { id: same.id }, data: { stage: "Deal Received" } });
+        if (before.stage === "Deal Mentioned" || before.stage === "Deal Lost") await prisma.deal.update({ where: { id: same.id }, data: { stage: "Deal Received" } });
+        if (before.stage === "Deal Lost") await prisma.activity.create({ data: { type: "NOTE", body: "The deal came back: brought back to Deal Received and the ticket re-read from the new email.", dealId: same.id, occurredAt: received } }).catch(() => null);
         await prisma.dealIntake.create({ data: { source: "WEBHOOK", fromEmail: external ? fromAddr : fwd.email, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, toEmail: MAILBOX(), subject: `${cleanSubject} - ${part.name}`, rawText: text.slice(0, 200_000), attachments: JSON.stringify(part.attachments), extracted: "{}", missing: "[]", notes: `Follow-up on existing deal ${same.id}`, status: "CONVERTED", messageId: key } }).catch(() => null);
         created.push({ id: same.id, name: before.propertyName ?? before.name });
         continue;

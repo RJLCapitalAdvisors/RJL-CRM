@@ -49,7 +49,8 @@ export async function matchExistingDeal(opts: { conversationId?: string | null; 
       if (await confirmSameDeal(byThread.deal, opts.subject, opts.senderEmail, opts.bodyText, { names: opts.attachmentNames, text: opts.attachmentText ?? "" })) return byThread.dealId;
     }
   }
-  const deals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, summary: true, sponsorCompanyId: true, sponsorCompany: { select: { domain: true } } } });
+  // a deal we lost is a candidate too: when the sponsor comes back with it, the ticket is revived rather than duplicated (Jonathan, Sep 25, 2026: TownePlace Suites)
+  const deals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES, "Deal Lost"] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, summary: true, sponsorCompanyId: true, sponsorCompany: { select: { domain: true } } } });
   const subj = opts.subject.toLowerCase();
   const head = opts.bodyText.slice(0, 1500).toLowerCase();
   const senderDomain = opts.senderEmail?.split("@")[1]?.toLowerCase();
@@ -154,7 +155,11 @@ const showVal = (k: string, v: unknown) => (v == null || v === "" ? "blank" : ["
  * figure on the ticket is set to what the model says, because models are updated after OMs are printed. The
  * changes are written as a note on the deal and handed back for the reply.
  */
-export async function mergeIntoDeal(dealId: string, rawText: string, subject: string, opts: { modelAttached?: boolean; attachments?: string[] } = {}): Promise<MergeResult> {
+/**
+ * `overwrite`: the email's documents replace what the ticket has (a deal that comes back after being lost, or a
+ * ticket re-read on purpose): every extracted value that differs is written and listed as a change, narrative included.
+ */
+export async function mergeIntoDeal(dealId: string, rawText: string, subject: string, opts: { modelAttached?: boolean; attachments?: string[]; overwrite?: boolean } = {}): Promise<MergeResult> {
   const { extractWithClaude } = await import("@/lib/intake");
   await (await import("@/lib/required-items")).loadChecklist();
   const none: MergeResult = { filled: 0, changes: [], model: null };
@@ -172,7 +177,7 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   let filled = 0;
   for (const it of uniqueChecklist()) {
     const v = d.details?.[it.key];
-    if (v && !details[it.key]) {
+    if (v && (!details[it.key] || (opts.overwrite && details[it.key] !== v))) {
       details[it.key] = v;
       filled++;
     }
@@ -182,7 +187,7 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   const FROM_MODEL = new Set(["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "irr", "equityMultiple", "yieldOnCost", "capRateT12", "capRateY1", "cashOnCash", "units", "squareFeet", "occupancy", "interestRate", "loanTerm", "holdPeriod", "expectedClose", "unitMix", "yearBuilt"]);
   const same = (a: unknown, b: unknown) => (typeof a === "number" && typeof b === "number" ? Math.abs(a - b) < 1e-6 : String(a ?? "").trim() === String(b ?? "").trim());
   const maybe = (k: keyof typeof deal, v: unknown) => {
-    if (model && FROM_MODEL.has(k as string) && v != null && v !== "" && !same(deal[k], v)) {
+    if ((opts.overwrite || (model && FROM_MODEL.has(k as string))) && v != null && v !== "" && !same(deal[k], v)) {
       core[k as string] = v;
       changes.push({ field: k as string, label: FIELD_LABELS[k as string] ?? String(k), from: deal[k], to: v });
       filled++;
@@ -198,6 +203,8 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   maybe("interestRate", d.interestRate); maybe("loanTerm", d.loanTerm); maybe("lenderType", d.lenderType); maybe("irr", d.irr); maybe("equityMultiple", d.equityMultiple);
   maybe("capRateT12", d.capRateT12); maybe("capRateY1", d.capRateY1); maybe("yieldOnCost", d.yieldOnCost); maybe("cashOnCash", d.cashOnCash); maybe("holdPeriod", d.holdPeriod);
   maybe("sponsorExperience", d.sponsorExperience); maybe("expectedClose", (d as { expectedClose?: string | null }).expectedClose ?? null);
+  maybe("summary", d.summary); maybe("propertyAddress", d.propertyAddress); maybe("city", d.city); maybe("state", d.state); maybe("totalEquity", d.totalEquity);
+  if (opts.overwrite) { maybe("assetClass", d.assetClass); maybe("strategy", d.strategy); maybe("executionType", d.executionType); maybe("requestType", d.requestType); maybe("projectedSellout", d.projectedSellout); }
   const fileNames = (await prisma.dealFile.findMany({ where: { dealId }, select: { name: true } })).map((f) => f.name);
   const reconciled = reconcileDocuments(details as Record<string, string | null | undefined>, fileNames);
   // recomputed ltv/ltc: debt over price and debt over total capitalization follow whatever dollars the merge brought (Jonathan's rule, Sep 16)
