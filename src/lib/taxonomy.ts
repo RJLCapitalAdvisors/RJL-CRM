@@ -321,6 +321,7 @@ export const UNIT_MIXES = [
   "one-bed, two-bed, and three-bedroom",
   "two-bed and three-bedroom",
   "two-bed, three-bed, and four-bedroom",
+  "two-bed, three-bed, four-bed, and five-bedroom", // Jonathan, Sep 25, 2026
   "three-bed and four-bedroom (townhome / BFR)",
 ] as const;
 /** Hold period options on the deal ticket (the extractor snaps to these). */
