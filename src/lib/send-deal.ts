@@ -67,7 +67,9 @@ export async function finalizeEngagement(dealId: string, keepCompanyIds: string[
   const deal = await prisma.deal.findUniqueOrThrow({ where: { id: dealId } });
   const details = JSON.parse(deal.details || "{}") as Record<string, unknown>;
   const agreed = (await engagementGroups(dealId)).map((g) => g.name);
-  await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify({ ...details, agreedGroups: agreed, ...(markSigned ? { engagementSignedAt: new Date().toISOString() } : {}) }) } });
+  const back = new Set([...keepCompanyIds, ...addCompanyIds]);
+  const engagementStruck = ((details.engagementStruck as { companyId: string | null }[] | undefined) ?? []).filter((s) => !s.companyId || !back.has(s.companyId));
+  await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify({ ...details, agreedGroups: agreed, engagementStruck, ...(markSigned ? { engagementSignedAt: new Date().toISOString() } : {}) }) } });
   if (markSigned) await advance(dealId, "Engagement Letter Signed");
   const change = `${agreed.length} groups agreed${removed ? `, ${removed} removed` : ""}${added ? `, ${added} added` : ""}.`;
   await logActivity({ type: "NOTE", body: markSigned ? `Engagement letter signed. ${change}` : `Agreed groups updated after signing. ${change}`, dealId, companyId: deal.sponsorCompanyId });

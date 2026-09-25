@@ -49,6 +49,16 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   if (!deal) notFound();
   const showEngagement = deal.stage === "Engagement Letter Sent" || deal.stage === "Engagement Letter Signed";
   const groups = showEngagement ? (await engagementGroups(deal.id)).filter((g) => g.companyId).map((g) => ({ companyId: g.companyId, name: g.name, status: g.status })) : [];
+  const dealDetails = ((): Record<string, unknown> => {
+    try {
+      return JSON.parse(deal.details || "{}");
+    } catch {
+      return {};
+    }
+  })();
+  const struck = showEngagement ? ((dealDetails.engagementStruck as { name: string; companyId: string | null; how: string; at: string; by: string | null }[] | undefined) ?? []) : [];
+  const confirmedAt = typeof dealDetails.engagementConfirmedAt === "string" ? dealDetails.engagementConfirmedAt : null;
+  const confirmedBy = typeof dealDetails.engagementConfirmedBy === "string" ? dealDetails.engagementConfirmedBy : null;
   const emails = [...(await dealEmailRows(deal.id)), ...deal.activities.filter((a) => a.type !== "EMAIL")].sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());
   const update = updateDeal.bind(null, deal.id);
   const addNote = addDealNote.bind(null, deal.id);
@@ -123,7 +133,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
       }
       center={
         <>
-          {showEngagement && <EngagementCard dealId={deal.id} groups={groups} signed={deal.stage === "Engagement Letter Signed"} />}
+          {showEngagement && <EngagementCard dealId={deal.id} groups={groups} struck={struck} confirmed={confirmedAt ? { at: confirmedAt, by: confirmedBy } : null} signed={deal.stage === "Engagement Letter Signed"} />}
           <EmailLog
             rows={emails}
             title="Emails on this deal"
