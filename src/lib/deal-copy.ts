@@ -1,4 +1,5 @@
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
+import { rateText } from "@/lib/rates";
 import { parseDetails } from "@/lib/checklist";
 import { US_STATES } from "@/lib/taxonomy";
 import { isCondo, isPref, prefMetrics } from "@/lib/pref";
@@ -143,7 +144,7 @@ export function metrics(d: D): string[] {
   const debt = n(d.totalDebt);
   const ltc = n(d.ltc);
   const ltv = n(d.ltv);
-  const rate = s(d.interestRate);
+  const rate = rateText(d as { interestRate?: string | null; rateIndex?: string | null; rateSpreadBps?: number | null }); // "300 bps over SOFR (6.90% today)" or "6.75%"
   const term = s(d.loanTerm);
   const amort = s(d.amortization);
   const lender = s(d.lenderType)?.replace(/^\((.*)\)$/, "$1") ?? null; // the list stores "(Debt Fund)"; the line adds its own parentheses

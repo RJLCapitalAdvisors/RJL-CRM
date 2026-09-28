@@ -12,7 +12,7 @@ export default async function NewDealPage() {
     <>
       <PageHeader title="New deal" />
       <div className="card mx-8 my-6 max-w-5xl p-6">
-        <DealForm deal={null} users={users} action={createDeal} submitLabel="Create deal" />
+        <DealForm deal={null} users={users} action={createDeal} submitLabel="Create deal" indexRates={await (await import("@/lib/index-rates")).ensureIndexRates().catch(() => ({}))} />
       </div>
     </>
   );

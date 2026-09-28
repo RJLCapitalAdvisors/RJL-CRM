@@ -8,7 +8,7 @@ import { SponsorPicker } from "./sponsor-picker";
 import { SelectField } from "@/components/select-field";
 import { AutoSaveForm } from "./autosave-form";
 import { isPref, prefMetrics } from "@/lib/pref";
-import { interestRateNumber } from "@/lib/rates";
+import { RATE_INDEXES, indicativeRate, interestRateNumber, type IndexTable } from "@/lib/rates";
 
 export const EXECUTION_TYPES = ["Senior Debt", "Mezz Debt", "Preferred Equity", "JV Equity", "Co-GP Equity", "LP Equity", "Fund Investment"] as const;
 
@@ -34,6 +34,8 @@ type DealLike = {
   ltv: number | null;
   ltc: number | null;
   interestRate: string | null;
+  rateIndex?: string | null;
+  rateSpreadBps?: number | null;
   loanTerm: string | null;
   amortization?: string | null;
   lenderType: string | null;
@@ -122,8 +124,13 @@ function Select({ name, value, options, blank = "—", onChange }: { name: strin
   );
 }
 
-export function DealForm({ deal, users, action, submitLabel = "Save", autosave = false }: { deal: DealLike; users: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; submitLabel?: string; autosave?: boolean }) {
+export function DealForm({ deal, users, action, submitLabel = "Save", autosave = false, indexRates = {} }: { deal: DealLike; users: { id: string; name: string }[]; action: (fd: FormData) => void | Promise<void>; submitLabel?: string; autosave?: boolean; indexRates?: IndexTable }) {
   const d = deal;
+  // debt pricing: fixed, or a spread over an index priced off the day's reading (Jonathan, Sep 28, 2026)
+  const [rateIndex, setRateIndex] = useState<string>(d?.rateIndex ?? "");
+  const [spreadBps, setSpreadBps] = useState<number | null>(d?.rateSpreadBps ?? null);
+  const idxNow = rateIndex ? indexRates[rateIndex] : null;
+  const indicative = indicativeRate({ rateIndex, rateSpreadBps: spreadBps }, indexRates);
   const details = parseDetailsSafe(d?.details);
   const [assetClass, setAssetClass] = useState(d?.assetClass ?? "");
   const [execType, setExecType] = useState(d?.executionType ?? "");
@@ -267,9 +274,21 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
       <Group title="Debt terms">
         {!isDev && <Calc label="LTV %" value={pctOf(debt, price)} hint="total debt ÷ purchase price" />}
         <Calc label="LTC %" value={pctOf(debt, cap)} hint="total debt ÷ total capitalization" />
-        <Row label="Interest rate %" hint="Numbers only; the % is added. Fixed or floating, spreads and a second loan go in the debt terms.">
-          <NumberInput name="interestRate" defaultValue={interestRateNumber(d?.interestRate)} placeholder="6.75" />
+        <Row label="Rate index" hint="Fixed rate, or the index the loan is priced over. The indicative rate follows the day's index.">
+          <Select name="rateIndex" value={rateIndex} options={RATE_INDEXES} blank="Fixed rate" onChange={setRateIndex} />
         </Row>
+        {rateIndex ? (
+          <>
+            <Row label="Spread (bps)" hint="Basis points over the index: 300 for SOFR + 3%.">
+              <NumberInput name="rateSpreadBps" defaultValue={d?.rateSpreadBps} decimals={false} placeholder="300" onValue={setSpreadBps} />
+            </Row>
+            <Calc label="Indicative rate %" value={indicative != null ? `${indicative.toFixed(2)}%` : "—"} hint={idxNow ? `${rateIndex} ${idxNow.value.toFixed(2)}% as of ${idxNow.asOf} + ${spreadBps ?? 0} bps` : "the index has no reading yet"} />
+          </>
+        ) : (
+          <Row label="Fixed rate %" hint="Numbers only; the % is added. A second loan goes in the debt terms.">
+            <NumberInput name="interestRate" defaultValue={interestRateNumber(d?.interestRate)} placeholder="6.75" />
+          </Row>
+        )}
         <Row label="Loan term">
           <Select name="loanTerm" value={d?.loanTerm ?? ""} options={LOAN_TERMS} />
         </Row>

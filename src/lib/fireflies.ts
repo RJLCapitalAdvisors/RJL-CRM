@@ -6,7 +6,7 @@ import { houseText, cleanBusinessPlan } from "@/lib/style";
 import { missingFor, parseDetails, type ChecklistItem } from "@/lib/checklist";
 import { loadChecklist } from "@/lib/required-items";
 import { ACTIVE_STAGES, LENDER_TYPES, LOAN_TERMS, UNIT_MIXES } from "@/lib/taxonomy";
-import { cleanInterestRate } from "@/lib/rates";
+import { cleanInterestRate, parseSpread } from "@/lib/rates";
 
 /**
  * Fireflies call transcripts. Before a deal's sponsor bio and business plan are final, look for calls with
@@ -89,7 +89,7 @@ export async function enrichFromCalls(dealId: string, transcripts?: Transcript[]
   if (!deal) return { calls: 0, changed: false, facts: 0 };
   await loadChecklist();
   const open: ChecklistItem[] = missingFor(deal).filter((it) => it.kind !== "doc");
-  const blankFields = { expectedClose: !deal.expectedClose, unitMix: !deal.unitMix, yearBuilt: !deal.yearBuilt, onMarket: deal.onMarket == null, lenderType: !deal.lenderType, loanTerm: !deal.loanTerm, interestRate: !deal.interestRate };
+  const blankFields = { expectedClose: !deal.expectedClose, unitMix: !deal.unitMix, yearBuilt: !deal.yearBuilt, onMarket: deal.onMarket == null, lenderType: !deal.lenderType, loanTerm: !deal.loanTerm, interestRate: !deal.interestRate && !deal.rateIndex };
   const terms = [deal.sponsorName, deal.sponsorCompany?.name, deal.sponsorCompany?.domain, ...(deal.sponsorCompany?.contacts ?? []).flatMap((c) => [[c.firstName, c.lastName].filter(Boolean).join(" "), c.email ?? ""])].filter((x): x is string => Boolean(x && x.length > 3));
   const phrases = [deal.propertyName].filter((x): x is string => Boolean(x && x.length > 3));
   const calls = (await findCalls(terms, transcripts, { phrases }).catch(() => [])).slice(0, 5);
@@ -126,7 +126,11 @@ export async function enrichFromCalls(dealId: string, transcripts?: Transcript[]
   if (blankFields.onMarket && (f.onMarket === "on" || f.onMarket === "off")) { data.onMarket = f.onMarket === "on"; filled.push("onMarket"); }
   if (blankFields.lenderType && clean(f.lenderType) && (LENDER_TYPES as readonly string[]).includes(clean(f.lenderType)!)) { data.lenderType = clean(f.lenderType); filled.push("lenderType"); }
   if (blankFields.loanTerm && clean(f.loanTerm) && (LOAN_TERMS as readonly string[]).includes(clean(f.loanTerm)!)) { data.loanTerm = clean(f.loanTerm); filled.push("loanTerm"); }
-  if (blankFields.interestRate && cleanInterestRate(f.interestRate)) { data.interestRate = cleanInterestRate(f.interestRate); filled.push("interestRate"); }
+  if (blankFields.interestRate && f.interestRate) {
+    const sp = parseSpread(f.interestRate);
+    if (sp) { data.rateIndex = sp.rateIndex; data.rateSpreadBps = sp.rateSpreadBps; filled.push("rateIndex"); }
+    else if (cleanInterestRate(f.interestRate)) { data.interestRate = cleanInterestRate(f.interestRate); filled.push("interestRate"); }
+  }
   const details = parseDetails(deal.details);
   const openKeys = new Set(open.map((it) => it.key));
   let detailsChanged = false;

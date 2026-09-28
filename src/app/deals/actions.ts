@@ -82,7 +82,10 @@ async function dealData(fd: FormData) {
     totalDebt: num(fd, "totalDebt"),
     totalCapitalization: num(fd, "totalCapitalization"),
     ltc: fd.has("totalDebt") ? pctCalc(num(fd, "totalDebt"), num(fd, "totalCapitalization")) : num(fd, "ltc"),
-    interestRate: cleanInterestRate(s(fd, "interestRate")), // one simple rate, whatever was typed (Jonathan, Sep 24, 2026)
+    // fixed: one simple rate (Jonathan, Sep 24, 2026); floating: the index and the spread, and the fixed box is cleared (Sep 28, 2026)
+    interestRate: fd.has("rateIndex") && s(fd, "rateIndex") ? null : cleanInterestRate(s(fd, "interestRate")),
+    rateIndex: fd.has("rateIndex") ? s(fd, "rateIndex") : undefined,
+    rateSpreadBps: fd.has("rateIndex") ? (s(fd, "rateIndex") && num(fd, "rateSpreadBps") != null ? Math.round(num(fd, "rateSpreadBps")!) : null) : undefined,
     lenderType: s(fd, "lenderType"),
     irr: num(fd, "irr"),
     holdPeriod: s(fd, "holdPeriod"),

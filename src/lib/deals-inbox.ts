@@ -52,6 +52,7 @@ async function readAttachments(messageId: string): Promise<{ names: string[]; te
 }
 
 export async function replyHtml(deal: Record<string, unknown>, dealUrl: string, linkNotes: string[] = []): Promise<string> {
+  await (await import("@/lib/index-rates")).ensureIndexRates().catch(() => ({}));
   const missing = missingFor(deal as never);
   const strategy = (deal.strategy as string | null) ?? null;
   const font = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";

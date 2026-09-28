@@ -27,6 +27,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DealPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const indexRates = await (await import("@/lib/index-rates")).ensureIndexRates().catch(() => ({}));
   const [deal, users] = await Promise.all([
     prisma.deal.findUnique({
       where: { id },
@@ -116,7 +117,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             </div>
           )}
           <AboutCard title="About this deal">
-            <DealForm deal={deal} users={users} action={update} autosave />
+            <DealForm deal={deal} users={users} action={update} autosave indexRates={indexRates} />
           </AboutCard>
         </>
       }

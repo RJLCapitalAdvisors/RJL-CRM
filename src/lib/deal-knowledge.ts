@@ -150,7 +150,7 @@ export async function extractDealFacts(dealId: string, text: string, source: str
 /** Fill blanks on the ticket from a follow-up: checklist items and core fields the extractor can see. */
 export type MergeChange = { field: string; label: string; from: unknown; to: unknown };
 export type MergeResult = { filled: number; changes: MergeChange[]; model: string | null };
-const FIELD_LABELS: Record<string, string> = { purchasePrice: "Purchase price", totalCapitalization: "Total capitalization", totalDebt: "Total debt", requestedAmount: "Equity requested", irr: "IRR", equityMultiple: "Equity multiple", yieldOnCost: "Yield on cost", capRateT12: "T12 cap rate", capRateY1: "Year 1 cap rate", cashOnCash: "Cash on cash", units: "Units", squareFeet: "Square feet (NRSF)", occupancy: "Occupancy", interestRate: "Interest rate", loanTerm: "Loan term", holdPeriod: "Hold period", expectedClose: "Expected close", unitMix: "Unit mix", yearBuilt: "Year built" };
+const FIELD_LABELS: Record<string, string> = { purchasePrice: "Purchase price", totalCapitalization: "Total capitalization", totalDebt: "Total debt", requestedAmount: "Equity requested", irr: "IRR", equityMultiple: "Equity multiple", yieldOnCost: "Yield on cost", capRateT12: "T12 cap rate", capRateY1: "Year 1 cap rate", cashOnCash: "Cash on cash", units: "Units", squareFeet: "Square feet (NRSF)", occupancy: "Occupancy", interestRate: "Fixed rate", rateIndex: "Rate index", rateSpreadBps: "Spread (bps)", loanTerm: "Loan term", holdPeriod: "Hold period", expectedClose: "Expected close", unitMix: "Unit mix", yearBuilt: "Year built" };
 const showVal = (k: string, v: unknown) => (v == null || v === "" ? "blank" : ["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount"].includes(k) ? fmtMoney(Number(v)) : ["irr", "capRateT12", "capRateY1", "yieldOnCost", "cashOnCash", "occupancy", "interestRate"].includes(k) ? `${Number(v).toFixed(2)}%` : String(v));
 
 /**
@@ -188,7 +188,7 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   }
   const core: Record<string, unknown> = {};
   // underwriting from a freshly attached Excel model replaces what an OM or deck said earlier; narrative only fills blanks
-  const FROM_MODEL = new Set(["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "irr", "equityMultiple", "yieldOnCost", "capRateT12", "capRateY1", "cashOnCash", "units", "squareFeet", "occupancy", "interestRate", "loanTerm", "holdPeriod", "expectedClose", "unitMix", "yearBuilt"]);
+  const FROM_MODEL = new Set(["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "irr", "equityMultiple", "yieldOnCost", "capRateT12", "capRateY1", "cashOnCash", "units", "squareFeet", "occupancy", "interestRate", "rateIndex", "rateSpreadBps", "loanTerm", "holdPeriod", "expectedClose", "unitMix", "yearBuilt"]);
   const same = (a: unknown, b: unknown) => (typeof a === "number" && typeof b === "number" ? Math.abs(a - b) < 1e-6 : String(a ?? "").trim() === String(b ?? "").trim());
   const maybe = (k: keyof typeof deal, v: unknown) => {
     if ((opts.overwrite || (model && FROM_MODEL.has(k as string))) && v != null && v !== "" && !same(deal[k], v)) {
@@ -204,7 +204,10 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   };
   maybe("occupancy", d.occupancy); maybe("units", d.units != null ? Math.trunc(d.units) : null); maybe("squareFeet", d.squareFeet); maybe("yearBuilt", d.yearBuilt); maybe("unitMix", d.unitMix);
   maybe("totalCapitalization", d.totalCapitalization); maybe("totalDebt", d.totalDebt); maybe("purchasePrice", d.purchasePrice); maybe("requestedAmount", d.requestedAmount);
-  maybe("interestRate", d.interestRate); maybe("loanTerm", d.loanTerm); maybe("lenderType", d.lenderType); maybe("irr", d.irr); maybe("equityMultiple", d.equityMultiple);
+  maybe("rateIndex", d.rateIndex); maybe("rateSpreadBps", d.rateSpreadBps);
+  if (d.rateIndex && d.rateSpreadBps != null) core.interestRate = null; // floating: the fixed box is cleared
+  else maybe("interestRate", d.interestRate);
+  maybe("loanTerm", d.loanTerm); maybe("lenderType", d.lenderType); maybe("irr", d.irr); maybe("equityMultiple", d.equityMultiple);
   maybe("capRateT12", d.capRateT12); maybe("capRateY1", d.capRateY1); maybe("yieldOnCost", d.yieldOnCost); maybe("cashOnCash", d.cashOnCash); maybe("holdPeriod", d.holdPeriod);
   maybe("sponsorExperience", d.sponsorExperience); maybe("expectedClose", (d as { expectedClose?: string | null }).expectedClose ?? null);
   maybe("summary", d.summary); maybe("propertyAddress", d.propertyAddress); maybe("city", d.city); maybe("state", d.state); maybe("totalEquity", d.totalEquity);

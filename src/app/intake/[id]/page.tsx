@@ -49,6 +49,7 @@ function Select({ id, label, value, options }: { id: string; label: string; valu
 }
 
 export default async function IntakeDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  await (await import("@/lib/index-rates")).ensureIndexRates().catch(() => ({}));
   const { id } = await params;
   const sp = await searchParams;
   await loadChecklist();

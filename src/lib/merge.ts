@@ -3,6 +3,7 @@ import { cleanBusinessPlan } from "@/lib/style";
 import { uniqueChecklist, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
 import { intro, metricsHtml, subjectLine, usd } from "@/lib/deal-copy";
 import { prefMetrics } from "@/lib/pref";
+import { rateNumber, rateText } from "@/lib/rates";
 
 // Merge fields available in templates. Syntax: {{deal.propertyName}} or with a fallback {{contact.firstName|there}}
 export const MERGE_FIELDS: { key: string; label: string }[] = [
@@ -36,7 +37,10 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.totalDebt", label: "Total debt ($)" },
   { key: "deal.totalCapitalization", label: "Total capitalization ($)" },
   { key: "deal.ltc", label: "LTC %" },
-  { key: "deal.interestRate", label: "Interest rate" },
+  { key: "deal.interestRate", label: "Rate: \"300 bps over SOFR (6.90% today)\" on a floating loan, \"6.75%\" when fixed" },
+  { key: "deal.rateIndex", label: "Rate index (SOFR, Prime, 10 Year Treasury)" },
+  { key: "deal.rateSpread", label: "Spread over the index, e.g. \"300 bps\"" },
+  { key: "deal.indicativeRate", label: "Indicative rate today (index + spread), e.g. \"6.90%\"" },
   { key: "deal.lenderType", label: "Lender type" },
   { key: "deal.irr", label: "IRR %" },
   { key: "deal.holdPeriod", label: "Hold period" },
@@ -104,6 +108,9 @@ function lookup(ctx: MergeContext, path: string): unknown {
     if (k === "basisLD") return `${usd(v)} per ${pm.basisUnit}${pm.basisPerUnitLD ? ` | ${usd(pm.basisPerUnitLD)} per unit` : ""}`;
     return `${v.toFixed(2)}%`;
   }
+  if (path === "deal.interestRate") return ctx.deal ? rateText(ctx.deal as never) ?? "" : "";
+  if (path === "deal.rateSpread") return ctx.deal?.rateSpreadBps != null ? `${ctx.deal.rateSpreadBps} bps` : "";
+  if (path === "deal.indicativeRate") { const n = ctx.deal ? rateNumber(ctx.deal as never) : null; return n != null ? `${n.toFixed(2)}%` : ""; }
   if (path === "deal.subjectLine") return ctx.deal ? subjectLine(ctx.deal) : "";
   if (path === "deal.intro") return ctx.deal ? intro(ctx.deal) : "";
   if (path === "deal.metrics") return ctx.deal ? metricsHtml(ctx.deal) : "";

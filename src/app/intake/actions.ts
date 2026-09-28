@@ -146,6 +146,8 @@ function dealDataFrom(d: ExtractedDeal, propertyName: string, sponsorCompanyId: 
       totalDebt: d.totalDebt,
       executionType: d.executionType,
       interestRate: d.interestRate,
+      rateIndex: d.rateIndex ?? null,
+      rateSpreadBps: d.rateSpreadBps ?? null,
       lenderType: d.lenderType,
       irr: d.irr,
       capRateT12: d.capRateT12,

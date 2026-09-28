@@ -190,7 +190,9 @@ model Deal {
   totalDebt           Float?
   totalCapitalization Float?
   ltc                 Float?
-  interestRate        String?
+  interestRate        String? // the fixed rate ("6.75%"); empty when the loan floats over an index
+  rateIndex           String? // SOFR | Prime | 2 Year Treasury | 5 Year Treasury | 7 Year Treasury | 10 Year Treasury (Sep 28, 2026)
+  rateSpreadBps       Int?    // basis points over the index; the indicative rate is worked out from the day's index
   amortization        String? // I/O and amortization structure, e.g. "2 years I/O followed by 30 year amortization"
   lenderType          String?
   irr                 Float?
@@ -1271,4 +1273,13 @@ model TrackerRemoval {
   removedAt       DateTime @default(now())
 
   @@index([dealId, removedAt])
+}
+
+// The day's reading of each rate index (FRED), for indicative rates on floating loans.
+model IndexRate {
+  id        String   @id @default(cuid())
+  index     String   @unique
+  value     Float
+  asOf      DateTime
+  updatedAt DateTime @updatedAt
 }

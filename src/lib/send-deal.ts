@@ -89,6 +89,7 @@ function stripTemplateSignoff(html: string) {
 /** Render subject and HTML body for one recipient, house style, ready for Outlook. */
 export async function renderDealEmail(opts: { templateId: string; deal: Record<string, unknown>; contact: { firstName: string | null; lastName: string | null; email: string | null; id: string }; company: { name: string } | null; openingLine: string | null; bodyOverride: string | null; senderName: string; mailbox: string }) {
   const tpl = await prisma.emailTemplate.findUniqueOrThrow({ where: { id: opts.templateId } });
+  await (await import("@/lib/index-rates")).ensureIndexRates().catch(() => ({})); // a floating rate reads "300 bps over SOFR (6.90% today)"
   const ctx: MergeContext = { contact: opts.contact, company: opts.company, deal: opts.deal, sender: { name: opts.senderName }, unsubscribeUrl: unsubscribeUrl(opts.contact.id), openingLine: opts.openingLine };
   const subject = renderTemplate(tpl.subject, ctx);
   const body = renderTemplate(stripTemplateSignoff(opts.bodyOverride ?? tpl.bodyHtml), ctx, { mark: true });
