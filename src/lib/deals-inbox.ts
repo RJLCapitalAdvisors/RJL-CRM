@@ -186,6 +186,8 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     const wasLost = (await prisma.deal.findUniqueOrThrow({ where: { id: existingId }, select: { stage: true } })).stage === "Deal Lost";
     const merged = await mergeIntoDeal(existingId, rawText, cleanSubject, { modelAttached: names.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: names, overwrite: wasLost }).catch(() => ({ filled: 0, changes: [], model: null }));
     const filled = merged.filled;
+    // the narratives take in what the new material adds (a sponsor deck, a write-up, the sponsor's answers)
+    await (await import("@/lib/enrich-narratives")).improveNarratives(existingId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => null);
     if (!external) await applyForwarderInstructions(existingId, bodyText).catch(() => null);
     let deal = await prisma.deal.findUniqueOrThrow({ where: { id: existingId } });
     const wasMentioned = deal.stage === "Deal Mentioned";
@@ -238,6 +240,7 @@ ${text.slice(0, 2000)}` });
         await recordPulled(same.id, key, part.attachments);
         await mergeIntoDeal(same.id, text, `${cleanSubject} - ${part.name}`, { modelAttached: part.attachments.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: part.attachments, overwrite: before.stage === "Deal Lost" }).catch(() => null);
         await extractDealFacts(same.id, text, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, { mayEnterFaq: true }).catch(() => 0);
+        await (await import("@/lib/enrich-narratives")).improveNarratives(same.id, text, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => null);
         if (before.stage === "Deal Mentioned" || before.stage === "Deal Lost") await prisma.deal.update({ where: { id: same.id }, data: { stage: "Deal Received" } });
         if (before.stage === "Deal Lost") await prisma.activity.create({ data: { type: "NOTE", body: "The deal came back: brought back to Deal Received and the ticket re-read from the new email.", dealId: same.id, occurredAt: received } }).catch(() => null);
         await prisma.dealIntake.create({ data: { source: "WEBHOOK", fromEmail: external ? fromAddr : fwd.email, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, toEmail: MAILBOX(), subject: `${cleanSubject} - ${part.name}`, rawText: text.slice(0, 200_000), attachments: JSON.stringify(part.attachments), extracted: "{}", missing: "[]", notes: `Follow-up on existing deal ${same.id}`, status: "CONVERTED", messageId: key } }).catch(() => null);

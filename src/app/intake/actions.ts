@@ -213,7 +213,10 @@ export async function createDealFromIntake(id: string): Promise<string> {
   const same = await findSameDeal(propertyName, undefined, { sponsorCompanyId: sponsor?.id ?? null, sponsorName: d.sponsorName, city: d.city, state: d.state, address: d.propertyAddress, text: it.rawText.slice(0, 3000) });
   if (same) {
     const filled = await fillDealFromExtraction(same.id, d).catch(() => [] as string[]);
-    await prisma.dealIntake.update({ where: { id }, data: { dealId: same.id, status: "CONVERTED", notes: `Matched existing deal ${same.name}${filled.length ? `; filled ${filled.join(", ")}` : ""}` } }).catch(() => null);
+    await (await import("@/lib/enrich-narratives")).improveNarratives(same.id, it.rawText, it.subject ?? "a forwarded email").catch(() => null);
+    // one intake row can point at the deal (dealId is unique): a later forward keeps the match in its notes (Certes, Sep 25, 2026: the update threw and the row stayed PENDING)
+    const holder = await prisma.dealIntake.findFirst({ where: { dealId: same.id, NOT: { id } }, select: { id: true } });
+    await prisma.dealIntake.update({ where: { id }, data: { ...(holder ? {} : { dealId: same.id }), status: "CONVERTED", notes: `Matched existing deal ${same.name} (${same.id})${filled.length ? `; filled ${filled.join(", ")}` : ""}` } }).catch(() => null);
     return same.id;
   }
   const deal = await prisma.deal.create({ data: dealDataFrom(d, propertyName, sponsor?.id ?? null) });

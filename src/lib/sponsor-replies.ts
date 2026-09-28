@@ -73,6 +73,7 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
       if (words.length > 40) {
         facts += await extractDealFacts(d.id, words, `${a.subject ?? "sponsor email"} (${stamp})`, { mayEnterFaq: true }).catch(() => 0);
         await mergeIntoDeal(d.id, words, a.subject ?? "").catch(() => 0);
+        await (await import("@/lib/enrich-narratives")).improveNarratives(d.id, words, `${a.subject ?? "the sponsor's email"} (${stamp})`).catch(() => null);
       }
       // engagement letter confirmation
       const det = JSON.parse(d.details || "{}") as Record<string, unknown>;

@@ -217,6 +217,8 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
   if (out.rateIndex && out.rateSpreadBps != null) out.interestRate = null;
   if (out.rateIndex && out.rateSpreadBps == null) out.rateIndex = null;
   if (!out.rateIndex && out.interestRate) out.rateIndex = ASSUMPTION; // a stated all-in rate is an assumption on the ticket
+  // "Attached", "see attached", a one-liner: not a bio; the field stays blank so the deck fills it (Certes, Sep 28, 2026)
+  if (out.sponsorExperience && (out.sponsorExperience.trim().length < 60 || /^(?:see |as |is |please see )?attached\.?$/i.test(out.sponsorExperience.trim()))) out.sponsorExperience = null;
   if (out.details && typeof out.details.acres === "string" && out.details.acres.trim()) out.details = { ...out.details, acres: acresNumber(out.details.acres) };
   // any equity raise that is the majority of the total equity is JV Equity
   if (out.executionType === "LP Equity" && out.requestedAmount && out.totalEquity && out.requestedAmount / out.totalEquity >= 0.5) out.executionType = "JV Equity";
