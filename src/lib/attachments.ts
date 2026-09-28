@@ -40,12 +40,14 @@ export async function attachmentToText(name: string, contentType: string | null,
       }
       return parts.join("\n\n");
     }
+    if (lower.endsWith(".pptx") || ct.includes("presentationml")) return (await import("@/lib/office-text")).pptxToText(bytes); // a teaser deck (Certes, Sep 28, 2026)
+    if (lower.endsWith(".docx") || ct.includes("wordprocessingml")) return (await import("@/lib/office-text")).docxToText(bytes);
     if (lower.endsWith(".txt") || ct.startsWith("text/")) return new TextDecoder().decode(bytes);
     if (lower.endsWith(".html") || lower.endsWith(".htm")) return emailHtmlToText(new TextDecoder().decode(bytes));
   } catch (e) {
     return `(could not read ${name}: ${String(e instanceof Error ? e.message : e).slice(0, 120)})`;
   }
-  return null; // images, Word docs (not yet), zips
+  return null; // images, zips, old .doc and .ppt
 }
 
 /** Keep the extractor input within reason: the email first, then attachments, biggest ones trimmed. */

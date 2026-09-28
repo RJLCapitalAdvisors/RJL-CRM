@@ -28,24 +28,25 @@ export async function improveNarratives(dealId: string, text: string, source: st
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { name: true, propertyName: true, sponsorName: true, assetClass: true, strategy: true, city: true, state: true, summary: true, sponsorExperience: true, sponsorCompanyId: true } });
   if (!deal) return none;
   let out: z.infer<typeof Out> | null = null;
-  try {
+  for (let attempt = 0; attempt < 2 && !out; attempt++) try {
     const res = await new Anthropic().messages.parse({
       model: "claude-sonnet-5",
-      max_tokens: 1500,
+      max_tokens: 4000, // the reply carries its reasoning too; 1,500 cut Sunder's answers off mid-string (Sep 28, 2026)
       system: [
         "You keep the narrative on a deal ticket at RJL Capital Advisors, a real estate capital advisor, current as the sponsor sends more material. You are given the ticket's business plan and sponsor bio as they stand and a new email (with any attachments' text).",
         "Keep each paragraph exactly as it is unless the new material adds real substance about the property, the market, the plan or the sponsor; then rewrite that paragraph in the house shape, keeping what was right and folding the new substance in. A current text that is a placeholder or a stub is replaced whenever the material describes the thing.",
-        "Never invent. Never put figures, returns, prices or dates into the prose. Never name investor groups, lenders by name are fine. No dashes as punctuation, no bullet points, plain professional prose an investor could read.",
+        "Never invent. The business plan is 4 to 6 sentences and carries no numbers at all: no rents, prices, dollar figures, percentages, returns, dates, unit counts or square footage, and nothing about the seller, the lender, the closing timeline or the exit; every one of those has its own field on the ticket. The bio is 3 to 4 sentences; scale (dollars of acquisitions, units owned) may appear there, return figures may not. Never name investor groups. No dashes as punctuation, no bullet points, plain professional prose an investor could read.",
       ].join(" "),
       messages: [{ role: "user", content: `DEAL: ${deal.propertyName ?? deal.name}${deal.city ? ` (${deal.city}, ${deal.state ?? ""})` : ""}\nSPONSOR: ${deal.sponsorName ?? "unknown"}\nASSET CLASS: ${deal.assetClass ?? ""} · STRATEGY: ${deal.strategy ?? ""}\n\nCURRENT BUSINESS PLAN:\n${deal.summary?.trim() || "(none)"}\n\nCURRENT SPONSOR BIO:\n${thin(deal.sponsorExperience) ? `(placeholder: "${deal.sponsorExperience ?? ""}")` : deal.sponsorExperience}\n\nNEW MATERIAL (${source}):\n${text.slice(0, 40000)}` }],
       output_config: { format: zodOutputFormat(Out) },
     });
     out = res.parsed_output;
   } catch (e) {
-    console.error("narrative enrichment failed", dealId, String(e).slice(0, 200));
-    return none;
+    console.error("narrative enrichment failed", dealId, `attempt ${attempt + 1}`, String(e).slice(0, 200)); // a malformed structured reply is tried once more
   }
   if (!out) return none;
+  if (process.env.NARRATIVE_DEBUG) console.log("narrative reply:", JSON.stringify(out).slice(0, 3000));
+  if (!out.summaryChanged && !out.bioChanged) console.log("narratives unchanged on", deal.propertyName ?? deal.name, "from", source, ":", out.why);
   const data: Record<string, string> = {};
   const summary = cleanBusinessPlan(stripDashes(out.summary));
   if (out.summaryChanged && summary && summary !== deal.summary && summary.length > 120) data.summary = summary;
