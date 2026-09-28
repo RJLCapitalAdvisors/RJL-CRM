@@ -9,7 +9,7 @@ import { refreshDealFields } from "@/lib/merge";
 import { launchAction, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction } from "./actions";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
-export type Person = { id: string; name: string; email: string; title: string | null };
+export type Person = { id: string; name: string; email: string; title: string | null; bounced?: boolean };
 export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean };
 export type DealFileLite = { key: string; name: string; size: number };
 type Draft = { subject: string; html: string; touched: boolean };
@@ -51,7 +51,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   const [drafts, setDrafts] = useState<Record<string, Draft>>(saved?.drafts ?? {}); // only firms whose email was edited on its own
   const [current, setCurrent] = useState<string>(GENERAL);
   const [picker, setPicker] = useState<string | null>(null);
-  const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean }>>({});
+  const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean; bounced?: string[] }>>({});
   const [launching, setLaunching] = useState(Boolean(initialLaunch && initialLaunch.queued > 0)); // a launch still running resumes when the page opens
   const [note, setNote] = useState<string | null>(null);
   const [ask, setAsk] = useState("");
@@ -239,15 +239,41 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
 
   /** The launch as it stands: which firms are sent, queued or failed, and when the next one goes. */
   const applyStatus = (st: LaunchStatus) => {
-    setResults(Object.fromEntries(st.rows.map((x) => [x.rowId, { ok: x.status === "SENT", error: x.status === "FAILED" ? x.error ?? "failed" : undefined, pending: x.status === "QUEUED" || x.status === "SENDING" }])));
+    setResults(Object.fromEntries(st.rows.map((x) => [x.rowId, { ok: x.status === "SENT", error: x.status === "FAILED" || x.status === "BOUNCED" ? x.error ?? "failed" : undefined, pending: x.status === "QUEUED" || x.status === "SENDING", bounced: x.bounced }])));
+    // people whose address bounced come off the firm's picks, so "send again" goes to someone else there
+    const bouncedIds = new Set(firms.flatMap((f) => f.people.filter((p) => p.bounced || (st.rows.find((x) => x.rowId === f.rowId)?.bounced ?? []).includes(p.email.toLowerCase())).map((p) => p.id)));
+    if (bouncedIds.size) setTo((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, new Set([...v].filter((id) => !bouncedIds.has(id)))])));
+    const trouble = st.rows.filter((x) => x.status === "FAILED" || x.status === "BOUNCED").map((x) => `${firms.find((f) => f.rowId === x.rowId)?.company ?? "a firm"} (${x.error ?? x.status.toLowerCase()})`);
     const held = st.heldUntil ? new Date(st.heldUntil) : null;
     setNote(
       st.queued > 0
         ? held
           ? `${st.sent} of ${st.total} sent · ${st.queued} waiting. Microsoft paused attachment uploads from your mailbox for a few minutes (too many megabytes in a short time); sending resumes on its own at ${held.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}. Keep this page open or come back later; nothing is lost.`
           : `${st.sent} of ${st.total} sent · ${st.queued} to go, next in ${Math.max(1, Math.ceil(st.nextInMs / 1000))}s. One email at a time, spaced for the attachments' size, so each lands as an individually sent email. It keeps going if you leave.`
-        : `${st.sent} of ${st.total} sent${st.failed ? `, ${st.failed} failed (hover a firm for the reason; Retry failed sends them again)` : ""}.`,
+        : `${st.sent} of ${st.total} sent.${trouble.length ? ` Needs another go: ${trouble.join("; ")}. Use the ▾ on the firm to pick who gets it (the same people or others there), then "send again" on that firm.` : ""}`,
     );
+  };
+  // a launch that already ran (with something failed or bounced) shows its results when the page opens
+  useEffect(() => {
+    if (initialLaunch) applyStatus(initialLaunch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** One firm again: the email as it stands now, to the people picked for it (after a bounce, or a failure). */
+  const sendAgain = (f: Firm) => {
+    commitEdit();
+    const d = draftFor(f);
+    const ids = [...(to[f.rowId] ?? [])].filter((id) => !f.people.find((p) => p.id === id)?.bounced);
+    if (!ids.length) {
+      setPicker(f.rowId);
+      return setNote(`Pick who at ${f.company} gets it first (▾), then click send again.`);
+    }
+    start(async () => {
+      const r = await launchAction(dealId, [{ rowId: f.rowId, toContactIds: ids, subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() }], [...chosenFiles]);
+      if (!r.ok) return setNote(r.reason);
+      applyStatus(r.status);
+      if (r.status.queued > 0) setLaunching(true);
+    });
   };
   useEffect(() => {
     if (!launching) return;
@@ -402,7 +428,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
                     {drafts[f.rowId] && !res && <span className="text-xs text-sky-700" title="This firm's email was edited on its own">edited</span>}
                     {res?.ok && <span className="text-xs text-emerald-700">sent</span>}
                     {res?.pending && <span className="text-xs text-sky-700">queued</span>}
-                    {res && !res.ok && !res.pending && <span className="text-xs text-red-700" title={res.error}>failed</span>}
+                    {res && !res.ok && !res.pending && <span className="text-xs text-red-700" title={res.error}>{res.bounced?.length ? "bounced" : "failed"}</span>}
                     {f.status >= 2 && !res && <span className="text-xs text-muted">{on ? "sending again" : "sent earlier"}</span>}
                   </button>
                   {(
@@ -413,6 +439,11 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
                       <button type="button" className="rounded-full px-1 text-xs text-muted hover:bg-cream" onClick={() => setInclude((s) => { const n = new Set(s); if (n.has(f.rowId)) n.delete(f.rowId); else n.add(f.rowId); return n; })} title={on ? "Leave this firm out" : "Include this firm"}>
                         {on ? "×" : "+"}
                       </button>
+                      {res && !res.ok && !res.pending && !launching && (
+                        <button type="button" className="rounded-full px-1.5 text-xs text-red-700 hover:bg-cream" disabled={pending} onClick={() => sendAgain(f)} title={res.bounced?.length ? `Bounced for ${res.bounced.join(", ")}: pick other people at ${f.company} (▾) and send the email again` : `Failed: ${res.error}. Send it again to the people picked`}>
+                          send again
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -424,6 +455,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
                         <input type="checkbox" className="accent-ink" checked={(to[f.rowId] ?? new Set()).has(p.id)} onChange={() => togglePerson(f.rowId, p.id)} />
                         <span className="min-w-0 flex-1 truncate">
                           {p.name} <span className="text-xs text-muted">{p.title ?? p.email}</span>
+                          {(p.bounced || (results[f.rowId]?.bounced ?? []).includes(p.email.toLowerCase())) && <span className="ml-1 text-xs text-red-700" title="The deal email to this address bounced; they have probably left">bounced</span>}
                         </span>
                       </label>
                     ))}

@@ -60,7 +60,12 @@ export async function launchAction(dealId: string, items: LaunchItem[], fileKeys
 export async function pumpLaunchAction(dealId: string): Promise<LaunchStatus> {
   const me = await currentUser();
   if (me) await pumpLaunches(me.email, 4_000).catch(() => null);
-  const st = await launchStatus(dealId);
+  let st = await launchStatus(dealId);
+  if (me && st.queued === 0) {
+    // the launch is done: bounces that came back are matched to their firms
+    const { scanLaunchBounces } = await import("@/lib/launch-queue");
+    if (await scanLaunchBounces(me.email).catch(() => 0)) st = await launchStatus(dealId);
+  }
   // a long pump in the background only when nobody is pacing this mailbox right now (no send in the last gap)
   if (me && st.queued > 0 && st.nextInMs === 0) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
   if (st.queued === 0) {

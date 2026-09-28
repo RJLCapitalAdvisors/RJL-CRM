@@ -33,10 +33,12 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   const fitting = deal ? await templateForDeal(deal).catch(() => null) : null;
   const house = (fitting && templates.find((t) => t.id === fitting.id)) ?? templates.find((t) => t.name.startsWith("Deal email (house")) ?? templates[0];
 
-  const files = await dealFiles(deal.id).catch(() => []);
   const me = await currentUser();
+  const files = await dealFiles(deal.id).catch(() => []);
   // a launch still going (or left behind when the tab closed): the page resumes pacing it and pumps in the background
+  if (me) await import("@/lib/launch-queue").then((m) => m.scanLaunchBounces(me.email)).catch(() => 0); // bounces since the last launch
   const launch = await launchStatus(deal.id).catch(() => null);
+  const bouncedEmails = new Set((launch?.rows ?? []).flatMap((r) => r.bounced ?? []));
   if (launch && launch.queued > 0 && me) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
   const team = (await prisma.user.findMany({ where: { active: true, ...CA_TEAM, email: { not: null } }, select: { name: true, email: true }, orderBy: { name: "asc" } })).filter((u) => u.email && u.email.toLowerCase() !== me?.email?.toLowerCase()).map((u) => ({ name: u.name, email: u.email! }));
   const sendState = ((): SendState | null => {
@@ -56,7 +58,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
     status: r.status,
     company: r.contact.company?.name ?? [r.contact.firstName, r.contact.lastName].filter(Boolean).join(" "),
     domain: r.contact.company?.domain ?? null,
-    people: (r.contact.company?.contacts ?? [{ id: r.contact.id, firstName: r.contact.firstName, lastName: r.contact.lastName, email: r.contact.email, title: null }]).map((c) => ({ id: c.id, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "", email: c.email ?? "", title: c.title ?? null })),
+    people: (r.contact.company?.contacts ?? [{ id: r.contact.id, firstName: r.contact.firstName, lastName: r.contact.lastName, email: r.contact.email, title: null }]).map((c) => ({ id: c.id, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "", email: c.email ?? "", title: c.title ?? null, bounced: Boolean(c.email && bouncedEmails.has(c.email.toLowerCase())) })),
     primaryContactId: r.contactId,
     extraContactIds: r.extraContactIds ? (JSON.parse(r.extraContactIds) as string[]) : [],
     // who we usually write to at this firm (from the email log); falls back to the report's contact
@@ -80,7 +82,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
           </>
         }
       />
-      <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size }))} saved={sendState} team={team} initialLaunch={launch && launch.queued > 0 ? launch : null} />
+      <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size }))} saved={sendState} team={team} initialLaunch={launch && (launch.queued > 0 || launch.failed > 0 || launch.bounced > 0) ? launch : null} />
     </>
   );
 }
