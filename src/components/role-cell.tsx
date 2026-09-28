@@ -37,8 +37,8 @@ export function RoleCell({ companyId, roles }: { companyId: string; roles: strin
 
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => (open ? close() : setOpen(true))} className="flex min-h-[22px] items-center gap-1 rounded px-1 text-left hover:bg-cream" title="Click to change roles">
-        {sel.length ? <RoleChips roles={JSON.stringify(sel)} /> : <span className="text-muted">—</span>}
+      <button type="button" onClick={() => (open ? close() : setOpen(true))} className="flex min-h-[22px] items-center gap-1 whitespace-nowrap rounded px-1 text-left hover:bg-cream" title="Click to change roles">
+        {sel.length ? <RoleChips roles={JSON.stringify(sel)} nowrap /> : <span className="text-muted">—</span>}
         {note && <span className="ml-1 text-[10px] text-muted">{note}</span>}
       </button>
       {open && (

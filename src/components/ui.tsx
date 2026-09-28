@@ -15,11 +15,12 @@ export function PageHeader({ title, subtitle, actions }: { title: React.ReactNod
   );
 }
 
-export function RoleChips({ roles }: { roles: string | string[] }) {
+/** `nowrap`: the chips stay on one line (the companies list: a firm with three roles keeps the row height of every other row; Jonathan, Sep 28, 2026). */
+export function RoleChips({ roles, nowrap = false }: { roles: string | string[]; nowrap?: boolean }) {
   const list = Array.isArray(roles) ? roles : parseList(roles);
   if (!list.length) return <span className="text-muted">—</span>;
   return (
-    <span className="flex flex-wrap gap-1">
+    <span className={`flex gap-1 ${nowrap ? "flex-nowrap whitespace-nowrap" : "flex-wrap"}`}>
       {list.map((r) => (
         <span key={r} className={`chip ${roleColor(r)}`}>
           {r}
