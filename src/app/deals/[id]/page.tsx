@@ -12,10 +12,8 @@ import { StageSelect } from "./stage-select";
 import { AttachmentList } from "@/components/attachment-list";
 import { signFileToken } from "@/lib/tokens";
 import { faqFileName } from "@/lib/faq-pdf";
-import { EngagementCard } from "./engagement-card";
 import { CombinePortfolio } from "./combine-portfolio";
 import { detachFromPortfolioAction } from "../actions";
-import { engagementGroups } from "@/lib/send-deal";
 import { EmailLog } from "@/components/email-log";
 import { dealEmailRows } from "@/lib/deal-emails";
 
@@ -47,18 +45,6 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
     prisma.user.findMany({ where: { active: true, ...CA_TEAM }, orderBy: { name: "asc" } }),
   ]);
   if (!deal) notFound();
-  const showEngagement = deal.stage === "Engagement Letter Sent" || deal.stage === "Engagement Letter Signed";
-  const groups = showEngagement ? (await engagementGroups(deal.id)).filter((g) => g.companyId).map((g) => ({ companyId: g.companyId, name: g.name, status: g.status })) : [];
-  const dealDetails = ((): Record<string, unknown> => {
-    try {
-      return JSON.parse(deal.details || "{}");
-    } catch {
-      return {};
-    }
-  })();
-  const struck = showEngagement ? ((dealDetails.engagementStruck as { name: string; companyId: string | null; how: string; at: string; by: string | null }[] | undefined) ?? []) : [];
-  const confirmedAt = typeof dealDetails.engagementConfirmedAt === "string" ? dealDetails.engagementConfirmedAt : null;
-  const confirmedBy = typeof dealDetails.engagementConfirmedBy === "string" ? dealDetails.engagementConfirmedBy : null;
   const emails = [...(await dealEmailRows(deal.id)), ...deal.activities.filter((a) => a.type !== "EMAIL")].sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());
   const update = updateDeal.bind(null, deal.id);
   const addNote = addDealNote.bind(null, deal.id);
@@ -91,6 +77,9 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                 </Link>
                 <Link href={`/investors?dealId=${deal.id}&mode=engagement`} className="btn-secondary" title="Pick the equity groups to carve out, then the letter drafts itself to the sponsor">
                   Generate engagement letter
+                </Link>
+                <Link href={`/deals/${deal.id}/groups`} className="btn-secondary" title="The groups on the letter: tick what the sponsor agreed to, see what they struck, mark the letter signed">
+                  Agreed groups
                 </Link>
                 {!deal.parent && <CombinePortfolio dealId={deal.id} dealName={name} />}
               </>
@@ -133,7 +122,6 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
       }
       center={
         <>
-          {showEngagement && <EngagementCard dealId={deal.id} groups={groups} struck={struck} confirmed={confirmedAt ? { at: confirmedAt, by: confirmedBy } : null} signed={deal.stage === "Engagement Letter Signed"} />}
           <EmailLog
             rows={emails}
             title="Emails on this deal"
