@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { isCondo } from "@/lib/pref";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -217,7 +218,8 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   const pctOf = (a: number | null, b: number | null) => (a != null && b ? Math.round((a / b) * 10000) / 100 : null);
   if ("totalDebt" in core || "purchasePrice" in core || "totalCapitalization" in core) {
     core.ltc = pctOf(debt, cap);
-    core.ltv = deal.strategy === "Development" ? null : pctOf(debt, price);
+    const sellout = (core.projectedSellout as number | undefined) ?? deal.projectedSellout;
+    core.ltv = isCondo(deal.assetClass) && sellout ? pctOf(debt, sellout) : deal.strategy === "Development" ? null : pctOf(debt, price); // a condo's LTV is on the gross sellout; a development has none
   }
   await prisma.deal.update({ where: { id: dealId }, data: { ...core, details: JSON.stringify(reconciled) } });
   if (model && changes.length) {

@@ -59,5 +59,5 @@ export function outlookHtml(html: string): string {
     const own = sm[1].trim();
     const merged = own ? `${base}${own.endsWith(";") ? own : own + ";"}` : base;
     return `<${t}${attrs.replace(sm[0], ` style="${merged}"`)}>`;
-  });
+  }).replace(/(<\/(?:ul|ol)>\s*<p[^>]*style=")margin:0 0 10pt 0;/gi, "$1margin:10pt 0 10pt 0;"); // Outlook drops the list's bottom margin (Jonathan, Sep 28, 2026: Deal Metrics ran into Business Plan); the next paragraph carries the gap
 }

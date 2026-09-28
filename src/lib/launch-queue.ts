@@ -22,6 +22,8 @@ const WINDOW_MS = 5 * 60_000;
 const MAX_ATTEMPTS = 8;
 export const gapForBytes = (bytes: number) => Math.max(LAUNCH_GAP_MS, Math.ceil((bytes / BYTES_PER_WINDOW) * WINDOW_MS));
 const isThrottle = (msg: string) => /\b429\b|throttl|IncomingBytes|TooManyRequests|MailboxConcurrency/i.test(msg);
+// Exchange sometimes loses the draft between creating it and uploading a file ("ErrorItemNotFound", Leste on Mila + Alma, Sep 28, 2026): worth another go
+const isPassing = (msg: string) => /ErrorItemNotFound|\b50[234]\b|ECONNRESET|ETIMEDOUT|fetch failed|socket hang up|ServiceUnavailable|InternalServerError/i.test(msg);
 const backoffMs = (attempt: number) => Math.min(30, 5 * attempt) * 60_000;
 const bytesOf = (src: Awaited<ReturnType<typeof chosenFiles>>) => (src ? src.atts.reduce((t, a) => t + ((a as { size?: number }).size ?? (a as { _bytes?: Uint8Array })._bytes?.byteLength ?? 0), 0) : 0);
 
@@ -100,11 +102,12 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
       sent++;
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e).slice(0, 300);
-      if (isThrottle(msg) && next.attempts + 1 < MAX_ATTEMPTS) {
-        // Microsoft said slow down: back in the queue with a wait, and this pump stops hammering
+      if ((isThrottle(msg) || isPassing(msg)) && next.attempts + 1 < MAX_ATTEMPTS) {
+        // Microsoft said slow down (or hiccuped): back in the queue with a wait; a throttle also stops this pump hammering
         const attempt = next.attempts + 1;
-        await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "QUEUED", attempts: attempt, notBefore: new Date(Date.now() + backoffMs(attempt)), error: msg, claimedAt: null } });
-        break;
+        await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "QUEUED", attempts: attempt, notBefore: new Date(Date.now() + (isThrottle(msg) ? backoffMs(attempt) : 60_000 * attempt)), error: msg, claimedAt: null } });
+        if (isThrottle(msg)) break;
+        continue;
       }
       await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "FAILED", attempts: next.attempts + 1, error: msg } });
     }

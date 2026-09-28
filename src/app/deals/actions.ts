@@ -1,5 +1,6 @@
 "use server";
 
+import { isCondo } from "@/lib/pref";
 import { cleanInterestRate } from "@/lib/rates";
 /** LTV = total debt / purchase price, LTC = total debt / total capitalization, two decimals; null when a side is missing. */
 const pctCalc = (a: number | null, b: number | null) => (a != null && b ? Math.round((a / b) * 10000) / 100 : null);
@@ -67,7 +68,8 @@ async function dealData(fd: FormData) {
     // Total equity is derived: total capitalization minus total debt (falls back to a typed value if only that exists).
     totalEquity: num(fd, "totalCapitalization") != null && num(fd, "totalDebt") != null ? num(fd, "totalCapitalization")! - num(fd, "totalDebt")! : num(fd, "totalEquity"),
     purchasePrice: num(fd, "purchasePrice"),
-    ltv: fd.has("totalDebt") ? pctCalc(num(fd, "totalDebt"), num(fd, "purchasePrice")) : num(fd, "ltv"),
+    // a condo's LTV is on the gross sellout, its terminal value; a development has no LTV (the land price is not the value); else debt over price (Jonathan, Sep 28, 2026)
+    ltv: fd.has("totalDebt") ? (isCondo(s(fd, "assetClass")) && num(fd, "projectedSellout") ? pctCalc(num(fd, "totalDebt"), num(fd, "projectedSellout")) : s(fd, "strategy") === "Development" ? null : pctCalc(num(fd, "totalDebt"), num(fd, "purchasePrice"))) : num(fd, "ltv"),
     loanTerm: s(fd, "loanTerm"),
     amortization: s(fd, "amortization"),
     equityMultiple: num(fd, "equityMultiple"),
