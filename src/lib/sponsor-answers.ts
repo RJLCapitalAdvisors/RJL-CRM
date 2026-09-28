@@ -90,7 +90,12 @@ export async function detectSponsorAnswers(): Promise<{ emails: number; items: n
       // read once; a read that failed (the Claude call threw: Kyle's answers to Corebridge, Sep 23, 2026) is tried again for three days
       const scanned = await prisma.sponsorAnswerScan.findUnique({ where: { externalId: m.externalId! } });
       if (scanned && !(scanned.result === "error" && Date.now() - scanned.scannedAt.getTime() < 3 * DAY && Date.now() - scanned.scannedAt.getTime() > 20 * 60_000)) continue;
-      const mailbox = m.meta ? ((JSON.parse(m.meta) as { mailbox?: string }).mailbox ?? null) : null;
+      const meta = m.meta ? (JSON.parse(m.meta) as { mailbox?: string; to?: { address: string }[]; cc?: { address: string }[] }) : {};
+      const mailbox = meta.mailbox ?? null;
+      // the sponsor wrote straight to an investor (Carderock to Triangle, Jonathan copied; Sep 28, 2026): that firm has its
+      // answer already, and another firm with the same question gets the answer in RJL's words only, never that email quoted
+      const parties = [...(meta.to ?? []), ...(meta.cc ?? [])].map((p) => p.address?.toLowerCase()).filter((e): e is string => Boolean(e) && !/@(rjlcapadvisors|rjlequities)\.com$/i.test(e));
+      const directFirms = new Set((parties.length ? await prisma.contact.findMany({ where: { email: { in: parties } }, select: { companyId: true } }) : []).map((c) => c.companyId).filter((id): id is string => Boolean(id) && id !== deal.sponsorCompanyId));
       const copy = await findMessageCopy(m.externalId!, mailbox ?? "").catch(() => null);
       const text = copy ? lpOwnWords(copy.body) : (m.body ?? "");
       emails++;
@@ -136,14 +141,22 @@ export async function detectSponsorAnswers(): Promise<{ emails: number; items: n
       for (const [firm, pairs] of byFirm) {
         const ask = dealAsks.find((a) => a.party === firm)!;
         const lp = ask.contactId ? await prisma.contact.findUnique({ where: { id: ask.contactId }, select: { companyId: true } }) : null;
-        const existing = await prisma.momentum.findUnique({ where: { dealId_kind_party: { dealId, kind: "SPONSOR_ANSWER", party: firm } } });
-        const merged = [...(existing && existing.status === "OPEN" ? parseAnswers(existing.summary) : [])];
-        for (const p of pairs) if (!merged.some((x) => key(x.ask) === key(p.ask))) merged.push(p);
-        await prisma.momentum.upsert({
-          where: { dealId_kind_party: { dealId, kind: "SPONSOR_ANSWER", party: firm } },
-          create: { dealId, kind: "SPONSOR_ANSWER", party: firm, status: "OPEN", companyId: lp?.companyId ?? null, contactId: ask.contactId, summary: answersSummary(firm, merged), waitingSince: m.occurredAt, lastMessageId: ask.lastMessageId, refMessageId: m.externalId },
-          update: { status: "OPEN", companyId: lp?.companyId ?? null, contactId: ask.contactId, summary: answersSummary(firm, merged), waitingSince: m.occurredAt, lastMessageId: ask.lastMessageId, refMessageId: m.externalId, handledAt: null, handledBy: null },
-        });
+        const answeredDirectly = Boolean(lp?.companyId && directFirms.has(lp.companyId));
+        if (answeredDirectly) {
+          // the sponsor answered this firm themselves: nothing to pass along, the asks are simply answered
+          await prisma.activity.create({ data: { type: "NOTE", dealId, contactId: ask.contactId, body: `${deal.sponsorName ?? "The sponsor"} answered ${firm} directly (${m.occurredAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}): ${pairs.map((p) => p.ask).join("; ")}.` } }).catch(() => null);
+        } else {
+          const existing = await prisma.momentum.findUnique({ where: { dealId_kind_party: { dealId, kind: "SPONSOR_ANSWER", party: firm } } });
+          const merged = [...(existing && existing.status === "OPEN" ? parseAnswers(existing.summary) : [])];
+          for (const p of pairs) if (!merged.some((x) => key(x.ask) === key(p.ask))) merged.push(p);
+          // an email the sponsor addressed to another group is never quoted or forwarded to this one: the answers go in RJL's words only
+          const ref = directFirms.size ? null : m.externalId;
+          await prisma.momentum.upsert({
+            where: { dealId_kind_party: { dealId, kind: "SPONSOR_ANSWER", party: firm } },
+            create: { dealId, kind: "SPONSOR_ANSWER", party: firm, status: "OPEN", companyId: lp?.companyId ?? null, contactId: ask.contactId, summary: answersSummary(firm, merged), waitingSince: m.occurredAt, lastMessageId: ask.lastMessageId, refMessageId: ref },
+            update: { status: "OPEN", companyId: lp?.companyId ?? null, contactId: ask.contactId, summary: answersSummary(firm, merged), waitingSince: m.occurredAt, lastMessageId: ask.lastMessageId, refMessageId: ref, handledAt: null, handledBy: null },
+          });
+        }
         // the answered asks leave the LP's open list (and Items Needed from Sponsor on the report)
         const cur = parseAsks(ask.summary);
         const stillOpen = cur.asks.filter((q) => !pairs.some((p) => key(p.ask) === key(q) || sameAsk(p.ask, q))); // every wording of an answered ask leaves
