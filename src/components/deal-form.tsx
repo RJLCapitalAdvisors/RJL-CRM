@@ -8,7 +8,7 @@ import { SponsorPicker } from "./sponsor-picker";
 import { SelectField } from "@/components/select-field";
 import { AutoSaveForm } from "./autosave-form";
 import { isPref, prefMetrics } from "@/lib/pref";
-import { RATE_INDEXES, indicativeRate, interestRateNumber, type IndexTable } from "@/lib/rates";
+import { ASSUMPTION, RATE_INDEX_OPTIONS, indicativeRate, interestRateNumber, type IndexTable } from "@/lib/rates";
 
 export const EXECUTION_TYPES = ["Senior Debt", "Mezz Debt", "Preferred Equity", "JV Equity", "Co-GP Equity", "LP Equity", "Fund Investment"] as const;
 
@@ -129,8 +129,10 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
   // debt pricing: fixed, or a spread over an index priced off the day's reading (Jonathan, Sep 28, 2026)
   const [rateIndex, setRateIndex] = useState<string>(d?.rateIndex ?? "");
   const [spreadBps, setSpreadBps] = useState<number | null>(d?.rateSpreadBps ?? null);
-  const idxNow = rateIndex ? indexRates[rateIndex] : null;
-  const indicative = indicativeRate({ rateIndex, rateSpreadBps: spreadBps }, indexRates);
+  const [assumedRate, setAssumedRate] = useState<number | null>(interestRateNumber(d?.interestRate));
+  const assumed = rateIndex === ASSUMPTION;
+  const idxNow = rateIndex && !assumed ? indexRates[rateIndex] : null;
+  const indicative = assumed ? assumedRate : indicativeRate({ rateIndex, rateSpreadBps: spreadBps }, indexRates);
   const details = parseDetailsSafe(d?.details);
   const [assetClass, setAssetClass] = useState(d?.assetClass ?? "");
   const [execType, setExecType] = useState(d?.executionType ?? "");
@@ -274,16 +276,22 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
       <Group title="Debt terms">
         {!isDev && <Calc label="LTV %" value={pctOf(debt, price)} hint="total debt ÷ purchase price" />}
         <Calc label="LTC %" value={pctOf(debt, cap)} hint="total debt ÷ total capitalization" />
-        <Row label="Index" hint="SOFR, Prime, or the 2, 5, 7 or 10 year treasury the loan is priced over. Read daily.">
-          <Select name="rateIndex" value={rateIndex} options={RATE_INDEXES} onChange={setRateIndex} />
+        <Row label="Index" hint="SOFR, Prime, or the 2, 5, 7 or 10 year treasury the loan is priced over (read daily). Assumption: no index, the rate is typed.">
+          <Select name="rateIndex" value={rateIndex} options={RATE_INDEX_OPTIONS} onChange={setRateIndex} />
         </Row>
-        <Row label="Spread (bps)" hint="Basis points above the index: 300 for SOFR + 3%.">
-          <NumberInput name="rateSpreadBps" defaultValue={d?.rateSpreadBps} decimals={false} placeholder="300" onValue={setSpreadBps} />
-        </Row>
+        {assumed ? (
+          <Row label="Rate %" hint="The assumed all-in rate; numbers only, the % is added.">
+            <NumberInput name="interestRate" defaultValue={interestRateNumber(d?.interestRate)} placeholder="6.75" onValue={setAssumedRate} />
+          </Row>
+        ) : (
+          <Row label="Spread (bps)" hint="Basis points above the index: 300 for SOFR + 3%.">
+            <NumberInput name="rateSpreadBps" defaultValue={d?.rateSpreadBps} decimals={false} placeholder="300" onValue={setSpreadBps} />
+          </Row>
+        )}
         <Calc
           label="Indicative rate %"
           value={indicative != null ? `${indicative.toFixed(2)}%` : interestRateNumber(d?.interestRate) != null ? `${interestRateNumber(d?.interestRate)}%` : "—"}
-          hint={indicative != null && idxNow ? `${rateIndex} ${idxNow.value.toFixed(2)}% as of ${idxNow.asOf} + ${spreadBps ?? 0} bps` : rateIndex ? (idxNow ? "add the spread" : "the index has no reading yet") : interestRateNumber(d?.interestRate) != null ? "the rate as the sponsor stated it; pick the index and spread to price it live" : "index + spread"}
+          hint={assumed ? "the assumed rate as typed" : indicative != null && idxNow ? `${rateIndex} ${idxNow.value.toFixed(2)}% as of ${idxNow.asOf} + ${spreadBps ?? 0} bps` : rateIndex ? (idxNow ? "add the spread" : "the index has no reading yet") : interestRateNumber(d?.interestRate) != null ? "the rate as the sponsor stated it; pick an index and spread to price it live, or Assumption to keep it" : "index + spread"}
         />
         <Row label="Loan term">
           <Select name="loanTerm" value={d?.loanTerm ?? ""} options={LOAN_TERMS} />

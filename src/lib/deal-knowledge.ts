@@ -206,7 +206,10 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   maybe("totalCapitalization", d.totalCapitalization); maybe("totalDebt", d.totalDebt); maybe("purchasePrice", d.purchasePrice); maybe("requestedAmount", d.requestedAmount);
   maybe("rateIndex", d.rateIndex); maybe("rateSpreadBps", d.rateSpreadBps);
   if (d.rateIndex && d.rateSpreadBps != null) core.interestRate = null; // floating: the fixed box is cleared
-  else maybe("interestRate", d.interestRate);
+  else {
+    maybe("interestRate", d.interestRate);
+    if (("interestRate" in core || deal.interestRate) && !deal.rateIndex && !("rateIndex" in core)) core.rateIndex = "Assumption";
+  }
   maybe("loanTerm", d.loanTerm); maybe("lenderType", d.lenderType); maybe("irr", d.irr); maybe("equityMultiple", d.equityMultiple);
   maybe("capRateT12", d.capRateT12); maybe("capRateY1", d.capRateY1); maybe("yieldOnCost", d.yieldOnCost); maybe("cashOnCash", d.cashOnCash); maybe("holdPeriod", d.holdPeriod);
   maybe("sponsorExperience", d.sponsorExperience); maybe("expectedClose", (d as { expectedClose?: string | null }).expectedClose ?? null);

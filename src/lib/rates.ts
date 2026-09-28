@@ -8,6 +8,9 @@
 
 export const RATE_INDEXES = ["SOFR", "Prime", "2 Year Treasury", "5 Year Treasury", "7 Year Treasury", "10 Year Treasury"] as const;
 export type RateIndex = (typeof RATE_INDEXES)[number];
+/** "Assumption" in the Index dropdown: no index and no spread, the rate is typed as an assumption (Jonathan, Sep 28, 2026). */
+export const ASSUMPTION = "Assumption";
+export const RATE_INDEX_OPTIONS = [...RATE_INDEXES, ASSUMPTION] as const;
 export type IndexTable = Record<string, { value: number; asOf: string }>;
 
 let table: IndexTable = {};
@@ -24,7 +27,7 @@ const tableFor = (d: RateFields, t?: IndexTable) => t ?? d._indexRates ?? table;
 
 /** Index + spread as a percentage, from the day's index; null when the index has no reading yet or the loan is fixed. */
 export function indicativeRate(d: RateFields, t?: IndexTable): number | null {
-  if (!d.rateIndex || d.rateSpreadBps == null) return null;
+  if (!d.rateIndex || d.rateIndex === ASSUMPTION || d.rateSpreadBps == null) return null;
   const idx = tableFor(d, t)[d.rateIndex];
   if (!idx) return null;
   return Math.round((idx.value + d.rateSpreadBps / 100) * 100) / 100;
@@ -32,12 +35,12 @@ export function indicativeRate(d: RateFields, t?: IndexTable): number | null {
 
 /** The rate as a number: the indicative rate on a floating loan, the fixed rate otherwise. */
 export function rateNumber(d: RateFields, t?: IndexTable): number | null {
-  return d.rateIndex ? indicativeRate(d, t) : interestRateNumber(d.interestRate);
+  return d.rateIndex && d.rateIndex !== ASSUMPTION ? indicativeRate(d, t) : interestRateNumber(d.interestRate);
 }
 
 /** "300 bps over SOFR (6.90% today)" for a floating loan, "6.75%" for a fixed one, null when nothing is known. */
 export function rateText(d: RateFields, t?: IndexTable): string | null {
-  if (d.rateIndex && d.rateSpreadBps != null) {
+  if (d.rateIndex && d.rateIndex !== ASSUMPTION && d.rateSpreadBps != null) {
     const now = indicativeRate(d, t);
     return `${d.rateSpreadBps} bps over ${d.rateIndex}${now != null ? ` (${now.toFixed(2)}% today)` : ""}`;
   }

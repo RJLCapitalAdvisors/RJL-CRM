@@ -83,9 +83,10 @@ async function dealData(fd: FormData) {
     totalCapitalization: num(fd, "totalCapitalization"),
     ltc: fd.has("totalDebt") ? pctCalc(num(fd, "totalDebt"), num(fd, "totalCapitalization")) : num(fd, "ltc"),
     // fixed: one simple rate (Jonathan, Sep 24, 2026); floating: the index and the spread, and the fixed box is cleared (Sep 28, 2026)
-    interestRate: fd.has("rateIndex") ? (s(fd, "rateIndex") ? null : undefined) : cleanInterestRate(s(fd, "interestRate")), // the ticket has no rate box: a stated fixed rate stays until an index is picked
+    // Index picked: the spread prices it and the typed rate is cleared; "Assumption": the typed rate is the rate, no spread; blank: a stated rate stays as read
+    interestRate: fd.has("rateIndex") ? (s(fd, "rateIndex") === "Assumption" ? cleanInterestRate(s(fd, "interestRate")) : s(fd, "rateIndex") ? null : undefined) : cleanInterestRate(s(fd, "interestRate")),
     rateIndex: fd.has("rateIndex") ? s(fd, "rateIndex") : undefined,
-    rateSpreadBps: fd.has("rateIndex") ? (s(fd, "rateIndex") && num(fd, "rateSpreadBps") != null ? Math.round(num(fd, "rateSpreadBps")!) : null) : undefined,
+    rateSpreadBps: fd.has("rateIndex") ? (s(fd, "rateIndex") && s(fd, "rateIndex") !== "Assumption" && num(fd, "rateSpreadBps") != null ? Math.round(num(fd, "rateSpreadBps")!) : null) : undefined,
     lenderType: s(fd, "lenderType"),
     irr: num(fd, "irr"),
     holdPeriod: s(fd, "holdPeriod"),

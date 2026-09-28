@@ -6,7 +6,7 @@ import { z } from "zod";
 import { houseText, cleanBusinessPlan } from "@/lib/style";
 import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
 import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES } from "@/lib/taxonomy";
-import { RATE_INDEXES, parseSpread } from "@/lib/rates";
+import { ASSUMPTION, RATE_INDEXES, parseSpread } from "@/lib/rates";
 
 /** Detail fields that are dropdowns on the deal ticket: the extractor picks one of the options or leaves the field blank. Sentences about sourcing or the seller belong in the notes, not here. */
 const ENUM_DETAILS: Record<string, readonly string[]> = { sourcing: SOURCING_OPTIONS, sellerProfile: SELLER_PROFILES };
@@ -216,6 +216,7 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
   }
   if (out.rateIndex && out.rateSpreadBps != null) out.interestRate = null;
   if (out.rateIndex && out.rateSpreadBps == null) out.rateIndex = null;
+  if (!out.rateIndex && out.interestRate) out.rateIndex = ASSUMPTION; // a stated all-in rate is an assumption on the ticket
   if (out.details && typeof out.details.acres === "string" && out.details.acres.trim()) out.details = { ...out.details, acres: acresNumber(out.details.acres) };
   // any equity raise that is the majority of the total equity is JV Equity
   if (out.executionType === "LP Equity" && out.requestedAmount && out.totalEquity && out.requestedAmount / out.totalEquity >= 0.5) out.executionType = "JV Equity";

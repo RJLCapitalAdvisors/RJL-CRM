@@ -129,7 +129,7 @@ export async function enrichFromCalls(dealId: string, transcripts?: Transcript[]
   if (blankFields.interestRate && f.interestRate) {
     const sp = parseSpread(f.interestRate);
     if (sp) { data.rateIndex = sp.rateIndex; data.rateSpreadBps = sp.rateSpreadBps; filled.push("rateIndex"); }
-    else if (cleanInterestRate(f.interestRate)) { data.interestRate = cleanInterestRate(f.interestRate); filled.push("interestRate"); }
+    else if (cleanInterestRate(f.interestRate)) { data.interestRate = cleanInterestRate(f.interestRate); data.rateIndex = "Assumption"; filled.push("interestRate"); }
   }
   const details = parseDetails(deal.details);
   const openKeys = new Set(open.map((it) => it.key));
