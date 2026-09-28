@@ -83,7 +83,7 @@ async function dealData(fd: FormData) {
     totalCapitalization: num(fd, "totalCapitalization"),
     ltc: fd.has("totalDebt") ? pctCalc(num(fd, "totalDebt"), num(fd, "totalCapitalization")) : num(fd, "ltc"),
     // fixed: one simple rate (Jonathan, Sep 24, 2026); floating: the index and the spread, and the fixed box is cleared (Sep 28, 2026)
-    interestRate: fd.has("rateIndex") && s(fd, "rateIndex") ? null : cleanInterestRate(s(fd, "interestRate")),
+    interestRate: fd.has("rateIndex") ? (s(fd, "rateIndex") ? null : undefined) : cleanInterestRate(s(fd, "interestRate")), // the ticket has no rate box: a stated fixed rate stays until an index is picked
     rateIndex: fd.has("rateIndex") ? s(fd, "rateIndex") : undefined,
     rateSpreadBps: fd.has("rateIndex") ? (s(fd, "rateIndex") && num(fd, "rateSpreadBps") != null ? Math.round(num(fd, "rateSpreadBps")!) : null) : undefined,
     lenderType: s(fd, "lenderType"),
