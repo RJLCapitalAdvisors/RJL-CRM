@@ -42,7 +42,8 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
   const out: LpAsk[] = [];
   const client = new Anthropic();
   for (const a of inbound) {
-    if (await prisma.lpAskScan.findUnique({ where: { externalId: a.externalId! } })) continue;
+    const scanned = await prisma.lpAskScan.findUnique({ where: { externalId: a.externalId! } });
+    if (scanned && !(scanned.result === "error" && Date.now() - scanned.scannedAt.getTime() < 3 * DAY && Date.now() - scanned.scannedAt.getTime() > 20 * 60_000)) continue; // a failed read is tried again for three days
     // which deal: the deals this firm was sent (active, on the report), then the one the email itself names.
     // A firm on several deals answers each on its own thread; an email that names none of them is about
     // something else (an intro, another deal) and must not be pinned to any ticket.
@@ -101,7 +102,8 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
         output_config: { format: zodOutputFormat(Out) },
       });
       parsed = res.parsed_output;
-    } catch {
+    } catch (e) {
+      console.error("LP ask read failed", a.externalId, String(e).slice(0, 300));
       parsed = null;
     }
     if (parsed && !dealId) dealId = candidates[parsed.dealIndex]?.id ?? null;
@@ -109,7 +111,7 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
       await prisma.lpAskScan.create({ data: { externalId: a.externalId!, result: parsed ? "other-deal" : "error" } }).catch(() => {});
       continue;
     }
-    await prisma.lpAskScan.create({ data: { externalId: a.externalId!, result: parsed ? `${parsed.asks.length} asks` : "error" } }).catch(() => {});
+    await prisma.lpAskScan.upsert({ where: { externalId: a.externalId! }, create: { externalId: a.externalId!, result: parsed ? `${parsed.asks.length} asks` : "error" }, update: { result: parsed ? `${parsed.asks.length} asks` : "error", scannedAt: new Date() } }).catch(() => {});
     // what they said about their own program ("too small for us", "not our market") goes to Data updates as a criteria proposal
     if (parsed && (parsed.stance === "pass" || parsed.note)) {
       const { proposeCriteriaChanges } = await import("@/lib/criteria-proposals");

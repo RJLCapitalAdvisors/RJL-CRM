@@ -24,13 +24,14 @@ const Confirmation = z.object({
   note: z.string().describe("One line of what else the sponsor said about the raise, or empty."),
 });
 
-async function fullBody(mailbox: string, internetMessageId: string): Promise<{ html: string; text: string } | null> {
+async function fullBody(mailbox: string, internetMessageId: string): Promise<{ html: string; text: string; graphId: string; hasAttachments: boolean } | null> {
   try {
-    const r = await graph<{ value: { body: { content: string } }[] }>(`/users/${q(mailbox)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'`)}&$select=body`);
+    const r = await graph<{ value: { id: string; hasAttachments?: boolean; body: { content: string } }[] }>(`/users/${q(mailbox)}/messages?$filter=${encodeURIComponent(`internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'`)}&$select=id,hasAttachments,body`);
     const html = r.value[0]?.body?.content;
     if (!html) return null;
+    const graphId = r.value[0].id, hasAttachments = Boolean(r.value[0].hasAttachments);
     const text = html.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
-    return { html, text };
+    return { html, text, graphId, hasAttachments };
   } catch {
     return null;
   }
@@ -60,6 +61,11 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
       const body = full?.text ?? a.body ?? "";
       const words = ownWords(body);
       await prisma.dealEmail.create({ data: { dealId: d.id, messageId: a.externalId!, subject: a.subject, fromEmail: null, receivedAt: a.occurredAt, kind: "SPONSOR_REPLY" } }).catch(() => null);
+      // the files the sponsor sent (a roof map, comps, a Placer report) belong on the ticket, whichever mailbox they came to
+      if (full?.hasAttachments && meta.mailbox) {
+        const { recordDealFiles } = await import("@/lib/deal-knowledge");
+        await recordDealFiles(d.id, meta.mailbox, full.graphId, null, a.occurredAt).catch(() => 0);
+      }
       read++;
       const stamp = a.occurredAt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
       // answers and documents mentioned become ticket knowledge

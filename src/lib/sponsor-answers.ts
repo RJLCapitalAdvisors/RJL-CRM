@@ -87,32 +87,42 @@ export async function detectSponsorAnswers(): Promise<{ emails: number; items: n
     });
     const dealName = deal.propertyName ?? deal.name;
     for (const m of mails) {
-      if (await prisma.sponsorAnswerScan.findUnique({ where: { externalId: m.externalId! } })) continue;
+      // read once; a read that failed (the Claude call threw: Kyle's answers to Corebridge, Sep 23, 2026) is tried again for three days
+      const scanned = await prisma.sponsorAnswerScan.findUnique({ where: { externalId: m.externalId! } });
+      if (scanned && !(scanned.result === "error" && Date.now() - scanned.scannedAt.getTime() < 3 * DAY && Date.now() - scanned.scannedAt.getTime() > 20 * 60_000)) continue;
       const mailbox = m.meta ? ((JSON.parse(m.meta) as { mailbox?: string }).mailbox ?? null) : null;
       const copy = await findMessageCopy(m.externalId!, mailbox ?? "").catch(() => null);
       const text = copy ? lpOwnWords(copy.body) : (m.body ?? "");
       emails++;
       // nothing to answer with: a scheduling line, thanks, a one-liner without files
       if (text.replace(/\s+/g, " ").trim().length < 120 && !copy?.hasAttachments) {
-        await prisma.sponsorAnswerScan.create({ data: { externalId: m.externalId!, result: "short" } }).catch(() => {});
+        await prisma.sponsorAnswerScan.upsert({ where: { externalId: m.externalId! }, create: { externalId: m.externalId!, result: "short" }, update: { result: "short", scannedAt: new Date() } }).catch(() => {});
         continue;
       }
-      const openList = dealAsks.flatMap((a) => parseAsks(a.summary).asks.map((q) => `- [${a.party}] ${q}`));
+      // one line per ask: the same question worded three ways (one per email in the thread) goes in once, so the answer comes back in budget
+      const { sameAsk } = await import("@/lib/momentum");
+      const openList = dealAsks.flatMap((a) => parseAsks(a.summary).asks.filter((q, i, arr) => arr.findIndex((x) => sameAsk(x, q)) === i).map((q) => `- [${a.party}] ${q}`));
       let out: z.infer<typeof Out> | null = null;
       try {
         const res = await client.messages.parse({
           model: "claude-sonnet-5",
-          max_tokens: 1500,
+          max_tokens: 4000,
           system: SYSTEM,
           messages: [{ role: "user", content: `Deal: ${dealName}\nSponsor: ${deal.sponsorName ?? ""} (${[m.contact?.firstName, m.contact?.lastName].filter(Boolean).join(" ")})\nEmail date: ${m.occurredAt.toISOString().slice(0, 10)}\nSubject: ${m.subject ?? ""}\nAttachments: ${copy?.hasAttachments ? "yes" : "no"}\n\nOpen questions from investors:\n${openList.join("\n")}\n\nSponsor's email:\n${text.slice(0, 8000)}` }],
           output_config: { format: zodOutputFormat(Out) },
         });
         out = res.parsed_output;
-      } catch {
+      } catch (e) {
+        console.error("sponsor answers read failed", m.externalId, String(e).slice(0, 300));
         out = null;
       }
-      await prisma.sponsorAnswerScan.create({ data: { externalId: m.externalId!, result: out ? `${out.answers.length} answers` : "error" } }).catch(() => {});
+      await prisma.sponsorAnswerScan.upsert({ where: { externalId: m.externalId! }, create: { externalId: m.externalId!, result: out ? `${out.answers.length} answers` : "error" }, update: { result: out ? `${out.answers.length} answers` : "error", scannedAt: new Date() } }).catch(() => {});
       if (!out?.answers.length) continue;
+      // the files the sponsor sent with the answers belong on the ticket (a roof map, a Placer report, sales comps)
+      if (copy?.hasAttachments) {
+        const { recordDealFiles } = await import("@/lib/deal-knowledge");
+        await recordDealFiles(dealId, copy.box, copy.id, copy.from?.emailAddress?.address ?? null, m.occurredAt).catch(() => 0);
+      }
       // group by LP firm, then one item per firm
       const byFirm = new Map<string, Pair[]>();
       for (const ans of out.answers) {
@@ -136,7 +146,7 @@ export async function detectSponsorAnswers(): Promise<{ emails: number; items: n
         });
         // the answered asks leave the LP's open list (and Items Needed from Sponsor on the report)
         const cur = parseAsks(ask.summary);
-        const stillOpen = cur.asks.filter((q) => !pairs.some((p) => key(p.ask) === key(q)));
+        const stillOpen = cur.asks.filter((q) => !pairs.some((p) => key(p.ask) === key(q) || sameAsk(p.ask, q))); // every wording of an answered ask leaves
         const answered = [...cur.answered, ...pairs.map((p) => `${p.ask} -> ${p.answer.slice(0, 120)}`)];
         const summary = `${firm} asks: ${stillOpen.join("; ")}${answered.length ? ` | Already on the ticket: ${answered.join(" / ")}` : ""}`;
         await prisma.momentum.update({ where: { id: ask.id }, data: { summary } });

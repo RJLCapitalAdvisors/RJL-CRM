@@ -55,6 +55,19 @@ async function close(dealId: string, kind: string, party: string) {
   await prisma.momentum.updateMany({ where: { dealId, kind, party, status: "OPEN" }, data: { status: "DONE" } });
 }
 
+/** Two wordings of one ask ("Roof age and last repair dates" / "Roof age / when the last time these were repaired"): same after normalizing, one inside the other, or most words shared. */
+export function sameAsk(a: string, b: string): boolean {
+  const STOP = new Set(["the", "a", "an", "and", "or", "of", "for", "to", "in", "on", "at", "is", "are", "what", "how", "which", "with", "per", "list", "provide", "confirm", "clarify", "please"]);
+  const words = (x: string) => new Set(x.toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter((w) => w.length > 2 && !STOP.has(w)));
+  const ka = [...words(a)], kb = [...words(b)];
+  if (!ka.length || !kb.length) return false;
+  const na = ka.join(" "), nb = kb.join(" ");
+  if (na === nb) return true;
+  if ((na.includes(nb) && kb.length >= 3) || (nb.includes(na) && ka.length >= 3)) return true;
+  const shared = ka.filter((w) => kb.includes(w)).length;
+  return shared / Math.min(ka.length, kb.length) >= 0.7 && shared >= 2;
+}
+
 /** The asks an LP_ASK item carries: outstanding ones, and the ones already answered from the ticket. */
 export function parseAsks(summary: string | null): { asks: string[]; answered: string[] } {
   if (!summary) return { asks: [], answered: [] };
@@ -197,6 +210,8 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
 
   // 3c) the sponsor answered an LP's questions: an item to pass the answers back to that LP
   await import("@/lib/sponsor-answers").then((m) => m.detectSponsorAnswers()).catch(() => ({ emails: 0, items: 0 }));
+  // 3d) whatever the ticket has learned since (answers from any email or call, files) settles the asks that remain
+  await import("@/lib/settle-asks").then((m) => m.settleAsksEverywhere()).catch(() => 0);
 
   // 4) open action items older than QUIET_DAYS (Fireflies will feed these once connected)
   const actions = await prisma.dealAction.findMany({ where: { done: false, createdAt: { lte: new Date(now - QUIET_DAYS * DAY) }, deal: { stage: { in: [...ACTIVE_STAGES] } } }, include: { deal: { select: { id: true, sponsorCompanyId: true, sponsorName: true } } } });

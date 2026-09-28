@@ -62,7 +62,7 @@ export async function generateTrackerSummary(dealId: string): Promise<{ themes: 
 async function summaryKey(dealId: string): Promise<string> {
   const [rows, asks] = await Promise.all([
     prisma.dealInvestor.findMany({ where: { dealId }, select: { contactId: true, status: true, note: true }, orderBy: { contactId: "asc" } }),
-    prisma.momentum.findMany({ where: { dealId, kind: "LP_ASK", status: "OPEN" }, select: { party: true, summary: true }, orderBy: { party: "asc" } }),
+    prisma.momentum.findMany({ where: { dealId, kind: "LP_ASK", updatedAt: { gte: new Date(Date.now() - 90 * 86_400_000) } }, select: { party: true, summary: true }, orderBy: { party: "asc" } }),
   ]);
   return JSON.stringify([rows.map((r) => [r.contactId, r.status, r.note ?? ""]), asks.map((a) => [a.party, a.summary])]);
 }
@@ -73,6 +73,8 @@ async function summaryKey(dealId: string): Promise<string> {
  * the tracker page counts as fresh until the next change.
  */
 export async function ensureTrackerSummary(dealId: string): Promise<void> {
+  // asks the sponsor has since answered leave the list before the sections are written (Jonathan, Sep 28, 2026)
+  await import("@/lib/settle-asks").then((m) => m.settleAsksFromTicket(dealId)).catch(() => null);
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { trackerSummaryAt: true, trackerSummaryKey: true, trackerManualAt: true } });
   if (!deal) return;
   const key = await summaryKey(dealId);

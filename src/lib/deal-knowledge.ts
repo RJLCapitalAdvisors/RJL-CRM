@@ -127,11 +127,14 @@ export async function extractDealFacts(dealId: string, text: string, source: str
   if (!deal) return 0;
   const client = new Anthropic();
   const known = deal.facts.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n");
+  // what investors asked the sponsor for: an answer to one of these is recorded even when brief ("see the attached roof map")
+  const { parseAsks } = await import("@/lib/momentum");
+  const openAsks = (await prisma.momentum.findMany({ where: { dealId, kind: "LP_ASK", updatedAt: { gte: new Date(Date.now() - 90 * 86_400_000) } }, select: { summary: true } })).flatMap((m) => parseAsks(m.summary).asks);
   const res = await client.messages.parse({
     model: "claude-sonnet-5",
     max_tokens: 2500,
     system: `A deal sponsor sent RJL Capital Advisors (a real estate capital advisor) more information about a deal they are raising capital for. Extract the information as question/answer pairs so the team can answer investors later; these pairs go into an Investor FAQ that ANY investor may receive. Cover what is substantive and general to the deal: the property, market, business plan, numbers, comps, capital structure, returns, timeline, sponsor track record, answers to earlier questions about the deal. Leave out anything that was private to one conversation or one counterparty: other or prior offerings the sponsor mentioned, what a particular investor said or asked, terms or concessions offered to one party, negotiation back-and-forth, opinions about people, internal or personal remarks. Do not repeat facts already known (listed) unless the new email updates them. Skip pleasantries. NEVER record anything about which investors, LPs, equity groups or capital sources RJL is or was approaching, which groups the sponsor knows or has relationships with, or the engagement list of groups: other investors read these pairs. Investor groups named in an engagement discussion are equity investors, never lenders. No dashes as punctuation. Never produce process or status questions (what is the status, has the sponsor sent X, when did RJL receive it); only substance about the property, market, plan, numbers, structure and timeline.`,
-    messages: [{ role: "user", content: `Deal: ${deal.propertyName ?? deal.name}\nSponsor: ${deal.sponsorName ?? ""}\n\nALREADY KNOWN:\n${known || "(nothing yet)"}\n\nNEW EMAIL (${source}):\n${text.slice(0, 60000)}` }],
+    messages: [{ role: "user", content: `Deal: ${deal.propertyName ?? deal.name}\nSponsor: ${deal.sponsorName ?? ""}\n\nALREADY KNOWN:\n${known || "(nothing yet)"}${openAsks.length ? `\n\nQUESTIONS INVESTORS HAVE ASKED (record the sponsor's answer to any of these that the email gives, even a short one or "see the attached X", as its own pair):\n${openAsks.map((x) => `- ${x}`).join("\n")}` : ""}\n\nNEW EMAIL (${source}):\n${text.slice(0, 60000)}` }],
     output_config: { format: zodOutputFormat(Facts) },
   });
   // belt and braces: nothing that names an investor group on this deal's report or engagement list
