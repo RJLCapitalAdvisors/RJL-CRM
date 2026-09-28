@@ -51,7 +51,7 @@ export function cleanTemplateHtml(html: string): string {
 
 /** Calibri 11pt on every block, paragraph and list spacing as Outlook shows it. Styles an element already carries stay and win. */
 export function outlookHtml(html: string): string {
-  return cleanTemplateHtml(html).replace(/<(p|li|div|td|ul|ol)(\s[^>]*)?>/gi, (_m, tag: string, attrs = "") => {
+  return outlookSpacing(cleanTemplateHtml(html).replace(/<(p|li|div|td|ul|ol)(\s[^>]*)?>/gi, (_m, tag: string, attrs = "") => {
     const t = tag.toLowerCase();
     const base = t === "p" ? `margin:0 0 10pt 0;${FONT}` : t === "li" ? `margin:0;${FONT}` : t === "ul" ? `margin:0 0 10pt 18pt;list-style-type:disc;${FONT}` : t === "ol" ? `margin:0 0 10pt 18pt;list-style-type:decimal;${FONT}` : FONT;
     const sm = attrs.match(/\sstyle="([^"]*)"/i);
@@ -59,5 +59,24 @@ export function outlookHtml(html: string): string {
     const own = sm[1].trim();
     const merged = own ? `${base}${own.endsWith(";") ? own : own + ";"}` : base;
     return `<${t}${attrs.replace(sm[0], ` style="${merged}"`)}>`;
-  }).replace(/(<\/(?:ul|ol)>\s*<p[^>]*style=")margin:0 0 10pt 0;/gi, "$1margin:10pt 0 10pt 0;"); // Outlook drops the list's bottom margin (Jonathan, Sep 28, 2026: Deal Metrics ran into Business Plan); the next paragraph carries the gap
+  }));
+}
+
+/**
+ * Outlook (Word's engine) drops a list's bottom margin, so Deal Metrics ran straight into Business Plan (Jonathan, Sep 28,
+ * 2026). The block after a list gets a 10pt top margin instead, which Outlook honors and browsers collapse into the
+ * list's own margin (the preview is unchanged). Applied where an email leaves the CRM, because the Send deal page keeps
+ * html that was rendered earlier and then reserialized by the editor ("margin: 0px 0px 10pt;", a closing div wrapper
+ * between the list and the paragraph), so a fix at render time alone never reached it.
+ */
+export function outlookSpacing(html: string): string {
+  return html.replace(/(<\/(?:ul|ol)>(?:\s*<\/(?:div|span)>)*\s*)<(p|div)\b([^>]*)>/gi, (m, before: string, tag: string, attrs: string) => {
+    const sm = attrs.match(/\sstyle="([^"]*)"/i);
+    if (sm) {
+      if (/margin-top\s*:\s*(?!0)/i.test(sm[1])) return m;
+      const own = sm[1].trim().replace(/;?$/, ";");
+      return `${before}<${tag}${attrs.replace(sm[0], ` style="${own}margin-top:10pt;"`)}>`;
+    }
+    return `${before}<${tag}${attrs} style="margin-top:10pt;">`;
+  });
 }

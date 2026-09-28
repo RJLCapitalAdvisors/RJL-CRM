@@ -21,7 +21,7 @@ import { withChildren } from "@/lib/portfolio";
  */
 
 export { STAGE_ORDER };
-import { FONT, outlookHtml } from "@/lib/email-html";
+import { FONT, outlookHtml, outlookSpacing } from "@/lib/email-html";
 const DEALS_MAILBOX = () => process.env.DEALS_MAILBOX ?? "deals@rjlcapadvisors.com";
 
 export async function advance(dealId: string, to: string) {
@@ -212,7 +212,7 @@ export async function createSendDrafts(dealId: string, templateId: string, items
       }
       const primary = people.find((p) => p.id === row.contactId) ?? people[0];
       const { subject, html } = await renderDealEmail({ templateId, deal: deal as unknown as Record<string, unknown>, contact: primary, company: row.contact.company, openingLine: item.openingLine, bodyOverride: item.bodyOverride, senderName, mailbox });
-      const draft = await createDraft(mailbox, { subject, toRecipients: people.map((p) => p.email!), bodyHtml: `<html><body>${html}</body></html>` });
+      const draft = await createDraft(mailbox, { subject, toRecipients: people.map((p) => p.email!), bodyHtml: `<html><body>${outlookSpacing(html)}</body></html>` });
       let attachments = 0;
       if (src) for (const a of src.atts) { await copyAcross(src, a, mailbox, draft.id); attachments++; }
       const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
@@ -276,7 +276,7 @@ export type LaunchResult = { rowId: string; firm: string; to: string[]; ok: bool
 
 /** Build a message in the sender's mailbox with the deal's attachments and send it. */
 export async function sendMessage(mailbox: string, to: string[], subject: string, html: string, src: Src, cc: string[] = []) {
-  const draft = await createDraft(mailbox, { subject, toRecipients: to, ccRecipients: cc.filter((c) => c && !to.some((t) => t.toLowerCase() === c.toLowerCase())), bodyHtml: `<html><body>${html}</body></html>` });
+  const draft = await createDraft(mailbox, { subject, toRecipients: to, ccRecipients: cc.filter((c) => c && !to.some((t) => t.toLowerCase() === c.toLowerCase())), bodyHtml: `<html><body>${outlookSpacing(html)}</body></html>` });
   if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
   const fresh = await getMessage(mailbox, draft.id, "id,internetMessageId");
   await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(draft.id)}/send`, { method: "POST" });
@@ -408,7 +408,7 @@ export async function draftDealToOne(dealId: string, contactId: string, mailbox:
   const keys = state.chosenFiles ?? (await dealFiles(dealId).catch(() => [])).slice(0, 6).map((f) => f.key);
   try {
     const src = await chosenFiles(dealId, keys);
-    const draft = await createDraft(mailbox, { subject, toRecipients: [contact.email], bodyHtml: `<html><body>${html}</body></html>` });
+    const draft = await createDraft(mailbox, { subject, toRecipients: [contact.email], bodyHtml: `<html><body>${outlookSpacing(html)}</body></html>` });
     let attachments = 0;
     if (src) for (const a of src.atts) { await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id); attachments++; }
     const fresh = await getMessage(mailbox, draft.id, "id,webLink,internetMessageId");
