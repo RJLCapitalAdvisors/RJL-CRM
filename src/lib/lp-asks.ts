@@ -71,11 +71,11 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const sponsorOf = await prisma.deal.findFirst({ where: { sponsorCompanyId: a.companyId!, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true } });
     const pinnedSponsor = dealId ? (await prisma.deal.findUnique({ where: { id: dealId }, select: { sponsorCompanyId: true } }))?.sponsorCompanyId === a.companyId : false;
     if (pinnedSponsor || (sponsorOf && !candidates.some((x) => x.id !== sponsorOf.id))) {
-      await prisma.lpAskScan.create({ data: { externalId: a.externalId!, result: "sponsor" } }).catch(() => {});
+      await prisma.lpAskScan.upsert({ where: { externalId: a.externalId! }, create: { externalId: a.externalId!, result: "sponsor" }, update: { result: "sponsor", scannedAt: new Date() } }).catch(() => {});
       continue;
     }
     if (!candidates.length) {
-      await prisma.lpAskScan.create({ data: { externalId: a.externalId!, result: "no-deal" } }).catch(() => {});
+      await prisma.lpAskScan.upsert({ where: { externalId: a.externalId! }, create: { externalId: a.externalId!, result: "no-deal" }, update: { result: "no-deal", scannedAt: new Date() } }).catch(() => {});
       continue;
     }
     // full body from the mailbox that has it
@@ -108,7 +108,7 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     }
     if (parsed && !dealId) dealId = candidates[parsed.dealIndex]?.id ?? null;
     if (!dealId) {
-      await prisma.lpAskScan.create({ data: { externalId: a.externalId!, result: parsed ? "other-deal" : "error" } }).catch(() => {});
+      await prisma.lpAskScan.upsert({ where: { externalId: a.externalId! }, create: { externalId: a.externalId!, result: parsed ? "other-deal" : "error" }, update: { result: parsed ? "other-deal" : "error", scannedAt: new Date() } }).catch(() => {});
       continue;
     }
     await prisma.lpAskScan.upsert({ where: { externalId: a.externalId! }, create: { externalId: a.externalId!, result: parsed ? `${parsed.asks.length} asks` : "error" }, update: { result: parsed ? `${parsed.asks.length} asks` : "error", scannedAt: new Date() } }).catch(() => {});

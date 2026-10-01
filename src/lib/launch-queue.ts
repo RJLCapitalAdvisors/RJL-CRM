@@ -43,12 +43,13 @@ const bouncedAddressesIn = (text: string) => [...new Set((text.match(EMAIL_RE) ?
 export async function noteLaunchBounce(opts: { mailbox: string; subject: string | null; text: string; messageId?: string | null }): Promise<number> {
   const subject = (opts.subject ?? "").trim();
   if (!BOUNCE_PREFIX.test(subject)) return 0;
-  const original = subject.replace(BOUNCE_PREFIX, "").trim();
+  const strip = (s: string) => s.replace(/\{[^}]*\}|\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim().toLowerCase(); // "{EXTERNAL}", "[EXT]" tags that mail systems add
+  const original = strip(subject.replace(BOUNCE_PREFIX, ""));
   if (!original) return 0;
   const addresses = bouncedAddressesIn(opts.text);
   if (!addresses.length) return 0;
   const since = new Date(Date.now() - 14 * 86_400_000);
-  const rows = await prisma.dealLaunch.findMany({ where: { mailbox: { equals: opts.mailbox, mode: "insensitive" }, status: { in: ["SENT", "BOUNCED"] }, createdAt: { gte: since }, subject: original } });
+  const rows = (await prisma.dealLaunch.findMany({ where: { mailbox: { equals: opts.mailbox, mode: "insensitive" }, status: { in: ["SENT", "BOUNCED"] }, createdAt: { gte: since } } })).filter((r) => strip(r.subject) === original);
   let n = 0;
   for (const r of rows) {
     const people = await prisma.contact.findMany({ where: { id: { in: JSON.parse(r.toContactIds) as string[] } }, select: { id: true, email: true } });

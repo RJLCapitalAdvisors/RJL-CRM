@@ -144,11 +144,16 @@ export async function dealResolver() {
   const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, parentDealId: true, propertyAddress: true, sponsorCompany: { select: { roles: true } }, investors: { select: { contactId: true } }, _count: { select: { files: true, facts: true } } } })).filter((d) => !isLegacyIntroTicket({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, investorCount: d.investors.length }) && !isBlindIntro({ ...d, fileCount: d._count.files, factCount: d._count.facts }));
   // an email about one property of a portfolio belongs to the portfolio
   const up = (id: string | undefined) => (id ? (activeDeals.find((d) => d.id === id)?.parentDealId ?? id) : id);
+  // Park Station, Sep 29, 2026: every reply to its launch was pinned to "Stablewood | Core Acquisitions" because the word
+  // "acquisitions" matched first. The deal the sender was actually sent (their row on its report, or their firm as its
+  // sponsor) comes first when the subject fits it; a bare name match on a deal they have nothing to do with comes after.
+  const tied = (d: (typeof activeDeals)[number], contactId: string | null, companyId: string | null) => (contactId && d.investors.some((r) => r.contactId === contactId)) || (companyId && d.sponsorCompanyId === companyId);
   const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null) =>
     up(
-      activeDeals.find((d) => subjectMatchesDeal(subject, d))?.id ??
+      activeDeals.find((d) => tied(d, contactId, companyId) && (subjectMatchesDeal(subject, d) || houseSubjectMatches(subject, d)))?.id ??
+        activeDeals.find((d) => subjectMatchesDeal(subject, d))?.id ??
         activeDeals.find((d) => houseSubjectMatches(subject, d))?.id ??
-        activeDeals.find((d) => ((contactId && d.investors.some((r) => r.contactId === contactId)) || (companyId && d.sponsorCompanyId === companyId)) && subjectLooselyMatchesDeal(subject, d))?.id,
+        activeDeals.find((d) => tied(d, contactId, companyId) && subjectLooselyMatchesDeal(subject, d))?.id,
     );
   return dealFor;
 }
