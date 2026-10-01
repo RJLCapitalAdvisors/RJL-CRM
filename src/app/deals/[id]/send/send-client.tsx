@@ -10,10 +10,12 @@ import { Send, Star } from "lucide-react";
 import { refreshDealFields } from "@/lib/merge";
 import { addFirmAction, launchAction, learnFirstNameAction, previewFollowupEmail, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction, searchInvestorCompanies } from "./actions";
 import { Eye } from "lucide-react";
+import { EmailRow, type EmailRowData } from "@/components/email-row";
+import { statusOf } from "@/lib/tracker";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
 export type Person = { id: string; name: string; firstName?: string; email: string; title: string | null; bounced?: boolean };
-export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null };
+export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null };
 export type DealFileLite = { key: string; name: string; size: number; url?: string | null };
 type Draft = { subject: string; html: string; touched: boolean };
 /** Everything on this page that is worth keeping if you leave and come back (kept on the deal, per deal). A firm's draft is its block edits over the General email (an older save may carry a full html copy, converted on load). */
@@ -45,6 +47,18 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
   const followup = mode === "followup";
   /** Follow ups: a firm that answered, passed, was already followed up, or has no sent email on record is shaded out and left out by default. */
   const shaded = (f: Firm) => followup && (f.status !== 2 || !f.followupTo);
+  /** Follow ups: quiet firms first, then followed up, then the ones that answered, then passes, then firms with no sent email on record. */
+  const bucket = (f: Firm) => (!f.followupTo ? 5 : f.status === 2 ? 0 : f.status === 3 ? 1 : f.status === 7 || f.status === 8 ? 4 : f.status === 1 ? 2 : 3);
+  const ordered = followup ? [...firms].sort((a, b) => bucket(a) - bucket(b)) : firms;
+  /** Follow ups: each token wears its stage colour, see-through; a pass is a light red. */
+  const tone = (f: Firm): React.CSSProperties | undefined => {
+    if (!followup) return undefined;
+    const st = statusOf(f.status);
+    const hex = f.status === 7 || f.status === 8 ? "#ffcfc9" : st.bg;
+    const n = parseInt(hex.slice(1), 16);
+    const rgb = `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+    return { backgroundColor: `rgba(${rgb}, ${shaded(f) ? 0.35 : 0.75})`, borderColor: `rgba(${rgb}, 0.9)` };
+  };
   const [chosenFiles, setChosenFiles] = useState<Set<string>>(new Set(saved?.chosenFiles?.filter((k) => files.some((f) => f.key === k)) ?? (followup ? [] : files.slice(0, 6).map((f) => f.key)))); // the FAQ, OM and model first; a whole data room is not the default; a follow-up carries nothing unless ticked
   const [templateId, setTemplateId] = useState(saved?.templateId && templates.some((t) => t.id === saved.templateId) ? saved.templateId : defaultTemplateId);
   const [pickOpen, setPickOpen] = useState(!saved?.templateId); // the template list is open until one has been chosen for this deal
@@ -578,14 +592,14 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
               <span className="text-xs text-muted">{general?.touched ? "edited here, so every firm's email follows" : "the one email everyone gets; edit it once here"}</span>
             </button>
           </div>
-          {firms.map((f) => {
+          {ordered.map((f) => {
             const on = include.has(f.rowId);
             const chosen = f.people.filter((p) => (to[f.rowId] ?? new Set()).has(p.id));
             const res = results[f.rowId];
             const selected = current === f.rowId;
             return (
               <div key={f.rowId} className="relative">
-                <div className={`${pill(selected, on)} ${res?.ok ? "border-emerald-500" : ""} ${shaded(f) && !on ? "opacity-50" : ""}`} title={shaded(f) ? (f.followupTo ? "Answered, passed or already followed up: left out unless you turn it on with +" : "No sent deal email on record for this firm: a follow-up cannot reply to it") : undefined}>
+                <div style={tone(f)} className={`${pill(selected, on)} ${res?.ok ? "border-emerald-500" : ""} ${shaded(f) && !on ? "opacity-60" : ""}`} title={shaded(f) ? (f.followupTo ? "Answered, passed or already followed up: left out unless you turn it on with +" : "No sent deal email on record for this firm: a follow-up cannot reply to it") : undefined}>
                   <button type="button" className="flex items-center gap-1.5" onClick={() => setCurrent(f.rowId)} title={f.status >= 2 ? "Sent earlier; the + sends it again with the current email" : "Show this firm's email"}>
                     <CompanyLogo domain={f.domain} name={f.company} size={18} />
                     <span className="font-medium">{f.company}</span>
@@ -745,6 +759,18 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
           </div>
         )}
         <div className="card min-w-0">
+          {followup && cur && (
+            <div className="border-b border-line bg-cream-50 px-4 py-2">
+              <div className="mb-1 text-xs font-semibold text-muted">Replying all on this email, the deal email {cur.company} was sent</div>
+              {cur.sentEmail ? (
+                <ul className="divide-y divide-line rounded-md border border-line bg-paper">
+                  <EmailRow e={cur.sentEmail} />
+                </ul>
+              ) : (
+                <div className="text-xs text-red-700">No sent deal email on record for {cur.company}: a follow-up cannot be sent from here.</div>
+              )}
+            </div>
+          )}
           <div className="flex items-center justify-between border-b border-line bg-cream px-4 py-2.5 text-sm">
             <div className="flex items-center gap-2">
               {cur ? <CompanyLogo domain={cur.domain} name={cur.company} size={18} /> : <PenLine className="h-4 w-4" />}

@@ -64,10 +64,23 @@ export default async function FollowUpsPage({ params }: { params: Promise<{ id: 
   }
   const sentOn = new Map<string, { messageId: string; sentAt: Date } | null>();
   for (const r of deal.investors) sentOn.set(r.id, await firstSentMessageId(deal.id, r.id).catch(() => null));
+  // the email a follow-up replies to, shown on the firm's token so there is no doubt which thread it joins (Jonathan, Oct 1, 2026)
+  const sentIds = [...new Set([...sentOn.values()].map((x) => x?.messageId).filter((x): x is string => Boolean(x)))];
+  const sentActs = sentIds.length ? await prisma.activity.findMany({ where: { externalId: { in: sentIds }, type: "EMAIL" }, orderBy: { occurredAt: "asc" } }) : [];
+  const when = (d: Date) => d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const sentEmailFor = (rowId: string) => {
+    const mid = sentOn.get(rowId)?.messageId;
+    const a = mid ? sentActs.find((x) => x.externalId === mid) : null;
+    if (!a) return null;
+    const m = (a.meta ? JSON.parse(a.meta) : {}) as { from?: { name?: string; address: string }; to?: { name?: string; address: string }[]; cc?: { name?: string; address: string }[]; mailbox?: string; hasAttachments?: boolean };
+    const who = (p?: { name?: string; address: string }) => p?.name?.trim() || p?.address || "";
+    return { id: a.id, subject: a.subject, preview: a.body, inbound: false, date: when(a.occurredAt), from: who(m.from) || (me?.name ?? ""), to: (m.to ?? []).map(who).filter(Boolean), cc: (m.cc ?? []).map(who).filter(Boolean), hasAttachments: Boolean(m.hasAttachments), externalId: a.externalId ?? null, mailbox: m.mailbox ?? me?.email ?? null, contact: null, deal: null };
+  };
   const firms: Firm[] = deal.investors.map((r) => ({
     rowId: r.id,
     followupTo: sentOn.get(r.id)?.messageId ?? null,
     sentOn: sentOn.get(r.id)?.sentAt.toISOString() ?? null,
+    sentEmail: sentEmailFor(r.id),
     status: r.status,
     company: r.contact.company?.name ?? [r.contact.firstName, r.contact.lastName].filter(Boolean).join(" "),
     domain: r.contact.company?.domain ?? null,
