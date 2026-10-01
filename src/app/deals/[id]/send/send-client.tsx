@@ -46,12 +46,13 @@ function FileIcon({ name }: { name: string }) {
 export function SendClient({ mode = "send", dealId, firms, templates, defaultTemplateId, files, saved, team = [], initialLaunch = null }: { mode?: "send" | "followup"; dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[]; initialLaunch?: LaunchStatus | null }) {
   const followup = mode === "followup";
   /** Follow ups: a firm that answered, passed, was already followed up, or has no sent email on record is shaded out and left out by default. */
+  // what each firm's launch did this session; declared before the helpers below read it (the Follow ups page crashed on first render when it came after them, Oct 1, 2026)
+  const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean; bounced?: string[] }>>({});
   /** The stage as it stands now: a follow-up sent in this session reads Followed Up at once (yellow, at the bottom), before the page refreshes (Jonathan, Oct 1, 2026). */
   const statusNow = (f: Firm) => (followup && results[f.rowId]?.ok && f.status === 2 ? 3 : f.status);
   const shaded = (f: Firm) => followup && (statusNow(f) !== 2 || !f.followupTo);
   /** Follow ups: quiet firms first, then followed up, then the ones that answered, then passes, then firms with no sent email on record. */
   const bucket = (f: Firm) => (!f.followupTo ? 5 : statusNow(f) === 2 ? 0 : statusNow(f) === 3 ? 1 : statusNow(f) === 7 || statusNow(f) === 8 ? 4 : statusNow(f) === 1 ? 2 : 3);
-  const ordered = followup ? [...firms].sort((a, b) => bucket(a) - bucket(b)) : firms;
   /** Follow ups: each token wears its stage colour, see-through; a pass is a light red. */
   const tone = (f: Firm, selected = false): React.CSSProperties | undefined => {
     if (!followup) return undefined;
@@ -78,7 +79,6 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
   const [learned, setLearned] = useState<Record<string, string>>({}); // first names typed into a greeting this session, by contact id
   const [current, setCurrent] = useState<string>(GENERAL);
   const [picker, setPicker] = useState<string | null>(null);
-  const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean; bounced?: string[] }>>({});
   const [launching, setLaunching] = useState(Boolean(initialLaunch && initialLaunch.queued > 0)); // a launch still running resumes when the page opens
   const [note, setNote] = useState<string | null>(null);
   const [ask, setAsk] = useState("");
@@ -584,6 +584,8 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
   const pill = (selected: boolean, on = true) => `flex items-center gap-1.5 rounded-full border py-1 pl-1.5 pr-1 text-sm ${selected ? "border-sky-600 bg-sky" : on ? "border-line bg-paper" : "border-line bg-cream-50 opacity-60"}`;
   const saveLabel = saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "dirty" ? "Unsaved changes" : saved?.savedAt ? `Saved ${new Date(saved.savedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "";
 
+  // the order of the tokens is worked out here, after every piece of state it reads exists (it crashed the Follow ups page when it ran above the results state, Oct 1, 2026)
+  const ordered = followup ? [...firms].sort((a, b) => bucket(a) - bucket(b)) : firms;
   return (
     <div className="mx-auto max-w-[1400px] space-y-3 px-5 py-4">
       {/* recipients */}
