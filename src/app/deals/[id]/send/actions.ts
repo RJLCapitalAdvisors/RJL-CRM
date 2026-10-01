@@ -122,10 +122,13 @@ export async function previewGeneralEmail(dealId: string, templateId: string) {
 /** The follow-up's General email: a line asking for a read, with the name slot, above the quoted deal email (Jonathan, Oct 1, 2026). */
 export async function previewFollowupEmail(dealId: string) {
   const { FIRST_NAME_MARKER } = await import("@/lib/first-name-marker");
+  const { signatureFor } = await import("@/lib/followup");
+  const me = await currentUser();
+  const signature = me ? await signatureFor(me.email).catch(() => "") : "";
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { name: true, propertyName: true } });
   const first = await prisma.dealLaunch.findFirst({ where: { dealId, kind: "SEND", status: { in: ["SENT", "BOUNCED"] } }, orderBy: { createdAt: "asc" }, select: { subject: true } });
   const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
-  return { subject: first ? `RE: ${first.subject}` : `RE: ${deal?.propertyName ?? deal?.name ?? "the deal"}`, html: `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">Hi ${FIRST_NAME_MARKER} - please confirm receipt of the below, and let me know if ${deal?.propertyName ?? "this"} is something you would like to take a closer look at.</p></div>` };
+  return { subject: first ? `RE: ${first.subject}` : `RE: ${deal?.propertyName ?? deal?.name ?? "the deal"}`, html: `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">Hi ${FIRST_NAME_MARKER} - please confirm receipt of the below, and let me know if ${deal?.propertyName ?? "this"} is something you would like to take a closer look at.</p>${signature ? `<div data-signature="1">${signature}</div>` : ""}</div>` };
 }
 
 /** "Emphasize the business plan more": Claude edits the General email as asked. */

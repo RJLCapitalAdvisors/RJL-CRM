@@ -297,7 +297,7 @@ export async function sendReplyAll(mailbox: string, replyToMessageId: string, to
   const draft = await createReplyAllDraft(mailbox, copy.id);
   await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(draft.id)}`, { method: "PATCH", body: JSON.stringify({ toRecipients: to.map((address) => ({ emailAddress: { address } })), ccRecipients: cc.filter((c) => c && !to.some((t) => t.toLowerCase() === c.toLowerCase())).map((address) => ({ emailAddress: { address } })) }) });
   const body = draft.body?.content ?? "";
-  const block = `${outlookSpacing(html)}${await signatureFor(mailbox)}`;
+  const block = `${outlookSpacing(html)}${/data-signature=/.test(html) ? "" : await signatureFor(mailbox)}`; // the General follow-up carries the signature already (marked); older saved ones get it here
   const at = body.search(/<body[^>]*>/i);
   await updateDraftBody(mailbox, draft.id, at >= 0 ? body.replace(/(<body[^>]*>)/i, `$1${block}<br>`) : `${block}<br>${body}`);
   if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
