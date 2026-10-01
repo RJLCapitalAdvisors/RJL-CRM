@@ -175,6 +175,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
             if (!g) return { subject: r.subject, html: r.html, touched: false };
             const merged = refreshDealFields(g.html, r.html);
             if (merged == null) {
+              if (!/data-deal=/.test(r.html)) return g; // nothing to refresh (a follow-up carries no ticket fields): the edited email stands (Oct 1, 2026: it kept reverting)
               stale = true; // saved before the fields were marked: the fresh email replaces it
               return { subject: r.subject, html: r.html, touched: false };
             }
@@ -187,6 +188,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
               if (!d.html) { n[k] = d; continue; } // block edits ride on the General email, which was refreshed above
               const merged = refreshDealFields(d.html, r.html);
               if (merged == null) {
+                if (!/data-deal=/.test(r.html)) { n[k] = d; continue; } // nothing to refresh: the firm's edit stands
                 changed = true; // an old, unmarked firm edit gives way to the General email
                 continue;
               }
