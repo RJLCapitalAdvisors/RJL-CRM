@@ -42,6 +42,11 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
   const out: LpAsk[] = [];
   const client = new Anthropic();
   for (const a of inbound) {
+    // a bounce is the mail system talking, not the investor (NYL on Park Station, Oct 1, 2026): nothing on the report moves
+    if (/^(?:s*(?:re|fw|fwd)s*:s*)*(?:undeliverable|undelivered|delivery (?:status notification|has failed|failure)|mail delivery failed|returned mail|failure notice|non-?deliverable)/i.test(a.subject ?? "")) {
+      await prisma.lpAskScan.upsert({ where: { externalId: a.externalId! }, create: { externalId: a.externalId!, result: "bounce" }, update: { result: "bounce" } }).catch(() => {});
+      continue;
+    }
     const scanned = await prisma.lpAskScan.findUnique({ where: { externalId: a.externalId! } });
     if (scanned && !(scanned.result === "error" && Date.now() - scanned.scannedAt.getTime() < 3 * DAY && Date.now() - scanned.scannedAt.getTime() > 20 * 60_000)) continue; // a failed read is tried again for three days
     // which deal: the deals this firm was sent (active, on the report), then the one the email itself names.
