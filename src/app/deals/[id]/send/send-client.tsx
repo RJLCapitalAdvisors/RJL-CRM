@@ -46,15 +46,17 @@ function FileIcon({ name }: { name: string }) {
 export function SendClient({ mode = "send", dealId, firms, templates, defaultTemplateId, files, saved, team = [], initialLaunch = null }: { mode?: "send" | "followup"; dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[]; initialLaunch?: LaunchStatus | null }) {
   const followup = mode === "followup";
   /** Follow ups: a firm that answered, passed, was already followed up, or has no sent email on record is shaded out and left out by default. */
-  const shaded = (f: Firm) => followup && (f.status !== 2 || !f.followupTo);
+  /** The stage as it stands now: a follow-up sent in this session reads Followed Up at once (yellow, at the bottom), before the page refreshes (Jonathan, Oct 1, 2026). */
+  const statusNow = (f: Firm) => (followup && results[f.rowId]?.ok && f.status === 2 ? 3 : f.status);
+  const shaded = (f: Firm) => followup && (statusNow(f) !== 2 || !f.followupTo);
   /** Follow ups: quiet firms first, then followed up, then the ones that answered, then passes, then firms with no sent email on record. */
-  const bucket = (f: Firm) => (!f.followupTo ? 5 : f.status === 2 ? 0 : f.status === 3 ? 1 : f.status === 7 || f.status === 8 ? 4 : f.status === 1 ? 2 : 3);
+  const bucket = (f: Firm) => (!f.followupTo ? 5 : statusNow(f) === 2 ? 0 : statusNow(f) === 3 ? 1 : statusNow(f) === 7 || statusNow(f) === 8 ? 4 : statusNow(f) === 1 ? 2 : 3);
   const ordered = followup ? [...firms].sort((a, b) => bucket(a) - bucket(b)) : firms;
   /** Follow ups: each token wears its stage colour, see-through; a pass is a light red. */
   const tone = (f: Firm, selected = false): React.CSSProperties | undefined => {
     if (!followup) return undefined;
-    const st = statusOf(f.status);
-    const hex = f.status === 7 || f.status === 8 ? "#ffcfc9" : st.bg;
+    const st = statusOf(statusNow(f));
+    const hex = statusNow(f) === 7 || statusNow(f) === 8 ? "#ffcfc9" : st.bg;
     const n = parseInt(hex.slice(1), 16);
     const rgb = `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
     // the token you are on: the stage colour at full strength with the stage's dark edge, so it stands out from the rest
@@ -622,6 +624,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
                     {res && !res.ok && !res.pending && <span className="text-xs text-red-700" title={res.error}>{res.bounced?.length ? "bounced" : "failed"}</span>}
                     {!followup && f.status >= 2 && !res && <span className="text-xs text-muted">{on ? "sending again" : "sent earlier"}</span>}
                     {followup && !res && <span className="text-xs text-muted">{!f.followupTo ? "no sent email on record" : f.status === 2 ? `sent ${f.sentOn ? new Date(f.sentOn).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "earlier"}, quiet` : f.status === 3 ? "followed up" : f.status >= 7 ? "passed" : "answered"}</span>}
+                    {followup && res?.ok && <span className="text-xs text-muted">followed up</span>}
                   </button>
                   {(
                     <>
