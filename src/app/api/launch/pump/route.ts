@@ -17,7 +17,7 @@ async function run(req: Request) {
   if (!secret || key !== secret) return new Response("Unauthorized", { status: 401 });
   const queued = await prisma.dealLaunch.count({ where: { status: "QUEUED" } });
   if (queued === 0) return Response.json({ ok: true, queued: 0, sent: 0 });
-  const budget = url.searchParams.get("quick") === "1" ? 8_000 : 115_000; // wider than any pacing gap (heavy attachments pace up to ~110 s), so every minute run sends at least one
+  const budget = url.searchParams.get("quick") === "1" ? 8_000 : 170_000; // wider than any pacing gap (18 MB of attachments pace 138 s apart), so every minute run sends at least one
   const sent = await pumpAllLaunches(budget).catch(() => 0);
   const left = await prisma.dealLaunch.count({ where: { status: "QUEUED" } }).catch(() => 0);
   console.log("launch pump:", sent, "sent,", left, "left");
