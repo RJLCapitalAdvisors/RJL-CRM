@@ -187,13 +187,14 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
         ? await sendReplyAll(mailbox, next.replyToMessageId!, to, next.html, cache.get(cacheKey)!, JSON.parse(next.cc) as string[])
         : await sendMessage(mailbox, to, next.subject, next.html, cache.get(cacheKey)!, JSON.parse(next.cc) as string[]);
       const now = new Date();
+      const meta = JSON.stringify({ from: { address: mailbox }, to: people.map((p) => ({ name: [p.firstName, p.lastName].filter(Boolean).join(" ") || undefined, address: p.email! })), cc: (JSON.parse(next.cc) as string[]).map((address) => ({ address })), mailbox, hasAttachments: Boolean(cache.get(cacheKey)?.atts.length) });
       if (followup) {
         // a follow-up after no response: the row reads Followed Up, nothing else moves
         await prisma.dealInvestor.update({ where: { id: row.id }, data: { ...(row.status === 2 ? { status: 3 } : {}), updatedAt: now } });
-        for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: "Follow-up sent (Follow ups): reply-all on the deal email", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now }).catch(() => {});
+        for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: "Follow-up sent (Follow ups): reply-all on the deal email", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now, meta }).catch(() => {});
       } else {
         await prisma.dealInvestor.update({ where: { id: row.id }, data: { status: Math.max(row.status, 2), bodyOverride: next.html, extraContactIds: toJson(people.map((p) => p.id).filter((id) => id !== row.contactId)), sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: now } });
-        for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: "Deal email sent (Send deal)", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now }).catch(() => {});
+        for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: "Deal email sent (Send deal)", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now, meta }).catch(() => {});
       }
       await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "SENT", sentAt: now, sentMessageId: messageId } });
       if (!followup) await advance(next.dealId, "Deal Taken To Market").catch(() => {});

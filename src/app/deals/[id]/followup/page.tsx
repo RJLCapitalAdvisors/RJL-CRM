@@ -67,6 +67,9 @@ export default async function FollowUpsPage({ params }: { params: Promise<{ id: 
   // the email a follow-up replies to, shown on the firm's token so there is no doubt which thread it joins (Jonathan, Oct 1, 2026)
   const sentIds = [...new Set([...sentOn.values()].map((x) => x?.messageId).filter((x): x is string => Boolean(x)))];
   const sentActs = sentIds.length ? await prisma.activity.findMany({ where: { externalId: { in: sentIds }, type: "EMAIL" }, orderBy: { occurredAt: "asc" } }) : [];
+  const sentLaunches = sentIds.length ? await prisma.dealLaunch.findMany({ where: { sentMessageId: { in: sentIds } }, select: { sentMessageId: true, toContactIds: true, cc: true, mailbox: true, fileKeys: true } }) : [];
+  const peopleIds = [...new Set(sentLaunches.flatMap((l) => JSON.parse(l.toContactIds) as string[]))];
+  const peopleById = new Map((peopleIds.length ? await prisma.contact.findMany({ where: { id: { in: peopleIds } }, select: { id: true, firstName: true, lastName: true, email: true } }) : []).map((p) => [p.id, p]));
   const when = (d: Date) => d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   const sentEmailFor = (rowId: string) => {
     const mid = sentOn.get(rowId)?.messageId;
@@ -74,7 +77,10 @@ export default async function FollowUpsPage({ params }: { params: Promise<{ id: 
     if (!a) return null;
     const m = (a.meta ? JSON.parse(a.meta) : {}) as { from?: { name?: string; address: string }; to?: { name?: string; address: string }[]; cc?: { name?: string; address: string }[]; mailbox?: string; hasAttachments?: boolean };
     const who = (p?: { name?: string; address: string }) => p?.name?.trim() || p?.address || "";
-    return { id: a.id, subject: a.subject, preview: a.body, inbound: false, date: when(a.occurredAt), from: who(m.from) || (me?.name ?? ""), to: (m.to ?? []).map(who).filter(Boolean), cc: (m.cc ?? []).map(who).filter(Boolean), hasAttachments: Boolean(m.hasAttachments), externalId: a.externalId ?? null, mailbox: m.mailbox ?? me?.email ?? null, contact: null, deal: null };
+    const launch = sentLaunches.find((l) => l.sentMessageId === mid);
+    const toFromLaunch = launch ? (JSON.parse(launch.toContactIds) as string[]).map((id) => peopleById.get(id)).filter((p): p is NonNullable<typeof p> => Boolean(p)).map((p) => `${[p.firstName, p.lastName].filter(Boolean).join(" ") || p.email} <${p.email}>`) : [];
+    const to = (m.to ?? []).map(who).filter(Boolean);
+    return { id: a.id, subject: a.subject, preview: a.body, inbound: false, date: when(a.occurredAt), from: who(m.from) || launch?.mailbox || me?.email || "", to: to.length ? to : toFromLaunch, cc: (m.cc ?? []).map(who).filter(Boolean).length ? (m.cc ?? []).map(who).filter(Boolean) : launch ? (JSON.parse(launch.cc) as string[]) : [], hasAttachments: Boolean(m.hasAttachments) || Boolean(launch?.fileKeys), externalId: a.externalId ?? null, mailbox: m.mailbox ?? launch?.mailbox ?? me?.email ?? null, contact: null, deal: null };
   };
   const firms: Firm[] = deal.investors.map((r) => ({
     rowId: r.id,
