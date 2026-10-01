@@ -51,13 +51,15 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
   const bucket = (f: Firm) => (!f.followupTo ? 5 : f.status === 2 ? 0 : f.status === 3 ? 1 : f.status === 7 || f.status === 8 ? 4 : f.status === 1 ? 2 : 3);
   const ordered = followup ? [...firms].sort((a, b) => bucket(a) - bucket(b)) : firms;
   /** Follow ups: each token wears its stage colour, see-through; a pass is a light red. */
-  const tone = (f: Firm): React.CSSProperties | undefined => {
+  const tone = (f: Firm, selected = false): React.CSSProperties | undefined => {
     if (!followup) return undefined;
     const st = statusOf(f.status);
     const hex = f.status === 7 || f.status === 8 ? "#ffcfc9" : st.bg;
     const n = parseInt(hex.slice(1), 16);
     const rgb = `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
-    return { backgroundColor: `rgba(${rgb}, ${shaded(f) ? 0.35 : 0.75})`, borderColor: `rgba(${rgb}, 0.9)` };
+    // the token you are on: the stage colour at full strength with the stage's dark edge, so it stands out from the rest
+    if (selected) return { backgroundColor: `rgba(${rgb}, 1)`, borderColor: st.c, boxShadow: `0 0 0 2px ${st.c}` };
+    return { backgroundColor: `rgba(${rgb}, ${shaded(f) ? 0.35 : 0.6})`, borderColor: `rgba(${rgb}, 0.9)` };
   };
   const [chosenFiles, setChosenFiles] = useState<Set<string>>(new Set(saved?.chosenFiles?.filter((k) => files.some((f) => f.key === k)) ?? (followup ? [] : files.slice(0, 6).map((f) => f.key)))); // the FAQ, OM and model first; a whole data room is not the default; a follow-up carries nothing unless ticked
   const [templateId, setTemplateId] = useState(saved?.templateId && templates.some((t) => t.id === saved.templateId) ? saved.templateId : defaultTemplateId);
@@ -571,7 +573,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
   const saveLabel = saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "dirty" ? "Unsaved changes" : saved?.savedAt ? `Saved ${new Date(saved.savedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "";
 
   return (
-    <div className="space-y-3 px-5 py-4">
+    <div className="mx-auto max-w-[1400px] space-y-3 px-5 py-4">
       {/* recipients */}
       <div className="card p-3">
         <div className="mb-2 flex items-center justify-between text-xs text-muted">
@@ -599,7 +601,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
             const selected = current === f.rowId;
             return (
               <div key={f.rowId} className="relative">
-                <div style={tone(f)} className={`${pill(selected, on)} ${res?.ok ? "border-emerald-500" : ""} ${shaded(f) && !on ? "opacity-60" : ""}`} title={shaded(f) ? (f.followupTo ? "Answered, passed or already followed up: left out unless you turn it on with +" : "No sent deal email on record for this firm: a follow-up cannot reply to it") : undefined}>
+                <div style={tone(f, selected)} className={`${pill(selected, on)} ${res?.ok ? "border-emerald-500" : ""} ${shaded(f) && !on && !selected ? "opacity-60" : ""} ${selected ? "ring-2 ring-sky-600 ring-offset-1" : ""}`} title={shaded(f) ? (f.followupTo ? "Answered, passed or already followed up: left out unless you turn it on with +" : "No sent deal email on record for this firm: a follow-up cannot reply to it") : undefined}>
                   <button type="button" className="flex items-center gap-1.5" onClick={() => setCurrent(f.rowId)} title={f.status >= 2 ? "Sent earlier; the + sends it again with the current email" : "Show this firm's email"}>
                     <CompanyLogo domain={f.domain} name={f.company} size={18} />
                     <span className="font-medium">{f.company}</span>
@@ -886,6 +888,9 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
           )}
           <button type="button" className="btn-secondary" disabled={pending || !shown?.html} onClick={previewToMe} title={cur ? "Emails you the exact message this firm would get" : "Emails you the General email, with no name in the greeting"}>
             Send preview email to me
+          </button>
+          <button type="button" className={`btn-secondary ${cur && armedOne?.rowId === cur.rowId ? "border-red-600 text-red-700" : ""}`} disabled={pending || launching || !cur} onClick={() => cur && sendOne(cur)} title={cur ? `Send ${cur.company} its ${followup ? "follow-up" : "email"} now, on its own (two clicks); try a few this way before the launch` : "Click a firm's token first"}>
+            {cur && armedOne?.rowId === cur.rowId ? `Send this one: click again (${cur.company})` : "Send this one"}
           </button>
           <button type="button" className="btn-primary px-5" disabled={pending || launching} onClick={launch}>
             {pending ? "Working…" : launching ? "Sending…" : armed && Date.now() - armed <= 10_000 ? (followup ? "SEND FOLLOW-UPS: click again" : "LAUNCH: click again to send") : followup ? "SEND FOLLOW-UPS" : "LAUNCH"}
