@@ -73,6 +73,9 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                 <Link href={`/deals/${deal.id}/tracker`} className="btn-secondary">
                   Progress report
                 </Link>
+                <Link href={`/deals/${deal.id}/followup`} className="btn-secondary" title="Reply all on each quiet firm's deal email asking for a read">
+                  Follow ups
+                </Link>
                 <Link href={`/investors?dealId=${deal.id}`} className="btn-secondary">
                   Find investors
                 </Link>

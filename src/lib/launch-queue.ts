@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { graph, graphConfigured } from "@/lib/graph";
 import { logActivity } from "@/lib/activity";
 import { toJson } from "@/lib/taxonomy";
-import { advance, chosenFiles, sendMessage, type LaunchItem } from "@/lib/send-deal";
+import { advance, chosenFiles, sendMessage, sendReplyAll, type LaunchItem } from "@/lib/send-deal";
 
 /**
  * LAUNCH, paced like a person: one deal email every LAUNCH_GAP_MS from a mailbox, so thirty firms get thirty
@@ -10,7 +10,7 @@ import { advance, chosenFiles, sendMessage, type LaunchItem } from "@/lib/send-d
  * queue (DealLaunch); a pump sends whatever is due. The Send deal page keeps pumping while it is open, and page
  * loads elsewhere pump too, so a launch finishes even if the page is closed.
  */
-export const LAUNCH_GAP_MS = 30_000;
+export const LAUNCH_GAP_MS = 12_000; // Oct 1, 2026: twelve seconds (Microsoft allows thirty a minute); heavy attachments still pace by size below
 /**
  * Microsoft throttles attachment uploads per mailbox ("Application is over its IncomingBytes limit", HTTP 429): on
  * Sep 16 the Gateway launch carried 9.9 MB per email and 13 of 28 failed after the first fifteen went out. So the gap
@@ -82,24 +82,60 @@ export async function scanLaunchBounces(mailbox: string): Promise<number> {
 }
 
 /** Put a deal's failed emails back in the queue (fresh attempts, no hold). Returns how many. */
-export async function retryFailed(dealId: string): Promise<number> {
+export async function retryFailed(dealId: string, kind: "SEND" | "FOLLOWUP" = "SEND"): Promise<number> {
   const since = new Date(Date.now() - 24 * 3_600_000);
-  const r = await prisma.dealLaunch.updateMany({ where: { dealId, status: "FAILED", createdAt: { gte: since } }, data: { status: "QUEUED", attempts: 0, notBefore: null, error: null, claimedAt: null } });
+  const r = await prisma.dealLaunch.updateMany({ where: { dealId, kind, status: "FAILED", createdAt: { gte: since }, NOT: { error: { contains: "no sent deal email" } } }, data: { status: "QUEUED", attempts: 0, notBefore: null, error: null, claimedAt: null } });
   return r.count;
 }
 
-/** Put every firm's email in the queue. Nothing is sent here; the first goes out on the first pump. */
-export async function queueDealEmails(dealId: string, items: LaunchItem[], mailbox: string, fileKeys?: string[]): Promise<void> {
+/**
+ * The deal email a firm was first sent, for a follow-up to reply to: the Internet Message-ID the launch recorded, else the
+ * outbound email the log holds for that deal and that firm's people (the launches before Oct 1, 2026 did not record it).
+ * Null when nothing on record: a follow-up then never goes out, because a reply on the wrong thread would be worse than none.
+ */
+export async function firstSentMessageId(dealId: string, rowId: string): Promise<{ messageId: string; sentAt: Date } | null> {
+  const sent = await prisma.dealLaunch.findFirst({ where: { dealId, rowId, kind: "SEND", status: { in: ["SENT", "BOUNCED"] }, sentMessageId: { not: null } }, orderBy: { sentAt: "asc" }, select: { sentMessageId: true, sentAt: true } });
+  if (sent?.sentMessageId) return { messageId: sent.sentMessageId, sentAt: sent.sentAt ?? new Date() };
+  const row = await prisma.dealInvestor.findUnique({ where: { id: rowId }, select: { contactId: true, extraContactIds: true } });
+  if (!row) return null;
+  const ids = [row.contactId, ...(row.extraContactIds ? (JSON.parse(row.extraContactIds) as string[]) : [])];
+  const act = await prisma.activity.findFirst({ where: { dealId, type: "EMAIL", direction: "OUTBOUND", contactId: { in: ids }, externalId: { not: null }, NOT: { subject: { startsWith: "RE:", mode: "insensitive" } } }, orderBy: { occurredAt: "asc" }, select: { externalId: true, occurredAt: true } });
+  return act?.externalId ? { messageId: act.externalId, sentAt: act.occurredAt } : null;
+}
+
+/** Put every firm's email in the queue. Nothing is sent here; the first goes out on the first pump. A follow-up replies all on the deal email that firm was sent. */
+export async function queueDealEmails(dealId: string, items: LaunchItem[], mailbox: string, fileKeys?: string[], opts: { followup?: boolean } = {}): Promise<void> {
+  const kind = opts.followup ? "FOLLOWUP" : "SEND";
   for (const item of items) {
     const row = await prisma.dealInvestor.findUnique({ where: { id: item.rowId }, select: { id: true, contactId: true } });
     if (!row) continue;
     const people = await prisma.contact.findMany({ where: { id: { in: item.toContactIds.length ? item.toContactIds : [row.contactId] }, email: { not: null } }, select: { id: true } });
-    // one live entry per row: a second LAUNCH click while the first is still going does not double-send
-    const open = await prisma.dealLaunch.findFirst({ where: { rowId: row.id, status: { in: ["QUEUED", "SENDING"] } } });
+    // one live entry per row and kind: a second LAUNCH click while the first is still going does not double-send
+    const open = await prisma.dealLaunch.findFirst({ where: { rowId: row.id, kind, status: { in: ["QUEUED", "SENDING"] } } });
     if (open) continue;
+    const replyTo = opts.followup ? await firstSentMessageId(dealId, row.id) : null;
+    const error = !people.length ? "nobody with an email picked" : opts.followup && !replyTo ? "no sent deal email on record to reply to" : null;
     await prisma.dealLaunch.create({
-      data: { dealId, rowId: row.id, mailbox, toContactIds: toJson(people.map((p) => p.id)), cc: toJson(item.cc ?? []), subject: item.subject, html: item.html, fileKeys: fileKeys ? toJson(fileKeys) : null, status: people.length ? "QUEUED" : "FAILED", error: people.length ? null : "nobody with an email picked" },
+      data: { dealId, rowId: row.id, mailbox, kind, replyToMessageId: replyTo?.messageId ?? null, toContactIds: toJson(people.map((p) => p.id)), cc: toJson(item.cc ?? []), subject: item.subject, html: item.html, fileKeys: fileKeys ? toJson(fileKeys) : null, status: error ? "FAILED" : "QUEUED", error },
     });
+  }
+}
+
+/**
+ * The pump drives itself from the server (Oct 1, 2026: a launch used to stop when Jonathan's laptop went to sleep,
+ * because only the open page and the next page load pumped it). After queueing, the Send deal page calls this once;
+ * the pump route answers at once, sends for up to four and a half minutes in the background, and calls itself again
+ * while anything is queued. Needs APP_URL and CRON_SECRET; without them the caller falls back to pumping in place.
+ */
+export async function kickPump(): Promise<boolean> {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  const base = (process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
+  try {
+    const res = await fetch(`${base}/api/launch/pump?key=${encodeURIComponent(secret)}`, { method: "POST", cache: "no-store", signal: AbortSignal.timeout(8_000) });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -145,12 +181,22 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
       const keys = next.fileKeys ? (JSON.parse(next.fileKeys) as string[]) : undefined;
       const cacheKey = `${next.dealId}:${next.fileKeys ?? ""}`;
       if (!cache.has(cacheKey)) cache.set(cacheKey, await chosenFiles(next.dealId, keys));
-      const messageId = await sendMessage(mailbox, to, next.subject, next.html, cache.get(cacheKey)!, JSON.parse(next.cc) as string[]);
+      const followup = next.kind === "FOLLOWUP";
+      if (followup && !next.replyToMessageId) throw new Error("no sent deal email on record to reply to");
+      const messageId = followup
+        ? await sendReplyAll(mailbox, next.replyToMessageId!, to, next.html, cache.get(cacheKey)!, JSON.parse(next.cc) as string[])
+        : await sendMessage(mailbox, to, next.subject, next.html, cache.get(cacheKey)!, JSON.parse(next.cc) as string[]);
       const now = new Date();
-      await prisma.dealInvestor.update({ where: { id: row.id }, data: { status: Math.max(row.status, 2), bodyOverride: next.html, extraContactIds: toJson(people.map((p) => p.id).filter((id) => id !== row.contactId)), sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: now } });
-      for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: "Deal email sent (Send deal)", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now }).catch(() => {});
-      await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "SENT", sentAt: now } });
-      await advance(next.dealId, "Deal Taken To Market").catch(() => {});
+      if (followup) {
+        // a follow-up after no response: the row reads Followed Up, nothing else moves
+        await prisma.dealInvestor.update({ where: { id: row.id }, data: { ...(row.status === 2 ? { status: 3 } : {}), updatedAt: now } });
+        for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: "Follow-up sent (Follow ups): reply-all on the deal email", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now }).catch(() => {});
+      } else {
+        await prisma.dealInvestor.update({ where: { id: row.id }, data: { status: Math.max(row.status, 2), bodyOverride: next.html, extraContactIds: toJson(people.map((p) => p.id).filter((id) => id !== row.contactId)), sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: now } });
+        for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: "Deal email sent (Send deal)", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now }).catch(() => {});
+      }
+      await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "SENT", sentAt: now, sentMessageId: messageId } });
+      if (!followup) await advance(next.dealId, "Deal Taken To Market").catch(() => {});
       sent++;
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e).slice(0, 300);
@@ -180,9 +226,9 @@ export async function pumpAllLaunches(budgetMs = 45_000): Promise<number> {
 }
 
 /** Where a deal's launch stands, for the progress note on the Send deal page. */
-export async function launchStatus(dealId: string): Promise<LaunchStatus> {
+export async function launchStatus(dealId: string, kind: "SEND" | "FOLLOWUP" = "SEND"): Promise<LaunchStatus> {
   const since = new Date(Date.now() - 7 * 86_400_000); // a bounce can arrive a day later; the firm still has to show as bounced
-  const rows = await prisma.dealLaunch.findMany({ where: { dealId, createdAt: { gte: since } }, orderBy: { createdAt: "asc" }, select: { rowId: true, status: true, error: true, mailbox: true, notBefore: true } });
+  const rows = await prisma.dealLaunch.findMany({ where: { dealId, kind, createdAt: { gte: since } }, orderBy: { createdAt: "asc" }, select: { rowId: true, status: true, error: true, mailbox: true, notBefore: true } });
   const latest = new Map<string, (typeof rows)[number]>();
   for (const r of rows) latest.set(r.rowId, r);
   const list = [...latest.values()];

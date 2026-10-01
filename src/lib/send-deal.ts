@@ -284,6 +284,28 @@ export async function sendMessage(mailbox: string, to: string[], subject: string
   return fresh.internetMessageId ?? null;
 }
 
+/**
+ * A follow-up: reply all on the deal email this mailbox sent that firm (found by its Internet Message-ID in this
+ * mailbox only, never another), to the people picked, the note written above the quoted thread with the signature,
+ * the chosen files attached. Throws when the sent email is not in this mailbox, so nothing goes out on a wrong thread.
+ */
+export async function sendReplyAll(mailbox: string, replyToMessageId: string, to: string[], html: string, src: Src, cc: string[] = []) {
+  const { findMessageCopy } = await import("@/lib/lp-message");
+  const copy = await findMessageCopy(replyToMessageId, mailbox);
+  if (!copy || copy.box.toLowerCase() !== mailbox.toLowerCase()) throw new Error("the deal email this would reply to is not in your mailbox");
+  const { createReplyAllDraft, updateDraftBody } = await import("@/lib/graph");
+  const draft = await createReplyAllDraft(mailbox, copy.id);
+  await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(draft.id)}`, { method: "PATCH", body: JSON.stringify({ toRecipients: to.map((address) => ({ emailAddress: { address } })), ccRecipients: cc.filter((c) => c && !to.some((t) => t.toLowerCase() === c.toLowerCase())).map((address) => ({ emailAddress: { address } })) }) });
+  const body = draft.body?.content ?? "";
+  const block = `${outlookSpacing(html)}${await signatureFor(mailbox)}`;
+  const at = body.search(/<body[^>]*>/i);
+  await updateDraftBody(mailbox, draft.id, at >= 0 ? body.replace(/(<body[^>]*>)/i, `$1${block}<br>`) : `${block}<br>${body}`);
+  if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
+  const fresh = await getMessage(mailbox, draft.id, "id,internetMessageId");
+  await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(draft.id)}/send`, { method: "POST" });
+  return fresh.internetMessageId ?? null;
+}
+
 /** LAUNCH: every firm gets its own edited email, all sent now. Rows flip to Deal Sent; the deal goes to market. */
 const PACE_MS = 1500; // a human sends one email at a time; a burst of thirty identical emails in two seconds looks like bulk mail
 

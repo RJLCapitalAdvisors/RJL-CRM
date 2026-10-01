@@ -8,12 +8,13 @@ import { hasMarker, withFirstName, withoutName } from "@/lib/first-name-marker";
 import { applyEdits, diffBlocks, greetingName, splitBlocks, type FirmDraft } from "@/lib/firm-draft";
 import { Send, Star } from "lucide-react";
 import { refreshDealFields } from "@/lib/merge";
-import { addFirmAction, launchAction, learnFirstNameAction, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction, searchInvestorCompanies } from "./actions";
+import { addFirmAction, launchAction, learnFirstNameAction, previewFollowupEmail, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction, searchInvestorCompanies } from "./actions";
+import { Eye } from "lucide-react";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
 export type Person = { id: string; name: string; firstName?: string; email: string; title: string | null; bounced?: boolean };
-export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean };
-export type DealFileLite = { key: string; name: string; size: number };
+export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null };
+export type DealFileLite = { key: string; name: string; size: number; url?: string | null };
 type Draft = { subject: string; html: string; touched: boolean };
 /** Everything on this page that is worth keeping if you leave and come back (kept on the deal, per deal). A firm's draft is its block edits over the General email (an older save may carry a full html copy, converted on load). */
 export type SendState = { templateId?: string; general?: Draft | null; drafts?: Record<string, FirmDraft | Draft>; include?: string[]; to?: Record<string, string[]>; primary?: Record<string, string[]>; chosenFiles?: string[]; cc?: string; savedAt?: string };
@@ -40,12 +41,15 @@ function FileIcon({ name }: { name: string }) {
  * Everything you do here saves itself to the deal a second after you do it, so you can leave and come back.
  * Bottom: "Send preview email to me" (the General one goes with a blank greeting) and LAUNCH (each firm gets its own email).
  */
-export function SendClient({ dealId, firms, templates, defaultTemplateId, files, saved, team = [], initialLaunch = null }: { dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[]; initialLaunch?: LaunchStatus | null }) {
-  const [chosenFiles, setChosenFiles] = useState<Set<string>>(new Set(saved?.chosenFiles?.filter((k) => files.some((f) => f.key === k)) ?? files.slice(0, 6).map((f) => f.key))); // the FAQ, OM and model first; a whole data room is not the default
+export function SendClient({ mode = "send", dealId, firms, templates, defaultTemplateId, files, saved, team = [], initialLaunch = null }: { mode?: "send" | "followup"; dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[]; initialLaunch?: LaunchStatus | null }) {
+  const followup = mode === "followup";
+  /** Follow ups: a firm that answered, passed, was already followed up, or has no sent email on record is shaded out and left out by default. */
+  const shaded = (f: Firm) => followup && (f.status !== 2 || !f.followupTo);
+  const [chosenFiles, setChosenFiles] = useState<Set<string>>(new Set(saved?.chosenFiles?.filter((k) => files.some((f) => f.key === k)) ?? (followup ? [] : files.slice(0, 6).map((f) => f.key)))); // the FAQ, OM and model first; a whole data room is not the default; a follow-up carries nothing unless ticked
   const [templateId, setTemplateId] = useState(saved?.templateId && templates.some((t) => t.id === saved.templateId) ? saved.templateId : defaultTemplateId);
   const [pickOpen, setPickOpen] = useState(!saved?.templateId); // the template list is open until one has been chosen for this deal
   const savedInclude = saved?.include?.filter((id) => firms.some((f) => f.rowId === id)) ?? [];
-  const [include, setInclude] = useState<Set<string>>(new Set(savedInclude.length ? savedInclude : firms.filter((f) => f.status <= 1).map((f) => f.rowId)));
+  const [include, setInclude] = useState<Set<string>>(new Set(savedInclude.length ? savedInclude : firms.filter((f) => (followup ? !shaded(f) : f.status <= 1)).map((f) => f.rowId)));
   const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((saved?.to?.[f.rowId] ?? (f.extraContactIds.length ? [f.primaryContactId, ...f.extraContactIds] : f.defaultContactIds)).filter((id) => f.people.some((p) => p.id === id)))])));
   const [general, setGeneral] = useState<Draft | null>(saved?.general ?? null);
   const [cc, setCc] = useState<string>(saved?.cc ?? ""); // copied on every firm's email (teammates, usually)
@@ -146,7 +150,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
     let cancelled = false;
     const keepEdits = reload === 0 && Boolean(saved?.general?.touched) && saved?.templateId === templateId;
     const t = setTimeout(() => !cancelled && setRendering(true), 0);
-    previewGeneralEmail(dealId, templateId)
+    (followup ? previewFollowupEmail(dealId) : previewGeneralEmail(dealId, templateId))
       .then((r) => {
         if (cancelled) return;
         if (keepEdits) {
@@ -217,7 +221,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
     const t = setTimeout(() => {
       setSaveState("saving");
       const state: SendState = { templateId, general, drafts, include: [...include], to: Object.fromEntries(Object.entries(to).map(([k, v]) => [k, [...v]])), primary: Object.fromEntries(Object.entries(primary).map(([k, v]) => [k, [...v]])), chosenFiles: [...chosenFiles], cc, savedAt: new Date().toISOString() };
-      saveSendStateAction(dealId, state)
+      saveSendStateAction(dealId, state, mode)
         .then(() => setSaveState("saved"))
         .catch(() => setSaveState("dirty"));
     }, 1000);
@@ -328,7 +332,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
     }
     setArmedOne(null);
     start(async () => {
-      const r = await launchAction(dealId, [{ rowId: f.rowId, toContactIds: ids, subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() }], [...chosenFiles]);
+      const r = await launchAction(dealId, [{ rowId: f.rowId, toContactIds: ids, subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() }], [...chosenFiles], mode);
       if (!r.ok) return setNote(r.reason);
       applyStatus(r.status);
       if (r.status.queued > 0) setLaunching(true);
@@ -369,7 +373,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
     setArmed(null);
     start(async () => {
       try {
-        const r = await launchAction(dealId, items, [...chosenFiles]);
+        const r = await launchAction(dealId, items, [...chosenFiles], mode);
         if (!r.ok) return setNote(r.reason);
         applyStatus(r.status);
         if (r.status.queued > 0) setLaunching(true);
@@ -388,14 +392,24 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
     if (bouncedIds.size) setTo((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, new Set([...v].filter((id) => !bouncedIds.has(id)))])));
     const trouble = st.rows.filter((x) => x.status === "FAILED" || x.status === "BOUNCED").map((x) => `${firms.find((f) => f.rowId === x.rowId)?.company ?? "a firm"} (${x.error ?? x.status.toLowerCase()})`);
     const held = st.heldUntil ? new Date(st.heldUntil) : null;
+    setNextAt(st.queued > 0 && !held ? Date.now() + st.nextInMs : null);
     setNote(
       st.queued > 0
         ? held
-          ? `${st.sent} of ${st.total} sent · ${st.queued} waiting. Microsoft paused attachment uploads from your mailbox for a few minutes (too many megabytes in a short time); sending resumes on its own at ${held.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}. Keep this page open or come back later; nothing is lost.`
-          : `${st.sent} of ${st.total} sent · ${st.queued} to go, next in ${Math.max(1, Math.ceil(st.nextInMs / 1000))}s. One email at a time, spaced for the attachments' size, so each lands as an individually sent email. It keeps going if you leave.`
+          ? `${st.sent} of ${st.total} sent · ${st.queued} waiting. Microsoft paused attachment uploads from your mailbox for a few minutes (too many megabytes in a short time); sending resumes on its own at ${held.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}. Nothing is lost; the server keeps going whether or not this page is open.`
+          : `${st.sent} of ${st.total} sent · ${st.queued} to go. One email at a time, spaced for the attachments' size, so each lands as an individually sent email. The server keeps going if you leave or your laptop sleeps.`
         : `${st.sent} of ${st.total} sent.${trouble.length ? ` Needs another go: ${trouble.join("; ")}. Use the ▾ on the firm to pick who gets it (the same people or others there), then "send again" on that firm.` : ""}`,
     );
   };
+  const [nextAt, setNextAt] = useState<number | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (nextAt == null) return;
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [nextAt]);
+  const countdown = nextAt != null ? Math.max(0, Math.ceil((nextAt - Date.now()) / 1000)) : null;
+  void tick;
   // a launch that already ran (with something failed or bounced) shows its results when the page opens
   useEffect(() => {
     if (initialLaunch) applyStatus(initialLaunch);
@@ -412,7 +426,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
       return setNote(`Pick who at ${f.company} gets it first (▾), then click send again.`);
     }
     start(async () => {
-      const r = await launchAction(dealId, [{ rowId: f.rowId, toContactIds: ids, subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() }], [...chosenFiles]);
+      const r = await launchAction(dealId, [{ rowId: f.rowId, toContactIds: ids, subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() }], [...chosenFiles], mode);
       if (!r.ok) return setNote(r.reason);
       applyStatus(r.status);
       if (r.status.queued > 0) setLaunching(true);
@@ -422,7 +436,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
     if (!launching) return;
     let live = true;
     const tick = async () => {
-      const st = await pumpLaunchAction(dealId).catch(() => null);
+      const st = await pumpLaunchAction(dealId, mode).catch(() => null);
       if (!live || !st) return;
       applyStatus(st);
       if (st.queued === 0) {
@@ -571,7 +585,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
             const selected = current === f.rowId;
             return (
               <div key={f.rowId} className="relative">
-                <div className={`${pill(selected, on)} ${res?.ok ? "border-emerald-500" : ""}`}>
+                <div className={`${pill(selected, on)} ${res?.ok ? "border-emerald-500" : ""} ${shaded(f) && !on ? "opacity-50" : ""}`} title={shaded(f) ? (f.followupTo ? "Answered, passed or already followed up: left out unless you turn it on with +" : "No sent deal email on record for this firm: a follow-up cannot reply to it") : undefined}>
                   <button type="button" className="flex items-center gap-1.5" onClick={() => setCurrent(f.rowId)} title={f.status >= 2 ? "Sent earlier; the + sends it again with the current email" : "Show this firm's email"}>
                     <CompanyLogo domain={f.domain} name={f.company} size={18} />
                     <span className="font-medium">{f.company}</span>
@@ -580,7 +594,8 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
                     {res?.ok && <span className="text-xs text-emerald-700">sent</span>}
                     {res?.pending && <span className="text-xs text-sky-700">queued</span>}
                     {res && !res.ok && !res.pending && <span className="text-xs text-red-700" title={res.error}>{res.bounced?.length ? "bounced" : "failed"}</span>}
-                    {f.status >= 2 && !res && <span className="text-xs text-muted">{on ? "sending again" : "sent earlier"}</span>}
+                    {!followup && f.status >= 2 && !res && <span className="text-xs text-muted">{on ? "sending again" : "sent earlier"}</span>}
+                    {followup && !res && <span className="text-xs text-muted">{!f.followupTo ? "no sent email on record" : f.status === 2 ? `sent ${f.sentOn ? new Date(f.sentOn).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "earlier"}, quiet` : f.status === 3 ? "followed up" : f.status >= 7 ? "passed" : "answered"}</span>}
                   </button>
                   {(
                     <>
@@ -651,13 +666,18 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
             <input type="checkbox" className="accent-ink" checked={chosenFiles.has(f.key)} onChange={() => setChosenFiles((s) => { const n = new Set(s); if (n.has(f.key)) n.delete(f.key); else n.add(f.key); return n; })} />
             <FileIcon name={f.name} />
             <span>{f.name}</span>
+            {f.url && (
+              <a href={f.url} target="_blank" rel="noreferrer" className="text-muted hover:text-ink" title="See this file before you send it (opens in a new tab)" onClick={(e) => e.stopPropagation()}>
+                <Eye className="h-3.5 w-3.5" />
+              </a>
+            )}
             <span className="text-xs text-muted">{f.size >= 1_000_000 ? `${(f.size / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1000))} KB`}</span>
           </label>
         ))}
       </div>
 
-      {/* the template: the General email is that exact template with the deal's facts filled in */}
-      <div className="card px-4 py-2.5 text-sm">
+      {/* the template: the General email is that exact template with the deal's facts filled in (a follow-up has no template: one line above the quoted deal email) */}
+      {!followup && <div className="card px-4 py-2.5 text-sm">
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-muted">Template</span>
           <span className="font-medium">{templates.find((t) => t.id === templateId)?.name ?? "none chosen yet"}</span>
@@ -688,7 +708,12 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
             {templates.length === 0 && <div className="text-xs text-muted">No deal templates yet. Add one under Templates.</div>}
           </div>
         )}
-      </div>
+      </div>}
+      {followup && (
+        <div className="card px-4 py-2.5 text-sm text-muted">
+          Each follow-up goes out as a <b>reply all</b> on the deal email that firm was sent, so the original sits quoted underneath and the thread stays one. The line below is written above it, with the person&apos;s first name. Firms with no sent email on record are shaded and cannot be followed up here.
+        </div>
+      )}
 
       {/* the email: General (with the ask-the-CRM box alongside), or the selected firm's */}
       <div className={cur ? "" : "grid grid-cols-[260px_1fr] gap-4"}>
@@ -723,7 +748,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
           <div className="flex items-center justify-between border-b border-line bg-cream px-4 py-2.5 text-sm">
             <div className="flex items-center gap-2">
               {cur ? <CompanyLogo domain={cur.domain} name={cur.company} size={18} /> : <PenLine className="h-4 w-4" />}
-              <span className="font-semibold">{cur ? `Email to ${cur.company}` : "General email"}</span>
+              <span className="font-semibold">{cur ? `${followup ? "Follow-up to" : "Email to"} ${cur.company}` : followup ? "General follow-up" : "General email"}</span>
               {cur ? (
                 <span className="text-xs text-muted">to {cur.people.filter((p) => (to[cur.rowId] ?? new Set()).has(p.id)).map((p) => p.email).join(", ") || "nobody picked"}</span>
               ) : (
@@ -811,7 +836,10 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
 
       {/* actions */}
       <div className="card flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div className="text-sm text-muted">{note ?? `${itemsToSend().length} email${itemsToSend().length === 1 ? "" : "s"} ready. Each firm gets the General email with its person's name, the ${chosenFiles.size} attachment${chosenFiles.size === 1 ? "" : "s"} ticked above and your signature.`}</div>
+        <div className="text-sm text-muted">
+          {note ?? `${itemsToSend().length} ${followup ? "follow-up" : "email"}${itemsToSend().length === 1 ? "" : "s"} ready. Each firm gets the General ${followup ? "follow-up as a reply all on its deal email" : "email with its person's name"}, the ${chosenFiles.size} attachment${chosenFiles.size === 1 ? "" : "s"} ticked above and your signature.`}
+          {countdown != null && launching && <span className="ml-2 tabular-nums text-ink">next in {countdown}s</span>}
+        </div>
         <div className="flex items-center gap-2">
           {!launching && Object.values(results).some((r) => !r.ok && !r.pending) && (
             <button
@@ -820,7 +848,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
               disabled={pending}
               onClick={() =>
                 start(async () => {
-                  const r = await retryFailedAction(dealId);
+                  const r = await retryFailedAction(dealId, mode);
                   if (!r.ok) return setNote(r.reason);
                   applyStatus(r.status);
                   if (r.status.queued > 0) setLaunching(true);
@@ -834,7 +862,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
             Send preview email to me
           </button>
           <button type="button" className="btn-primary px-5" disabled={pending || launching} onClick={launch}>
-            {pending ? "Working…" : launching ? "Sending…" : armed && Date.now() - armed <= 10_000 ? "LAUNCH: click again to send" : "LAUNCH"}
+            {pending ? "Working…" : launching ? "Sending…" : armed && Date.now() - armed <= 10_000 ? (followup ? "SEND FOLLOW-UPS: click again" : "LAUNCH: click again to send") : followup ? "SEND FOLLOW-UPS" : "LAUNCH"}
           </button>
         </div>
       </div>

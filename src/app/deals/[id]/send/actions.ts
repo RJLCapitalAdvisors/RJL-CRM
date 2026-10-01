@@ -5,7 +5,15 @@ import { after } from "next/server";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/current-user";
 import { createSendDrafts, finalizeEngagement, renderDealEmail, renderGeneralDealEmail, reviseDealEmail, sendPreviewToSelf, type LaunchItem, type SendItem } from "@/lib/send-deal";
-import { launchStatus, pumpLaunches, queueDealEmails, retryFailed, type LaunchStatus } from "@/lib/launch-queue";
+import { kickPump, launchStatus, pumpLaunches, queueDealEmails, retryFailed, type LaunchStatus } from "@/lib/launch-queue";
+
+type Mode = "send" | "followup";
+const KIND = (mode: Mode) => (mode === "followup" ? "FOLLOWUP" : "SEND") as "SEND" | "FOLLOWUP";
+const STATE_KEY = (mode: Mode) => (mode === "followup" ? "followupState" : "sendState");
+/** The pump runs on the server from here on; when it cannot be reached (no CRON_SECRET locally), this request pumps for a while itself. */
+async function drive(mailbox: string) {
+  if (!(await kickPump())) after(() => pumpLaunches(mailbox, 270_000).catch(() => null));
+}
 
 /** A group added on the Send deal page: its usual person joins the progress report as Deal Not Sent, so the firm has a token to send (Jonathan, Oct 1, 2026). */
 export async function addFirmAction(dealId: string, companyId: string): Promise<{ ok: boolean; reason?: string }> {
@@ -65,32 +73,32 @@ export async function createSendDraftsAction(dealId: string, templateId: string,
 }
 
 /** LAUNCH: queue one email per firm, send the first now, the rest one every 30 seconds while the page keeps pumping. */
-export async function launchAction(dealId: string, items: LaunchItem[], fileKeys?: string[]) {
+export async function launchAction(dealId: string, items: LaunchItem[], fileKeys?: string[], mode: Mode = "send") {
   const me = await currentUser();
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the emails go from your own mailbox." };
-  await queueDealEmails(dealId, items, me.email, fileKeys);
+  await queueDealEmails(dealId, items, me.email, fileKeys, { followup: mode === "followup" });
   await pumpLaunches(me.email, 5_000);
-  // keep sending one every 30 seconds after this response goes back, so the launch finishes even if the tab is closed
-  after(() => pumpLaunches(me.email, 270_000).catch(() => null));
+  // the server keeps sending on its own from here (the pump route calls itself while anything is queued)
+  await drive(me.email);
   revalidatePath(`/deals/${dealId}`);
   revalidatePath(`/deals/${dealId}/tracker`);
   revalidatePath(`/deals/${dealId}/send`);
   revalidatePath("/");
-  return { ok: true as const, status: await launchStatus(dealId) };
+  return { ok: true as const, status: await launchStatus(dealId, KIND(mode)) };
 }
 
 /** Called by the Send deal page every few seconds while a launch is running: send the next email if 30 seconds have passed. */
-export async function pumpLaunchAction(dealId: string): Promise<LaunchStatus> {
+export async function pumpLaunchAction(dealId: string, mode: Mode = "send"): Promise<LaunchStatus> {
   const me = await currentUser();
   if (me) await pumpLaunches(me.email, 4_000).catch(() => null);
-  let st = await launchStatus(dealId);
+  let st = await launchStatus(dealId, KIND(mode));
   if (me && st.queued === 0) {
     // the launch is done: bounces that came back are matched to their firms
     const { scanLaunchBounces } = await import("@/lib/launch-queue");
-    if (await scanLaunchBounces(me.email).catch(() => 0)) st = await launchStatus(dealId);
+    if (await scanLaunchBounces(me.email).catch(() => 0)) st = await launchStatus(dealId, KIND(mode));
   }
   // a long pump in the background only when nobody is pacing this mailbox right now (no send in the last gap)
-  if (me && st.queued > 0 && st.nextInMs === 0) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
+  if (me && st.queued > 0 && st.nextInMs === 0) await drive(me.email);
   if (st.queued === 0) {
     revalidatePath(`/deals/${dealId}`);
     revalidatePath(`/deals/${dealId}/tracker`);
@@ -111,6 +119,15 @@ export async function previewGeneralEmail(dealId: string, templateId: string) {
   return { subject: r.subject, html: r.html };
 }
 
+/** The follow-up's General email: a line asking for a read, with the name slot, above the quoted deal email (Jonathan, Oct 1, 2026). */
+export async function previewFollowupEmail(dealId: string) {
+  const { FIRST_NAME_MARKER } = await import("@/lib/first-name-marker");
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { name: true, propertyName: true } });
+  const first = await prisma.dealLaunch.findFirst({ where: { dealId, kind: "SEND", status: { in: ["SENT", "BOUNCED"] } }, orderBy: { createdAt: "asc" }, select: { subject: true } });
+  const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
+  return { subject: first ? `RE: ${first.subject}` : `RE: ${deal?.propertyName ?? deal?.name ?? "the deal"}`, html: `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">Hi ${FIRST_NAME_MARKER} - please confirm receipt of the below, and let me know if ${deal?.propertyName ?? "this"} is something you would like to take a closer look at.</p></div>` };
+}
+
 /** "Emphasize the business plan more": Claude edits the General email as asked. */
 export async function reviseGeneralEmailAction(dealId: string, subject: string, html: string, instruction: string) {
   if (!instruction.trim()) return { error: "Say what to change." };
@@ -118,11 +135,11 @@ export async function reviseGeneralEmailAction(dealId: string, subject: string, 
 }
 
 /** Autosave for the Send deal page: the General email, per-firm edits, who gets what, files, template. Kept on the deal. */
-export async function saveSendStateAction(dealId: string, state: Record<string, unknown>) {
+export async function saveSendStateAction(dealId: string, state: Record<string, unknown>, mode: Mode = "send") {
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { details: true } });
   if (!deal) return { ok: false as const };
   const details = JSON.parse(deal.details || "{}") as Record<string, unknown>;
-  details.sendState = state;
+  details[STATE_KEY(mode)] = state;
   await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify(details) } });
   return { ok: true as const };
 }
@@ -135,12 +152,12 @@ export async function updateAgreedGroupsAction(dealId: string, keepCompanyIds: s
 }
 
 /** Failed emails go back in the queue and the sending resumes at the paced rate. */
-export async function retryFailedAction(dealId: string): Promise<{ ok: true; requeued: number; status: LaunchStatus } | { ok: false; reason: string }> {
+export async function retryFailedAction(dealId: string, mode: Mode = "send"): Promise<{ ok: true; requeued: number; status: LaunchStatus } | { ok: false; reason: string }> {
   const me = await currentUser();
   if (!me) return { ok: false, reason: "Sign in with Microsoft (bottom of the sidebar) so the emails go from your own mailbox." };
-  const requeued = await retryFailed(dealId);
+  const requeued = await retryFailed(dealId, KIND(mode));
   await pumpLaunches(me.email, 5_000);
-  after(() => pumpLaunches(me.email, 270_000).catch(() => null));
+  await drive(me.email);
   revalidatePath(`/deals/${dealId}/send`);
-  return { ok: true, requeued, status: await launchStatus(dealId) };
+  return { ok: true, requeued, status: await launchStatus(dealId, KIND(mode)) };
 }

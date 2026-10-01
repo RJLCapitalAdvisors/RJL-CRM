@@ -885,7 +885,10 @@ model DealLaunch {
   subject      String
   html         String
   fileKeys     String?   // JSON keys of the chosen attachments; null = everything the sponsor sent
-  status       String    @default("QUEUED") // QUEUED | SENDING | SENT | FAILED
+  kind         String    @default("SEND") // SEND (the deal email) | FOLLOWUP (a reply-all on the deal email already sent; Oct 1, 2026)
+  replyToMessageId String? // FOLLOWUP: the Internet Message-ID of the deal email this replies to
+  sentMessageId    String? // the Internet Message-ID of what went out, so a follow-up can reply to it
+  status       String    @default("QUEUED") // QUEUED | SENDING | SENT | FAILED | BOUNCED
   error        String?
   notBefore    DateTime? // held back until then (Microsoft throttled the attachment upload); null = ready
   attempts     Int       @default(0)

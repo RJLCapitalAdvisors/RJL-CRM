@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ClipboardList, FileText, ListChecks, Mail, ScrollText } from "lucide-react";
+import { ClipboardList, FileText, ListChecks, Mail, Reply, ScrollText } from "lucide-react";
 import { dealNavInfo } from "@/app/deal-nav-actions";
 
 /**
@@ -14,7 +14,7 @@ import { dealNavInfo } from "@/app/deal-nav-actions";
 export function DealContextNav() {
   const pathname = usePathname();
   const params = useSearchParams();
-  const fromPath = pathname.match(/^\/deals\/([^/]+)(?:\/(tracker|send|groups))?/);
+  const fromPath = pathname.match(/^\/deals\/([^/]+)(?:\/(tracker|send|groups|followup))?/);
   const dealId = fromPath && !["new", "list"].includes(fromPath[1]) ? fromPath[1] : params.get("dealId");
   const [info, setInfo] = useState<{ id: string; name: string; stage: string } | null>(null);
 
@@ -39,6 +39,7 @@ export function DealContextNav() {
     { href: `/deals/${dealId}/groups`, label: "Agreed groups", icon: ListChecks, on: pathname === `/deals/${dealId}/groups` },
     { href: `/deals/${dealId}/send`, label: "Send deal", icon: Mail, on: pathname === `/deals/${dealId}/send` },
     { href: `/deals/${dealId}/tracker`, label: "Progress report", icon: FileText, on: pathname === `/deals/${dealId}/tracker` },
+    { href: `/deals/${dealId}/followup`, label: "Follow ups", icon: Reply, on: pathname === `/deals/${dealId}/followup` },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">

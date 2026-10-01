@@ -6,22 +6,23 @@ import { templateForDeal } from "@/lib/deal-template";
 import { currentUser } from "@/lib/current-user";
 import { PageHeader } from "@/components/ui";
 import { dealFiles, syncSendDrafts, usualRecipients } from "@/lib/send-deal";
-import { SendClient, type Firm, type SendState } from "./send-client";
+import { SendClient, type Firm, type SendState } from "../send/send-client";
 import { SendToOne } from "../send-to-one";
 import { after } from "next/server";
-import { launchStatus, pumpLaunches } from "@/lib/launch-queue";
+import { firstSentMessageId, launchStatus, pumpLaunches } from "@/lib/launch-queue";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const d = await prisma.deal.findUnique({ where: { id }, select: { name: true, propertyName: true } });
-  return { title: `Send ${d ? d.propertyName ?? d.name : "deal"}` };
+  return { title: `Follow ups ${d ? d.propertyName ?? d.name : ""}` };
 }
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // a launch paces itself: one email at a time, a second or two apart
 
 /** Send deal: pick who at each agreed firm gets it, personalize the first line, review, then drafts land in your Outlook to fire one by one. */
-export default async function SendDealPage({ params }: { params: Promise<{ id: string }> }) {
+/** Follow ups: the Send deal page again, but every email is a reply-all on the deal email that firm was sent, and firms that answered or passed are shaded out (Jonathan, Oct 1, 2026). */
+export default async function FollowUpsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await syncSendDrafts().catch(() => 0);
   const [deal, templates] = await Promise.all([
@@ -45,13 +46,13 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   };
   // a launch still going (or left behind when the tab closed): the page resumes pacing it and pumps in the background
   if (me) await import("@/lib/launch-queue").then((m) => m.scanLaunchBounces(me.email)).catch(() => 0); // bounces since the last launch
-  const launch = await launchStatus(deal.id).catch(() => null);
+  const launch = await launchStatus(deal.id, "FOLLOWUP").catch(() => null);
   const bouncedEmails = new Set((launch?.rows ?? []).flatMap((r) => r.bounced ?? []));
   if (launch && launch.queued > 0 && me) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
   const team = (await prisma.user.findMany({ where: { active: true, ...CA_TEAM, email: { not: null } }, select: { name: true, email: true }, orderBy: { name: "asc" } })).filter((u) => u.email && u.email.toLowerCase() !== me?.email?.toLowerCase()).map((u) => ({ name: u.name, email: u.email! }));
   const sendState = ((): SendState | null => {
     try {
-      const st = (JSON.parse(deal.details || "{}") as { sendState?: SendState }).sendState;
+      const st = (JSON.parse(deal.details || "{}") as { followupState?: SendState }).followupState;
       return st && typeof st === "object" ? st : null;
     } catch {
       return null;
@@ -61,8 +62,12 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   for (const r of deal.investors) {
     if (r.contact.companyId && !defaults.has(r.contact.companyId)) defaults.set(r.contact.companyId, await usualRecipients(r.contact.companyId, r.contact.company?.contacts ?? []));
   }
+  const sentOn = new Map<string, { messageId: string; sentAt: Date } | null>();
+  for (const r of deal.investors) sentOn.set(r.id, await firstSentMessageId(deal.id, r.id).catch(() => null));
   const firms: Firm[] = deal.investors.map((r) => ({
     rowId: r.id,
+    followupTo: sentOn.get(r.id)?.messageId ?? null,
+    sentOn: sentOn.get(r.id)?.sentAt.toISOString() ?? null,
     status: r.status,
     company: r.contact.company?.name ?? [r.contact.firstName, r.contact.lastName].filter(Boolean).join(" "),
     domain: r.contact.company?.domain ?? null,
@@ -79,18 +84,21 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   return (
     <>
       <PageHeader
-        title={`Send ${name}`}
-        subtitle={`${firms.filter((f) => f.status <= 1).length} firms not yet sent · ${firms.filter((f) => f.status >= 2).length} sent earlier (turn one on with + to send it the current email again)`}
+        title={`Follow ups · ${name}`}
+        subtitle={`${firms.filter((f) => f.status === 2 && f.followupTo).length} firms sent and quiet · ${firms.filter((f) => f.status >= 4 || f.status === 3).length} answered, passed or already followed up (shaded; turn one on with + to include it anyway)`}
         actions={
           <>
             <SendToOne dealId={deal.id} />
+            <Link href={`/deals/${deal.id}/send`} className="btn-secondary">
+              Send deal
+            </Link>
             <Link href={`/deals/${deal.id}`} className="btn-secondary">
               Back to deal
             </Link>
           </>
         }
       />
-      <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size, url: fileUrl(f.key) }))} saved={sendState} team={team} initialLaunch={launch && (launch.queued > 0 || launch.failed > 0 || launch.bounced > 0) ? launch : null} />
+      <SendClient mode="followup" dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size, url: fileUrl(f.key) }))} saved={sendState} team={team} initialLaunch={launch && (launch.queued > 0 || launch.failed > 0 || launch.bounced > 0) ? launch : null} />
     </>
   );
 }
