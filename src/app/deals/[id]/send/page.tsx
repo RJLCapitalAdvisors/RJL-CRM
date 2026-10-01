@@ -44,7 +44,6 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
     return r ? `/api/deals/${deal.id}/files/${r.id}?t=${signFileToken(`file:${r.id}`)}&preview=1` : null;
   };
   // a launch still going (or left behind when the tab closed): the page resumes pacing it and pumps in the background
-  if (me) await import("@/lib/launch-queue").then((m) => m.scanLaunchBounces(me.email)).catch(() => 0); // bounces since the last launch
   const launch = await launchStatus(deal.id).catch(() => null);
   const bouncedEmails = new Set((launch?.rows ?? []).flatMap((r) => r.bounced ?? []));
   if (launch && launch.queued > 0 && me) after(() => pumpLaunches(me.email, 270_000).catch(() => null));

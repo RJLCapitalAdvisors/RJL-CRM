@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { pumpAllLaunches } from "@/lib/launch-queue";
+import { pumpAllLaunches, scanLaunchBounces } from "@/lib/launch-queue";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -16,7 +16,12 @@ async function run(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || key !== secret) return new Response("Unauthorized", { status: 401 });
   const queued = await prisma.dealLaunch.count({ where: { status: "QUEUED" } });
-  if (queued === 0) return Response.json({ ok: true, queued: 0, sent: 0 });
+  if (queued === 0) {
+    // nothing to send: just the bounce scan for mailboxes that launched lately (incremental, a second or two)
+    const recent = await prisma.dealLaunch.findMany({ where: { status: "SENT", createdAt: { gte: new Date(Date.now() - 3 * 86_400_000) } }, distinct: ["mailbox"], select: { mailbox: true } });
+    for (const b of recent) await scanLaunchBounces(b.mailbox).catch(() => 0);
+    return Response.json({ ok: true, queued: 0, sent: 0 });
+  }
   const budget = url.searchParams.get("quick") === "1" ? 8_000 : 170_000; // wider than any pacing gap (18 MB of attachments pace 138 s apart), so every minute run sends at least one
   const sent = await pumpAllLaunches(budget).catch(() => 0);
   const left = await prisma.dealLaunch.count({ where: { status: "QUEUED" } }).catch(() => 0);

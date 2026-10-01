@@ -71,14 +71,37 @@ export async function scanLaunchBounces(mailbox: string): Promise<number> {
   if (!graphConfigured()) return 0;
   const first = await prisma.dealLaunch.findFirst({ where: { mailbox: { equals: mailbox, mode: "insensitive" }, status: { in: ["SENT", "BOUNCED"] }, createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) } }, orderBy: { createdAt: "asc" }, select: { createdAt: true } });
   if (!first) return 0;
-  const since = new Date(first.createdAt.getTime() - 60_000).toISOString();
-  const r = await graph<{ value: { id: string; subject?: string; internetMessageId?: string; body?: { content: string } }[] }>(`/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$filter=${encodeURIComponent(`receivedDateTime ge ${since} and startswith(subject,'Undeliverable')`)}&$select=id,subject,internetMessageId,body&$top=50`).catch(() => ({ value: [] }));
+  // only what arrived since the last pass: a full read of the inbox took 27 seconds and ran on every page open (Oct 1, 2026)
+  const key = `bounceScan:${mailbox.toLowerCase()}`;
+  const mark = await prisma.setting.findUnique({ where: { key } }).catch(() => null);
+  const from = Math.max(first.createdAt.getTime() - 60_000, mark?.value ? new Date(mark.value).getTime() - 5 * 60_000 : 0);
+  const since = new Date(from).toISOString();
+  const r = await graph<{ value: { id: string; subject?: string; internetMessageId?: string; receivedDateTime?: string; body?: { content: string } }[] }>(`/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$filter=${encodeURIComponent(`receivedDateTime ge ${since} and startswith(subject,'Undeliverable')`)}&$orderby=receivedDateTime desc&$select=id,subject,internetMessageId,receivedDateTime,body&$top=50`).catch(() => ({ value: [] }));
   let n = 0;
   for (const m of r.value) {
     const text = (m.body?.content ?? "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
     n += await noteLaunchBounce({ mailbox, subject: m.subject ?? null, text, messageId: m.internetMessageId ?? null }).catch(() => 0);
   }
+  await prisma.setting.upsert({ where: { key }, create: { key, value: new Date().toISOString() }, update: { value: new Date().toISOString() } }).catch(() => null);
   return n;
+}
+
+/** Every row's first sent deal email at once (the Follow ups page asked one row at a time: seven seconds for seventy firms). */
+export async function firstSentMessageIds(dealId: string): Promise<Map<string, { messageId: string; sentAt: Date }>> {
+  const out = new Map<string, { messageId: string; sentAt: Date }>();
+  const sends = await prisma.dealLaunch.findMany({ where: { dealId, kind: "SEND", status: { in: ["SENT", "BOUNCED"] }, sentMessageId: { not: null } }, orderBy: { sentAt: "asc" }, select: { rowId: true, sentMessageId: true, sentAt: true } });
+  for (const s of sends) if (!out.has(s.rowId)) out.set(s.rowId, { messageId: s.sentMessageId!, sentAt: s.sentAt ?? new Date() });
+  const rows = await prisma.dealInvestor.findMany({ where: { dealId }, select: { id: true, contactId: true, extraContactIds: true } });
+  const missing = rows.filter((r) => !out.has(r.id));
+  if (!missing.length) return out;
+  const ids = [...new Set(missing.flatMap((r) => [r.contactId, ...(r.extraContactIds ? (JSON.parse(r.extraContactIds) as string[]) : [])]))];
+  const acts = await prisma.activity.findMany({ where: { dealId, type: "EMAIL", direction: "OUTBOUND", contactId: { in: ids }, externalId: { not: null }, NOT: { subject: { startsWith: "RE:", mode: "insensitive" } } }, orderBy: { occurredAt: "asc" }, select: { contactId: true, externalId: true, occurredAt: true } });
+  for (const r of missing) {
+    const mine = new Set([r.contactId, ...(r.extraContactIds ? (JSON.parse(r.extraContactIds) as string[]) : [])]);
+    const a = acts.find((x) => x.contactId && mine.has(x.contactId));
+    if (a?.externalId) out.set(r.id, { messageId: a.externalId, sentAt: a.occurredAt });
+  }
+  return out;
 }
 
 /** Put a deal's failed emails back in the queue (fresh attempts, no hold). Returns how many. */

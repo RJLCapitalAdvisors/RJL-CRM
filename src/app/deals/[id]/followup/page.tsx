@@ -9,7 +9,7 @@ import { dealFiles, syncSendDrafts, usualRecipients } from "@/lib/send-deal";
 import { SendClient, type Firm, type SendState } from "../send/send-client";
 import { SendToOne } from "../send-to-one";
 import { after } from "next/server";
-import { firstSentMessageId, launchStatus, pumpLaunches } from "@/lib/launch-queue";
+import { firstSentMessageIds, launchStatus, pumpLaunches } from "@/lib/launch-queue";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -45,7 +45,6 @@ export default async function FollowUpsPage({ params }: { params: Promise<{ id: 
     return r ? `/api/deals/${deal.id}/files/${r.id}?t=${signFileToken(`file:${r.id}`)}&preview=1` : null;
   };
   // a launch still going (or left behind when the tab closed): the page resumes pacing it and pumps in the background
-  if (me) await import("@/lib/launch-queue").then((m) => m.scanLaunchBounces(me.email)).catch(() => 0); // bounces since the last launch
   const launch = await launchStatus(deal.id, "FOLLOWUP").catch(() => null);
   const bouncedEmails = new Set((launch?.rows ?? []).flatMap((r) => r.bounced ?? []));
   if (launch && launch.queued > 0 && me) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
@@ -62,8 +61,7 @@ export default async function FollowUpsPage({ params }: { params: Promise<{ id: 
   for (const r of deal.investors) {
     if (r.contact.companyId && !defaults.has(r.contact.companyId)) defaults.set(r.contact.companyId, await usualRecipients(r.contact.companyId, r.contact.company?.contacts ?? []));
   }
-  const sentOn = new Map<string, { messageId: string; sentAt: Date } | null>();
-  for (const r of deal.investors) sentOn.set(r.id, await firstSentMessageId(deal.id, r.id).catch(() => null));
+  const sentOn = await firstSentMessageIds(deal.id).catch(() => new Map<string, { messageId: string; sentAt: Date }>());
   // the email a follow-up replies to, shown on the firm's token so there is no doubt which thread it joins (Jonathan, Oct 1, 2026)
   const sentIds = [...new Set([...sentOn.values()].map((x) => x?.messageId).filter((x): x is string => Boolean(x)))];
   const sentActs = sentIds.length ? await prisma.activity.findMany({ where: { externalId: { in: sentIds }, type: "EMAIL" }, orderBy: { occurredAt: "asc" } }) : [];

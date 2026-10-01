@@ -91,12 +91,7 @@ export async function launchAction(dealId: string, items: LaunchItem[], fileKeys
 export async function pumpLaunchAction(dealId: string, mode: Mode = "send"): Promise<LaunchStatus> {
   const me = await currentUser();
   if (me) await pumpLaunches(me.email, 4_000).catch(() => null);
-  let st = await launchStatus(dealId, KIND(mode));
-  if (me && st.queued === 0) {
-    // the launch is done: bounces that came back are matched to their firms
-    const { scanLaunchBounces } = await import("@/lib/launch-queue");
-    if (await scanLaunchBounces(me.email).catch(() => 0)) st = await launchStatus(dealId, KIND(mode));
-  }
+  const st = await launchStatus(dealId, KIND(mode)); // bounces are matched by the minute pump run, not here (a 27 s inbox read on every poll)
   // a long pump in the background only when nobody is pacing this mailbox right now (no send in the last gap)
   // the database's minute scheduler drives the pump; the page's own poll only sends what is due right now
   if (st.queued === 0) {
