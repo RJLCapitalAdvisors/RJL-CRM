@@ -22,7 +22,7 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.pricePerFoot", label: "Purchase price per SF (computed)" },
   { key: "deal.capPerUnit", label: "Total capitalization per unit (computed)" },
   { key: "deal.capPerFoot", label: "Total capitalization per SF (computed)" },
-  { key: "deal.avgUnitSize", label: "Average unit size in SF (computed)" },
+  { key: "deal.avgUnitSize", label: "Average unit size (number only; write SF after it)" },
   { key: "deal.assetClass", label: "Asset class" },
   { key: "deal.strategy", label: "Strategy" },
   { key: "deal.requestType", label: "Equity / Debt" },
@@ -86,6 +86,7 @@ export type MergeContext = {
 function fmt(key: string, v: unknown): string {
   if (key === "deal.summary" && typeof v === "string") return cleanBusinessPlan(v) ?? ""; // the business plan never carries fielded facts, however old the ticket
   if (v == null || v === "") return "";
+  if (key === "deal.strategy" && v === "Acquisitions") return "Acquisition"; // "Multifamily Acquisition Opportunity in …" (Jonathan, Oct 1, 2026)
   if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization", "deal.projectedSellout", "deal.selloutPerUnit"].includes(key)) return usd(Number(v));
   if (key === "deal.selloutPerFoot") return `${Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   if (["deal.ltv", "deal.ltc", "deal.occupancy", "deal.irr", "deal.yieldOnCost", "deal.capRateY1", "deal.capRateT12", "deal.cashOnCash"].includes(key)) return `${v}%`;
@@ -122,7 +123,7 @@ function lookup(ctx: MergeContext, path: string): unknown {
     const ratio = (a: number | null, b: number | null) => (a && b ? Math.round(a / b) : null);
     const val = { pricePerUnit: ratio(pp, u), pricePerFoot: ratio(pp, sf), capPerUnit: ratio(tc, u), capPerFoot: ratio(tc, sf), avgUnitSize: ratio(sf, u) }[path.slice(5)];
     if (val == null) return "";
-    if (path === "deal.avgUnitSize") return `${val.toLocaleString("en-US")} SF`;
+    if (path === "deal.avgUnitSize") return val.toLocaleString("en-US"); // the templates write "SF" after it (it read "850 SF SF"; Jonathan, Oct 1, 2026)
     const exact = { pricePerFoot: pp && sf ? pp / sf : null, capPerFoot: tc && sf ? tc / sf : null }[path.slice(5) as "pricePerFoot" | "capPerFoot"];
     return exact != null ? `$${exact.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : val.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
   }

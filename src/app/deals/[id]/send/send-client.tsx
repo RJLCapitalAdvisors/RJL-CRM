@@ -152,9 +152,14 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
       return changed ? n : s;
     });
     setInclude((s) => {
-      const fresh = firms.filter((f) => f.status <= 1 && !known.current.has(f.rowId)).map((f) => f.rowId);
+      const fresh = firms.filter((f) => (followup ? !shaded(f) : f.status <= 1) && !known.current.has(f.rowId)).map((f) => f.rowId);
       for (const f of firms) known.current.add(f.rowId);
-      return fresh.length ? new Set([...s, ...fresh]) : s;
+      // Follow ups: a firm that has answered, passed or been followed up since the page opened leaves the list
+      const gone = followup ? firms.filter((f) => shaded(f) && s.has(f.rowId)).map((f) => f.rowId) : [];
+      if (!fresh.length && !gone.length) return s;
+      const n = new Set([...s, ...fresh]);
+      for (const id of gone) n.delete(id);
+      return n;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firms]);
@@ -367,7 +372,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
 
   const itemsToSend = () =>
     firms
-      .filter((f) => include.has(f.rowId))
+      .filter((f) => include.has(f.rowId) && !results[f.rowId]?.ok && !results[f.rowId]?.pending) // sent or queued already in this session: never twice (Royce, Oct 1, 2026)
       .map((f) => {
         const d = draftFor(f);
         return { rowId: f.rowId, toContactIds: [...(to[f.rowId] ?? [])], subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() };
@@ -405,6 +410,9 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
   /** The launch as it stands: which firms are sent, queued or failed, and when the next one goes. */
   const applyStatus = (st: LaunchStatus) => {
     setResults(Object.fromEntries(st.rows.map((x) => [x.rowId, { ok: x.status === "SENT", error: x.status === "FAILED" || x.status === "BOUNCED" ? x.error ?? "failed" : undefined, pending: x.status === "QUEUED" || x.status === "SENDING", bounced: x.bounced }])));
+    // a firm that went out (or is queued) is unticked, so a later LAUNCH never sends it again
+    const done = st.rows.filter((x) => x.status === "SENT" || x.status === "QUEUED" || x.status === "SENDING").map((x) => x.rowId);
+    if (done.length) setInclude((s) => { const n = new Set(s); for (const id of done) n.delete(id); return n.size === s.size ? s : n; });
     // people whose address bounced come off the firm's picks, so "send again" goes to someone else there
     const bouncedIds = new Set(firms.flatMap((f) => f.people.filter((p) => p.bounced || (st.rows.find((x) => x.rowId === f.rowId)?.bounced ?? []).includes(p.email.toLowerCase())).map((p) => p.id)));
     if (bouncedIds.size) setTo((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, new Set([...v].filter((id) => !bouncedIds.has(id)))])));

@@ -84,7 +84,7 @@ export async function scanLaunchBounces(mailbox: string): Promise<number> {
 /** Put a deal's failed emails back in the queue (fresh attempts, no hold). Returns how many. */
 export async function retryFailed(dealId: string, kind: "SEND" | "FOLLOWUP" = "SEND"): Promise<number> {
   const since = new Date(Date.now() - 24 * 3_600_000);
-  const r = await prisma.dealLaunch.updateMany({ where: { dealId, kind, status: "FAILED", createdAt: { gte: since }, NOT: { error: { contains: "no sent deal email" } } }, data: { status: "QUEUED", attempts: 0, notBefore: null, error: null, claimedAt: null } });
+  const r = await prisma.dealLaunch.updateMany({ where: { dealId, kind, status: "FAILED", createdAt: { gte: since }, NOT: { OR: [{ error: { contains: "no sent deal email" } }, { error: { contains: "already followed up" } }] } }, data: { status: "QUEUED", attempts: 0, notBefore: null, error: null, claimedAt: null } });
   return r.count;
 }
 
@@ -114,7 +114,9 @@ export async function queueDealEmails(dealId: string, items: LaunchItem[], mailb
     const open = await prisma.dealLaunch.findFirst({ where: { rowId: row.id, kind, status: { in: ["QUEUED", "SENDING"] } } });
     if (open) continue;
     const replyTo = opts.followup ? await firstSentMessageId(dealId, row.id) : null;
-    const error = !people.length ? "nobody with an email picked" : opts.followup && !replyTo ? "no sent deal email on record to reply to" : null;
+    // a firm is followed up once (Jonathan, Oct 1, 2026: Royce got a second one after a single send and the launch): never again
+    const already = opts.followup ? await prisma.dealLaunch.findFirst({ where: { dealId, rowId: row.id, kind: "FOLLOWUP", status: { in: ["SENT", "BOUNCED"] } }, orderBy: { sentAt: "asc" }, select: { sentAt: true } }) : null;
+    const error = !people.length ? "nobody with an email picked" : opts.followup && already ? `already followed up${already.sentAt ? ` on ${already.sentAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}; a firm is followed up once` : opts.followup && !replyTo ? "no sent deal email on record to reply to" : null;
     await prisma.dealLaunch.create({
       data: { dealId, rowId: row.id, mailbox, kind, replyToMessageId: replyTo?.messageId ?? null, toContactIds: toJson(people.map((p) => p.id)), cc: toJson(item.cc ?? []), subject: item.subject, html: item.html, fileKeys: fileKeys ? toJson(fileKeys) : null, status: error ? "FAILED" : "QUEUED", error },
     });
@@ -132,7 +134,7 @@ export async function kickPump(): Promise<boolean> {
   if (!secret) return false;
   const base = (process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
   try {
-    const res = await fetch(`${base}/api/launch/pump?key=${encodeURIComponent(secret)}`, { method: "POST", cache: "no-store", signal: AbortSignal.timeout(8_000) });
+    const res = await fetch(`${base}/api/launch/pump?key=${encodeURIComponent(secret)}&quick=1`, { method: "POST", cache: "no-store", signal: AbortSignal.timeout(20_000) });
     return res.ok;
   } catch {
     return false;
@@ -183,6 +185,7 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
       if (!cache.has(cacheKey)) cache.set(cacheKey, await chosenFiles(next.dealId, keys));
       const followup = next.kind === "FOLLOWUP";
       if (followup && !next.replyToMessageId) throw new Error("no sent deal email on record to reply to");
+      if (followup && (await prisma.dealLaunch.findFirst({ where: { dealId: next.dealId, rowId: next.rowId, kind: "FOLLOWUP", status: { in: ["SENT", "BOUNCED"] }, NOT: { id: next.id } }, select: { id: true } }))) throw new Error("already followed up; a firm is followed up once");
       const messageId = followup
         ? await sendReplyAll(mailbox, next.replyToMessageId!, to, next.html, cache.get(cacheKey)!, JSON.parse(next.cc) as string[])
         : await sendMessage(mailbox, to, next.subject, next.html, cache.get(cacheKey)!, JSON.parse(next.cc) as string[]);
@@ -219,7 +222,8 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
 export async function pumpAllLaunches(budgetMs = 45_000): Promise<number> {
   const boxes = await prisma.dealLaunch.findMany({ where: { status: "QUEUED" }, distinct: ["mailbox"], select: { mailbox: true } });
   let sent = 0;
-  for (const b of boxes) sent += (await pumpLaunches(b.mailbox, budgetMs).catch(() => ({ sent: 0 }))).sent;
+  const started = Date.now();
+  for (const b of boxes) sent += (await pumpLaunches(b.mailbox, Math.max(2_000, budgetMs - (Date.now() - started))).catch(() => ({ sent: 0 }))).sent;
   // bounces on recent launches, so a firm whose people left shows as bounced without anyone opening the page
   const recent = await prisma.dealLaunch.findMany({ where: { status: "SENT", createdAt: { gte: new Date(Date.now() - 3 * 86_400_000) } }, distinct: ["mailbox"], select: { mailbox: true } });
   for (const b of recent) await scanLaunchBounces(b.mailbox).catch(() => 0);
