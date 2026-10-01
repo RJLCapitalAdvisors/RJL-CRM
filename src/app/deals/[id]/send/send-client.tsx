@@ -5,16 +5,18 @@ import { useRouter } from "next/navigation";
 import { Bold, File, FileImage, FileSpreadsheet, FileText, Italic, List, ListOrdered, PenLine, Presentation, Underline } from "lucide-react";
 import { CompanyLogo } from "@/components/company-logo";
 import { hasMarker, withFirstName, withoutName } from "@/lib/first-name-marker";
+import { applyEdits, diffBlocks, greetingName, splitBlocks, type FirmDraft } from "@/lib/firm-draft";
+import { Send, Star } from "lucide-react";
 import { refreshDealFields } from "@/lib/merge";
-import { launchAction, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction } from "./actions";
+import { addFirmAction, launchAction, learnFirstNameAction, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction, searchInvestorCompanies } from "./actions";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
-export type Person = { id: string; name: string; email: string; title: string | null; bounced?: boolean };
+export type Person = { id: string; name: string; firstName?: string; email: string; title: string | null; bounced?: boolean };
 export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean };
 export type DealFileLite = { key: string; name: string; size: number };
 type Draft = { subject: string; html: string; touched: boolean };
-/** Everything on this page that is worth keeping if you leave and come back (kept on the deal, per deal). */
-export type SendState = { templateId?: string; general?: Draft | null; drafts?: Record<string, Draft>; include?: string[]; to?: Record<string, string[]>; chosenFiles?: string[]; cc?: string; savedAt?: string };
+/** Everything on this page that is worth keeping if you leave and come back (kept on the deal, per deal). A firm's draft is its block edits over the General email (an older save may carry a full html copy, converted on load). */
+export type SendState = { templateId?: string; general?: Draft | null; drafts?: Record<string, FirmDraft | Draft>; include?: string[]; to?: Record<string, string[]>; primary?: Record<string, string[]>; chosenFiles?: string[]; cc?: string; savedAt?: string };
 
 const GENERAL = "general";
 
@@ -48,7 +50,10 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   const [general, setGeneral] = useState<Draft | null>(saved?.general ?? null);
   const [cc, setCc] = useState<string>(saved?.cc ?? ""); // copied on every firm's email (teammates, usually)
   const ccList = () => cc.split(/[,;\s]+/).map((x) => x.trim()).filter((x) => x.includes("@"));
-  const [drafts, setDrafts] = useState<Record<string, Draft>>(saved?.drafts ?? {}); // only firms whose email was edited on its own
+  const [drafts, setDrafts] = useState<Record<string, FirmDraft>>(() => Object.fromEntries(Object.entries(saved?.drafts ?? {}).map(([k, v]) => [k, "edits" in v ? v : { edits: [], touched: true, html: v.html, subject: v.subject }]))); // firms whose email was edited on its own: block edits over the General email
+  // who the greeting addresses at each firm: the row's person, or whoever Jonathan stars (several: "Hi Dave/Jon")
+  const [primary, setPrimary] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((saved?.primary?.[f.rowId] ?? [f.primaryContactId]).filter((id) => f.people.some((p) => p.id === id)))])));
+  const [learned, setLearned] = useState<Record<string, string>>({}); // first names typed into a greeting this session, by contact id
   const [current, setCurrent] = useState<string>(GENERAL);
   const [picker, setPicker] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean; bounced?: string[] }>>({});
@@ -64,17 +69,75 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
   const editor = useRef<HTMLDivElement>(null);
   const pickerBox = useRef<HTMLDivElement>(null);
   const mounted = useRef(false);
+  const known = useRef<Set<string>>(new Set(firms.map((f) => f.rowId)));
   const router = useRouter();
 
   const cur = current === GENERAL ? null : firms.find((f) => f.rowId === current) ?? null;
-  const primaryFor = (f: Firm) => {
-    const set = to[f.rowId] ?? new Set<string>();
-    return set.has(f.primaryContactId) ? f.primaryContactId : [...set][0] ?? f.primaryContactId;
+  /** The people the greeting addresses: the starred ones among those picked, else the row's person, else the first picked. */
+  const primariesFor = (f: Firm): string[] => {
+    const picked = to[f.rowId] ?? new Set<string>();
+    const starred = [...(primary[f.rowId] ?? new Set<string>())].filter((id) => picked.has(id));
+    if (starred.length) return f.people.filter((p) => starred.includes(p.id)).map((p) => p.id);
+    if (picked.has(f.primaryContactId)) return [f.primaryContactId];
+    const first = f.people.find((p) => picked.has(p.id));
+    return first ? [first.id] : [];
   };
-  const firstNameOf = (f: Firm) => f.people.find((p) => p.id === primaryFor(f))?.name.split(" ")[0] ?? "";
-  /** A firm's email: its own edited version, else the General email with this person's name. */
-  const draftFor = (f: Firm): Draft | null => drafts[f.rowId] ?? (general ? { subject: general.subject, html: withFirstName(general.html, firstNameOf(f)), touched: false } : null);
+  const firstNameOf = (p: Person) => learned[p.id] ?? (p.firstName ?? "").trim();
+  /** "Dave", "Dave/Jon", or blank when no first name is known (never an email address). */
+  const greetingFor = (f: Firm) => primariesFor(f).map((id) => f.people.find((p) => p.id === id)).filter((p): p is Person => Boolean(p)).map(firstNameOf).filter(Boolean).join("/");
+  /** The General email as this firm sees it: its people's names in the greeting. */
+  const baseFor = (f: Firm) => (general ? withFirstName(general.html, greetingFor(f)) : "");
+  /** A firm's email: the General email with the firm's own block edits laid over it; the General subject unless the firm's own still stands. */
+  const draftFor = (f: Firm): Draft | null => {
+    if (!general) return null;
+    const d = drafts[f.rowId];
+    const base = baseFor(f);
+    if (d?.html && !d.edits.length) return { subject: d.subject ?? general.subject, html: d.html, touched: true }; // an older save, until converted
+    const html = d?.edits.length ? applyEdits(base, d.edits) : base;
+    const subject = d?.subject != null && d.subjectBase === general.subject ? d.subject : general.subject;
+    return { subject, html, touched: Boolean(d && (d.edits.length || (d.subject != null && d.subjectBase === general.subject))) };
+  };
   const shown: Draft | null = cur ? draftFor(cur) : general;
+
+  useEffect(() => {
+    if (!general) return;
+    setDrafts((s) => {
+      let changed = false;
+      const n: typeof s = {};
+      for (const [k, d] of Object.entries(s)) {
+        const f = firms.find((x) => x.rowId === k);
+        if (d.html && !d.edits.length && f) {
+          const base = baseFor(f);
+          n[k] = { edits: diffBlocks(splitBlocks(base).blocks, splitBlocks(d.html).blocks), touched: true, ...(d.subject != null && d.subject !== general.subject ? { subject: d.subject, subjectBase: general.subject } : {}) };
+          changed = true;
+        } else n[k] = d;
+      }
+      return changed ? n : s;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [general?.html]);
+
+  // a firm added while the page is open (or on the Agreed groups page) gets its default people and is included
+  useEffect(() => {
+    setTo((s) => {
+      const n = { ...s };
+      let changed = false;
+      for (const f of firms) if (!n[f.rowId]) { n[f.rowId] = new Set(f.defaultContactIds.filter((id) => f.people.some((p) => p.id === id))); changed = true; }
+      return changed ? n : s;
+    });
+    setPrimary((s) => {
+      const n = { ...s };
+      let changed = false;
+      for (const f of firms) if (!n[f.rowId]) { n[f.rowId] = new Set([f.primaryContactId]); changed = true; }
+      return changed ? n : s;
+    });
+    setInclude((s) => {
+      const fresh = firms.filter((f) => f.status <= 1 && !known.current.has(f.rowId)).map((f) => f.rowId);
+      for (const f of firms) known.current.add(f.rowId);
+      return fresh.length ? new Set([...s, ...fresh]) : s;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firms]);
 
   // the General email, from the template. A saved, hand-edited one is kept, but the ticket's numbers in it are
   // replaced by the current ones every time the page opens or the tab comes back (Jonathan, Sep 24, 2026: the ticket
@@ -101,6 +164,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
             let changed = false;
             const n: typeof s = {};
             for (const [k, d] of Object.entries(s)) {
+              if (!d.html) { n[k] = d; continue; } // block edits ride on the General email, which was refreshed above
               const merged = refreshDealFields(d.html, r.html);
               if (merged == null) {
                 changed = true; // an old, unmarked firm edit gives way to the General email
@@ -152,7 +216,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
     const t0 = setTimeout(() => setSaveState("dirty"), 0);
     const t = setTimeout(() => {
       setSaveState("saving");
-      const state: SendState = { templateId, general, drafts, include: [...include], to: Object.fromEntries(Object.entries(to).map(([k, v]) => [k, [...v]])), chosenFiles: [...chosenFiles], cc, savedAt: new Date().toISOString() };
+      const state: SendState = { templateId, general, drafts, include: [...include], to: Object.fromEntries(Object.entries(to).map(([k, v]) => [k, [...v]])), primary: Object.fromEntries(Object.entries(primary).map(([k, v]) => [k, [...v]])), chosenFiles: [...chosenFiles], cc, savedAt: new Date().toISOString() };
       saveSendStateAction(dealId, state)
         .then(() => setSaveState("saved"))
         .catch(() => setSaveState("dirty"));
@@ -162,7 +226,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templateId, general, drafts, include, to, chosenFiles, cc]);
+  }, [templateId, general, drafts, include, to, primary, chosenFiles, cc]);
 
   // the people picker closes on a click anywhere else, or Escape
   useEffect(() => {
@@ -185,11 +249,90 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
     if (!editor.current) return;
     const html = editor.current.innerHTML;
     if (cur) {
-      const base = draftFor(cur);
-      setDrafts((s) => (s[cur.rowId]?.html === html ? s : { ...s, [cur.rowId]: { subject: s[cur.rowId]?.subject ?? base?.subject ?? "", html, touched: true } }));
+      if (!general) return;
+      const base = baseFor(cur);
+      const baseBlocks = splitBlocks(base).blocks;
+      const firmBlocks = splitBlocks(html).blocks;
+      let edits = diffBlocks(baseBlocks, firmBlocks);
+      // a first name typed into the greeting belongs to the primary person from now on; the greeting then comes from the General email
+      const typed = greetingName(firmBlocks[0] ?? "");
+      const ids = primariesFor(cur);
+      if (typed && ids.length && typed !== greetingFor(cur) && edits.some((e) => e.base[0] === baseBlocks[0])) {
+        const names = typed.split("/");
+        if (names.length === ids.length) {
+          const learnedNow: Record<string, string> = {};
+          ids.forEach((id, k) => { learnedNow[id] = names[k]; learnFirstNameAction(id, names[k]).catch(() => null); });
+          setLearned((s) => ({ ...s, ...learnedNow }));
+          const after = withFirstName(general.html, names.join("/"));
+          edits = diffBlocks(splitBlocks(after).blocks, firmBlocks);
+          setNote(`${names.join(" and ")} saved as the first name${names.length > 1 ? "s" : ""} of ${ids.map((id) => cur.people.find((p) => p.id === id)?.email ?? "").filter(Boolean).join(" and ")}.`);
+        }
+      }
+      setDrafts((s) => {
+        const prev = s[cur.rowId];
+        const keepSubject = prev?.subject != null && prev.subjectBase === general.subject ? { subject: prev.subject, subjectBase: prev.subjectBase } : {};
+        if (!edits.length && !("subject" in keepSubject)) {
+          if (!prev) return s;
+          const n = { ...s };
+          delete n[cur.rowId];
+          return n;
+        }
+        return { ...s, [cur.rowId]: { edits, touched: true, ...keepSubject } };
+      });
     } else {
       setGeneral((g) => (g && g.html === html ? g : { subject: g?.subject ?? "", html, touched: true }));
     }
+  };
+
+  const togglePrimary = (rowId: string, pid: string) =>
+    setPrimary((s) => {
+      const n = new Set(s[rowId] ?? []);
+      if (n.has(pid)) n.delete(pid);
+      else n.add(pid);
+      return { ...s, [rowId]: n };
+    });
+
+  // a group added right here: its usual person joins the report and a token appears
+  const [addQ, setAddQ] = useState("");
+  const [addOpts, setAddOpts] = useState<{ id: string; name: string }[]>([]);
+  const addTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAdd = (v: string) => {
+    setAddQ(v);
+    if (addTimer.current) clearTimeout(addTimer.current);
+    if (!v.trim()) return setAddOpts([]);
+    addTimer.current = setTimeout(() => searchInvestorCompanies(v).then((r) => setAddOpts(r.filter((o) => !firms.some((f) => f.company === o.name)))), 200);
+  };
+  const addFirm = (o: { id: string; name: string }) => {
+    setAddQ("");
+    setAddOpts([]);
+    start(async () => {
+      const r = await addFirmAction(dealId, o.id);
+      setNote(r.ok ? `${o.name} added; pick who gets it (▾) and send with its ➤, or include it in the launch.` : r.reason ?? "Could not add that firm.");
+      router.refresh();
+    });
+  };
+
+  // one firm, now: two clicks within ten seconds, like LAUNCH
+  const [armedOne, setArmedOne] = useState<{ rowId: string; at: number } | null>(null);
+  const sendOne = (f: Firm) => {
+    commitEdit();
+    const d = draftFor(f);
+    const ids = [...(to[f.rowId] ?? [])].filter((id) => !f.people.find((p) => p.id === id)?.bounced);
+    if (!ids.length) {
+      setPicker(f.rowId);
+      return setNote(`Pick who at ${f.company} gets it first (▾), then click ➤ again.`);
+    }
+    if (!armedOne || armedOne.rowId !== f.rowId || Date.now() - armedOne.at > 10_000) {
+      setArmedOne({ rowId: f.rowId, at: Date.now() });
+      return setNote(`Ready to send ${f.company}'s email to ${ids.map((id) => f.people.find((p) => p.id === id)?.name.split(" ")[0] ?? "").filter(Boolean).join(", ")}. Click ➤ on ${f.company} again to send it.`);
+    }
+    setArmedOne(null);
+    start(async () => {
+      const r = await launchAction(dealId, [{ rowId: f.rowId, toContactIds: ids, subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() }], [...chosenFiles]);
+      if (!r.ok) return setNote(r.reason);
+      applyStatus(r.status);
+      if (r.status.queued > 0) setLaunching(true);
+    });
   };
 
   const togglePerson = (rowId: string, pid: string) =>
@@ -314,8 +457,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
       const r = await reviseGeneralEmailAction(dealId, general.subject, html, ask);
       if ("error" in r) return setNote(r.error);
       setGeneral({ subject: r.subject, html: r.html, touched: true });
-      setDrafts({}); // every firm follows the revised General email
-      setVersion((v) => v + 1);
+      setVersion((v) => v + 1); // every firm follows the revised General email; a firm's own edits stay only where their blocks still match
       setAsk("");
       setNote(hasMarker(r.html) ? "Revised. Every firm's email now follows this version." : "Revised, but the greeting lost its name slot: each email will open with 'Hi there'. Reset to template if that is not what you want.");
     });
@@ -323,8 +465,17 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
 
   const setSubject = (value: string) => {
     if (cur) {
-      const base = draftFor(cur);
-      setDrafts((s) => ({ ...s, [cur.rowId]: { subject: value, html: s[cur.rowId]?.html ?? base?.html ?? "", touched: true } }));
+      if (!general) return;
+      setDrafts((s) => {
+        const prev = s[cur.rowId];
+        if (value === general.subject) {
+          if (!prev) return s;
+          const rest = { edits: prev.edits, touched: true as const };
+          if (!prev.edits.length) { const n = { ...s }; delete n[cur.rowId]; return n; }
+          return { ...s, [cur.rowId]: rest };
+        }
+        return { ...s, [cur.rowId]: { edits: prev?.edits ?? [], touched: true, subject: value, subjectBase: general.subject } };
+      });
     } else setGeneral((g) => ({ subject: value, html: g?.html ?? "", touched: true }));
   };
 
@@ -425,7 +576,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
                     <CompanyLogo domain={f.domain} name={f.company} size={18} />
                     <span className="font-medium">{f.company}</span>
                     <span className="text-xs text-muted">{chosen.length ? chosen.map((p) => p.name.split(" ")[0]).join(", ") : "nobody picked"}</span>
-                    {drafts[f.rowId] && !res && <span className="text-xs text-sky-700" title="This firm's email was edited on its own">edited</span>}
+                    {draftFor(f)?.touched && !res && <span className="text-xs text-sky-700" title="This firm's email has its own edits on top of the General email">edited</span>}
                     {res?.ok && <span className="text-xs text-emerald-700">sent</span>}
                     {res?.pending && <span className="text-xs text-sky-700">queued</span>}
                     {res && !res.ok && !res.pending && <span className="text-xs text-red-700" title={res.error}>{res.bounced?.length ? "bounced" : "failed"}</span>}
@@ -444,15 +595,23 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
                           send again
                         </button>
                       )}
+                      {!launching && !(res && !res.ok && !res.pending) && (
+                        <button type="button" className={`rounded-full px-1 text-xs hover:bg-cream ${armedOne?.rowId === f.rowId ? "text-red-700" : "text-muted"}`} disabled={pending} onClick={() => sendOne(f)} title={`Send ${f.company} its email now, on its own (two clicks)`}>
+                          <Send className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
                 {picker === f.rowId && (
                   <div ref={pickerBox} className="absolute left-0 z-20 mt-1 w-72 rounded-md border border-line bg-paper p-2 shadow-lg">
-                    <div className="mb-1 text-xs text-muted">Who at {f.company} gets it (click anywhere else to close)</div>
+                    <div className="mb-1 text-xs text-muted">Who at {f.company} gets it; the star says who the greeting addresses (click anywhere else to close)</div>
                     {f.people.map((p) => (
                       <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-cream">
                         <input type="checkbox" className="accent-ink" checked={(to[f.rowId] ?? new Set()).has(p.id)} onChange={() => togglePerson(f.rowId, p.id)} />
+                        <button type="button" className={`shrink-0 ${primariesFor(f).includes(p.id) ? "text-amber-500" : "text-line hover:text-amber-400"}`} title={primariesFor(f).includes(p.id) ? "Addressed to this person (click to unstar)" : "Address the greeting to this person too (several: Hi Dave/Jon)"} onClick={(e) => { e.preventDefault(); if (!(to[f.rowId] ?? new Set()).has(p.id)) togglePerson(f.rowId, p.id); togglePrimary(f.rowId, p.id); }}>
+                          <Star className="h-3.5 w-3.5" fill={primariesFor(f).includes(p.id) ? "currentColor" : "none"} />
+                        </button>
                         <span className="min-w-0 flex-1 truncate">
                           {p.name} <span className="text-xs text-muted">{p.title ?? p.email}</span>
                           {(p.bounced || (results[f.rowId]?.bounced ?? []).includes(p.email.toLowerCase())) && <span className="ml-1 text-xs text-red-700" title="The deal email to this address bounced; they have probably left">bounced</span>}
@@ -466,6 +625,20 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
             );
           })}
           {firms.length === 0 && <span className="text-sm text-muted">No groups on this deal yet. Finalize the engagement letter first.</span>}
+          <div className="relative">
+            <input value={addQ} onChange={(e) => searchAdd(e.target.value)} placeholder="Add a group…" className="input w-44 py-1 text-sm" title="Add a firm to this deal: it joins the progress report and gets a token here" />
+            {addOpts.length > 0 && (
+              <ul className="absolute left-0 z-20 mt-1 w-64 overflow-hidden rounded-md border border-line bg-paper shadow-lg">
+                {addOpts.map((o) => (
+                  <li key={o.id}>
+                    <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-cream" onClick={() => addFirm(o)}>
+                      {o.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
 
@@ -554,7 +727,7 @@ export function SendClient({ dealId, firms, templates, defaultTemplateId, files,
               {cur ? (
                 <span className="text-xs text-muted">to {cur.people.filter((p) => (to[cur.rowId] ?? new Set()).has(p.id)).map((p) => p.email).join(", ") || "nobody picked"}</span>
               ) : (
-                <span className="text-xs text-muted">no name in the greeting; each firm gets this with its person&apos;s first name</span>
+                <span className="text-xs text-muted">no name in the greeting; each firm gets this with its starred people&apos;s first names, and every edit here reaches every firm</span>
               )}
             </div>
             {shown?.touched && (

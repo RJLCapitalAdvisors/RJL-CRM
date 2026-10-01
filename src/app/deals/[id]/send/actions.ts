@@ -7,6 +7,29 @@ import { currentUser } from "@/lib/current-user";
 import { createSendDrafts, finalizeEngagement, renderDealEmail, renderGeneralDealEmail, reviseDealEmail, sendPreviewToSelf, type LaunchItem, type SendItem } from "@/lib/send-deal";
 import { launchStatus, pumpLaunches, queueDealEmails, retryFailed, type LaunchStatus } from "@/lib/launch-queue";
 
+/** A group added on the Send deal page: its usual person joins the progress report as Deal Not Sent, so the firm has a token to send (Jonathan, Oct 1, 2026). */
+export async function addFirmAction(dealId: string, companyId: string): Promise<{ ok: boolean; reason?: string }> {
+  const { bestContactForCompany } = await import("@/lib/engagement");
+  const { isSponsorSide } = await import("@/lib/report-guard");
+  const c = await bestContactForCompany(companyId);
+  if (!c) return { ok: false, reason: "Nobody with an email at that firm yet; add a contact first." };
+  if (await isSponsorSide(dealId, c.id)) return { ok: false, reason: "That firm is on the sponsor's side of this deal." };
+  const exists = await prisma.dealInvestor.findFirst({ where: { dealId, contact: { companyId } } });
+  if (!exists) await prisma.dealInvestor.create({ data: { dealId, contactId: c.id, status: 1 } });
+  revalidatePath(`/deals/${dealId}/send`);
+  revalidatePath(`/deals/${dealId}`);
+  revalidatePath(`/deals/${dealId}/tracker`);
+  return { ok: true };
+}
+
+/** A first name typed into a firm's greeting is that person's first name from now on (Jonathan, Oct 1, 2026). */
+export async function learnFirstNameAction(contactId: string, firstName: string): Promise<{ ok: boolean }> {
+  const name = firstName.trim().replace(/[^A-Za-z'’.-]/g, "").slice(0, 40);
+  if (!name) return { ok: false };
+  await prisma.contact.update({ where: { id: contactId }, data: { firstName: name } }).catch(() => null);
+  return { ok: true };
+}
+
 export async function finalizeEngagementAction(dealId: string, keepCompanyIds: string[], addCompanyIds: string[]) {
   const r = await finalizeEngagement(dealId, keepCompanyIds, addCompanyIds);
   revalidatePath(`/deals/${dealId}`);
