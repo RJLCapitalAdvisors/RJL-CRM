@@ -571,7 +571,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
   const saveLabel = saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "dirty" ? "Unsaved changes" : saved?.savedAt ? `Saved ${new Date(saved.savedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "";
 
   return (
-    <div className="mx-auto max-w-[1100px] space-y-4 px-6 py-5">
+    <div className="space-y-3 px-5 py-4">
       {/* recipients */}
       <div className="card p-3">
         <div className="mb-2 flex items-center justify-between text-xs text-muted">
