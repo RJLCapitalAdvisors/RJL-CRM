@@ -98,7 +98,7 @@ export async function pumpLaunchAction(dealId: string, mode: Mode = "send"): Pro
     if (await scanLaunchBounces(me.email).catch(() => 0)) st = await launchStatus(dealId, KIND(mode));
   }
   // a long pump in the background only when nobody is pacing this mailbox right now (no send in the last gap)
-  if (me && st.queued > 0 && st.nextInMs === 0) await drive(me.email);
+  // the database's minute scheduler drives the pump; the page's own poll only sends what is due right now
   if (st.queued === 0) {
     revalidatePath(`/deals/${dealId}`);
     revalidatePath(`/deals/${dealId}/tracker`);

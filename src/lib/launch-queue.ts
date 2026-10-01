@@ -167,7 +167,7 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
     if (!cache.has(peekCache)) cache.set(peekCache, await chosenFiles(peek.dealId, peekKeys));
     const wait = await waitFor(mailbox, gapForBytes(bytesOf(cache.get(peekCache)!)));
     if (wait > 0) {
-      if (Date.now() + wait - started > budgetMs) break;
+      if (Date.now() + wait - started > budgetMs) break; // the gap does not fit in this run: the next run takes it
       await new Promise((r) => setTimeout(r, wait));
     }
     const next = await prisma.dealLaunch.findFirst({ where: ready(mailbox), orderBy: { createdAt: "asc" } });
