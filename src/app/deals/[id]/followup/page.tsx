@@ -90,9 +90,17 @@ export default async function FollowUpsPage({ params }: { params: Promise<{ id: 
     domain: r.contact.company?.domain ?? null,
     people: (r.contact.company?.contacts ?? [{ id: r.contact.id, firstName: r.contact.firstName, lastName: r.contact.lastName, email: r.contact.email, title: null }]).map((c) => ({ id: c.id, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "", firstName: c.firstName ?? "", email: c.email ?? "", title: c.title ?? null, bounced: Boolean(c.email && bouncedEmails.has(c.email.toLowerCase())) })),
     primaryContactId: r.contactId,
-    extraContactIds: r.extraContactIds ? (JSON.parse(r.extraContactIds) as string[]) : [],
     // who we usually write to at this firm (from the email log); falls back to the report's contact
-    defaultContactIds: (r.contact.companyId && defaults.get(r.contact.companyId)?.length ? defaults.get(r.contact.companyId)! : [r.contactId]),
+    // exactly the people the deal email went to (from the launch row, else the email log), never the firm's usual recipients
+    defaultContactIds: (() => {
+      const mid = sentOn.get(r.id)?.messageId;
+      const launch = mid ? sentLaunches.find((l) => l.sentMessageId === mid) : null;
+      const fromLaunch = launch ? (JSON.parse(launch.toContactIds) as string[]) : [];
+      const fromLog = mid ? sentActs.filter((a) => a.externalId === mid && a.contactId).map((a) => a.contactId!) : [];
+      const sent = fromLaunch.length ? fromLaunch : fromLog;
+      return sent.length ? sent : [r.contactId];
+    })(),
+    extraContactIds: [],
     openingLine: r.openingLine,
     bodyOverride: r.bodyOverride,
     draftOpen: Boolean(r.sendDraftId),
