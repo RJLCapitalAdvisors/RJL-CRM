@@ -5,7 +5,7 @@ import { listThreads, loadThread } from "@/app/ask/actions";
 
 export const metadata = { title: "Ask the CRM" };
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 800; // a big call list is read and proposed in one turn (Oct 5, 2026)
 
 /** Ask the CRM, RJL Israel: questions over apartments, projects, buyers, agents and the deals funnel, and a place to drop a spreadsheet of companies or contacts. Conversations are kept apart from RJL CA's. */
 export default async function IsraelAskPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

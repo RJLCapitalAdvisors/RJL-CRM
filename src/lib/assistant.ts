@@ -29,7 +29,7 @@ export type { CompanyRow, ContactRow, ImportResult, Proposal, PropertyRow };
 export type TurnResult = { answer: string; lookups: string[]; proposal: Proposal | null; savedRules: string[] };
 
 const MAX_TURNS = 10;
-const FILE_CHARS = 90_000; // per file, what the model sees
+const FILE_CHARS = 350_000; // per file, what the model sees (a 793-row Terakotta export is well over 90k characters, Oct 5, 2026)
 const clip = (s: unknown, n = 12_000) => {
   const t = typeof s === "string" ? s : JSON.stringify(s);
   return t.length > n ? t.slice(0, n) + "\n…(truncated)" : t;
@@ -346,7 +346,8 @@ export async function assistantTurn(ws: Workspace, history: HistoryMessage[], us
   const savedRules: string[] = [];
   let proposal: Proposal | null = null;
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    const res = await client.messages.create({ model: "claude-opus-5", max_tokens: 32_000, system, tools, messages });
+    // streamed: a big call list takes minutes to read and propose, and the SDK refuses a plain request that may run past ten (Shawn's first export, Oct 5, 2026)
+    const res = await client.messages.stream({ model: "claude-opus-5", max_tokens: 64_000, system, tools, messages }).finalMessage();
     const toolUses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (res.stop_reason !== "tool_use" || !toolUses.length) {
       const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();

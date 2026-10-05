@@ -77,7 +77,7 @@ export async function chatAction(threadId: string | null, workspace: Workspace, 
 
   // what the model sees: earlier turns (with their files, the most recent ones in full), then this one
   const history: HistoryMessage[] = [];
-  let fileBudget = 240_000;
+  let fileBudget = 400_000; // the file dropped earlier in the thread stays in full view for the follow-up turns (Oct 5, 2026)
   const prior = [...thread.messages].reverse();
   const priorText: string[] = [];
   for (const m of prior) {
