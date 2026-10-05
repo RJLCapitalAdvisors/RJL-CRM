@@ -16,7 +16,7 @@ import { graph, graphConfigured } from "@/lib/graph";
  * Folder downloads (a whole data room can be a few hundred MB) stream to disk and are read entry by entry.
  */
 
-export type CloudFile = { name: string; contentType: string | null; size: number; bytes: Uint8Array; url: string; source: "Dropbox" | "Google Drive" | "OneDrive" | "Box" | "Egnyte" };
+export type CloudFile = { name: string; contentType: string | null; size: number; bytes: Uint8Array; url: string; source: "Dropbox" | "Google Drive" | "OneDrive" | "Box" | "Egnyte" | "HubSpot" | "Web" };
 export type CloudResult = { files: CloudFile[]; notes: string[] };
 
 const MAX_FILE = 40 * 1024 * 1024; // one document
@@ -27,6 +27,13 @@ const TIMEOUT = 25_000;
 const ARCHIVE_TIMEOUT = 120_000;
 const DOC = /\.(pdf|xlsx|xlsm|xls|csv|docx|doc|pptx|ppt|txt)$/i;
 const HOST = /^https?:\/\/(?:[a-z0-9-]+\.)*(dropbox\.com|drive\.google\.com|docs\.google\.com|1drv\.ms|onedrive\.live\.com|sharepoint\.com|box\.com|egnyte\.com)\//i;
+// a document behind a link that is not a cloud drive (Oct 5, 2026: Arena's OM and platform deck came as HubSpot tracked
+// links to HubSpot's document viewer): HubSpot's trackers and viewers, a link that ends in a document extension, or a link
+// whose words in the email say it is a document. Fetched directly when the link serves the file; through the rendering
+// reader when it serves a page (a bot check, a viewer) that holds a download link.
+const WEB_DOC_HOST = /^https?:\/\/(?:[a-z0-9-]+\.)*(hs-sales-engage\.com|hubspotdocuments\.com|hubspotlinks\.com|hubspot\.com\/documents)/i;
+const DOC_WORDS = /\b(pdf|memorandum|offering|om|deck|model|brochure|flyer|teaser|presentation|package|overview|proforma|pro forma|rent roll|t-?12|appraisal|budget|underwriting)\b/i;
+const NOT_DOC = /unsubscribe|calendly|zoom\.us|teams\.microsoft|linkedin\.com|twitter\.com|x\.com\/|facebook\.com|instagram\.com|maps\.google|goo\.gl\/maps|apple\.com|youtube\.com|vimeo\.com|mailto:|\.(png|jpe?g|gif|svg|webp)(\?|$)/i;
 const URL_RE = /https?:\/\/[^\s"'<>()\[\]]+/gi;
 
 const unescapeHtml = (s: string) => s.replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
@@ -55,7 +62,80 @@ export function findCloudLinks(html: string | null | undefined, text: string | n
   };
   for (const m of (html ?? "").matchAll(/href=["']([^"']+)["']/gi)) add(m[1]);
   for (const m of `${html ?? ""}\n${text ?? ""}`.matchAll(URL_RE)) add(m[0]);
+  // documents behind other links: the anchor's words, the file extension, or a HubSpot tracker or viewer
+  const addWeb = (raw: string, words: string) => {
+    const u = unwrapSafelink(unescapeHtml(raw).replace(/[.,;:!?]+$/, ""));
+    if (!/^https?:\/\//i.test(u) || HOST.test(u) || NOT_DOC.test(u) || /rjlcapadvisors|rjlequities|rjlisrael/i.test(u)) return;
+    const path = u.replace(/[?#].*$/, "");
+    if (!(WEB_DOC_HOST.test(u) || DOC.test(path) || DOC_WORDS.test(words))) return;
+    const key = u.replace(/[?#].*$/, "").toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(u);
+  };
+  for (const m of (html ?? "").matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) addWeb(m[1], m[2].replace(/<[^>]+>/g, " "));
+  for (const m of `${html ?? ""}\n${text ?? ""}`.matchAll(URL_RE)) addWeb(m[0], "");
   return out.slice(0, 10);
+}
+
+/** The rendering reader (a headless browser as a service): the page as it looks after scripts ran, with its links. */
+async function renderedPage(url: string): Promise<{ title: string; content: string; links: [string, string][] } | null> {
+  const reader = process.env.WEB_RENDER_READER === "off" ? "" : process.env.WEB_RENDER_READER || "https://r.jina.ai/";
+  if (!reader) return null;
+  try {
+    const res = await fetch(`${reader}${url}`, { headers: { Accept: "application/json", "X-With-Links-Summary": "all", "X-Timeout": "60", "X-No-Cache": "true" }, signal: AbortSignal.timeout(90_000) });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { data?: { title?: string; content?: string; links?: unknown } };
+    const raw = j.data?.links;
+    const links: [string, string][] = Array.isArray(raw) ? (raw as unknown[]).filter((x): x is [string, string] => Array.isArray(x) && x.length >= 2).map((x) => [String(x[0]), String(x[1])]) : raw && typeof raw === "object" ? Object.entries(raw as Record<string, string>) : [];
+    return { title: j.data?.title ?? "", content: j.data?.content ?? "", links };
+  } catch {
+    return null;
+  }
+}
+
+const safeName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+const isDocBytes = (res: Response, bytes: Uint8Array, name: string) => {
+  const ct = (res.headers.get("content-type") ?? "").toLowerCase();
+  const head = new TextDecoder().decode(bytes.slice(0, 4));
+  return head === "%PDF" || head.startsWith("PK") || /pdf|spreadsheet|excel|word|presentation|officedocument|octet-stream/.test(ct) || DOC.test(name);
+};
+
+/** A document behind any other link: the file itself when the link serves it, else the download the rendered page offers, else the page's text. */
+async function webDocument(url: string): Promise<CloudResult> {
+  const source: CloudFile["source"] = WEB_DOC_HOST.test(url) ? "HubSpot" : "Web";
+  const direct = await download(url).catch(() => null);
+  if (direct && "bytes" in direct) {
+    const name = fileNameFrom(direct.res, safeName(decodeURIComponent(new URL(direct.res.url || url).pathname.split("/").pop() || "document")) || "document");
+    if (isDocBytes(direct.res, direct.bytes, name)) return { files: [{ name: DOC.test(name) ? name : `${name}.pdf`, contentType: typeFor(name, direct.res.headers.get("content-type")), size: direct.bytes.byteLength, bytes: direct.bytes, url, source }], notes: [] };
+  }
+  // the rendered page: a viewer's download link is read as soon as the page is back (HubSpot signs it for a minute), and a
+  // page that came back before its download link was drawn is rendered again, up to three times
+  let page: Awaited<ReturnType<typeof renderedPage>> = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    page = await renderedPage(url);
+    if (!page) break;
+    const title = safeName(page.title) || "document";
+    const candidates = page.links.filter(([text, href]) => /^https?:\/\//i.test(href) && (/\.(pdf|xlsx|xlsm|xls|docx|pptx)(\?|$)/i.test(href) || /amazonaws\.com/i.test(href) || /download/i.test(text)) && !NOT_DOC.test(href));
+    for (const [, href] of candidates) {
+      const got = await download(href).catch(() => null);
+      if (!got || !("bytes" in got)) continue;
+      const ext = href.match(/\.(pdf|xlsx|xlsm|xls|docx|pptx)(?=\?|$)/i)?.[1]?.toLowerCase() ?? (new TextDecoder().decode(got.bytes.slice(0, 4)) === "%PDF" ? "pdf" : null);
+      if (!isDocBytes(got.res, got.bytes, ext ? `x.${ext}` : "")) continue;
+      const name = `${title}.${ext ?? "pdf"}`;
+      return { files: [{ name, contentType: typeFor(name, got.res.headers.get("content-type")), size: got.bytes.byteLength, bytes: got.bytes, url, source }], notes: [] };
+    }
+    if (!/download|share/i.test(page.links.map(([t]) => t).join(" ") + " " + page.content.slice(0, 400))) break; // not a viewer: no point rendering again
+  }
+  if (!page) return { files: [], notes: [`Could not open ${url}: it is a page, not a file, and the rendering reader is not available`] };
+  // no file to download: the page's own text stands in (a web-hosted memorandum), when it is prose and not a viewer's page numbers
+  const text = page.content.replace(/\s+/g, " ").trim();
+  const letters = (text.match(/[A-Za-z]/g) ?? []).length;
+  if (text.length > 1500 && letters / text.length > 0.5) {
+    const bytes = new TextEncoder().encode(page.content);
+    return { files: [{ name: `${safeName(page.title) || "document"}.txt`, contentType: "text/plain", size: bytes.byteLength, bytes, url, source }], notes: [] };
+  }
+  return { files: [], notes: [`${url} opened as a page with no document behind it`] };
 }
 
 const fileNameFrom = (res: Response, fallback: string) => {
@@ -463,7 +543,7 @@ export async function fetchCloudFiles(urls: string[]): Promise<CloudResult> {
     let r: CloudResult;
     try {
       const host = new URL(url).hostname.toLowerCase();
-      r = host.includes("dropbox.com") ? await dropbox(url) : host.includes("google.com") ? await google(url) : host.includes("egnyte.com") ? await egnyte(url) : host.includes("box.com") ? await box(url) : await onedrive(url);
+      r = !HOST.test(url) ? await webDocument(url) : host.includes("dropbox.com") ? await dropbox(url) : host.includes("google.com") ? await google(url) : host.includes("egnyte.com") ? await egnyte(url) : host.includes("box.com") ? await box(url) : await onedrive(url);
     } catch (e) {
       r = { files: [], notes: [`Could not open ${url}: ${String(e instanceof Error ? e.message : e).slice(0, 100)}`] };
     }
