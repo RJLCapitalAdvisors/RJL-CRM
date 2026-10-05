@@ -1286,3 +1286,33 @@ model IndexRate {
   asOf      DateTime
   updatedAt DateTime @updatedAt
 }
+
+// RJL Israel: neighborhoods (from OpenStreetMap, nearest city or town as the city) and the asking rents typed on The Rents page (Oct 5, 2026)
+model IlNeighborhood {
+  id        String   @id @default(cuid())
+  osmId     String?  @unique
+  name      String
+  nameHe    String?
+  city      String
+  cityHe    String?
+  lat       Float
+  lng       Float
+  rents     IlRent[]
+  createdAt DateTime @default(now())
+
+  @@unique([city, name])
+  @@index([city])
+}
+
+model IlRent {
+  id             String         @id @default(cuid())
+  neighborhoodId String
+  neighborhood   IlNeighborhood @relation(fields: [neighborhoodId], references: [id], onDelete: Cascade)
+  rooms          Int // 1 to 8
+  rentNis        Int? // monthly asking rent in shekels, typed by hand
+  updatedBy      String?
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([neighborhoodId, rooms])
+  @@index([rooms])
+}

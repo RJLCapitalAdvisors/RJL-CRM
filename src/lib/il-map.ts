@@ -7,7 +7,7 @@ import { pricePerMeter } from "@/lib/israel";
  * been looked up yet are geocoded on the way in, a few per page load (Nominatim allows one lookup a second), so a
  * fresh unit appears on the map within a visit or two.
  */
-export type MapUnit = { id: string; kind: "apartments" | "houses" | "projects"; name: string; lat: number; lng: number; city: string | null; neighborhood: string | null; street: string | null; rooms: number | null; internalSqm: number | null; mirpesetSqm: number | null; priceNis: number | null; ppm: number | null; projectName: string | null; precision: string; href: string };
+export type MapUnit = { id: string; kind: "apartments" | "houses" | "projects"; name: string; lat: number; lng: number; city: string | null; neighborhood: string | null; street: string | null; rooms: number | null; internalSqm: number | null; mirpesetSqm: number | null; priceNis: number | null; ppm: number | null; projectName: string | null; precision: string; href: string; expectedRent: number | null; yieldPct: number | null };
 
 const LOOKUPS_PER_LOAD = 8;
 
@@ -20,6 +20,8 @@ export async function loadMapUnits(): Promise<{ units: MapUnit[]; unplaced: numb
   let budget = LOOKUPS_PER_LOAD;
   let unplaced = 0;
   const units: MapUnit[] = [];
+  const { rentTable, expectedFor } = await import("@/lib/il-rents");
+  const rents = await rentTable();
   const place = async (kind: MapUnit["kind"], r: { id: string; name: string; street: string | null; neighborhood: string | null; city: string | null; lat: number | null; lng: number | null; geoQuery: string | null; geoLabel: string | null }, extra: Partial<MapUnit>) => {
     let lat = r.lat, lng = r.lng, precision = r.geoLabel?.split(" | ")[1] ?? "street";
     const wantsLookup = !r.street && !r.city ? false : r.geoQuery !== [r.street, r.neighborhood, r.city, "Israel"].filter(Boolean).join(", ");
@@ -36,7 +38,14 @@ export async function loadMapUnits(): Promise<{ units: MapUnit[]; unplaced: numb
       unplaced++;
       return;
     }
-    units.push({ id: r.id, kind, name: r.name, lat, lng, city: r.city, neighborhood: r.neighborhood, street: r.street, rooms: null, internalSqm: null, mirpesetSqm: null, priceNis: null, ppm: null, projectName: null, precision, href: `/israel/${kind}/${r.id}`, ...extra });
+    const unit: MapUnit = { id: r.id, kind, name: r.name, lat, lng, city: r.city, neighborhood: r.neighborhood, street: r.street, rooms: null, internalSqm: null, mirpesetSqm: null, priceNis: null, ppm: null, projectName: null, precision, href: `/israel/${kind}/${r.id}`, expectedRent: null, yieldPct: null, ...extra };
+    if (kind !== "projects") {
+      // expected rent and yield from The Rents (Jonathan, Oct 5, 2026), for the yield heat map
+      const e = expectedFor(rents, { city: unit.city, neighborhood: unit.neighborhood, lat, lng, rooms: unit.rooms, priceNis: unit.priceNis });
+      unit.expectedRent = e.rentNis;
+      unit.yieldPct = e.yieldPct;
+    }
+    units.push(unit);
   };
   for (const a of apts) await place("apartments", a, { rooms: a.rooms, internalSqm: a.internalSqm, mirpesetSqm: a.mirpesetSqm, priceNis: a.priceNis, ppm: pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm), projectName: a.project?.name ?? null });
   for (const h of houses) await place("houses", h, { rooms: h.rooms, internalSqm: h.internalSqm, mirpesetSqm: h.mirpesetSqm, priceNis: h.priceNis, ppm: pricePerMeter(h.priceNis, h.internalSqm, h.mirpesetSqm) });

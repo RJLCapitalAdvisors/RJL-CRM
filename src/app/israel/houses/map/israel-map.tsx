@@ -4,8 +4,9 @@ import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type * as Leaflet from "leaflet";
-import { Circle as CircleIcon, MousePointer2, Hand, X, ExternalLink } from "lucide-react";
+import { Circle as CircleIcon, MousePointer2, Hand, X, ExternalLink, Flame } from "lucide-react";
 import type { MapUnit } from "@/lib/il-map";
+import { YIELD_HIGH, YIELD_LOW, yieldColor } from "@/lib/il-yield";
 
 const MAX_COMPARE = 5;
 const nis = (n: number | null | undefined) => (n == null ? "" : `₪${Math.round(n).toLocaleString("en-US")}`);
@@ -33,7 +34,8 @@ const popupHtml = (group: MapUnit[]) =>
         `<div style="padding:4px 0;border-bottom:1px solid #eee"><a href="${u.href}" style="font-weight:600;color:#1d4ed8;text-decoration:none">${u.name.replace(/</g, "&lt;")}</a> <span style="color:#666">${KIND[u.kind]}</span>` +
         (u.kind === "projects"
           ? `<div style="color:#444">${[u.street, u.neighborhood, u.city].filter(Boolean).join(", ")}</div>`
-          : `<div style="color:#444">${[u.internalSqm != null ? `${sqm(u.internalSqm)} internal` : null, u.mirpesetSqm != null ? `${sqm(u.mirpesetSqm)} mirpeset` : null, u.ppm != null ? `${nis(u.ppm)} / m²` : null].filter(Boolean).join(" · ") || "sizes not on the ticket"}</div>`) +
+          : `<div style="color:#444">${[u.internalSqm != null ? `${sqm(u.internalSqm)} internal` : null, u.mirpesetSqm != null ? `${sqm(u.mirpesetSqm)} mirpeset` : null, u.ppm != null ? `${nis(u.ppm)} / m²` : null].filter(Boolean).join(" · ") || "sizes not on the ticket"}</div>` +
+            (u.expectedRent != null ? `<div style="color:#444">expected rent ${nis(u.expectedRent)} a month${u.yieldPct != null ? ` · <b style="color:${yieldColor(u.yieldPct)}">${u.yieldPct.toFixed(2)}% yield</b>` : ""}</div>` : "")) +
         `</div>`,
     )
     .join("") +
@@ -55,6 +57,9 @@ export function IsraelMap({ units }: { units: MapUnit[] }) {
   const [inCircle, setInCircle] = useState<MapUnit[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
+  const [heat, setHeat] = useState(false); // the yield heat map: pins coloured by expected yield (Jonathan, Oct 5, 2026)
+  const heatRef = useRef(false);
+  const layerRef = useRef<Leaflet.LayerGroup | null>(null);
   const groups = useMemo(() => groupByPlace(units), [units]);
   const byId = useMemo(() => Object.fromEntries(units.map((u) => [u.id, u])), [units]);
   const setTool = (t: Tool) => {
@@ -72,6 +77,38 @@ export function IsraelMap({ units }: { units: MapUnit[] }) {
   const pickRef = useRef(togglePick);
   pickRef.current = togglePick;
 
+  /** One pin per place. In heat mode the pin takes the colour of the best yield at that address (grey when no rent is typed for it yet). */
+  const drawPins = (L: typeof Leaflet, layer: Leaflet.LayerGroup, heatOn: boolean) => {
+    layer.clearLayers();
+    for (const g of groups) {
+      const kinds = [...new Set(g.map((u) => u.kind))];
+      const yields = g.map((u) => u.yieldPct).filter((y): y is number => y != null);
+      const best = yields.length ? Math.max(...yields) : null;
+      const color = heatOn ? (yieldColor(best) ?? "#9ca3af") : kinds.length === 1 ? COLOR[kinds[0]] : "#0f172a";
+      const label = heatOn ? (best != null ? best.toFixed(1) : "") : g.length > 1 ? String(g.length) : "";
+      const icon = L.divIcon({ className: "", iconSize: [26, 26], iconAnchor: [13, 26], popupAnchor: [0, -24], html: `<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center"><span style="transform:rotate(45deg);color:#fff;font:700 ${heatOn ? 9 : 11}px system-ui">${label}</span></div>` });
+      const marker = L.marker([g[0].lat, g[0].lng], { icon }).addTo(layer);
+      marker.bindPopup(popupHtml(g), { closeButton: false, autoPan: false });
+      marker.on("mouseover", () => marker.openPopup());
+      marker.on("mouseout", () => {
+        setTimeout(() => {
+          const p = marker.getPopup()?.getElement();
+          if (p && p.matches(":hover")) return;
+          marker.closePopup();
+        }, 250);
+      });
+      marker.on("click", () => {
+        if (toolRef.current === "pick") for (const u of g) if (u.kind !== "projects") pickRef.current(u.id);
+      });
+    }
+  };
+  const toggleHeat = () => {
+    const next = !heatRef.current;
+    heatRef.current = next;
+    setHeat(next);
+    if (LRef.current && layerRef.current) drawPins(LRef.current, layerRef.current, next);
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -83,24 +120,8 @@ export function IsraelMap({ units }: { units: MapUnit[] }) {
       // OpenStreetMap's own tiles: no key, no account (CARTO's styled tiles started asking for one, Sep 22)
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19 }).addTo(map);
       const layer = L.layerGroup().addTo(map);
-      for (const g of groups) {
-        const kinds = [...new Set(g.map((u) => u.kind))];
-        const color = kinds.length === 1 ? COLOR[kinds[0]] : "#0f172a";
-        const icon = L.divIcon({ className: "", iconSize: [26, 26], iconAnchor: [13, 26], popupAnchor: [0, -24], html: `<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center"><span style="transform:rotate(45deg);color:#fff;font:700 11px system-ui">${g.length > 1 ? g.length : ""}</span></div>` });
-        const marker = L.marker([g[0].lat, g[0].lng], { icon }).addTo(layer);
-        marker.bindPopup(popupHtml(g), { closeButton: false, autoPan: false });
-        marker.on("mouseover", () => marker.openPopup());
-        marker.on("mouseout", () => {
-          setTimeout(() => {
-            const p = marker.getPopup()?.getElement();
-            if (p && p.matches(":hover")) return;
-            marker.closePopup();
-          }, 250);
-        });
-        marker.on("click", () => {
-          if (toolRef.current === "pick") for (const u of g) if (u.kind !== "projects") pickRef.current(u.id);
-        });
-      }
+      layerRef.current = layer;
+      drawPins(L, layer, heatRef.current);
       if (groups.length) map.fitBounds(L.latLngBounds(groups.map((g) => [g[0].lat, g[0].lng] as [number, number])).pad(0.2), { maxZoom: 14 });
       // circle an area: press, drag, release
       let center: Leaflet.LatLng | null = null;
@@ -159,14 +180,28 @@ export function IsraelMap({ units }: { units: MapUnit[] }) {
             <b.icon className="h-4 w-4" />
           </button>
         ))}
+        <button type="button" title={heat ? "Back to pins by kind" : "Yield heat map: colour every pin by its expected yield (rent from The Rents × 12 ÷ asking price)"} onClick={toggleHeat} className={`mt-1 flex h-9 w-9 items-center justify-center rounded-md border-t border-line ${heat ? "bg-red-600 text-white" : "hover:bg-cream"}`}>
+          <Flame className="h-4 w-4" />
+        </button>
       </div>
       {/* legend */}
-      <div className="absolute bottom-6 right-3 z-[1000] flex gap-3 rounded-md border border-line bg-paper/90 px-3 py-1.5 text-[11px] text-muted">
-        {(Object.keys(COLOR) as MapUnit["kind"][]).map((k) => (
-          <span key={k} className="inline-flex items-center gap-1">
-            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: COLOR[k] }} /> {KIND[k]}s
-          </span>
-        ))}
+      <div className="absolute bottom-6 right-3 z-[1000] flex items-center gap-3 rounded-md border border-line bg-paper/90 px-3 py-1.5 text-[11px] text-muted">
+        {heat ? (
+          <>
+            <span>Expected yield</span>
+            <span>{YIELD_LOW}%</span>
+            <span className="inline-block h-2.5 w-28 rounded" style={{ background: `linear-gradient(90deg, ${yieldColor(YIELD_LOW)}, ${yieldColor((YIELD_LOW + YIELD_HIGH) / 2)}, ${yieldColor(YIELD_HIGH)})` }} />
+            <span>{YIELD_HIGH}%+</span>
+            <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-400" /> no rent typed</span>
+            <span>· {units.filter((u) => u.yieldPct != null).length} of {units.filter((u) => u.kind !== "projects").length} units priced</span>
+          </>
+        ) : (
+          (Object.keys(COLOR) as MapUnit["kind"][]).map((k) => (
+            <span key={k} className="inline-flex items-center gap-1">
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: COLOR[k] }} /> {KIND[k]}s
+            </span>
+          ))
+        )}
       </div>
       {/* the list: what is in the circle, or what has been picked */}
       {(inCircle || picked.length > 0) && (

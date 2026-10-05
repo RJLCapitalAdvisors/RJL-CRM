@@ -49,6 +49,9 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
   const summary = apartmentSummary(full as unknown as Record<string, unknown>, full.developer?.name ?? null, [full.floorplanType ? "the floorplan" : "", full.photos.length ? "pictures" : ""].filter(Boolean));
   const hasPlan = Boolean(a.floorplanType);
   const ppm = pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm);
+  // expected rent and yield from The Rents (Jonathan, Oct 5, 2026)
+  const { rentTable, expectedFor } = await import("@/lib/il-rents");
+  const expected = expectedFor(await rentTable(), { city: a.city, neighborhood: a.neighborhood, lat: full.lat, lng: full.lng, rooms: a.rooms, priceNis: a.priceNis });
   await loadIlRequired();
   const missing = apartmentMissing(a as unknown as Record<string, unknown>);
   const agents = people.filter((p) => parseJsonList(p.roles).includes("Broker"));
@@ -104,7 +107,7 @@ export default async function ApartmentPage({ params }: { params: Promise<{ id: 
           )}
           <IlExtraCard kind="apartments" id={a.id} extra={a.extra} />
           <AboutCard title="About this apartment">
-            <ApartmentForm a={a} fx={fx} projects={projects} action={updateApartment.bind(null, a.id)} autosave />
+            <ApartmentForm a={a} fx={fx} projects={projects} action={updateApartment.bind(null, a.id)} autosave expected={{ rentNis: expected.rentNis, neighborhood: expected.neighborhood, city: expected.city, rooms: expected.rooms, how: expected.how }} />
           </AboutCard>
         </>
       }

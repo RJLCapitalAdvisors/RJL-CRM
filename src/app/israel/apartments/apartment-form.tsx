@@ -26,7 +26,9 @@ export type IlApartmentForm = Partial<{
 }>;
 
 /** The apartment ticket, laid out like a deal ticket: one straight column of fields with the conversions computed beside them. */
-export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = false, submitLabel = "Create apartment" }: { a?: IlApartmentForm; fx: FxRate | null; projects?: { id: string; name: string; city: string | null }[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string }) {
+export type ExpectedRent = { rentNis: number | null; neighborhood: string | null; city: string | null; rooms: number | null; how: "neighborhood" | "city" | null };
+
+export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = false, submitLabel = "Create apartment", expected = null }: { a?: IlApartmentForm; fx: FxRate | null; projects?: { id: string; name: string; city: string | null }[]; action: (fd: FormData) => void | Promise<void>; autosave?: boolean; submitLabel?: string; expected?: ExpectedRent | null }) {
   const [internal, setInternal] = useState<number | null>(a.internalSqm ?? null);
   const [mirpeset, setMirpeset] = useState<number | null>(a.mirpesetSqm ?? null);
   const [ceiling, setCeiling] = useState<number | null>(a.ceilingCm ?? null);
@@ -185,6 +187,12 @@ export function ApartmentForm({ a = {}, fx, projects = [], action, autosave = fa
         <Calc label="Asking price in dollars" value={usd(price) ?? dash} hint={fxNote} />
         <Calc label="Price per meter" value={ppm != null ? nis(ppm) : dash} hint={PRICE_PER_METER_NOTE} />
         <Calc label="Dollars per square foot" value={perSqft != null ? `$${perSqft.toLocaleString("en-US")}` : dash} hint={`asking price in dollars ÷ square feet (internal + ⅓ of the mirpeset), ${fxNote}`} />
+        <Calc
+          label="Expected rent"
+          value={expected?.rentNis != null ? `${nis(expected.rentNis)} a month` : dash}
+          hint={expected?.rentNis != null ? `The Rents: ${expected.neighborhood ?? expected.city ?? "this area"}, ${expected.rooms} rooms${expected.how === "city" ? " (the city's average: no rent typed for this neighborhood yet)" : ""}` : expected?.neighborhood ? `no rent typed yet on The Rents for ${expected.neighborhood}, ${expected.rooms ?? "?"} rooms` : "the ticket has no neighborhood or pin that matches The Rents yet"}
+        />
+        <Calc label="Expected yield" value={expected?.rentNis != null && price ? `${(((expected.rentNis * 12) / price) * 100).toFixed(2)}%` : dash} hint="expected rent × 12 ÷ asking price" />
       </Group>
 
       <Group title="Notes">
