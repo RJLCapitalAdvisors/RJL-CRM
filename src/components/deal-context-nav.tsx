@@ -14,7 +14,7 @@ import { dealNavInfo } from "@/app/deal-nav-actions";
 export function DealContextNav() {
   const pathname = usePathname();
   const params = useSearchParams();
-  const fromPath = pathname.match(/^\/deals\/([^/]+)(?:\/(tracker|send|groups|followup))?/);
+  const fromPath = pathname.match(/^\/deals\/([^/]+)(?:\/(tracker|send|groups|followup|faq))?/);
   const dealId = fromPath && !["new", "list"].includes(fromPath[1]) ? fromPath[1] : params.get("dealId");
   const [info, setInfo] = useState<{ id: string; name: string; stage: string } | null>(null);
 

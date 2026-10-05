@@ -590,8 +590,10 @@ model DealFact {
   source    String? // email subject / date it came from
   createdAt DateTime @default(now())
 
-  @@index([dealId, createdAt])
   inFaq     Boolean  @default(false) // on the Investor FAQ: only questions somebody actually asked and the sponsor answered
+  position  Int      @default(0) // the order the FAQ reads in, set on the FAQ page (Oct 5, 2026); 0 means "as it came"
+
+  @@index([dealId, createdAt])
 }
 
 // Ask the CRM conversations, per person, so a chat survives leaving the page.
