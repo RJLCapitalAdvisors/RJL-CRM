@@ -207,7 +207,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
               </>
             )}
           </div>
-          <AssocCard title="Attachments" count={deal.files.length + (deal.facts.length ? 1 : 0)} empty="Files the sponsor sends on this deal (through deals@) collect here.">
+          <AssocCard title="Attachments" count={deal.files.length + (deal.facts.length ? 1 : 0)} empty="Files the sponsor sends on this deal (through deals@) collect here." addHref={deal.files.length || deal.facts.some((f) => f.inFaq) ? `/api/deals/${deal.id}/files.zip?t=${signFileToken(`zip:${deal.id}`)}` : undefined} addLabel="Download all">
             <AttachmentList
               files={[
                 ...(deal.facts.some((f) => f.inFaq) ? [{ id: "faq", kind: "faq" as const, name: faqFileName(name), size: 0, date: "built from Questions answered", url: `/api/deals/${deal.id}/faq.pdf?t=${signFileToken(`faq:${deal.id}`)}` }] : []),
