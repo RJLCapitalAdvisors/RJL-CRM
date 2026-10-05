@@ -1119,7 +1119,16 @@ model AqProperty {
   pipelinePriority    Int?      // 1 to 5, the highest first on the pipeline list
   junkedAt            DateTime? // sent to junk (Settings > Junk Properties): hidden from lists, map, pipeline and the assistant until restored (Shawn, Sep 23, 2026)
   junkedBy            String?
-  junkReason          String?
+  junkReason          String?   // Removed Reason
+  junkSource          String?   // Source File: the export the junked property came from (Oct 5, 2026)
+  // the call list's extra columns (Shawn's Terakotta exports, Oct 5, 2026)
+  assessedValue       Float?
+  zoning              String?
+  category            String?  // Auto repair, Tire shop, Oil change...
+  googleRating        Float?
+  reviewCount         Int?
+  reportUrl           String?  // Property Report Link
+  sourceList          String?  // the export the row came from, e.g. "Brick TK Export 9-26"
   neighborhood        String?
   city                String?
   state               String?
@@ -1197,9 +1206,30 @@ model AqJunkPhone {
   contactId   String?
   contactName String?
   field       String?  // phone | secondaryPhone | otherPhones | storePhone | directoryOperatorPhone | import | by hand
-  reason      String?
+  reason      String?  // Wrong number | Bad number (or as typed)
+  propertyId  String?  // the property the number came from (Oct 5, 2026)
+  sourceFile  String?  // the export it came from
   createdBy   String?
   createdAt   DateTime @default(now())
+}
+
+/** A property the importer set aside for Shawn to decide (Oct 5, 2026): conflicting tags, an unclear duplicate, a junk property an export wants back. Nothing of it is written until he answers, in the chat or on the dashboard's Waiting on Shawn list. */
+model AqPendingImport {
+  id         String    @id @default(cuid())
+  address    String
+  city       String?
+  parcelId   String?
+  propertyId String?   // the property already in the CRM, when there is one
+  question   String    // plain English: what the importer saw and its best guess
+  guess      String    // junk | pipeline | deal | live
+  payload    String    // JSON: the property row, its contacts, companies and junk numbers, as proposed
+  sourceFile String?
+  status     String    @default("PENDING") // PENDING | DONE | DISMISSED
+  answer     String?
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([status, createdAt])
 }
 
 model AqPropertyCompany {

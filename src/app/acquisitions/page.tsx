@@ -5,6 +5,8 @@ import { fmtDate } from "@/lib/format";
 import { Item, ItemForm } from "@/app/dash-item";
 import { aqFullName, aqRoleColor, lines, parseJsonList, propertyLine } from "@/lib/acquisitions";
 import { dismissCallBack } from "./actions";
+import { waitingOnShawn } from "@/lib/aq-import";
+import { WaitingList } from "./waiting-list";
 
 export const metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
@@ -18,11 +20,14 @@ export default async function AcquisitionsDashboard() {
   const endOfToday = new Date();
   endOfToday.setHours(23, 59, 59, 999);
   const startOfToday = new Date().setHours(0, 0, 0, 0);
-  const callBacks = await prisma.aqContact.findMany({
+  const waiting = await waitingOnShawn();
+  const all = await prisma.aqContact.findMany({
     where: { callResult: "Callback", callBackDismissedAt: null, OR: [{ followUpAt: { lte: endOfToday } }, { followUpAt: null, callBackAt: { lte: endOfToday } }] },
     orderBy: [{ followUpAt: "asc" }, { callBackAt: "asc" }],
-    include: { company: { select: { name: true } }, properties: { include: { property: { select: { id: true, address: true, city: true, state: true, neighborhood: true, businessName: true } } } }, aqNotes: { orderBy: { createdAt: "desc" }, take: 1, select: { body: true } } },
+    include: { company: { select: { name: true } }, properties: { include: { property: { select: { id: true, address: true, city: true, state: true, neighborhood: true, businessName: true, junkedAt: true } } } }, aqNotes: { orderBy: { createdAt: "desc" }, take: 1, select: { body: true } } },
   });
+  // junk properties are off the dashboard (Oct 5, 2026): a person tied only to junk is not called back
+  const callBacks = all.map((c) => ({ ...c, properties: c.properties.filter((x) => !x.property.junkedAt) })).filter((c, i) => c.properties.length || !all[i].properties.length);
   const tel = (p: string) => `tel:${p.replace(/[^\d+]/g, "")}`;
   const Phone = ({ n }: { n: string }) => (
     <a href={tel(n)} className="font-medium tabular-nums text-sky-700 hover:underline">
@@ -32,7 +37,8 @@ export default async function AcquisitionsDashboard() {
   return (
     <>
       <PageHeader title="Dashboard" subtitle="RJL Acquisitions" />
-      <div className="px-8 py-5">
+      <div className="space-y-4 px-8 py-5">
+        {waiting.length > 0 && <WaitingList items={waiting.map((w) => ({ id: w.id, n: w.n, address: w.address, question: w.question, guess: w.guess, propertyId: w.propertyId, sourceFile: w.sourceFile, since: w.createdAt.toISOString() }))} />}
         <div className="card mx-auto max-w-4xl">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <div className="text-sm font-semibold">Call Me Back</div>

@@ -7,6 +7,7 @@ import { AQ_PIPELINES, aqDealStageTone, aqFullName, aqRoleColor, parseJsonList, 
 import { getAqStages } from "@/lib/acquisitions-stages";
 import { StageSelect } from "../pipeline/stage-select";
 import { StageEditor } from "../pipeline/stage-editor";
+import { DealMove } from "../deal-move";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ export default async function AqDealsBoardPage() {
             </Link>
           </JunkTarget>
           <div className="text-xs text-muted">{propertyLine(d)}</div>
+          <div className="mt-1"><DealMove id={d.id} to="pipeline" /></div>
           {d.askingPrice != null && <div className="text-xs">asking {usd(d.askingPrice)}</div>}
           {d.companies.length > 0 && <div className="mt-1 truncate text-xs text-muted">{d.companies.map((x) => x.company.name).join(", ")}</div>}
           {d.contacts.length > 0 && <div className="truncate text-xs text-muted">{d.contacts.map((x) => aqFullName(x.contact)).join(", ")}</div>}
@@ -78,7 +80,7 @@ export default async function AqDealsBoardPage() {
   const stageOf = (c: Card) => (c.stage && stages.includes(c.stage) ? c.stage : stages[0]);
   const columns = stages.map((stage) => ({ stage, rows: cards.filter((c) => stageOf(c) === stage) }));
   const counts = Object.fromEntries(columns.map((c) => [c.stage, c.rows.length])) as Record<string, number>;
-  const joins = pipeline === "deals" ? "a property joins when its Call Result carries Deal" : `a contact joins when its role carries ${def.role}`;
+  const joins = pipeline === "deals" ? "active deals: a property joins when its Deal box is ticked; potential deals sit on the Deals Pipeline list" : `a contact joins when its role carries ${def.role}`;
   return (
     <>
       <PageHeader

@@ -57,7 +57,7 @@ export default async function AqPipelineListPage({ params, searchParams }: { par
     const dealStages = await getAqDealStages();
     return (
       <>
-        <PageHeader compact title={def.title} subtitle={`${rows.length} propert${rows.length === 1 ? "y" : "ies"} sent to the pipeline from ${def.from} · highest priority first · Send to pipeline on a property ticket adds one`} actions={<Link href="/acquisitions/deals" className="btn-secondary">Deals board</Link>} />
+        <PageHeader compact title={def.title} subtitle={`${rows.length} potential deal${rows.length === 1 ? "" : "s"} sent to the pipeline from ${def.from} · highest priority first · set a row's Call Result to Deal (or Make it a deal on the ticket) to move it to the Deals board`} actions={<Link href="/acquisitions/deals" className="btn-secondary">Deals board</Link>} />
         <div className="flex flex-wrap items-center gap-3 px-6 py-2">
           <SearchForm action={`/acquisitions/pipeline/${pipeline}`} q={q} placeholder="Search address, city, business or company" />
           <div id="grid-tools" className="ml-auto" />

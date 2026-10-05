@@ -7,7 +7,7 @@ import { junkAqPhone, junkAqProperty } from "@/app/acquisitions/junk-actions";
 
 type Target =
   | { kind: "property"; propertyId: string; label: string }
-  | { kind: "phone"; contactId: string; field: string; phone: string; label?: string };
+  | { kind: "phone"; contactId: string; field: string; phone: string; label?: string; propertyId?: string | null };
 
 /**
  * Right-click to send something to junk (Shawn, Sep 23, 2026). Wraps a property name or a phone number: the context
@@ -52,7 +52,7 @@ export function JunkTarget({ target, phoneOf, children, className, block = false
   const go = async () => {
     setBusy(true);
     setError(null);
-    const r = target.kind === "property" ? await junkAqProperty(target.propertyId, reason || null) : await junkAqPhone(target.contactId, target.field, confirm?.phone ?? "", reason || null);
+    const r = target.kind === "property" ? await junkAqProperty(target.propertyId, reason || null) : await junkAqPhone(target.contactId, target.field, confirm?.phone ?? "", reason || null, target.propertyId ?? null);
     setBusy(false);
     if (!r.ok) {
       setError(r.reason);
@@ -82,10 +82,19 @@ export function JunkTarget({ target, phoneOf, children, className, block = false
             <div className="text-base font-semibold">Send {target.kind === "property" ? "this property" : "this number"} to junk?</div>
             <p className="mt-2 text-ink-soft">
               {target.kind === "property"
-                ? `“${target.label}” leaves the Properties list, the map and the pipeline with everything on its card, and sits under Settings > Junk Properties, where it can be restored or removed for good.`
-                : `${confirm.phone} is taken off this contact and kept under Settings > Junk Phone Numbers. It will not be written onto any contact again, by hand or by an import. Other numbers on the contact stay.`}
+                ? `“${target.label}” leaves the Properties list, the map, the pipeline and the dashboard with everything on its card, and sits under Junk > Junk Properties, where it can be restored or removed for good.`
+                : `${confirm.phone} is taken off this contact and kept under Junk > Junk Phone Numbers. It will not be written onto any contact again, by hand or by an import, until restored. Other numbers on the contact stay.`}
             </p>
-            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why (optional): wrong number, sold, duplicate…" className="input mt-3 w-full" />
+            {target.kind === "phone" && (
+              <div className="mt-3 flex gap-1.5">
+                {["Wrong number", "Bad number"].map((r) => (
+                  <button key={r} type="button" onClick={() => setReason(r)} className={`chip cursor-pointer text-[11px] ${reason === r ? "bg-ink text-white" : "border border-dashed border-line bg-transparent text-muted hover:text-ink"}`}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            )}
+            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={target.kind === "phone" ? "Why: Wrong number or Bad number" : "Why: gas station, too small, corporate-owned, duplicate of 656 Ocean Rd…"} className="input mt-3 w-full" />
             {error && <div className="mt-2 text-xs text-red-700">{error}</div>}
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" className="btn-ghost text-xs" disabled={busy} onClick={() => setConfirm(null)}>

@@ -32,6 +32,7 @@ const AQ_NAV = [
   { href: "/acquisitions/properties/map", label: "Map View", icon: Map },
   { href: "/acquisitions/deals", label: "Deals", icon: KanbanSquare },
   { href: "/acquisitions/pipeline", label: "Pipeline", icon: ListChecks },
+  { href: "/acquisitions/junk", label: "Junk", icon: Trash2 },
   { href: "/acquisitions/settings", label: "Settings", icon: Settings },
 ];
 
@@ -138,6 +139,7 @@ function Nav({ items, dealSteps = false, apartmentSteps = false, propertySteps =
           {apartmentSteps && n.href === "/israel/settings" && <SideSettingsSubnav base="/israel/settings" />}
           {propertySteps && n.href === "/acquisitions/settings" && <SideSettingsSubnav base="/acquisitions/settings" />}
           {propertySteps && n.href === "/acquisitions/pipeline" && <AqPipelineSubnav />}
+          {propertySteps && n.href === "/acquisitions/junk" && <AqJunkSubnav />}
           {propertySteps && n.href === "/acquisitions/contacts" && (
             <Suspense fallback={null}>
               <AqContactsSubnav />
@@ -225,6 +227,25 @@ function AqPipelineSubnav() {
   );
 }
 
+/** Under Junk on the Acquisitions side, always open (Oct 5, 2026): the properties and the phone numbers sent to junk. */
+function AqJunkSubnav() {
+  const pathname = usePathname();
+  const items = [
+    { href: "/acquisitions/junk/properties", label: "Junk Properties", icon: Home },
+    { href: "/acquisitions/junk/phones", label: "Junk Phone Numbers", icon: Trash2 },
+  ];
+  return (
+    <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
+      {items.map((s) => (
+        <Link key={s.href} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${pathname.startsWith(s.href) ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
+          <s.icon className="h-3.5 w-3.5" />
+          {s.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 /** Under Contacts on the Acquisitions side, always open: Owners, Operators and Buyers, the list filtered to that role (Jonathan, Sep 22, 2026). */
 function AqContactsSubnav() {
   const pathname = usePathname();
@@ -253,13 +274,12 @@ function SideSettingsSubnav({ base }: { base: string }) {
   const pathname = usePathname();
   if (!pathname.startsWith(base)) return null;
   const onData = pathname.startsWith(base + "/data-rules");
-  const onJunkPhones = pathname.startsWith(base + "/junk-phones");
-  const onJunkProps = pathname.startsWith(base + "/junk-properties");
+  const onImport = pathname.startsWith(base + "/import-instructions");
   const items = [
-    { href: base, label: "Users", icon: Users, on: !onData && !onJunkPhones && !onJunkProps },
+    { href: base, label: "Users", icon: Users, on: !onData && !onImport },
     { href: base + "/data-rules", label: "Data rules", icon: Table2, on: onData },
-    // Acquisitions only (Shawn, Sep 23, 2026): numbers and properties sent to junk
-    ...(base.startsWith("/acquisitions") ? [{ href: base + "/junk-phones", label: "Junk Phone Numbers", icon: Trash2, on: onJunkPhones }, { href: base + "/junk-properties", label: "Junk Properties", icon: Trash2, on: onJunkProps }] : []),
+    // Acquisitions only (Oct 5, 2026): the standing instructions every imported call list is read with
+    ...(base.startsWith("/acquisitions") ? [{ href: base + "/import-instructions", label: "Import instructions", icon: BookOpen, on: onImport }] : []),
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">

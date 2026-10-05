@@ -31,7 +31,7 @@ export default async function AqContactPage({ params }: { params: Promise<{ id: 
         aqNotes: { orderBy: { createdAt: "desc" } },
         transcripts: { orderBy: { createdAt: "desc" } },
         activities: { orderBy: { occurredAt: "desc" }, take: 200 },
-        properties: { include: { property: { select: { id: true, address: true, neighborhood: true, city: true, state: true, businessName: true, stages: true } } } },
+        properties: { include: { property: { select: { id: true, address: true, neighborhood: true, city: true, state: true, businessName: true, stages: true, junkedAt: true, junkReason: true } } } },
       },
     }),
     prisma.aqCompany.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -187,6 +187,7 @@ export default async function AqContactPage({ params }: { params: Promise<{ id: 
                   <div className="flex flex-wrap items-center gap-1 text-xs text-muted">
                     {[p.businessName, propertyLine(p)].filter(Boolean).join(" · ")}
                     {parseJsonList(p.stages).includes("Deal") && <span className={`chip text-[10px] ${aqStageTone("Deal")}`}>Deal</span>}
+                    {p.junkedAt && <span className="chip bg-red-100 text-[10px] text-red-800" title={p.junkReason ?? undefined}>Junk{p.junkReason ? ` · ${p.junkReason}` : ""}</span>}
                   </div>
                 </li>
               ))}

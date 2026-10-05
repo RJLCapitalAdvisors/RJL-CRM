@@ -8,6 +8,8 @@ import { US_STATES } from "@/lib/taxonomy";
 import { forgetAqGeo } from "@/lib/aq-geocode";
 import { junkPhoneDigits } from "./junk-actions";
 import { getAqDealStages, getAqStages, saveAqStages } from "@/lib/acquisitions-stages";
+import { saveImportInstructionsText } from "@/lib/aq-import-instructions";
+import { resolvePendingImport, type ResolveAction } from "@/lib/aq-import";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -165,9 +167,17 @@ const date = (fd: FormData, k: string) => {
   return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T12:00:00`) : null;
 };
 
-/** The property ticket's fields (Sep 22, 2026): the property, the physical facts and last sale, and whether it is in the Deal Pipeline. People and calls live on the contact cards. */
+/**
+ * The property ticket's fields (Sep 22, 2026): the property, the physical facts and last sale, the call list's extra
+ * columns (Oct 5, 2026), and whether it is an active deal (the Deal tick puts it on the Deals board in a stage).
+ * Potential deals are sent to the Deals Pipeline list with the token in the header. People and calls live on the
+ * contact cards.
+ */
 function propertyData(fd: FormData, dealStages: string[]) {
   const deal = fd.get("deal") === "1" || fd.get("deal") === "on";
+  const stage = s(fd, "dealStage");
+  const dealStage = deal ? (stage && dealStages.includes(stage) ? stage : dealStages[0]) : null;
+  const rating = n(fd, "googleRating");
   return {
     address: s(fd, "address") ?? "Property",
     city: s(fd, "city"),
@@ -181,8 +191,15 @@ function propertyData(fd: FormData, dealStages: string[]) {
     yearBuilt: i(fd, "yearBuilt"),
     lastSaleDate: date(fd, "lastSaleDate"),
     lastSalePrice: n(fd, "lastSalePrice"),
+    assessedValue: n(fd, "assessedValue"),
+    zoning: s(fd, "zoning"),
+    category: s(fd, "category"),
+    googleRating: rating == null ? null : Math.min(5, Math.max(0, rating)),
+    reviewCount: i(fd, "reviewCount"),
+    reportUrl: s(fd, "reportUrl"),
+    sourceList: s(fd, "sourceList"),
     stages: JSON.stringify(deal ? ["Deal"] : []),
-    dealStage: deal ? (s(fd, "dealStage") && dealStages.includes(s(fd, "dealStage")!) ? s(fd, "dealStage") : dealStages[0]) : null,
+    dealStage,
   };
 }
 export async function createAqProperty(fd: FormData) {
@@ -195,6 +212,7 @@ export async function updateAqProperty(id: string, fd: FormData) {
   revalidatePath(`/acquisitions/properties/${id}`);
   touchAll();
 }
+/** The property's own Call Result. Deal makes it an active deal on the Deals board (stage kept, or the first); any other result takes it off the board. */
 export async function setAqPropertyStages(id: string, stages: string[], _focus: string | null = null) {
   const clean = (AQ_STAGES as readonly string[]).filter((r) => stages.includes(r));
   const [cur, dealStages] = await Promise.all([prisma.aqProperty.findUnique({ where: { id }, select: { dealStage: true } }), getAqDealStages()]);
@@ -208,6 +226,21 @@ export async function setAqDealStage(id: string, stage: string) {
   const stages = parseJsonList(cur?.stages);
   await prisma.aqProperty.update({ where: { id }, data: { dealStage: stage, stages: JSON.stringify(stages.includes("Deal") ? stages : [...stages, "Deal"]) } });
   revalidatePath(`/acquisitions/properties/${id}`);
+  touchAll();
+}
+/**
+ * A property moves between the two deal lists (Jonathan, Oct 5, 2026): "board" makes it an active deal (Deal ticked,
+ * first stage unless it has one, off the Deals Pipeline list); "pipeline" sends it back to potential (Deal cleared,
+ * on the Deals Pipeline list). It is the same record either way, so its notes, transcripts and history come with it.
+ */
+export async function moveAqDeal(id: string, to: "board" | "pipeline") {
+  const [cur, dealStages] = await Promise.all([prisma.aqProperty.findUnique({ where: { id }, select: { stages: true, dealStage: true, pipelineAt: true } }), getAqDealStages()]);
+  if (!cur) return;
+  const others = parseJsonList(cur.stages).filter((s) => s !== "Deal");
+  if (to === "board") await prisma.aqProperty.update({ where: { id }, data: { stages: JSON.stringify([...others, "Deal"]), dealStage: cur.dealStage && dealStages.includes(cur.dealStage) ? cur.dealStage : dealStages[0], pipelineAt: null, pipelinePriority: null } });
+  else await prisma.aqProperty.update({ where: { id }, data: { stages: JSON.stringify(others), dealStage: null, pipelineAt: cur.pipelineAt ?? new Date() } });
+  revalidatePath(`/acquisitions/properties/${id}`);
+  revalidatePath("/acquisitions/pipeline", "layout");
   touchAll();
 }
 /** Send to pipeline (Jonathan, Sep 24, 2026): the record joins its pipeline list and stays where it was; off again with on=false. */
@@ -298,10 +331,12 @@ export async function deleteAqStage(pipeline: AqPipeline, name: string): Promise
 }
 // ---------- the list pages' grid (one cell at a time) ----------
 type CellResult = { ok: true; row?: Record<string, unknown> } | { ok: false; reason: string };
-const PROPERTY_CELLS: Record<string, "text" | "state" | "assetType" | "number" | "int" | "date" | "deal" | "dealStage" | "pipeline" | "priority"> = {
+const PROPERTY_CELLS: Record<string, "text" | "state" | "assetType" | "number" | "int" | "date" | "deal" | "callResult" | "dealStage" | "pipeline" | "priority" | "url"> = {
   address: "text", city: "text", state: "state", county: "text", businessName: "text", assetType: "assetType", parcelId: "text", neighborhood: "text", notes: "text",
   acreage: "number", squareFeet: "int", yearBuilt: "int", lastSaleDate: "date", lastSalePrice: "number", askingPrice: "number", units: "int",
-  deal: "deal", dealStage: "dealStage", pipeline: "pipeline", pipelinePriority: "priority",
+  deal: "deal", callResult: "callResult", dealStage: "dealStage", pipeline: "pipeline", pipelinePriority: "priority",
+  category: "text", zoning: "text", assessedValue: "number", googleRating: "number", reviewCount: "int", reportUrl: "url", sourceList: "text",
+  junkReason: "text", junkSource: "text",
 };
 const COMPANY_CELLS: Record<string, "text" | "state" | "roles" | "name"> = { name: "name", website: "text", phone: "text", city: "text", state: "state", notes: "text", roles: "roles" };
 const CONTACT_CELLS: Record<string, "text" | "email" | "roles" | "companyId" | "lines" | "int" | "date" | "callResult" | "operatorStatus" | "pipeline" | "priority"> = {
@@ -346,15 +381,24 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
         await setAqPipelinePriority("property", id, n);
         return { ok: true, row: { pipelinePriority: n == null ? null : String(n) } };
       }
-      if (t === "deal") {
-        await setAqPropertyStages(id, text === "Deal" ? ["Deal"] : []);
+      if (t === "deal" || t === "callResult") {
+        if (text && !(AQ_STAGES as readonly string[]).includes(text)) return { ok: false, reason: "Pick a call result from the list." };
+        await setAqPropertyStages(id, text ? [text] : []);
         const p = await prisma.aqProperty.findUnique({ where: { id }, select: { dealStage: true, stages: true } });
-        return { ok: true, row: { deal: parseJsonList(p?.stages).includes("Deal") ? "Deal" : null, dealStage: p?.dealStage ?? null } };
+        const result = parseJsonList(p?.stages)[0] ?? null;
+        return { ok: true, row: { deal: result === "Deal" ? "Deal" : null, callResult: result, dealStage: p?.dealStage ?? null } };
       }
       if (t === "dealStage") {
-        if (!text) return { ok: false, reason: "Pick a stage, or clear the Call result instead." };
+        if (!text) return { ok: false, reason: "Pick a stage, or set the Call Result to something other than Deal." };
         await setAqDealStage(id, text);
-        return { ok: true, row: { deal: "Deal", dealStage: text } };
+        return { ok: true, row: { deal: "Deal", callResult: "Deal", dealStage: text } };
+      }
+      if (t === "url") {
+        const data = { [key]: text ? (/^https?:\/\//i.test(text) ? text : `https://${text}`) : null };
+        await prisma.aqProperty.update({ where: { id }, data });
+        revalidatePath(`/acquisitions/properties/${id}`);
+        touchAll();
+        return { ok: true, row: data };
       }
       const data: Record<string, unknown> = {};
       if (t === "text") data[key] = key === "address" ? text ?? "Property" : text;
@@ -365,8 +409,11 @@ export async function updateAqCell(kind: "property" | "company" | "contact", id:
       } else if (t === "assetType") {
         if (text && !(AQ_ASSET_TYPES as readonly string[]).includes(text)) return { ok: false, reason: `Asset type must be one of ${AQ_ASSET_TYPES.join(", ")}.` };
         data[key] = text;
-      } else if (t === "number") data[key] = numOf(text);
-      else if (t === "int") {
+      } else if (t === "number") {
+        const v = numOf(text);
+        if (key === "googleRating" && v != null && (v < 0 || v > 5)) return { ok: false, reason: "A Google rating is 0 to 5." };
+        data[key] = v;
+      } else if (t === "int") {
         const n = numOf(text);
         data[key] = n == null ? null : Math.round(n);
       } else if (t === "date") {
@@ -498,6 +545,22 @@ export async function linkAqProperty(id: string, fd: FormData) {
   if (unlinkContact) await prisma.aqPropertyContact.deleteMany({ where: { propertyId: id, contactId: unlinkContact } });
   revalidatePath(`/acquisitions/properties/${id}`);
   touchAll();
+}
+
+// ---------- Waiting on Shawn (Oct 5, 2026): the dashboard's answer on a held property ----------
+export async function resolvePendingAction(id: string, action: ResolveAction, extra: { dealStage?: string; junkReason?: string } = {}) {
+  const r = await resolvePendingImport(id, action, { ...extra, answer: `dashboard: ${action}` });
+  touchAll();
+  revalidatePath("/acquisitions/junk/properties");
+  revalidatePath("/acquisitions/junk/phones");
+  return r;
+}
+
+// ---------- Settings > Import instructions (Oct 5, 2026) ----------
+/** The standing instructions every imported call list is read with, saved as typed. */
+export async function saveImportInstructionsAction(fd: FormData) {
+  await saveImportInstructionsText(String(fd.get("text") ?? ""));
+  revalidatePath("/acquisitions/settings/import-instructions");
 }
 
 // ---------- notes ----------

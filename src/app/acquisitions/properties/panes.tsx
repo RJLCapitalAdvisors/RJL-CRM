@@ -16,7 +16,7 @@ import { updateAqCell } from "../actions";
 export type PaneRows = { properties: GridRow[]; owners: GridRow[]; operators: GridRow[] };
 export type PaneColumns = { properties: GridColumn[]; owners: GridColumn[]; operators: GridColumn[] };
 
-const tone = (cols: GridColumn[]) => cols.map((c) => (c.key === "callResult" || c.key === "deal" ? { ...c, tone: aqStageTone } : c.key === "roles" ? { ...c, tone: aqRoleColor } : c));
+const tone = (cols: GridColumn[]) => cols.map((c) => (c.key === "callResult" || c.key === "deal" ? { ...c, tone: aqStageTone } : c.key === "roles" ? { ...c, tone: aqRoleColor } : c.key === "junk" ? { ...c, tone: () => "bg-red-100 text-red-800" } : c));
 
 export function PropertyPanes({ rows, columns }: { rows: PaneRows; columns: PaneColumns }) {
   const wrap = useRef<HTMLDivElement>(null);

@@ -12,6 +12,8 @@ import { fmtDate } from "@/lib/format";
 import { aqFullName, aqStageTone, parseJsonList, propertyLine, usd, lines } from "@/lib/acquisitions";
 import { addAqNote, deleteAqProperty, linkAqProperty, updateAqProperty } from "../../actions";
 import { AqPropertyForm } from "../property-form";
+import { JunkBanner, JunkButton } from "../junk-button";
+import { DealMove } from "../../deal-move";
 import { getAqDealStages } from "@/lib/acquisitions-stages";
 
 export const dynamic = "force-dynamic";
@@ -82,7 +84,7 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
                     ...lines(c.otherPhones).map((n) => ({ field: "otherPhones", n })),
                   ].map((x, i) => (
                     <li key={`${x.field}-${i}`}>
-                      <JunkTarget target={{ kind: "phone", contactId: c.id, field: x.field, phone: x.n }}>
+                      <JunkTarget target={{ kind: "phone", contactId: c.id, field: x.field, phone: x.n, propertyId: p.id }}>
                         <a href={tel(x.n)} className="tabular-nums text-sky-700 hover:underline" title="Right-click to send this number to junk">
                           {x.n}
                         </a>
@@ -152,12 +154,14 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
               <>
                 <PipelineToggle kind="property" id={p.id} at={p.pipelineAt} priority={p.pipelinePriority} compact />
                 {stages.includes("Deal") ? (
-                  <Link href={`/acquisitions/pipeline#${encodeURIComponent(p.dealStage ?? dealStages[0])}`} className="btn-secondary">
-                    Pipeline · {p.dealStage ?? dealStages[0]}
+                  <Link href={`/acquisitions/deals#${encodeURIComponent(p.dealStage ?? dealStages[0])}`} className="btn-secondary">
+                    Deals board · {p.dealStage ?? dealStages[0]}
                   </Link>
                 ) : (
                   <span className="chip bg-cream text-[11px] text-muted">Not a deal yet</span>
                 )}
+                <DealMove id={p.id} to={stages.includes("Deal") ? "pipeline" : "board"} />
+                {!p.junkedAt && <JunkButton id={p.id} address={p.address} />}
                 <form action={deleteAqProperty.bind(null, p.id)}>
                   <button type="submit" className="btn-ghost text-xs">
                     Delete
@@ -166,6 +170,7 @@ export default async function AqPropertyPage({ params }: { params: Promise<{ id:
               </>
             }
           />
+          {p.junkedAt && <JunkBanner id={p.id} reason={p.junkReason} at={p.junkedAt} source={p.junkSource} by={p.junkedBy} />}
           <AboutCard title="About this property">
             <AqPropertyForm p={p} dealStages={dealStages} action={updateAqProperty.bind(null, p.id)} autosave />
           </AboutCard>

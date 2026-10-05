@@ -21,9 +21,21 @@ const iso = (d: Date | null | undefined) => d?.toISOString() ?? null;
 
 export const companyOptionsOf = (companies: CompanyOption[]) => companies.map((c) => ({ value: c.id, label: c.name, domain: c.domain ?? c.website?.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] ?? null }));
 
-export function propertyColumns(dealStages: string[]): GridColumn[] {
+/**
+ * The property pane's columns. `junk` adds Removed Reason, Removed Date and Source File up front (the Junk Properties
+ * page); `badge` adds a Junk column (the Properties list while searching, where junk rows show with a badge).
+ */
+export function propertyColumns(dealStages: string[], opts: { junk?: boolean; badge?: boolean } = {}): GridColumn[] {
   return [
     { key: "address", label: "Property Address", type: "text", width: 220 },
+    ...(opts.badge ? ([{ key: "junk", label: "Junk", type: "select", options: ["Junk"], width: 80 }] as GridColumn[]) : []),
+    ...(opts.junk
+      ? ([
+          { key: "junkReason", label: "Removed Reason", type: "text", width: 200 },
+          { key: "junkedAt", label: "Removed Date", type: "readonly", width: 120 },
+          { key: "junkSource", label: "Source File", type: "text", width: 180 },
+        ] as GridColumn[])
+      : []),
     { key: "city", label: "City", type: "text", width: 130 },
     { key: "state", label: "State", type: "select", options: Object.keys(US_STATES), width: 80 },
     { key: "county", label: "County", type: "text", width: 120 },
@@ -35,9 +47,16 @@ export function propertyColumns(dealStages: string[]): GridColumn[] {
     { key: "yearBuilt", label: "Year Built", type: "number", width: 90 },
     { key: "lastSaleDate", label: "Last Sale Date", type: "date", width: 130 },
     { key: "lastSalePrice", label: "Last Sale Price", type: "money", width: 130 },
-    { key: "deal", label: "Deal", type: "select", options: ["Deal"], width: 100 },
+    { key: "callResult", label: "Call Result", type: "select", options: AQ_STAGES, width: 140 },
     { key: "dealStage", label: "Deal Stage", type: "select", options: dealStages, width: 140 },
     ...pipelineColumns(),
+    { key: "category", label: "Category", type: "text", width: 140 },
+    { key: "zoning", label: "Zoning", type: "text", width: 100 },
+    { key: "assessedValue", label: "Assessed Value", type: "money", width: 130 },
+    { key: "googleRating", label: "Google Rating", type: "number", width: 100 },
+    { key: "reviewCount", label: "# Reviews", type: "number", width: 90 },
+    { key: "reportUrl", label: "Property Report Link", type: "url", width: 180 },
+    { key: "sourceList", label: "Source List", type: "text", width: 160 },
     { key: "companies", label: "Companies", type: "readonly", width: 180 },
     { key: "latestNote", label: "Latest Note", type: "readonly", width: 240 },
     { key: "neighborhood", label: "Neighborhood", type: "text", width: 140 },
@@ -136,8 +155,19 @@ export function propertyGridRow(p: PropertyListRow): GridRow {
     yearBuilt: p.yearBuilt,
     lastSaleDate: iso(p.lastSaleDate),
     lastSalePrice: p.lastSalePrice,
-    deal: parseJsonList(p.stages).includes("Deal") ? "Deal" : null,
+    callResult: parseJsonList(p.stages)[0] ?? null,
     dealStage: p.dealStage,
+    category: p.category,
+    zoning: p.zoning,
+    assessedValue: p.assessedValue,
+    googleRating: p.googleRating,
+    reviewCount: p.reviewCount,
+    reportUrl: p.reportUrl,
+    sourceList: p.sourceList,
+    junk: p.junkedAt ? "Junk" : null,
+    junkReason: p.junkReason,
+    junkedAt: iso(p.junkedAt),
+    junkSource: p.junkSource,
     pipelinePriority: p.pipelinePriority != null ? String(p.pipelinePriority) : null,
     pipeline: p.pipelineAt ? "Yes" : "No",
     companies: p.companies.map((x) => x.company.name).join(", ") || null,
@@ -158,4 +188,4 @@ export function paneRows(rows: PropertyListRow[]) {
     operators: rows.map((p) => { const list = byRole(p, "Operator"); return personRow(p.id, list[0], Math.max(0, list.length - 1)); }),
   };
 }
-export const paneColumns = (dealStages: string[], companies: CompanyOption[]) => ({ properties: propertyColumns(dealStages), owners: personColumns(false, companies), operators: personColumns(true, companies) });
+export const paneColumns = (dealStages: string[], companies: CompanyOption[], opts: { junk?: boolean; badge?: boolean } = {}) => ({ properties: propertyColumns(dealStages, opts), owners: personColumns(false, companies), operators: personColumns(true, companies) });

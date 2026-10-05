@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowUp, Check, FileSpreadsheet, MessageSquare, PanelLeft, Paperclip, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { chatAction, deleteThread, importAction, listThreads, loadThread, type StoredMessage, type ThreadSummary, type Workspace } from "./actions";
-import type { ImportResult, Proposal } from "@/lib/assistant";
+import type { ImportResult, Proposal, PropertyRow } from "@/lib/assistant";
 
 const STARTERS: Record<Workspace, string[]> = {
   CA: ["What is still missing on Woodburn Exchange?", "Which LPs passed on retail deals in Florida this year, and why?", "Who do we talk to at Corebridge now?", "Which sponsors have we not heard from in 60 days?"],
@@ -70,7 +70,8 @@ function ProposalCard({ message, workspace, onImported }: { message: StoredMessa
   const p = message.proposal as Proposal;
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const counts = [p.properties?.length ? plural(p.properties.length, "property") : null, p.companies?.length ? plural(p.companies.length, "company") : null, p.contacts?.length ? plural(p.contacts.length, "contact") : null].filter(Boolean).join(", ");
+  const counts = [p.properties?.length ? plural(p.properties.length, "property") : null, p.companies?.length ? plural(p.companies.length, "company") : null, p.contacts?.length ? plural(p.contacts.length, "contact") : null, p.junkPhones?.length ? plural(p.junkPhones.length, "junk number") : null].filter(Boolean).join(", ");
+  const dealsOf = (r: PropertyRow) => [r.junk ? `Junk${r.junkReason ? ": " + r.junkReason : ""}` : null, r.deal === true || r.callResult === "Deal" ? `Deals board${r.dealStage ? " · " + r.dealStage : ""}` : r.deal === false ? "back to potential" : null, r.sendToPipeline ? `Deals Pipeline${r.pipelinePriority ? " · priority " + r.pipelinePriority : ""}` : r.sendToPipeline === false ? "off the Deals Pipeline" : null].filter(Boolean).join("; ");
   const r = message.importResult;
   return (
     <div className="mt-3 overflow-hidden rounded-lg border border-line bg-cream-50">
@@ -107,12 +108,14 @@ function ProposalCard({ message, workspace, onImported }: { message: StoredMessa
               <thead>
                 <tr>
                   <th>Address</th>
+                  <th>Parcel</th>
                   <th>City</th>
                   <th>St</th>
                   <th>Business</th>
                   <th>Owner</th>
                   <th>Phone</th>
                   <th>Result</th>
+                  <th>Lists</th>
                   <th>Linked</th>
                 </tr>
               </thead>
@@ -120,13 +123,15 @@ function ProposalCard({ message, workspace, onImported }: { message: StoredMessa
                 {p.properties.map((r, i) => (
                   <tr key={i}>
                     <td className="font-medium">{r.address}</td>
+                    <td className="whitespace-nowrap text-muted">{r.parcelId}</td>
                     <td>{r.city}</td>
                     <td>{r.state}</td>
-                    <td className="max-w-[140px] truncate">{r.businessName}</td>
-                    <td className="max-w-[160px] truncate">{[r.ownerName, r.ownerEntity].filter(Boolean).join(" · ")}</td>
+                    <td className="max-w-[140px] truncate">{[r.businessName, r.category].filter(Boolean).join(" · ")}</td>
+                    <td className="max-w-[160px] truncate">{[r.owner, r.ownerName, r.ownerEntity].filter(Boolean).join(" · ")}</td>
                     <td className="whitespace-nowrap">{r.primaryPhone}</td>
                     <td>{[r.callResult, r.callBackAt].filter(Boolean).join(" · ")}</td>
-                    <td className="max-w-[160px] truncate">{[...(r.companies ?? []), ...(r.contacts ?? [])].join(", ")}</td>
+                    <td className={`max-w-[180px] truncate ${r.junk ? "text-red-700" : ""}`}>{dealsOf(r)}</td>
+                    <td className="max-w-[160px] truncate">{[...(r.companies ?? []), ...(r.contacts ?? []), r.operator].filter(Boolean).join(", ")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -156,6 +161,21 @@ function ProposalCard({ message, workspace, onImported }: { message: StoredMessa
               </tbody>
             </table>
           )}
+          {p.junkPhones && p.junkPhones.length > 0 && (
+            <div className="px-3 py-2 text-red-700">
+              Junk numbers: {p.junkPhones.map((j) => `${j.number}${j.reason ? " (" + j.reason + ")" : ""}`).join(", ")}
+            </div>
+          )}
+          {p.unsure && p.unsure.length > 0 && (
+            <div className="border-t border-line px-3 py-2 text-amber-800">
+              <div className="font-medium">Not sure about</div>
+              <ul className="list-disc pl-5">
+                {p.unsure.map((u, i) => (
+                  <li key={i}>{u}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {p.contacts && p.contacts.length > 0 && (
             <table className="table dense w-full">
               <thead>
@@ -165,6 +185,8 @@ function ProposalCard({ message, workspace, onImported }: { message: StoredMessa
                   <th>Phone</th>
                   <th>Company</th>
                   <th>Roles</th>
+                  <th>Call</th>
+                  <th>History</th>
                 </tr>
               </thead>
               <tbody>
@@ -175,6 +197,8 @@ function ProposalCard({ message, workspace, onImported }: { message: StoredMessa
                     <td>{c.phone}</td>
                     <td>{c.company}</td>
                     <td>{c.roles?.join(", ")}</td>
+                    <td className="whitespace-nowrap">{[c.callResult, c.callBackAt, c.sendToPipeline ? "pipeline" : null].filter(Boolean).join(" · ")}</td>
+                    <td className="whitespace-nowrap text-muted">{[(c.notesDated?.length ?? 0) + (c.callNotes ? 1 : 0) ? `${(c.notesDated?.length ?? 0) + (c.callNotes ? 1 : 0)} note${(c.notesDated?.length ?? 0) + (c.callNotes ? 1 : 0) === 1 ? "" : "s"}` : null, c.transcripts?.length ? `${c.transcripts.length} transcript${c.transcripts.length === 1 ? "" : "s"}` : null, c.junkPhones?.length ? `${c.junkPhones.length} junk` : null].filter(Boolean).join(", ")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -184,10 +208,45 @@ function ProposalCard({ message, workspace, onImported }: { message: StoredMessa
       )}
       {r && (
         <div className="px-3 py-2 text-xs">
-          <div>
-            Added {plural(r.created.properties, "property")}, {plural(r.created.companies, "company")}, {plural(r.created.contacts, "contact")}
-            {r.matched.properties + r.matched.companies + r.matched.contacts > 0 && <span className="text-muted">; {r.matched.properties + r.matched.companies + r.matched.contacts} already in the CRM were matched and filled in</span>}.
-          </div>
+          {r.report ? (
+            <div className="space-y-1">
+              <div>
+                Properties: {r.report.properties.new} new, {r.report.properties.updated} updated, {r.report.properties.junked} junked, {r.report.properties.skipped} skipped. Contacts: {r.report.contacts.new} new, {r.report.contacts.updated} updated. Companies: {r.report.companies.new} new, {r.report.companies.updated} updated.
+                {r.report.numbersJunked ? ` Numbers junked: ${r.report.numbersJunked}.` : ""}
+                {r.report.notes || r.report.transcripts ? ` Added ${r.report.notes} note${r.report.notes === 1 ? "" : "s"} and ${r.report.transcripts} transcript${r.report.transcripts === 1 ? "" : "s"}.` : ""}
+              </div>
+              {r.report.callbacks.length > 0 && (
+                <div>
+                  <span className="font-medium">Call Me Back:</span> {r.report.callbacks.join("; ")}
+                </div>
+              )}
+              {r.report.waiting.length > 0 && (
+                <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-amber-900">
+                  <div className="font-medium">Waiting on Shawn ({r.report.waiting.length}): answer here ("yes to all", "yes on 1 and 3, put 2 in the pipeline") or on the Dashboard.</div>
+                  <ol className="list-decimal pl-5">
+                    {r.report.waiting.map((w) => (
+                      <li key={w.id}>{w.question}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              {r.report.pipeline.length > 0 && (
+                <div>
+                  <span className="font-medium">Pipeline changes:</span> {r.report.pipeline.join("; ")}
+                </div>
+              )}
+              {r.report.unsure.length > 0 && (
+                <div className="text-amber-800">
+                  <span className="font-medium">Not sure about:</span> {r.report.unsure.join("; ")}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              Added {plural(r.created.properties, "property")}, {plural(r.created.companies, "company")}, {plural(r.created.contacts, "contact")}
+              {r.matched.properties + r.matched.companies + r.matched.contacts > 0 && <span className="text-muted">; {r.matched.properties + r.matched.companies + r.matched.contacts} already in the CRM were matched and filled in</span>}.
+            </div>
+          )}
           {r.links.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
               {r.links.map((l) => (

@@ -123,7 +123,7 @@ export async function importAction(messageId: string): Promise<{ ok: true; resul
     const result = await runImport(m.thread.workspace as Workspace, d.proposal);
     const importedAt = new Date().toISOString();
     await prisma.chatMessage.update({ where: { id: m.id }, data: { data: JSON.stringify({ ...d, importedAt, importResult: result }) } });
-    for (const p of ["/acquisitions", "/acquisitions/properties", "/acquisitions/companies", "/acquisitions/contacts", "/acquisitions/pipeline", "/companies", "/contacts", "/israel/companies", "/israel/contacts"]) revalidatePath(p);
+    for (const p of ["/acquisitions", "/acquisitions/properties", "/acquisitions/companies", "/acquisitions/contacts", "/acquisitions/pipeline", "/acquisitions/deals", "/acquisitions/junk/properties", "/acquisitions/junk/phones", "/companies", "/contacts", "/israel/companies", "/israel/contacts"]) revalidatePath(p);
     return { ok: true, result, importedAt };
   } catch (e) {
     return { ok: false, reason: String(e instanceof Error ? e.message : e).slice(0, 300) };
