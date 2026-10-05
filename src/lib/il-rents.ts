@@ -36,6 +36,12 @@ export const roomsBucket = (rooms: number | null | undefined) => (rooms == null 
 /** The neighborhood a unit belongs to: by pin, else by name. */
 export function neighborhoodFor(table: RentTable, u: { city?: string | null; neighborhood?: string | null; lat?: number | null; lng?: number | null }) {
   const city = norm(u.city);
+  // the neighborhood written on the ticket comes first when it is a known name (a pin near a border lands in the next neighborhood over)
+  const named = norm(u.neighborhood);
+  if (named) {
+    const hit = table.hoods.find((h) => (norm(h.name) === named || norm(h.nameHe) === named) && (!city || norm(h.city) === city)) ?? table.hoods.find((h) => norm(h.name) === named || norm(h.nameHe) === named);
+    if (hit) return hit;
+  }
   if (u.lat != null && u.lng != null) {
     let best: RentTable["hoods"][number] | null = null, bestD = Infinity;
     for (const h of table.hoods) {
@@ -43,11 +49,6 @@ export function neighborhoodFor(table: RentTable, u: { city?: string | null; nei
       if (d < bestD) { bestD = d; best = h; }
     }
     if (best && bestD <= 2.5) return best;
-  }
-  const name = norm(u.neighborhood);
-  if (name) {
-    const hit = table.hoods.find((h) => (norm(h.name) === name || norm(h.nameHe) === name) && (!city || norm(h.city) === city)) ?? table.hoods.find((h) => norm(h.name) === name || norm(h.nameHe) === name);
-    if (hit) return hit;
   }
   return null;
 }
