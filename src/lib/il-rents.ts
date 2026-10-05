@@ -31,7 +31,7 @@ const km = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) =>
   const x = Math.sin(dLat / 2) ** 2 + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(x));
 };
-export const roomsBucket = (rooms: number | null | undefined) => (rooms == null || !isFinite(rooms) ? null : Math.min(8, Math.max(1, Math.round(rooms))));
+export const roomsBucket = (rooms: number | null | undefined) => (rooms == null || !isFinite(rooms) ? null : Math.min(6, Math.max(1, Math.round(rooms)))); // 1 to 6 on The Rents (7 and 8 went on Oct 5, 2026); bigger homes read the 6-room rent
 
 /** The neighborhood a unit belongs to: by pin, else by name. */
 export function neighborhoodFor(table: RentTable, u: { city?: string | null; neighborhood?: string | null; lat?: number | null; lng?: number | null }) {

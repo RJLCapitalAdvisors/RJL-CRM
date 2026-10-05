@@ -48,7 +48,7 @@ export function RentsFilters({ cities, initial, total, typed }: { cities: { city
       <label className="mb-1 block text-xs text-muted">Rooms</label>
       <select className="input mb-3 w-full py-1 text-sm" value={initial.rooms || ""} onChange={(e) => go({ rooms: e.target.value })}>
         <option value="">All room counts</option>
-        {[1, 2, 3, 4, 5, 6, 7, 8].map((r) => (
+        {[1, 2, 3, 4, 5, 6].map((r) => (
           <option key={r} value={r}>
             {r} rooms
           </option>

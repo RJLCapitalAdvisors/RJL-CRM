@@ -11,7 +11,7 @@ const PAGE = 300;
 
 /**
  * The Rents (Jonathan, Oct 5, 2026): asking rents by neighborhood and room count, one row per neighborhood and room
- * count (1 to 8), the rent typed straight into the first column. Every apartment ticket reads its expected rent and
+ * count (1 to 6), the rent typed straight into the first column. Every apartment ticket reads its expected rent and
  * yield from here, and the Map View's yield heat map is built on it. Laid out like the apartments list: the filter
  * card on the left, the table on the right. Neighborhoods came from Wikidata and OpenStreetMap, filed under the
  * nearest city or town.
@@ -44,7 +44,7 @@ export default async function RentsPage({ searchParams }: { searchParams: Promis
             <Pager page={page} pageSize={PAGE} total={total} makeHref={makeHref} />
             <div id="zoom-tools" className="ml-auto" />
           </div>
-          <div className="flex h-[calc(100vh-186px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
+          <div className="flex h-[calc(100vh-124px)] min-h-[400px] flex-col overflow-hidden rounded-lg border border-line bg-paper">
             <div className="min-h-0 flex-1 overflow-auto">
               <ZoomBox id="il-rents">
                 <table className="table dense w-full min-w-[720px]">
