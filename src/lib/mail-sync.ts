@@ -141,13 +141,15 @@ export async function attachParties(activityId: string, parties: Resolved["parti
 
 export async function dealResolver() {
   // legacy HubSpot intro records are not tickets: an email is never filed on one
-  const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, parentDealId: true, propertyAddress: true, sponsorCompany: { select: { roles: true } }, investors: { select: { contactId: true } }, _count: { select: { files: true, facts: true } } } })).filter((d) => !isLegacyIntroTicket({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, investorCount: d.investors.length }) && !isBlindIntro({ ...d, fileCount: d._count.files, factCount: d._count.facts }));
+  const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, parentDealId: true, propertyAddress: true, sponsorCompany: { select: { roles: true } }, investors: { select: { contactId: true, contact: { select: { companyId: true } } } }, _count: { select: { files: true, facts: true } } } })).filter((d) => !isLegacyIntroTicket({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, investorCount: d.investors.length }) && !isBlindIntro({ ...d, fileCount: d._count.files, factCount: d._count.facts }));
   // an email about one property of a portfolio belongs to the portfolio
   const up = (id: string | undefined) => (id ? (activeDeals.find((d) => d.id === id)?.parentDealId ?? id) : id);
   // Park Station, Sep 29, 2026: every reply to its launch was pinned to "Stablewood | Core Acquisitions" because the word
   // "acquisitions" matched first. The deal the sender was actually sent (their row on its report, or their firm as its
   // sponsor) comes first when the subject fits it; a bare name match on a deal they have nothing to do with comes after.
-  const tied = (d: (typeof activeDeals)[number], contactId: string | null, companyId: string | null) => (contactId && d.investors.some((r) => r.contactId === contactId)) || (companyId && d.sponsorCompanyId === companyId);
+  // a stub the mention detector made ranks last, so a real ticket wins any name match (ACRE's stub took Park Station's replies, Oct 5, 2026)
+  activeDeals.sort((a, b) => Number(a.stage === "Deal Mentioned") - Number(b.stage === "Deal Mentioned"));
+  const tied = (d: (typeof activeDeals)[number], contactId: string | null, companyId: string | null) => (contactId && d.investors.some((r) => r.contactId === contactId)) || (companyId && (d.sponsorCompanyId === companyId || d.investors.some((r) => r.contact.companyId === companyId)));
   const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null) =>
     up(
       activeDeals.find((d) => tied(d, contactId, companyId) && (subjectMatchesDeal(subject, d) || houseSubjectMatches(subject, d)))?.id ??

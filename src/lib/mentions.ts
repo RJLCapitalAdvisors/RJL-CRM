@@ -81,8 +81,13 @@ export async function detectMentionedDeals(): Promise<{ threads: number; created
     const subjectsInThread = msgs.map((m) => m.subject ?? "");
     const ourSend = subjectsInThread.some((x) => LAUNCH_SUBJECT.test(x)) || msgs.some((m) => m.direction === "OUTBOUND" && LAUNCH_SUBJECT.test(m.subject ?? ""));
     const autoReply = AUTO_REPLY.test(newest.subject ?? "");
-    const isLpOnAnyDeal = (await prisma.dealInvestor.count({ where: { contact: { companyId: company.id }, deal: { stage: { in: ["Deal Taken To Market", "Intro To Capital Made", "Engagement Letter Signed", "Term Sheet Received", "Deal Sent"] } } } })) > 0;
-    if (ourSend || autoReply || (isLpOnAnyDeal && subjectsInThread.some((x) => /\bopportunity\b/i.test(x)))) {
+    const lpDeals = await prisma.dealInvestor.findMany({ where: { contact: { companyId: company.id }, deal: { stage: { in: ["Deal Taken To Market", "Intro To Capital Made", "Engagement Letter Signed", "Engagement Letter Sent", "Term Sheet Issued", "Term Sheet Received", "Deal Sent"] } } }, select: { deal: { select: { name: true, propertyName: true, city: true } } } });
+    const isLpOnAnyDeal = lpDeals.length > 0;
+    // an LP on a live deal writing about that deal's city or property (ACRE's "ACRE / RJL" thread about Gaithersburg, Oct 2, 2026) is answering it, not bringing one
+    const dealWords = [...new Set(lpDeals.flatMap((r) => [r.deal.city, r.deal.propertyName, ...(r.deal.name.split("|").map((x) => x.trim()))].filter((w): w is string => Boolean(w && w.trim().length >= 5))))].map((w) => w.toLowerCase());
+    const threadText = msgs.map((m) => `${m.subject ?? ""} ${m.body ?? ""}`).join(" ").toLowerCase();
+    const aboutTheirDeal = isLpOnAnyDeal && dealWords.some((w) => threadText.includes(w));
+    if (ourSend || autoReply || aboutTheirDeal || (isLpOnAnyDeal && subjectsInThread.some((x) => /\bopportunity\b/i.test(x)))) {
       await prisma.mentionScan.create({ data: { externalId: newest.externalId!, companyId: company.id } }).catch(() => {});
       continue;
     }
