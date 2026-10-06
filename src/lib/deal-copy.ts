@@ -134,21 +134,18 @@ export function landMetrics(d: D): string[] {
   if (price) out.push(`Land Price: ${usd(price)}${acres ? ` (${usd(price / acres)} per acre)` : ""}`);
   if (now) out.push(`Current Value of the Unentitled Land: ${usd(now)}${acres ? ` (${usd(now / acres)} per acre)` : ""}`);
   if (entitled) out.push(`Value Once Entitled: ${usd(entitled)}${acres ? ` (${usd(entitled / acres)} per acre)` : ""}${now ? ` | ${(entitled / now).toFixed(2)}x the current value` : ""}`);
-  if (budget) out.push(`Total Entitlement Budget: ${usd(budget)}${now ? ` (${pct(Math.round((budget / now) * 10000) / 100)} of current value)` : ""}`);
-  const cap = n(d.totalCapitalization);
-  const debt = d.unlevered === true ? 0 : n(d.totalDebt);
+
+  // the total entitlement budget includes the land and is the capitalization at this stage (Jonathan, Oct 6, 2026)
+  const cap = budget ?? n(d.totalCapitalization) ?? price;
+  const debt = n(d.totalDebt);
   const ask = n(d.requestedAmount);
   const exec = s(d.executionType);
   const pref = isPref(exec);
   const senior = exec === "Senior Debt";
-  if (cap) {
-    const sponsorEq = debt != null ? cap - debt - (pref ? ask ?? 0 : 0) : null;
-    const sources = [debt ? `senior debt ${usd(debt)}` : null, pref && ask ? `preferred equity ${usd(ask)}` : senior && ask ? `senior loan ${usd(ask)}` : null, sponsorEq != null && sponsorEq > 0 ? `${pref || senior ? "sponsor equity" : "equity"} ${usd(sponsorEq)}` : null].filter(Boolean).join(", ");
-    const rest = cap - (price ?? 0) - (budget ?? 0);
-    const uses = budget ? [price ? `land ${usd(price)}` : null, `entitlement ${usd(budget)}`, rest > 0 ? `carry, closing and other ${usd(rest)}` : null].filter(Boolean).join(", ") : "";
-    out.push(`Total Capitalization: ${usd(cap)}${sources ? ` | Sources: ${sources}` : ""}${uses ? ` | Uses: ${uses}` : ""}`);
-  }
-  if (d.unlevered === true) out.push("Senior Debt: none, the deal is unlevered");
+  if (cap) out.push(`Total Entitlement Budget: ${usd(cap)}${price && budget && budget > price ? ` (land ${usd(price)} + entitlement costs ${usd(budget - price)})` : ""}`);
+  const eqLand = cap && debt != null ? cap - debt : null;
+  if (eqLand != null && eqLand > 0) out.push(`Total Equity: ${usd(eqLand)}${pref && ask && eqLand > ask ? ` (${usd(ask)} preferred, ${usd(eqLand - ask)} sponsor)` : ""}`);
+  if (debt === 0) out.push("Senior Debt: none, the land is unlevered");
   else if (debt) {
     const rate = rateText(d as { interestRate?: string | null; rateIndex?: string | null; rateSpreadBps?: number | null });
     const lev = [now ? `${pct(Math.round((debt / now) * 10000) / 100)} LTV on current value` : null, entitled ? `${pct(Math.round((debt / entitled) * 10000) / 100)} on entitled value` : null, cap ? `${pct(Math.round((debt / cap) * 10000) / 100)} LTC` : null].filter(Boolean).join(" | ");
@@ -157,7 +154,8 @@ export function landMetrics(d: D): string[] {
   if (pref) {
     const pm = prefMetrics(d);
     if (ask) out.push(`Total Pref Amount Requested: ${usd(ask)}`);
-    if (pm.lastDollar) out.push(`Last Dollar Exposure: ${usd(pm.lastDollar)}${pm.prefLtc != null ? ` | ${pm.prefLtc.toFixed(2)}% LTC` : ""}`);
+    const ltcLand = pm.lastDollar && cap ? Math.round((pm.lastDollar / cap) * 10000) / 100 : null;
+    if (pm.lastDollar) out.push(`Last Dollar Exposure: ${usd(pm.lastDollar)}${ltcLand != null ? ` | ${ltcLand.toFixed(2)}% of the entitlement budget` : ""}`);
     if (pm.prefLtv != null) out.push(`Pref LTV on Current Land Value: ${pm.prefLtv.toFixed(2)}%`);
     if (pm.prefLtvEntitled != null) out.push(`Pref LTV on Entitled Value: ${pm.prefLtvEntitled.toFixed(2)}%${pm.entitledCover != null ? ` (${pm.entitledCover.toFixed(2)}x cover)` : ""}`);
   } else if (senior && ask && !debt) {
@@ -165,6 +163,22 @@ export function landMetrics(d: D): string[] {
     const rate = rateText(d as { interestRate?: string | null; rateIndex?: string | null; rateSpreadBps?: number | null });
     out.push(`Senior Loan Requested: ${usd(ask)}${lev ? ` | ${lev}` : ""}${rate ? ` @ ${rate}` : ""}${s(d.loanTerm) ? ` - ${[s(d.amortization), s(d.loanTerm)].filter(Boolean).join(" on a ")}` : ""}`);
   }
+  // where the entitlement stands, and the exit, belong with the land
+  const det = parseDetails(d.details);
+  const phase = s(d.entitlementPhase);
+  if (phase) out.push(`Entitlement Phase: ${phase}`);
+  const outstanding = s(d.entitlementOutstanding);
+  if (outstanding) out.push(`Outstanding Items: ${outstanding}`);
+  const risks = s(d.entitlementRisks);
+  if (risks) out.push(`Entitlement Risks: ${risks}`);
+  const timeline = s(det.entitlementTimeline);
+  if (timeline) out.push(`Entitlement Timeline: ${timeline}`);
+  const carry = s(det.carryCosts);
+  if (carry) out.push(`Carry During Entitlement: ${carry}`);
+  const exit = s(det.exitPlan);
+  if (exit) out.push(`Exit Once Entitled: ${exit}`);
+  const close = s(d.expectedClose);
+  if (close) out.push(`Closing Date: ${close}`);
   return out;
 }
 
@@ -271,35 +285,44 @@ export function metrics(d: D): string[] {
   return out;
 }
 
-/** Deal Metrics and Returns on land (Jonathan, Oct 6, 2026): the entitled plan, the approvals, the exit, and the sponsor's returns; nothing per foot, per unit or on NOI. */
+/**
+ * <Use> Metrics on land (Jonathan, Oct 6, 2026): the vertical build presented the way that asset is always presented
+ * (a hotel per key), from the ticket's Vertical construction group: break ground and delivery, keys and square feet,
+ * total development cost per key and per foot, the construction loan and its terms, yield on cost, the returns.
+ */
 function underlyingLandMetrics(d: D): string[] {
   const out: string[] = [];
   const det = parseDetails(d.details);
+  const use = s(d.entitledFor);
+  const p = assetProfile(use);
+  const per = perCountWord(p.countLabel);
+  const count = n(d.units);
+  const sf = n(d.squareFeet);
   const ground = s(d.breakGroundDate);
   if (ground) out.push(`Break Ground Date: ${ground}`);
-  // the heading already names the use ("Hotel Metrics"); the program line carries the underwriting for that phase
-  if (s(det.entitledUnderwriting)) out.push(`Program: ${s(det.entitledUnderwriting)}`);
-  const phase = s(d.entitlementPhase);
-  if (phase) out.push(`Entitlement Phase: ${phase}`);
-  const outstanding = s(d.entitlementOutstanding);
-  if (outstanding) out.push(`Outstanding Items: ${outstanding}`);
-  const risks = s(d.entitlementRisks);
-  if (risks) out.push(`Entitlement Risks: ${risks}`);
-  const timeline = s(det.entitlementTimeline);
-  if (timeline) out.push(`Entitlement Timeline: ${timeline}`);
-  const carry = s(det.carryCosts);
-  if (carry) out.push(`Carry During Entitlement: ${carry}`);
-  const exit = s(det.exitPlan);
-  if (exit) out.push(`Exit Once Entitled: ${exit}`);
-  const eq = n(d.totalEquity);
-  if (eq) out.push(`Total Equity: ${usd(eq)}`);
+  const delivery = s(d.deliveryDate);
+  if (delivery) out.push(`Expected Delivery: ${delivery}`);
+  const program = [count && p.countLabel ? `${count.toLocaleString("en-US")} ${count === 1 ? per : p.countLabel.toLowerCase()}` : null, sf ? `${sf.toLocaleString("en-US")} square feet` : null].filter(Boolean).join(", ");
+  if (program || s(det.verticalProgram) || s(det.entitledUnderwriting)) out.push(`Program: ${program || s(det.verticalProgram) || s(det.entitledUnderwriting)}`);
+  const cost = n(d.verticalCost);
+  const perBits = (amount: number) => {
+    const bits: string[] = [];
+    if (p.perCount && count) bits.push(`${usd(amount / count)} per ${per}`);
+    if ((p.perFoot || !p.perCount) && sf) bits.push(`${usdCents(amount / sf)} per foot`);
+    return bits.length ? ` (${bits.join(" | ")})` : "";
+  };
+  if (cost) out.push(`Total Development Cost: ${usd(cost)}${perBits(cost)}`);
+  const cDebt = n(d.verticalDebt);
+  const cTerms = s(d.verticalDebtTerms);
+  if (cDebt || cTerms) out.push(`Construction Debt and Terms: ${[cDebt ? usd(cDebt) : null, cDebt && cost ? `${pct(Math.round((cDebt / cost) * 10000) / 100)} LTC` : null, cTerms].filter(Boolean).join(" | ")}`);
+  if (cost && cDebt != null) out.push(`Total Equity in the Build: ${usd(cost - cDebt)}`);
+  const yoc = n(d.yieldOnCost);
+  if (yoc) out.push(`Yield on Cost at Stabilization: ${pct(yoc)}`);
   const irr = n(d.irr);
   const em = n(d.equityMultiple);
-  const hold = s(d.holdPeriod);
-  if ((irr || em) && !isPref(d.executionType)) out.push(`Expected Returns: ${[irr ? `${pct(irr)} IRR` : null, em ? `${irr ? "a " : ""}${em}x EM` : null].filter(Boolean).join(" and ")}${hold ? ` on a ${hold.replace(/\s*hold$/i, "")} hold` : ""}.`);
-  else if (hold) out.push(`${isPref(d.executionType) ? "Pref Term" : "Hold"}: ${hold}`);
-  const close = s(d.expectedClose);
-  if (close) out.push(`Closing Date: ${close}`);
+  const hold = s(d.verticalHold) ?? (isPref(d.executionType) ? null : s(d.holdPeriod));
+  if (irr || em) out.push(`Expected Returns: ${[irr ? `${pct(irr)} IRR` : null, em ? `${irr ? "a " : ""}${em}x EM` : null].filter(Boolean).join(" and ")}${hold ? ` on a ${hold.replace(/\s*hold$/i, "")} hold` : ""}.`);
+  else if (hold) out.push(`Hold: ${hold}`);
   return out;
 }
 

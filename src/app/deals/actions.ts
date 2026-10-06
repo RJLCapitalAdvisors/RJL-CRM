@@ -40,13 +40,12 @@ export async function moveDeal(id: string, stage: string) {
 }
 
 async function dealData(fd: FormData) {
-  // unlevered (Jonathan, Oct 6, 2026): no senior debt, so the debt is zero and every debt term is cleared
-  const unlevered = fd.has("unleveredField") && (fd.get("unlevered") === "1" || fd.get("unlevered") === "on");
-  if (unlevered) {
-    fd.set("totalDebt", "0");
-    for (const k of ["rateIndex", "interestRate", "rateSpreadBps", "loanTerm", "amortization", "lenderType"]) fd.set(k, "");
-  }
   const land = s(fd, "assetClass") === "Land";
+  // a land ticket's capitalization is the total entitlement budget, land included (Jonathan, Oct 6, 2026); the land price alone until the budget is known
+  if (land && fd.has("purchasePrice")) fd.set("totalCapitalization", String(num(fd, "entitlementBudget") ?? num(fd, "purchasePrice") ?? ""));
+  // no senior debt (total debt typed as 0): the debt terms are cleared; the Unlevered tick is gone (Jonathan, Oct 6, 2026)
+  const unlevered = fd.has("totalDebt") && num(fd, "totalDebt") === 0;
+  if (unlevered) for (const k of ["rateIndex", "interestRate", "rateSpreadBps", "loanTerm", "amortization", "lenderType"]) fd.set(k, "");
   const sponsorName = s(fd, "sponsorName");
   const propertyName = s(fd, "propertyName");
   const sourcing = s(fd, "detail.sourcing");
@@ -78,7 +77,12 @@ async function dealData(fd: FormData) {
     landValueEntitled: num(fd, "landValueEntitled"),
     entitlementBudget: num(fd, "entitlementBudget"),
     breakGroundDate: s(fd, "breakGroundDate"),
-    ...(fd.has("unleveredField") ? { unlevered } : {}),
+    verticalCost: num(fd, "verticalCost"),
+    verticalDebt: num(fd, "verticalDebt"),
+    verticalDebtTerms: s(fd, "verticalDebtTerms"),
+    verticalHold: s(fd, "verticalHold"),
+    deliveryDate: s(fd, "deliveryDate"),
+    ...(fd.has("totalDebt") ? { unlevered } : {}),
     onMarket: onMarketRaw == null ? null : onMarketRaw === "on",
     requestType: s(fd, "requestType") ?? (/Debt/.test(s(fd, "executionType") ?? "") ? "Debt" : s(fd, "executionType") ? "Equity" : null),
     requestedAmount: num(fd, "requestedAmount"),

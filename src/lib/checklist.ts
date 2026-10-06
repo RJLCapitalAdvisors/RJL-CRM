@@ -15,7 +15,7 @@ export type ChecklistItem = {
   strategy: ("Acquisitions" | "Development")[];
   onlyAssetClasses?: string[]; // include only for these classes
   excludeAssetClasses?: string[]; // skip for these classes
-  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose" | "purchasePrice" | "yieldOnCost" | "projectedSellout" | "selloutPerUnit" | "selloutPerFoot" | "unitMix" | "entitledFor" | "entitlementPhase" | "entitlementOutstanding" | "entitlementRisks" | "landValueCurrent" | "landValueEntitled" | "entitlementBudget" | "breakGroundDate"; // maps to a Deal column
+  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose" | "purchasePrice" | "yieldOnCost" | "projectedSellout" | "selloutPerUnit" | "selloutPerFoot" | "unitMix" | "entitledFor" | "entitlementPhase" | "entitlementOutstanding" | "entitlementRisks" | "landValueCurrent" | "landValueEntitled" | "entitlementBudget" | "breakGroundDate" | "verticalCost" | "verticalDebt" | "deliveryDate"; // maps to a Deal column
 };
 
 const RESIDENTIAL = ["Multifamily", "Build-For-Rent (SFR)", "Student Housing", "Senior Housing", "Mixed Use"];
@@ -27,7 +27,7 @@ export const DEFAULT_CHECKLIST: ChecklistItem[] = [
   { key: "unitMix", label: "Unit mix (bedroom types)", question: "Which bedroom types the property has (studios, 1BR, 2BR, 3BR), with counts when stated", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: [...RESIDENTIAL, "Condo"], core: "unitMix" },
   { key: "leaseTradeOut", label: "Lease trade-out report", question: "Recent lease trade-out report showing new vs. expiring rents", kind: "doc", strategy: ["Acquisitions"], onlyAssetClasses: RESIDENTIAL },
   { key: "insuranceTaxes", label: "How insurance and taxes are underwritten", devLabel: "How stabilized insurance and taxes are calculated", question: "Color on how insurance and real estate taxes are underwritten (basis, reassessment, quotes)", kind: "text", strategy: ["Acquisitions", "Development"] },
-  { key: "yieldOnCost", label: "Yield on cost at stabilization", devLabel: "Stabilized yield on cost (stabilized NOI over total project cost)", question: "Stabilized NOI over total all-in cost, or the cap rate on all-in cost basis", kind: "number", strategy: ["Acquisitions", "Development"], excludeAssetClasses: ["Land", "Condo"], core: "yieldOnCost" },
+  { key: "yieldOnCost", label: "Yield on cost at stabilization", devLabel: "Stabilized yield on cost (stabilized NOI over total project cost)", question: "Stabilized NOI over total all-in cost, or the cap rate on all-in cost basis", kind: "number", strategy: ["Acquisitions", "Development"], excludeAssetClasses: ["Condo"], core: "yieldOnCost" },
   // a condo sells out instead of stabilizing (Jonathan, Sep 23, 2026): the sellout figures replace yield on cost and cash on cash
   { key: "projectedSellout", label: "Projected sellout (whole dollar figure)", question: "Total projected gross sellout of all units, in whole dollars", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Condo"], core: "projectedSellout" },
   { key: "selloutPerUnit", label: "Average sellout per unit", question: "Average projected sale price per unit", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Condo"], core: "selloutPerUnit" },
@@ -56,10 +56,14 @@ export const DEFAULT_CHECKLIST: ChecklistItem[] = [
   { key: "entitlementPhase", label: "Current entitlement phase and outstanding entitlement items (where the approvals stand today and what is still needed)", question: "Where the entitlement stands today (pre-application, application filed, hearings, approvals in hand, permits) and every approval, hearing, permit, study or agreement still needed before the land is fully entitled", kind: "text", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "entitlementPhase" },
   { key: "entitlementRisks", label: "Walk through the entitlement risks as of today (opposition, zoning, environmental, infrastructure, timing)", question: "The entitlement risks as of today: neighborhood or political opposition, zoning or comprehensive plan changes needed, environmental and wetlands, utilities and access, timing", kind: "text", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "entitlementRisks" },
   { key: "entitlementTimeline", label: "Entitlement timeline (hearing dates and expected approval date)", question: "The hearing schedule and the expected date of full entitlement", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"] },
+  { key: "verticalProgram", label: "Vertical build program (keys or units and square feet of what gets built)", question: "What gets built once entitled: keys or units and the square footage", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"] },
+  { key: "verticalCost", label: "Total development cost of the vertical build (whole dollars)", question: "The all-in cost to build the project once entitled, in whole dollars (the vertical's total capitalization)", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "verticalCost" },
+  { key: "verticalDebt", label: "Construction loan for the build (amount and terms)", question: "The construction loan the build is underwritten with: amount, LTC, rate, term", kind: "text", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "verticalDebt" },
+  { key: "deliveryDate", label: "Expected delivery (when the built project opens)", question: "When the built project is expected to open or deliver, as a month and year or a quarter", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "deliveryDate" },
   { key: "breakGroundDate", label: "Break ground date (when construction starts once entitled)", question: "When construction is expected to start once the land is entitled, as a month and year or a quarter", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "breakGroundDate" },
   { key: "landValueCurrent", label: "Current value of the unentitled land (as-is, whole dollars; appraisal or broker opinion)", question: "The as-is value of the land today, unentitled, in whole dollars, and where the number comes from (appraisal, broker opinion, recent purchase price)", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "landValueCurrent" },
   { key: "landValueEntitled", label: "Value of the land once entitled (whole dollars, with the basis for the number)", question: "The value of the land once fully entitled, in whole dollars, and the basis for it (comps, per-unit or per-buildable-foot land values, a developer's offer)", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "landValueEntitled" },
-  { key: "entitlementBudget", label: "Total entitlement budget (consultants, legal, fees, studies and carry, whole dollars)", question: "The total budget to get the land entitled: consultants, legal, application fees, studies, carry, in whole dollars", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "entitlementBudget" },
+  { key: "entitlementBudget", label: "Total entitlement budget including the land (land price plus consultants, legal, fees, studies and carry, whole dollars)", question: "The total budget to own and entitle the land: land price plus consultants, legal, application fees, studies and carry, in whole dollars", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "entitlementBudget" },
   { key: "carryCosts", label: "Carry costs during entitlement (taxes, insurance, interest) per year", question: "What it costs to hold the land each year while it is entitled: taxes, insurance, interest", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"] },
   { key: "sellerStory", label: "Seller story and profile (who the seller is, how long they have held the land and why they are selling now)", question: "Who the seller is (mom and pop, family office, institution, lender), how long they have held the land, and why they are selling now", kind: "text", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"] },
   { key: "landComps", label: "Land comps (entitled and unentitled land sales)", question: "Comparable land sales, entitled and unentitled, with price per acre or per buildable unit", kind: "doc", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"] },
@@ -101,7 +105,7 @@ export function applicableItems(strategy: string | null | undefined, assetClass:
       if (!it.strategy.includes(strat as "Acquisitions" | "Development")) return false;
       if (assetClass && it.onlyAssetClasses && !it.onlyAssetClasses.includes(assetClass)) return false;
       if (assetClass && it.excludeAssetClasses?.includes(assetClass)) return false;
-      if (opts.unlevered && DEBT_ITEMS.has(it.key)) return false; // no senior debt, nothing to ask about it
+      if (opts.unlevered && DEBT_ITEMS.has(it.key)) return false; // total debt is zero: nothing to ask about a loan
       return true;
     }),
   );
@@ -132,7 +136,12 @@ export type DealLikeForChecklist = {
   landValueEntitled?: number | null;
   entitlementBudget?: number | null;
   breakGroundDate?: string | null;
+  verticalCost?: number | null;
+  verticalDebt?: number | null;
+  verticalDebtTerms?: string | null;
+  deliveryDate?: string | null;
   unlevered?: boolean | null;
+  totalDebt?: number | null;
   details?: Record<string, string | null> | string | null;
 };
 
@@ -222,6 +231,12 @@ export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): stri
       return [deal.entitlementPhase, deal.entitlementOutstanding].filter(Boolean).join("; ") || null; // one ask covers the phase and what is still outstanding
     case "breakGroundDate":
       return deal.breakGroundDate ?? null;
+    case "verticalCost":
+      return deal.verticalCost != null ? `$${deal.verticalCost.toLocaleString("en-US")}` : null;
+    case "verticalDebt":
+      return deal.verticalDebt != null ? [`$${deal.verticalDebt.toLocaleString("en-US")}`, deal.verticalDebtTerms].filter(Boolean).join(", ") : deal.verticalDebtTerms ?? null;
+    case "deliveryDate":
+      return deal.deliveryDate ?? null;
     case "entitlementOutstanding":
       return deal.entitlementOutstanding ?? null;
     case "entitlementRisks":
@@ -238,18 +253,18 @@ export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): stri
 }
 
 export function missingFor(deal: DealLikeForChecklist): ChecklistItem[] {
-  return applicableItems(deal.strategy, deal.assetClass, { unlevered: deal.unlevered }).filter((it) => !answerFor(it, deal));
+  return applicableItems(deal.strategy, deal.assetClass, { unlevered: deal.unlevered || deal.totalDebt === 0 }).filter((it) => !answerFor(it, deal));
 }
 
 export function completeness(deal: DealLikeForChecklist) {
-  const items = applicableItems(deal.strategy, deal.assetClass, { unlevered: deal.unlevered });
+  const items = applicableItems(deal.strategy, deal.assetClass, { unlevered: deal.unlevered || deal.totalDebt === 0 });
   const answered = items.filter((it) => answerFor(it, deal)).length;
   return { answered, total: items.length };
 }
 
 /** Bulleted facts block for templates ({{deal.facts}}): every answered applicable item. */
 export function factsBlock(deal: DealLikeForChecklist): string {
-  return applicableItems(deal.strategy, deal.assetClass, { unlevered: deal.unlevered })
+  return applicableItems(deal.strategy, deal.assetClass, { unlevered: deal.unlevered || deal.totalDebt === 0 })
     .map((it) => {
       const a = answerFor(it, deal);
       if (!a) return null;

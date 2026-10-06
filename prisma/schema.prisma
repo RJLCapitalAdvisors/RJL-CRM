@@ -214,6 +214,12 @@ model Deal {
   landValueEntitled      Float?   // value once entitled
   entitlementBudget      Float?   // total entitlement budget
   breakGroundDate        String?  // when construction starts once entitled ("Q3 2027"); the first line of the use's metrics
+  // the vertical construction behind the land (Jonathan, Oct 6, 2026): the hotel presented as a hotel deal; units, squareFeet, yieldOnCost, irr and equityMultiple describe it on a land ticket
+  verticalCost           Float?   // total development cost of the build
+  verticalDebt           Float?   // construction loan
+  verticalDebtTerms      String?  // its terms, as text
+  verticalHold           String?  // hold period of the built asset
+  deliveryDate           String?  // when it opens
   unlevered              Boolean  @default(false) // no senior debt in the capitalization: the debt terms collapse
   units               Int?
   squareFeet          Float?

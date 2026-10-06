@@ -188,7 +188,7 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   }
   const core: Record<string, unknown> = {};
   // underwriting from a freshly attached Excel model replaces what an OM or deck said earlier; narrative only fills blanks
-  const FROM_MODEL = new Set(["landValueCurrent", "landValueEntitled", "entitlementBudget", "purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "irr", "equityMultiple", "yieldOnCost", "capRateT12", "capRateY1", "cashOnCash", "units", "squareFeet", "occupancy", "interestRate", "rateIndex", "rateSpreadBps", "loanTerm", "holdPeriod", "expectedClose", "unitMix", "yearBuilt"]);
+  const FROM_MODEL = new Set(["landValueCurrent", "landValueEntitled", "entitlementBudget", "verticalCost", "verticalDebt", "purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "irr", "equityMultiple", "yieldOnCost", "capRateT12", "capRateY1", "cashOnCash", "units", "squareFeet", "occupancy", "interestRate", "rateIndex", "rateSpreadBps", "loanTerm", "holdPeriod", "expectedClose", "unitMix", "yearBuilt"]);
   const same = (a: unknown, b: unknown) => (typeof a === "number" && typeof b === "number" ? Math.abs(a - b) < 1e-6 : String(a ?? "").trim() === String(b ?? "").trim());
   const maybe = (k: keyof typeof deal, v: unknown) => {
     if ((opts.overwrite || (model && FROM_MODEL.has(k as string))) && v != null && v !== "" && !same(deal[k], v)) {
@@ -215,6 +215,7 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   maybe("sponsorExperience", d.sponsorExperience); maybe("expectedClose", (d as { expectedClose?: string | null }).expectedClose ?? null);
   maybe("entitledFor", d.entitledFor); maybe("entitlementPhase", d.entitlementPhase); maybe("entitlementOutstanding", d.entitlementOutstanding); maybe("entitlementRisks", d.entitlementRisks);
   maybe("landValueCurrent", d.landValueCurrent); maybe("landValueEntitled", d.landValueEntitled); maybe("entitlementBudget", d.entitlementBudget); maybe("breakGroundDate", d.breakGroundDate);
+  maybe("verticalCost", d.verticalCost); maybe("verticalDebt", d.verticalDebt); maybe("verticalDebtTerms", d.verticalDebtTerms); maybe("verticalHold", d.verticalHold); maybe("deliveryDate", d.deliveryDate);
   if (d.unlevered === true && !deal.unlevered) { core.unlevered = true; core.totalDebt = 0; filled++; }
   maybe("summary", d.summary); maybe("propertyAddress", d.propertyAddress); maybe("city", d.city); maybe("state", d.state); maybe("totalEquity", d.totalEquity);
   if (opts.overwrite) { maybe("assetClass", d.assetClass); maybe("strategy", d.strategy); maybe("executionType", d.executionType); maybe("requestType", d.requestType); maybe("projectedSellout", d.projectedSellout); }

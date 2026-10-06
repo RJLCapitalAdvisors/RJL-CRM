@@ -72,6 +72,14 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.entitledFor", label: "Entitled for (asset class, land)" },
   { key: "deal.entitledUse", label: "The use as a heading word: \"Hotel\" for Hospitality (land)" },
   { key: "deal.breakGroundDate", label: "Break ground date (land)" },
+  { key: "deal.deliveryDate", label: "Expected delivery of the built project (land)" },
+  { key: "deal.verticalCost", label: "Total development cost of the vertical build ($, land)" },
+  { key: "deal.verticalCostPerKey", label: "Development cost per key / unit (computed, land)" },
+  { key: "deal.verticalCostPerFoot", label: "Development cost per SF (computed, land)" },
+  { key: "deal.verticalDebt", label: "Construction loan ($, land)" },
+  { key: "deal.verticalDebtTerms", label: "Construction loan terms (land)" },
+  { key: "deal.verticalHold", label: "Hold period of the built asset (land)" },
+  { key: "deal.landBudget", label: "Total entitlement budget including the land ($, land)" },
   { key: "deal.entitlementPhase", label: "Current entitlement phase (land)" },
   { key: "deal.entitlementOutstanding", label: "Outstanding entitlement items (land)" },
   { key: "deal.entitlementRisks", label: "Entitlement risks as of today (land)" },
@@ -105,7 +113,7 @@ function fmt(key: string, v: unknown): string {
   if (key === "deal.summary" && typeof v === "string") return cleanBusinessPlan(v) ?? ""; // the business plan never carries fielded facts, however old the ticket
   if (v == null || v === "") return "";
   if (key === "deal.strategy" && v === "Acquisitions") return "Acquisition"; // "Multifamily Acquisition Opportunity in …" (Jonathan, Oct 1, 2026)
-  if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization", "deal.projectedSellout", "deal.selloutPerUnit", "deal.landValueCurrent", "deal.landValueEntitled", "deal.entitlementBudget"].includes(key)) return usd(Number(v));
+  if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization", "deal.projectedSellout", "deal.selloutPerUnit", "deal.landValueCurrent", "deal.landValueEntitled", "deal.entitlementBudget", "deal.verticalCost", "deal.verticalDebt"].includes(key)) return usd(Number(v));
   if (key === "deal.unlevered") return v === true ? "Unlevered" : "";
   if (key === "deal.selloutPerFoot") return `${Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   if (["deal.ltv", "deal.ltc", "deal.occupancy", "deal.irr", "deal.yieldOnCost", "deal.capRateY1", "deal.capRateT12", "deal.cashOnCash"].includes(key)) return `${v}%`;
@@ -121,6 +129,14 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "deal.landMetrics") return ctx.deal ? landMetricsHtml(ctx.deal) : "";
   if (path === "deal.entitledUse") return ctx.deal ? entitledUse(ctx.deal) ?? "" : "";
   if (path === "deal.dealMetrics") return ctx.deal ? dealMetricsListHtml(ctx.deal) : "";
+  if (["deal.verticalCostPerKey", "deal.verticalCostPerFoot", "deal.landBudget"].includes(path)) {
+    const d = ctx.deal ?? {};
+    const cost = typeof d.verticalCost === "number" ? d.verticalCost : null;
+    if (path === "deal.verticalCostPerKey") return cost && typeof d.units === "number" && d.units ? usd(cost / d.units) : "";
+    if (path === "deal.verticalCostPerFoot") return cost && typeof d.squareFeet === "number" && d.squareFeet ? usd(cost / d.squareFeet) : "";
+    const budget = typeof d.entitlementBudget === "number" ? d.entitlementBudget : typeof d.totalCapitalization === "number" ? d.totalCapitalization : null;
+    return budget ? usd(budget) : "";
+  }
   if (["deal.landValuePerAcre", "deal.entitledValuePerAcre", "deal.valueUplift"].includes(path)) {
     const d = ctx.deal ?? {};
     const acres = Number(parseDetails(d.details).acres ?? "") || null;

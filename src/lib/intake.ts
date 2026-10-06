@@ -66,6 +66,11 @@ export const ExtractedDealSchema = z.object({
   landValueEntitled: z.number().nullable(),
   entitlementBudget: z.number().nullable(),
   breakGroundDate: z.string().nullable(),
+  verticalCost: z.number().nullable(),
+  verticalDebt: z.number().nullable(),
+  verticalDebtTerms: z.string().nullable(),
+  verticalHold: z.string().nullable(),
+  deliveryDate: z.string().nullable(),
   unlevered: z.boolean().nullable(),
   contactName: z.string().nullable().describe("Name of the person who sent the deal"),
   contactEmail: z.string().nullable(),
@@ -80,7 +85,7 @@ export const EMPTY: ExtractedDeal = {
   details: {} as ExtractedDeal["details"],
   units: null, squareFeet: null, yearBuilt: null, unitMix: null, totalCapitalization: null, totalDebt: null, executionType: null, interestRate: null, rateIndex: null, rateSpreadBps: null,
   lenderType: null, irr: null, capRateT12: null, capRateY1: null, yieldOnCost: null, cashOnCash: null, projectedSellout: null, selloutPerUnit: null, selloutPerFoot: null, holdPeriod: null, expectedClose: null, amortization: null,
-  entitledFor: null, entitlementPhase: null, entitlementOutstanding: null, entitlementRisks: null, landValueCurrent: null, landValueEntitled: null, entitlementBudget: null, breakGroundDate: null, unlevered: null,
+  entitledFor: null, entitlementPhase: null, entitlementOutstanding: null, entitlementRisks: null, landValueCurrent: null, landValueEntitled: null, entitlementBudget: null, breakGroundDate: null, verticalCost: null, verticalDebt: null, verticalDebtTerms: null, verticalHold: null, deliveryDate: null, unlevered: null,
   contactName: null, contactEmail: null, confidenceNotes: null,
 };
 
@@ -162,8 +167,13 @@ const claudeOutput = () => z.object({
   entitlementRisks: str("Land deals only: the entitlement risks as of today (opposition, zoning or plan changes, environmental, utilities and access, timing), as the sponsor describes them."),
   landValueCurrent: str("Land deals only: the as-is value of the unentitled land today in US dollars, digits only (appraisal, broker opinion or recent purchase price)."),
   landValueEntitled: str("Land deals only: the value of the land once fully entitled in US dollars, digits only."),
-  entitlementBudget: str("Land deals only: the total entitlement budget (consultants, legal, fees, studies, carry) in US dollars, digits only."),
+  entitlementBudget: str("Land deals only: the total entitlement budget INCLUDING the land price (land plus consultants, legal, fees, studies, carry), in US dollars, digits only; it is the land deal's total capitalization."),
   breakGroundDate: str("Land deals only: when construction starts once the land is entitled, as 'Month Year' or 'Q# Year'."),
+  verticalCost: str("Land deals only: the all-in cost of the vertical build once entitled (the whole project's total development cost from the model), US dollars, digits only. On a land deal totalCapitalization is the land budget (land price plus entitlement budget), never this figure."),
+  verticalDebt: str("Land deals only: the construction loan the build is underwritten with, US dollars, digits only. On a land deal totalDebt is only debt on the land itself today (usually 0), never the construction loan."),
+  verticalDebtTerms: str("Land deals only: the construction loan's terms in one line (LTC, rate, term, amortization)."),
+  verticalHold: z.enum([...DEAL_HOLD_PERIODS, ""]).describe("Land deals only: the hold period of the built asset, snapped to the closest option."),
+  deliveryDate: str("Land deals only: when the built project opens or delivers, as 'Month Year' or 'Q# Year'."),
   unlevered: str("yes when the capitalization carries no senior debt (an all-equity or pref-only deal); otherwise empty."),
   contactName: str("Name of the person who sent the deal."),
   contactEmail: str("Email of the person who sent the deal."),
@@ -192,7 +202,7 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     capRateT12: n(o.capRateT12), capRateY1: n(o.capRateY1), yieldOnCost: n(o.yieldOnCost), cashOnCash: n(o.cashOnCash), projectedSellout: n(o.projectedSellout), selloutPerUnit: n(o.selloutPerUnit), selloutPerFoot: n(o.selloutPerFoot), holdPeriod: t(o.holdPeriod),
     expectedClose: t(o.expectedClose), amortization: t(o.amortization),
     entitledFor: assetClassNamed(o.entitledFor), entitlementPhase: t(o.entitlementPhase), entitlementOutstanding: t(o.entitlementOutstanding), entitlementRisks: t(o.entitlementRisks),
-    landValueCurrent: n(o.landValueCurrent), landValueEntitled: n(o.landValueEntitled), entitlementBudget: n(o.entitlementBudget), breakGroundDate: t(o.breakGroundDate), unlevered: /^y/i.test(o.unlevered.trim()) ? true : null,
+    landValueCurrent: n(o.landValueCurrent), landValueEntitled: n(o.landValueEntitled), entitlementBudget: n(o.entitlementBudget), breakGroundDate: t(o.breakGroundDate), verticalCost: n(o.verticalCost), verticalDebt: n(o.verticalDebt), verticalDebtTerms: t(o.verticalDebtTerms), verticalHold: t(o.verticalHold), deliveryDate: t(o.deliveryDate), unlevered: /^y/i.test(o.unlevered.trim()) ? true : null,
   };
   // an operating building is never a development, whatever the renovation budget says
   const existingBuilding = (out.occupancy != null && out.occupancy > 0) || (out.capRateT12 != null && out.capRateT12 > 0) || (out.yearBuilt != null && /\b(19\d\d|20[01]\d|202[0-4])\b/.test(String(out.yearBuilt)));
@@ -290,17 +300,22 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
     out.yearBuilt = null;
     out.capRateT12 = null;
     out.capRateY1 = null;
-    out.yieldOnCost = null;
     out.cashOnCash = null;
-    out.units = null;
-    out.squareFeet = null;
-    out.unitMix = null;
+    // units, square feet and yield on cost describe the vertical build; the capitalization is the land budget (land price + entitlement budget)
+    const landBudget = out.entitlementBudget ?? out.purchasePrice ?? null; // the total entitlement budget includes the land
+    if (out.totalCapitalization && landBudget && out.totalCapitalization > landBudget * 1.5 && out.verticalCost == null) out.verticalCost = out.totalCapitalization; // the model's total cost is the build
+    if (landBudget) out.totalCapitalization = landBudget;
+    if (out.totalDebt && landBudget && out.totalDebt > landBudget && out.verticalDebt == null) { out.verticalDebt = out.totalDebt; out.totalDebt = 0; } // a loan bigger than the land is the construction loan
+    if (out.totalDebt == null && out.verticalDebt != null) out.totalDebt = 0;
     if (out.landValueCurrent == null && out.purchasePrice) out.landValueCurrent = out.purchasePrice;
     if (!out.entitledFor) out.entitledFor = entitledUseFromText([out.propertyName, out.summary, out.details?.entitledUnderwriting, out.details?.businessPlan].filter(Boolean).join(" "));
-    if (out.totalDebt && out.landValueCurrent) out.ltv = pct(out.totalDebt, out.landValueCurrent);
+    out.ltv = out.totalDebt && out.landValueCurrent ? pct(out.totalDebt, out.landValueCurrent) : null;
+    out.ltc = out.totalDebt && out.totalCapitalization ? pct(out.totalDebt, out.totalCapitalization) : null;
+    if (out.totalCapitalization && out.totalDebt != null) out.totalEquity = out.totalCapitalization - out.totalDebt;
   }
   // unlevered: no senior debt, the debt terms are empty
-  if (out.unlevered === true) {
+  if (out.unlevered === true || out.totalDebt === 0) {
+    out.unlevered = true;
     out.totalDebt = 0;
     out.ltv = null;
     out.ltc = null;
