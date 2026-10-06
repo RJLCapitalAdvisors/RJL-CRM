@@ -69,8 +69,10 @@ export function intro(d: D): string {
 
   // Physical description, built from whatever exists.
   const facts: string[] = [];
-  if (sf) facts.push(`${dev ? "will span" : "spans"} ${sf.toLocaleString("en-US")} square feet`);
-  if (count && p.countLabel) facts.push(`${dev ? "will consist of" : "consists of"} ${count.toLocaleString("en-US")} ${count === 1 ? per : p.countLabel.toLowerCase()}`);
+  // an existing asset always says where it stands today, right after its size (Jonathan, Oct 6, 2026)
+  const occ = !dev && typeof d.occupancy === "number" ? ` (currently ${d.occupancy}% occupied)` : "";
+  if (sf) facts.push(`${dev ? "will span" : "spans"} ${sf.toLocaleString("en-US")} square feet${count && p.countLabel ? "" : occ}`);
+  if (count && p.countLabel) facts.push(`${dev ? "will consist of" : "consists of"} ${count.toLocaleString("en-US")} ${count === 1 ? per : p.countLabel.toLowerCase()}${occ}`);
   if (acres) facts.push(`${dev ? "will sit" : "sits"} on ${acres} acres of land`);
   let second = "";
   if (facts.length) {

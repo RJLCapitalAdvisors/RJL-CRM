@@ -33,6 +33,7 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.loanTerm", label: "Loan term" },
   { key: "deal.equityMultiple", label: "Equity multiple" },
   { key: "deal.occupancy", label: "Occupancy %" },
+  { key: "deal.occupancyNote", label: "\" (currently 91% occupied)\" after the unit count, blank when no occupancy is on the ticket" },
   { key: "deal.executionType", label: "Execution type (JV, Pref, Senior Debt…)" },
   { key: "deal.totalDebt", label: "Total debt ($)" },
   { key: "deal.totalCapitalization", label: "Total capitalization ($)" },
@@ -127,6 +128,8 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "openingLine") return ctx.openingLine ?? "";
   if (path === "deal.facts") return ctx.deal ? factsBlock(ctx.deal as DealLikeForChecklist) : "";
   if (path === "deal.landMetrics") return ctx.deal ? landMetricsHtml(ctx.deal) : "";
+  // the intro always says where an existing asset stands today (Jonathan, Oct 6, 2026): "consists of 358 units (currently 91% occupied)"
+  if (path === "deal.occupancyNote") { const o = ctx.deal?.occupancy; return typeof o === "number" && ctx.deal?.strategy !== "Development" ? ` (currently ${o}% occupied)` : ""; }
   if (path === "deal.entitledUse") return ctx.deal ? entitledUse(ctx.deal) ?? "" : "";
   if (path === "deal.dealMetrics") return ctx.deal ? dealMetricsListHtml(ctx.deal) : "";
   if (["deal.verticalCostPerKey", "deal.verticalCostPerFoot", "deal.landBudget"].includes(path)) {
