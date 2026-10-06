@@ -106,8 +106,43 @@ export function claudeConfigured() {
 // The API limits structured-output schemas to 16 nullable/union fields, so Claude returns plain
 // strings ("" = unknown) and we convert to the typed ExtractedDeal afterwards.
 const str = (desc: string) => z.string().describe(desc + " Empty string if not stated.");
-// built when called, so it carries the Required Items List as Jonathan last edited it
-const claudeOutput = () => z.object({
+// built when called, so it carries the Required Items List as Jonathan last edited it, and only the items that apply to the
+// deal in hand (a first, tiny call classifies the asset class and strategy): the API refuses a grammar that carries everything
+export type ExtractScope = { assetClass: string | null; strategy: string | null };
+const LAND_FIELDS = (scope: ExtractScope) =>
+  scope.assetClass === "Land"
+    ? {
+        entitledFor: str(`Land deals only: the asset class the land is being entitled for, written as one of: ${ASSET_CLASSES.filter((a) => a !== "Land").join(", ")}.`),
+        entitlementPhase: str("Land deals only: where the entitlement stands today (pre-application, application filed, hearings scheduled, approvals in hand, permits), one short line."),
+        entitlementOutstanding: str("Land deals only: the approvals, hearings, permits, studies or agreements still needed before the land is fully entitled."),
+        entitlementRisks: str("Land deals only: the entitlement risks as of today (opposition, zoning or plan changes, environmental, utilities and access, timing), as the sponsor describes them."),
+        landValueCurrent: str("Land deals only: the as-is value of the unentitled land today in US dollars, digits only (appraisal, broker opinion or recent purchase price)."),
+        landValueEntitled: str("Land deals only: the value of the land once fully entitled in US dollars, digits only."),
+        entitlementBudget: str("Land deals only: the total entitlement budget INCLUDING the land price (land plus consultants, legal, fees, studies, carry), in US dollars, digits only; it is the land deal's total capitalization."),
+        breakGroundDate: str("Land deals only: when construction starts once the land is entitled, as 'Month Year' or 'Q# Year'."),
+        verticalCost: str("Land deals only: the all-in cost of the vertical build once entitled (the whole project's total development cost from the model), US dollars, digits only. On a land deal totalCapitalization is the land budget (land price plus entitlement budget), never this figure."),
+        verticalDebt: str("Land deals only: the construction loan the build is underwritten with, US dollars, digits only. On a land deal totalDebt is only debt on the land itself today (usually 0), never the construction loan."),
+        verticalDebtTerms: str("Land deals only: the construction loan's terms in one line (LTC, rate, term, amortization)."),
+        verticalHold: str(`Land deals only: the hold period of the built asset, one of: ${DEAL_HOLD_PERIODS.join(", ")} (the closest).`),
+        deliveryDate: str("Land deals only: when the built project opens or delivers, as 'Month Year' or 'Q# Year'."),
+      }
+    : {};
+const detailItems = (scope: ExtractScope) => {
+  const all = uniqueChecklist().filter((it) => !it.core);
+  if (!scope.assetClass && !scope.strategy) return all.filter((it) => !it.onlyAssetClasses?.every((c) => c === "Land"));
+  const strat = scope.strategy ?? undefined;
+  return all.filter((it) => {
+    if (strat && !it.strategy.includes(strat as "Acquisitions" | "Development")) return false;
+    if (scope.assetClass && it.onlyAssetClasses && !it.onlyAssetClasses.includes(scope.assetClass)) return false;
+    if (scope.assetClass && it.excludeAssetClasses?.includes(scope.assetClass)) return false;
+    return true;
+  });
+};
+const classifyOutput = z.object({
+  assetClass: z.enum([...ASSET_CLASSES, ""]).describe("Asset class of the deal TODAY, or empty. Land when the capital is for buying, holding or entitling land before vertical construction (a land-stage recapitalization, pre-development or entitlement financing, approvals still to come), even when the plan is to build a hotel or apartments later: the building is what it will become, Land is what it is. A building under construction or standing is its own class."),
+  strategy: z.enum(["Acquisitions", "Development", ""]).describe("Development ONLY for ground-up / new construction or land being entitled; an existing operating building is Acquisitions."),
+});
+const claudeOutput = (scope: ExtractScope = { assetClass: null, strategy: null }) => z.object({
   sponsorName: str("Company sponsoring / acquiring the deal (not the broker or forwarder)."),
   propertyName: str("Property or deal name."),
   propertyAddress: str("Street address."),
@@ -121,8 +156,8 @@ const claudeOutput = () => z.object({
   totalEquity: str("Total equity in US dollars, digits only."),
   ltv: str("LTV percent as a number: total debt over purchase price (65). Never the LTC."),
   ltc: str("LTC percent as a number: total debt over total capitalization. Computed on its own from the model's numbers; almost never equal to the LTV."),
-  loanTerm: z.enum([...LOAN_TERMS, ""]).describe("Loan term, snapped to the closest option. Empty if not stated."),
-  amortization: z.enum([...AMORTIZATIONS, ""]).describe("Interest-only period / amortization, snapped to the closest option. Empty if not stated."),
+  loanTerm: str(`Loan term, one of: ${LOAN_TERMS.join(", ")} (the closest).`),
+  amortization: str(`Interest-only period / amortization, one of: ${AMORTIZATIONS.join(", ")} (the closest).`),
   expectedClose: str("Expected closing date or month as written (e.g. 'November 2026', 'Q1 2027', '45 days after PSA')."),
   equityMultiple: str("Projected equity multiple as a number (1.9)."),
   occupancy: str("Occupancy percent as a number (91)."),
@@ -131,8 +166,7 @@ const claudeOutput = () => z.object({
   summary: str("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), the value-add opportunity, notable physical attributes. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
   details: z.object(
     Object.fromEntries(
-      uniqueChecklist()
-        .filter((it) => !it.core)
+      detailItems(scope)
         .map((it) => [
           it.key,
           ENUM_DETAILS[it.key]
@@ -144,14 +178,14 @@ const claudeOutput = () => z.object({
   units: str("Number of units, keys (hotel) or beds (student housing), digits only."),
   squareFeet: str("Net rentable square feet (NRSF / rentable area / GLA for retail), digits only. Never gross building area, gross SF, land or site area, or lot size; if only a gross figure is given, leave this blank and say so in confidenceNotes."),
   yearBuilt: str("Year built or vintage range."),
-  unitMix: z.enum([...UNIT_MIXES, ""]).describe("Which bedroom types the property has, snapped to the closest option (counts and sizes do NOT go here). Empty if not stated."),
+  unitMix: str(`Which bedroom types the property has, one of: ${UNIT_MIXES.join(", ")} (the closest; counts and sizes do NOT go here).`),
   totalCapitalization: str("Total capitalization / total project cost in US dollars, digits only."),
   totalDebt: str("Total debt in US dollars, digits only."),
   executionType: z.enum(["JV Equity", "LP Equity", "Co-GP Equity", "Preferred Equity", "Senior Debt", "Mezz Debt", "Fund Investment", ""]).describe("Position in the capital stack being raised. Any equity raise that is the majority of total equity is JV Equity; LP Equity only for a minority slice."),
   interestRate: str("The senior debt's FIXED all-in rate as one number (\"6.1%\"). Empty when the loan is priced as a spread over an index: that goes in rateIndex and rateSpreadBps instead. Never a sentence, never the pref or mezz return, never two loans."),
   rateIndex: z.enum([...RATE_INDEXES, ""]).describe("When the senior debt is priced over an index (SOFR + 300, 275 bps over the 10 year treasury, prime + 1%): the index, one of the listed options (LIBOR counts as SOFR). Empty for a fixed rate or when no pricing is stated."),
   rateSpreadBps: z.number().nullable().describe("The spread over that index in basis points (SOFR + 3% is 300; 275 bps is 275). Null unless rateIndex is set."),
-  lenderType: z.enum([...LENDER_TYPES, ""]).describe("The kind of lender, one of the listed options, ONLY when the documents state it (a debt fund is \"(Debt Fund)\"; a bridge loan from a bank is \"(Bridge)\"; a bank loan is \"(Bank Execution)\"); never inferred. The lender's own name (BridgeInvest, WesBanco) goes in details.lender, never here."),
+  lenderType: str(`The kind of lender, one of: ${LENDER_TYPES.join(", ")}, ONLY when the documents state it (a debt fund is "(Debt Fund)"; a bridge loan from a bank is "(Bridge)"; a bank loan is "(Bank Execution)"); never inferred. The lender's own name (BridgeInvest, WesBanco) goes in details.lender, never here.`),
   irr: str("Projected IRR percent as a number (18.4)."),
   capRateT12: str("T12 / trailing / going-in cap rate percent as a number."),
   capRateY1: str("Year 1 cap rate percent as a number."),
@@ -160,26 +194,34 @@ const claudeOutput = () => z.object({
   projectedSellout: str("Condo / for-sale developments only: total projected gross sellout of all units in US dollars, digits only (sum of projected unit sale prices)."),
   selloutPerUnit: str("Condo only: average projected sale price per unit, dollars, digits only."),
   selloutPerFoot: str("Condo only: projected sale price per sellable square foot, dollars, digits only."),
-  holdPeriod: z.enum([...DEAL_HOLD_PERIODS, ""]).describe("Hold period snapped to the closest option (a 3.2-year hold is '3 year'). Empty if not stated."),
-  entitledFor: str(`Land deals only: the asset class the land is being entitled for, written as one of: ${ASSET_CLASSES.filter((a) => a !== "Land").join(", ")}.`),
-  entitlementPhase: str("Land deals only: where the entitlement stands today (pre-application, application filed, hearings scheduled, approvals in hand, permits), one short line."),
-  entitlementOutstanding: str("Land deals only: the approvals, hearings, permits, studies or agreements still needed before the land is fully entitled."),
-  entitlementRisks: str("Land deals only: the entitlement risks as of today (opposition, zoning or plan changes, environmental, utilities and access, timing), as the sponsor describes them."),
-  landValueCurrent: str("Land deals only: the as-is value of the unentitled land today in US dollars, digits only (appraisal, broker opinion or recent purchase price)."),
-  landValueEntitled: str("Land deals only: the value of the land once fully entitled in US dollars, digits only."),
-  entitlementBudget: str("Land deals only: the total entitlement budget INCLUDING the land price (land plus consultants, legal, fees, studies, carry), in US dollars, digits only; it is the land deal's total capitalization."),
-  breakGroundDate: str("Land deals only: when construction starts once the land is entitled, as 'Month Year' or 'Q# Year'."),
-  verticalCost: str("Land deals only: the all-in cost of the vertical build once entitled (the whole project's total development cost from the model), US dollars, digits only. On a land deal totalCapitalization is the land budget (land price plus entitlement budget), never this figure."),
-  verticalDebt: str("Land deals only: the construction loan the build is underwritten with, US dollars, digits only. On a land deal totalDebt is only debt on the land itself today (usually 0), never the construction loan."),
-  verticalDebtTerms: str("Land deals only: the construction loan's terms in one line (LTC, rate, term, amortization)."),
-  verticalHold: z.enum([...DEAL_HOLD_PERIODS, ""]).describe("Land deals only: the hold period of the built asset, snapped to the closest option."),
-  deliveryDate: str("Land deals only: when the built project opens or delivers, as 'Month Year' or 'Q# Year'."),
+  holdPeriod: str(`Hold period, one of: ${DEAL_HOLD_PERIODS.join(", ")} (the closest; a 3.2-year hold is '3 year').`),
+  ...LAND_FIELDS(scope),
   unlevered: str("yes when the capitalization carries no senior debt (an all-equity or pref-only deal); otherwise empty."),
   contactName: str("Name of the person who sent the deal."),
   contactEmail: str("Email of the person who sent the deal."),
   confidenceNotes: str("Anything ambiguous, inferred, left blank for lack of a source, or where a special rule (pad sale) was applied."),
 });
-type ClaudeOutput = z.infer<ReturnType<typeof claudeOutput>>;
+type ClaudeOutput = z.infer<ReturnType<typeof claudeOutput>> & Partial<Record<"entitledFor" | "entitlementPhase" | "entitlementOutstanding" | "entitlementRisks" | "landValueCurrent" | "landValueEntitled" | "entitlementBudget" | "breakGroundDate" | "verticalCost" | "verticalDebt" | "verticalDebtTerms" | "verticalHold" | "deliveryDate", string>>;
+
+/** A free-text value snapped to the closest listed option: exact match first, then the option sharing the most words or the same leading number; null when nothing fits. */
+export function snapTo(options: readonly string[], raw: string | null | undefined): string | null {
+  const t = (raw ?? "").trim().toLowerCase();
+  if (!t) return null;
+  const exact = options.find((o) => o.toLowerCase() === t);
+  if (exact) return exact;
+  const words = (x: string) => x.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/s+/).filter(Boolean);
+  const tw = new Set(words(t));
+  const num = t.match(/d+(?:.d+)?/)?.[0];
+  let best: string | null = null, bestScore = 0;
+  for (const o of options) {
+    const ow = words(o);
+    let score = ow.filter((w) => tw.has(w)).length;
+    if (num && ow.includes(num)) score += 2;
+    if (num && /year/.test(t) && o.toLowerCase().startsWith(String(Math.round(Number(num))) + " year")) score += 2;
+    if (score > bestScore) { bestScore = score; best = o; }
+  }
+  return bestScore > 0 ? best : null;
+}
 
 function fromClaude(o: ClaudeOutput): ExtractedDeal {
   const n = (v: string) => {
@@ -194,15 +236,15 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     sponsorName: t(o.sponsorName), propertyName: t(o.propertyName), propertyAddress: t(o.propertyAddress), city: t(o.city),
     state: t(o.state)?.toUpperCase() ?? null, assetClass: t(o.assetClass), strategy: (t(o.strategy) as ExtractedDeal["strategy"]) ?? null,
     requestType: (t(o.requestType) as ExtractedDeal["requestType"]) ?? null, requestedAmount: n(o.requestedAmount), purchasePrice: n(o.purchasePrice),
-    totalEquity: n(o.totalEquity), ltv: n(o.ltv), ltc: n(o.ltc), loanTerm: t(o.loanTerm), equityMultiple: n(o.equityMultiple), occupancy: n(o.occupancy),
+    totalEquity: n(o.totalEquity), ltv: n(o.ltv), ltc: n(o.ltc), loanTerm: snapTo(LOAN_TERMS, o.loanTerm), equityMultiple: n(o.equityMultiple), occupancy: n(o.occupancy),
     onMarket: o.onMarket === "on" ? true : o.onMarket === "off" ? false : null, sponsorExperience: t(o.sponsorExperience), summary: cleanBusinessPlan(t(o.summary)),
     details, contactName: t(o.contactName), contactEmail: t(o.contactEmail), confidenceNotes: t(o.confidenceNotes),
-    units: n(o.units), squareFeet: n(o.squareFeet), yearBuilt: t(o.yearBuilt), unitMix: t(o.unitMix), totalCapitalization: n(o.totalCapitalization),
-    totalDebt: n(o.totalDebt), executionType: t(o.executionType), interestRate: cleanInterestRate(t(o.interestRate)), rateIndex: t(o.rateIndex) || null, rateSpreadBps: o.rateSpreadBps == null ? null : Math.round(Number(o.rateSpreadBps)), lenderType: t(o.lenderType), irr: n(o.irr),
-    capRateT12: n(o.capRateT12), capRateY1: n(o.capRateY1), yieldOnCost: n(o.yieldOnCost), cashOnCash: n(o.cashOnCash), projectedSellout: n(o.projectedSellout), selloutPerUnit: n(o.selloutPerUnit), selloutPerFoot: n(o.selloutPerFoot), holdPeriod: t(o.holdPeriod),
-    expectedClose: t(o.expectedClose), amortization: t(o.amortization),
-    entitledFor: assetClassNamed(o.entitledFor), entitlementPhase: t(o.entitlementPhase), entitlementOutstanding: t(o.entitlementOutstanding), entitlementRisks: t(o.entitlementRisks),
-    landValueCurrent: n(o.landValueCurrent), landValueEntitled: n(o.landValueEntitled), entitlementBudget: n(o.entitlementBudget), breakGroundDate: t(o.breakGroundDate), verticalCost: n(o.verticalCost), verticalDebt: n(o.verticalDebt), verticalDebtTerms: t(o.verticalDebtTerms), verticalHold: t(o.verticalHold), deliveryDate: t(o.deliveryDate), unlevered: /^y/i.test(o.unlevered.trim()) ? true : null,
+    units: n(o.units), squareFeet: n(o.squareFeet), yearBuilt: t(o.yearBuilt), unitMix: snapTo(UNIT_MIXES, o.unitMix), totalCapitalization: n(o.totalCapitalization),
+    totalDebt: n(o.totalDebt), executionType: t(o.executionType), interestRate: cleanInterestRate(t(o.interestRate)), rateIndex: t(o.rateIndex) || null, rateSpreadBps: o.rateSpreadBps == null ? null : Math.round(Number(o.rateSpreadBps)), lenderType: snapTo(LENDER_TYPES, o.lenderType), irr: n(o.irr),
+    capRateT12: n(o.capRateT12), capRateY1: n(o.capRateY1), yieldOnCost: n(o.yieldOnCost), cashOnCash: n(o.cashOnCash), projectedSellout: n(o.projectedSellout), selloutPerUnit: n(o.selloutPerUnit), selloutPerFoot: n(o.selloutPerFoot), holdPeriod: snapTo(DEAL_HOLD_PERIODS, o.holdPeriod),
+    expectedClose: t(o.expectedClose), amortization: snapTo(AMORTIZATIONS, o.amortization),
+    entitledFor: assetClassNamed(o.entitledFor ?? ""), entitlementPhase: t(o.entitlementPhase ?? ""), entitlementOutstanding: t(o.entitlementOutstanding ?? ""), entitlementRisks: t(o.entitlementRisks ?? ""),
+    landValueCurrent: n(o.landValueCurrent ?? ""), landValueEntitled: n(o.landValueEntitled ?? ""), entitlementBudget: n(o.entitlementBudget ?? ""), breakGroundDate: t(o.breakGroundDate ?? ""), verticalCost: n(o.verticalCost ?? ""), verticalDebt: n(o.verticalDebt ?? ""), verticalDebtTerms: t(o.verticalDebtTerms ?? ""), verticalHold: snapTo(DEAL_HOLD_PERIODS, o.verticalHold ?? ""), deliveryDate: t(o.deliveryDate ?? ""), unlevered: /^y/i.test(o.unlevered.trim()) ? true : null,
   };
   // an operating building is never a development, whatever the renovation budget says
   const existingBuilding = (out.occupancy != null && out.occupancy > 0) || (out.capRateT12 != null && out.capRateT12 > 0) || (out.yearBuilt != null && /\b(19\d\d|20[01]\d|202[0-4])\b/.test(String(out.yearBuilt)));
@@ -275,7 +317,8 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
   if (out.requestType === "Equity" && !out.executionType) out.executionType = "JV Equity";
   // Underwriting rule (Jonathan, Sep 15 and 16): the requested equity amount is 90% of the total equity in the deal, as a round number
   const equity = out.totalEquity ?? (out.totalCapitalization != null && out.totalDebt != null && out.totalCapitalization > out.totalDebt ? out.totalCapitalization - out.totalDebt : null);
-  if (out.requestType !== "Debt" && equity && equity > 0) {
+  // on land the equity is the entitlement budget (land included); until that budget is known the sponsor's stated pref stands (Cudjoe Key, Oct 6, 2026)
+  if (out.requestType !== "Debt" && equity && equity > 0 && !(out.assetClass === "Land" && out.entitlementBudget == null)) {
     out.requestedAmount = roundAsk(equity * 0.9);
     if (out.totalEquity == null) out.totalEquity = equity;
   } else if (out.requestType !== "Debt" && out.requestedAmount) {
@@ -358,20 +401,32 @@ function systemPrompt(rules: string[]): string {
   ].join("\n");
 }
 
-export async function extractWithClaude(rawText: string, subject?: string | null, attachments: string[] = []): Promise<ExtractedDeal> {
+export async function extractWithClaude(rawText: string, subject?: string | null, attachments: string[] = [], known: Partial<ExtractScope> = {}): Promise<ExtractedDeal> {
   await loadChecklist(); // the Required Items List as Jonathan last edited it
   const rules = await loadUnderwritingRules(); // Settings > Underwriting rules, as last saved
   const client = new Anthropic();
+  const content = `Subject: ${subject ?? ""}\nAttachments: ${attachments.length ? attachments.join(", ") : "(none)"}\n\n${rawText}`;
+  // first, what kind of deal this is, so the full schema carries only the fields that apply (Oct 6, 2026)
+  let scope: ExtractScope = { assetClass: known.assetClass ?? null, strategy: known.strategy ?? null };
+  if (!scope.assetClass) try {
+    const c = await client.messages.parse({ model: "claude-opus-5", max_tokens: 300, system: "You classify a commercial real estate deal from an email and its attachments. Answer only the two fields.", messages: [{ role: "user", content: content.slice(0, 80_000) }], output_config: { format: zodOutputFormat(classifyOutput) } });
+    if (c.parsed_output) scope = { assetClass: c.parsed_output.assetClass || null, strategy: scope.strategy ?? (c.parsed_output.strategy || null) };
+  } catch (e) {
+    console.error("intake classify failed, reading with the general schema:", String(e).slice(0, 160));
+  }
   const response = await client.messages.parse({
     model: "claude-opus-5",
     max_tokens: 16000,
     system: systemPrompt(rules),
-    messages: [{ role: "user", content: `Subject: ${subject ?? ""}\nAttachments: ${attachments.length ? attachments.join(", ") : "(none)"}\n\n${rawText}` }],
-    output_config: { format: zodOutputFormat(claudeOutput()) },
+    messages: [{ role: "user", content }],
+    output_config: { format: zodOutputFormat(claudeOutput(scope)) },
   });
   if (response.stop_reason === "refusal") throw new Error("Extraction was refused by the model");
   if (!response.parsed_output) throw new Error("Model returned no structured output");
-  return fromClaude(response.parsed_output);
+  const out = fromClaude(response.parsed_output as unknown as ClaudeOutput);
+  // a ticket we already know to be land keeps that class, whatever the documents call the building
+  if (known.assetClass) out.assetClass = known.assetClass;
+  return out;
 }
 
 // ---------- Heuristic fallback (no API key) ----------

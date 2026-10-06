@@ -272,16 +272,12 @@ function AqContactsSubnav() {
 /** Under Settings on the Israel and Acquisitions sides: Users (the settings page itself) and Data rules. Shows while you are on either page. */
 function SideSettingsSubnav({ base }: { base: string }) {
   const pathname = usePathname();
-  const israel = base.startsWith("/israel");
-  const onLists = israel && pathname.startsWith("/israel/required-items");
-  if (!pathname.startsWith(base) && !onLists) return null;
+  if (!pathname.startsWith(base)) return null;
   const onData = pathname.startsWith(base + "/data-rules");
   const onImport = pathname.startsWith(base + "/import-instructions");
   const items = [
-    { href: base, label: "Users", icon: Users, on: !onData && !onImport && !onLists },
+    { href: base, label: "Users", icon: Users, on: !onData && !onImport },
     { href: base + "/data-rules", label: "Data rules", icon: Table2, on: onData },
-    // RJL Israel (Jonathan, Oct 6, 2026): the items requested on any apartment, house or project submission, kept as lists
-    ...(israel ? [{ href: "/israel/required-items", label: "Items Needed Lists", icon: ListChecks, on: onLists }] : []),
     // Acquisitions only (Oct 5, 2026): the standing instructions every imported call list is read with
     ...(base.startsWith("/acquisitions") ? [{ href: base + "/import-instructions", label: "Import instructions", icon: BookOpen, on: onImport }] : []),
   ];

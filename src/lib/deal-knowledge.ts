@@ -172,7 +172,7 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   const model = (opts.attachments ?? []).find((n) => /\.(xlsx|xlsm|xls)$/i.test(n)) ?? (opts.modelAttached ? "the Excel model" : null);
   let d;
   try {
-    d = await extractWithClaude(rawText, subject, opts.attachments ?? []);
+    d = await extractWithClaude(rawText, subject, opts.attachments ?? [], { assetClass: deal.assetClass, strategy: deal.strategy });
   } catch {
     return none;
   }
