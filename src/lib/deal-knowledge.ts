@@ -150,7 +150,7 @@ export async function extractDealFacts(dealId: string, text: string, source: str
 /** Fill blanks on the ticket from a follow-up: checklist items and core fields the extractor can see. */
 export type MergeChange = { field: string; label: string; from: unknown; to: unknown };
 export type MergeResult = { filled: number; changes: MergeChange[]; model: string | null };
-const FIELD_LABELS: Record<string, string> = { purchasePrice: "Purchase price", totalCapitalization: "Total capitalization", totalDebt: "Total debt", requestedAmount: "Equity requested", irr: "IRR", equityMultiple: "Equity multiple", yieldOnCost: "Yield on cost", capRateT12: "T12 cap rate", capRateY1: "Year 1 cap rate", cashOnCash: "Cash on cash", units: "Units", squareFeet: "Square feet (NRSF)", occupancy: "Occupancy", interestRate: "Fixed rate", rateIndex: "Rate index", rateSpreadBps: "Spread (bps)", loanTerm: "Loan term", holdPeriod: "Hold period", expectedClose: "Expected close", unitMix: "Unit mix", yearBuilt: "Year built" };
+const FIELD_LABELS: Record<string, string> = { landValueCurrent: "Current land value", landValueEntitled: "Entitled land value", entitlementBudget: "Entitlement budget", entitledFor: "Entitled for", entitlementPhase: "Entitlement phase", purchasePrice: "Purchase price", totalCapitalization: "Total capitalization", totalDebt: "Total debt", requestedAmount: "Equity requested", irr: "IRR", equityMultiple: "Equity multiple", yieldOnCost: "Yield on cost", capRateT12: "T12 cap rate", capRateY1: "Year 1 cap rate", cashOnCash: "Cash on cash", units: "Units", squareFeet: "Square feet (NRSF)", occupancy: "Occupancy", interestRate: "Fixed rate", rateIndex: "Rate index", rateSpreadBps: "Spread (bps)", loanTerm: "Loan term", holdPeriod: "Hold period", expectedClose: "Expected close", unitMix: "Unit mix", yearBuilt: "Year built" };
 const showVal = (k: string, v: unknown) => (v == null || v === "" ? "blank" : ["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount"].includes(k) ? fmtMoney(Number(v)) : ["irr", "capRateT12", "capRateY1", "yieldOnCost", "cashOnCash", "occupancy", "interestRate"].includes(k) ? `${Number(v).toFixed(2)}%` : String(v));
 
 /**
@@ -188,7 +188,7 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   }
   const core: Record<string, unknown> = {};
   // underwriting from a freshly attached Excel model replaces what an OM or deck said earlier; narrative only fills blanks
-  const FROM_MODEL = new Set(["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "irr", "equityMultiple", "yieldOnCost", "capRateT12", "capRateY1", "cashOnCash", "units", "squareFeet", "occupancy", "interestRate", "rateIndex", "rateSpreadBps", "loanTerm", "holdPeriod", "expectedClose", "unitMix", "yearBuilt"]);
+  const FROM_MODEL = new Set(["landValueCurrent", "landValueEntitled", "entitlementBudget", "purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "irr", "equityMultiple", "yieldOnCost", "capRateT12", "capRateY1", "cashOnCash", "units", "squareFeet", "occupancy", "interestRate", "rateIndex", "rateSpreadBps", "loanTerm", "holdPeriod", "expectedClose", "unitMix", "yearBuilt"]);
   const same = (a: unknown, b: unknown) => (typeof a === "number" && typeof b === "number" ? Math.abs(a - b) < 1e-6 : String(a ?? "").trim() === String(b ?? "").trim());
   const maybe = (k: keyof typeof deal, v: unknown) => {
     if ((opts.overwrite || (model && FROM_MODEL.has(k as string))) && v != null && v !== "" && !same(deal[k], v)) {
@@ -213,6 +213,9 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   maybe("loanTerm", d.loanTerm); maybe("lenderType", d.lenderType); maybe("irr", d.irr); maybe("equityMultiple", d.equityMultiple);
   maybe("capRateT12", d.capRateT12); maybe("capRateY1", d.capRateY1); maybe("yieldOnCost", d.yieldOnCost); maybe("cashOnCash", d.cashOnCash); maybe("holdPeriod", d.holdPeriod);
   maybe("sponsorExperience", d.sponsorExperience); maybe("expectedClose", (d as { expectedClose?: string | null }).expectedClose ?? null);
+  maybe("entitledFor", d.entitledFor); maybe("entitlementPhase", d.entitlementPhase); maybe("entitlementOutstanding", d.entitlementOutstanding); maybe("entitlementRisks", d.entitlementRisks);
+  maybe("landValueCurrent", d.landValueCurrent); maybe("landValueEntitled", d.landValueEntitled); maybe("entitlementBudget", d.entitlementBudget);
+  if (d.unlevered === true && !deal.unlevered) { core.unlevered = true; core.totalDebt = 0; filled++; }
   maybe("summary", d.summary); maybe("propertyAddress", d.propertyAddress); maybe("city", d.city); maybe("state", d.state); maybe("totalEquity", d.totalEquity);
   if (opts.overwrite) { maybe("assetClass", d.assetClass); maybe("strategy", d.strategy); maybe("executionType", d.executionType); maybe("requestType", d.requestType); maybe("projectedSellout", d.projectedSellout); }
   const fileNames = (await prisma.dealFile.findMany({ where: { dealId }, select: { name: true } })).map((f) => f.name);
@@ -225,7 +228,8 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   if ("totalDebt" in core || "purchasePrice" in core || "totalCapitalization" in core) {
     core.ltc = pctOf(debt, cap);
     const sellout = (core.projectedSellout as number | undefined) ?? deal.projectedSellout;
-    core.ltv = isCondo(deal.assetClass) && sellout ? pctOf(debt, sellout) : deal.strategy === "Development" ? null : pctOf(debt, price); // a condo's LTV is on the gross sellout; a development has none
+    const landNow = (core.landValueCurrent as number | undefined) ?? deal.landValueCurrent;
+    core.ltv = deal.assetClass === "Land" && landNow ? pctOf(debt, landNow) : isCondo(deal.assetClass) && sellout ? pctOf(debt, sellout) : deal.strategy === "Development" ? null : pctOf(debt, price); // land: on the current land value; a condo's LTV is on the gross sellout; a development has none
   }
   await prisma.deal.update({ where: { id: dealId }, data: { ...core, details: JSON.stringify(reconciled) } });
   if (model && changes.length) {

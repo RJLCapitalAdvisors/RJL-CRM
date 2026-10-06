@@ -160,6 +160,15 @@ function dealDataFrom(d: ExtractedDeal, propertyName: string, sponsorCompanyId: 
       holdPeriod: d.holdPeriod,
       expectedClose: d.expectedClose,
       amortization: d.amortization,
+      // land entitlement (Jonathan, Oct 6, 2026)
+      entitledFor: d.entitledFor ?? null,
+      entitlementPhase: d.entitlementPhase ?? null,
+      entitlementOutstanding: d.entitlementOutstanding ?? null,
+      entitlementRisks: d.entitlementRisks ?? null,
+      landValueCurrent: d.landValueCurrent ?? null,
+      landValueEntitled: d.landValueEntitled ?? null,
+      entitlementBudget: d.entitlementBudget ?? null,
+      unlevered: d.unlevered === true,
       // LTV (debt over price) and LTC (debt over total capitalization) are separate figures; a development is quoted on cost
       ltc: d.ltc ?? (d.strategy === "Development" ? d.ltv : null),
       ltv: d.strategy === "Development" ? null : d.ltv,

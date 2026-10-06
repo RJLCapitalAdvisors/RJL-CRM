@@ -1,7 +1,7 @@
 import { US_STATES } from "@/lib/taxonomy";
 import { cleanBusinessPlan } from "@/lib/style";
 import { uniqueChecklist, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
-import { intro, metricsHtml, subjectLine, usd } from "@/lib/deal-copy";
+import { dealMetricsListHtml, intro, landMetricsHtml, metricsHtml, subjectLine, usd } from "@/lib/deal-copy";
 import { prefMetrics } from "@/lib/pref";
 import { rateNumber, rateText } from "@/lib/rates";
 
@@ -68,6 +68,22 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.stabilizedYieldLD", label: "Stabilized yield on last dollar %" },
   { key: "deal.basisLD", label: "Stabilized basis on last pref dollar (per foot | per unit on a condo)" },
   { key: "deal.facts", label: "Bulleted list of every answered checklist item" },
+  // land entitlement (Jonathan, Oct 6, 2026)
+  { key: "deal.entitledFor", label: "Entitled for (asset class, land)" },
+  { key: "deal.entitlementPhase", label: "Current entitlement phase (land)" },
+  { key: "deal.entitlementOutstanding", label: "Outstanding entitlement items (land)" },
+  { key: "deal.entitlementRisks", label: "Entitlement risks as of today (land)" },
+  { key: "deal.landValueCurrent", label: "Current value of the unentitled land ($)" },
+  { key: "deal.landValueEntitled", label: "Value of the land once entitled ($)" },
+  { key: "deal.entitlementBudget", label: "Total entitlement budget ($)" },
+  { key: "deal.landValuePerAcre", label: "Current land value per acre (computed)" },
+  { key: "deal.entitledValuePerAcre", label: "Entitled land value per acre (computed)" },
+  { key: "deal.valueUplift", label: "Entitled value over current value, e.g. \"2.40x\" (computed)" },
+  { key: "deal.prefLtvEntitled", label: "Pref LTV on entitled land value % (land)" },
+  { key: "deal.entitledCover", label: "Entitled value cover of the last dollar, e.g. \"1.80x\" (land)" },
+  { key: "deal.unlevered", label: "\"Unlevered\" when the deal carries no senior debt, else blank" },
+  { key: "deal.landMetrics", label: "Land Metrics bullet list: values, budget, sources and uses, the pref or senior loan request (land)" },
+  { key: "deal.dealMetrics", label: "Deal Metrics bullet list without the heading (land: the entitled plan, approvals, exit, returns)" },
   ...uniqueChecklist().filter((it) => !it.core).map((it) => ({ key: `deal.details.${it.key}`, label: it.label })),
   { key: "openingLine", label: "Personal opening line (set per recipient in deal outreach)" },
   { key: "sender.name", label: "Sender name" },
@@ -87,7 +103,8 @@ function fmt(key: string, v: unknown): string {
   if (key === "deal.summary" && typeof v === "string") return cleanBusinessPlan(v) ?? ""; // the business plan never carries fielded facts, however old the ticket
   if (v == null || v === "") return "";
   if (key === "deal.strategy" && v === "Acquisitions") return "Acquisition"; // "Multifamily Acquisition Opportunity in …" (Jonathan, Oct 1, 2026)
-  if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization", "deal.projectedSellout", "deal.selloutPerUnit"].includes(key)) return usd(Number(v));
+  if (["deal.requestedAmount", "deal.totalEquity", "deal.purchasePrice", "deal.totalDebt", "deal.totalCapitalization", "deal.projectedSellout", "deal.selloutPerUnit", "deal.landValueCurrent", "deal.landValueEntitled", "deal.entitlementBudget"].includes(key)) return usd(Number(v));
+  if (key === "deal.unlevered") return v === true ? "Unlevered" : "";
   if (key === "deal.selloutPerFoot") return `${Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   if (["deal.ltv", "deal.ltc", "deal.occupancy", "deal.irr", "deal.yieldOnCost", "deal.capRateY1", "deal.capRateT12", "deal.cashOnCash"].includes(key)) return `${v}%`;
   if (key === "deal.units" || key === "deal.squareFeet") return Number(v).toLocaleString("en-US");
@@ -99,13 +116,25 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "unsubscribeUrl") return ctx.unsubscribeUrl;
   if (path === "openingLine") return ctx.openingLine ?? "";
   if (path === "deal.facts") return ctx.deal ? factsBlock(ctx.deal as DealLikeForChecklist) : "";
-  if (["deal.lastDollar", "deal.prefLtc", "deal.prefLtv", "deal.goingInYieldLD", "deal.stabilizedYieldLD", "deal.basisLD"].includes(path)) {
+  if (path === "deal.landMetrics") return ctx.deal ? landMetricsHtml(ctx.deal) : "";
+  if (path === "deal.dealMetrics") return ctx.deal ? dealMetricsListHtml(ctx.deal) : "";
+  if (["deal.landValuePerAcre", "deal.entitledValuePerAcre", "deal.valueUplift"].includes(path)) {
+    const d = ctx.deal ?? {};
+    const acres = Number(parseDetails(d.details).acres ?? "") || null;
+    const now = typeof d.landValueCurrent === "number" ? d.landValueCurrent : null;
+    const ent = typeof d.landValueEntitled === "number" ? d.landValueEntitled : null;
+    if (path === "deal.landValuePerAcre") return now && acres ? usd(now / acres) : "";
+    if (path === "deal.entitledValuePerAcre") return ent && acres ? usd(ent / acres) : "";
+    return now && ent ? `${(ent / now).toFixed(2)}x` : "";
+  }
+  if (["deal.lastDollar", "deal.prefLtc", "deal.prefLtv", "deal.prefLtvEntitled", "deal.entitledCover", "deal.goingInYieldLD", "deal.stabilizedYieldLD", "deal.basisLD"].includes(path)) {
     if (!ctx.deal) return "";
     const pm = prefMetrics(ctx.deal);
     const k = path.slice(5) as keyof typeof pm;
     const v = pm[k];
     if (v == null || typeof v !== "number") return "";
     if (k === "lastDollar") return usd(v);
+    if (k === "entitledCover") return `${v.toFixed(2)}x`;
     if (k === "basisLD") return `${usd(v)} per ${pm.basisUnit}${pm.basisPerUnitLD ? ` | ${usd(pm.basisPerUnitLD)} per unit` : ""}`;
     return `${v.toFixed(2)}%`;
   }

@@ -57,6 +57,15 @@ export const ExtractedDealSchema = z.object({
   holdPeriod: z.string().nullable(),
   expectedClose: z.string().nullable(),
   amortization: z.string().nullable(),
+  // land entitlement (Jonathan, Oct 6, 2026)
+  entitledFor: z.string().nullable(),
+  entitlementPhase: z.string().nullable(),
+  entitlementOutstanding: z.string().nullable(),
+  entitlementRisks: z.string().nullable(),
+  landValueCurrent: z.number().nullable(),
+  landValueEntitled: z.number().nullable(),
+  entitlementBudget: z.number().nullable(),
+  unlevered: z.boolean().nullable(),
   contactName: z.string().nullable().describe("Name of the person who sent the deal"),
   contactEmail: z.string().nullable(),
   confidenceNotes: z.string().nullable().describe("Anything ambiguous or inferred"),
@@ -70,11 +79,12 @@ export const EMPTY: ExtractedDeal = {
   details: {} as ExtractedDeal["details"],
   units: null, squareFeet: null, yearBuilt: null, unitMix: null, totalCapitalization: null, totalDebt: null, executionType: null, interestRate: null, rateIndex: null, rateSpreadBps: null,
   lenderType: null, irr: null, capRateT12: null, capRateY1: null, yieldOnCost: null, cashOnCash: null, projectedSellout: null, selloutPerUnit: null, selloutPerFoot: null, holdPeriod: null, expectedClose: null, amortization: null,
+  entitledFor: null, entitlementPhase: null, entitlementOutstanding: null, entitlementRisks: null, landValueCurrent: null, landValueEntitled: null, entitlementBudget: null, unlevered: null,
   contactName: null, contactEmail: null, confidenceNotes: null,
 };
 
 export function toChecklistDeal(d: ExtractedDeal): DealLikeForChecklist {
-  return { strategy: d.strategy, assetClass: d.assetClass, occupancy: d.occupancy, summary: d.summary, sponsorExperience: d.sponsorExperience, onMarket: d.onMarket, ltv: d.ltv, loanTerm: d.loanTerm, amortization: d.amortization, expectedClose: d.expectedClose, purchasePrice: d.purchasePrice, yieldOnCost: d.yieldOnCost, projectedSellout: d.projectedSellout, selloutPerUnit: d.selloutPerUnit, selloutPerFoot: d.selloutPerFoot, unitMix: d.unitMix, details: d.details as Record<string, string | null> };
+  return { strategy: d.strategy, assetClass: d.assetClass, occupancy: d.occupancy, summary: d.summary, sponsorExperience: d.sponsorExperience, onMarket: d.onMarket, ltv: d.ltv, loanTerm: d.loanTerm, amortization: d.amortization, expectedClose: d.expectedClose, purchasePrice: d.purchasePrice, yieldOnCost: d.yieldOnCost, projectedSellout: d.projectedSellout, selloutPerUnit: d.selloutPerUnit, selloutPerFoot: d.selloutPerFoot, unitMix: d.unitMix, entitledFor: d.entitledFor, entitlementPhase: d.entitlementPhase, entitlementOutstanding: d.entitlementOutstanding, entitlementRisks: d.entitlementRisks, landValueCurrent: d.landValueCurrent, landValueEntitled: d.landValueEntitled, entitlementBudget: d.entitlementBudget, details: d.details as Record<string, string | null> };
 }
 
 /** Keys of checklist items still unanswered, given the deal's strategy and asset class. */
@@ -145,6 +155,14 @@ const claudeOutput = () => z.object({
   selloutPerUnit: str("Condo only: average projected sale price per unit, dollars, digits only."),
   selloutPerFoot: str("Condo only: projected sale price per sellable square foot, dollars, digits only."),
   holdPeriod: z.enum([...DEAL_HOLD_PERIODS, ""]).describe("Hold period snapped to the closest option (a 3.2-year hold is '3 year'). Empty if not stated."),
+  entitledFor: str(`Land deals only: the asset class the land is being entitled for, written as one of: ${ASSET_CLASSES.filter((a) => a !== "Land").join(", ")}.`),
+  entitlementPhase: str("Land deals only: where the entitlement stands today (pre-application, application filed, hearings scheduled, approvals in hand, permits), one short line."),
+  entitlementOutstanding: str("Land deals only: the approvals, hearings, permits, studies or agreements still needed before the land is fully entitled."),
+  entitlementRisks: str("Land deals only: the entitlement risks as of today (opposition, zoning or plan changes, environmental, utilities and access, timing), as the sponsor describes them."),
+  landValueCurrent: str("Land deals only: the as-is value of the unentitled land today in US dollars, digits only (appraisal, broker opinion or recent purchase price)."),
+  landValueEntitled: str("Land deals only: the value of the land once fully entitled in US dollars, digits only."),
+  entitlementBudget: str("Land deals only: the total entitlement budget (consultants, legal, fees, studies, carry) in US dollars, digits only."),
+  unlevered: str("yes when the capitalization carries no senior debt (an all-equity or pref-only deal); otherwise empty."),
   contactName: str("Name of the person who sent the deal."),
   contactEmail: str("Email of the person who sent the deal."),
   confidenceNotes: str("Anything ambiguous, inferred, left blank for lack of a source, or where a special rule (pad sale) was applied."),
@@ -171,6 +189,8 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     totalDebt: n(o.totalDebt), executionType: t(o.executionType), interestRate: cleanInterestRate(t(o.interestRate)), rateIndex: t(o.rateIndex) || null, rateSpreadBps: o.rateSpreadBps == null ? null : Math.round(Number(o.rateSpreadBps)), lenderType: t(o.lenderType), irr: n(o.irr),
     capRateT12: n(o.capRateT12), capRateY1: n(o.capRateY1), yieldOnCost: n(o.yieldOnCost), cashOnCash: n(o.cashOnCash), projectedSellout: n(o.projectedSellout), selloutPerUnit: n(o.selloutPerUnit), selloutPerFoot: n(o.selloutPerFoot), holdPeriod: t(o.holdPeriod),
     expectedClose: t(o.expectedClose), amortization: t(o.amortization),
+    entitledFor: assetClassNamed(o.entitledFor), entitlementPhase: t(o.entitlementPhase), entitlementOutstanding: t(o.entitlementOutstanding), entitlementRisks: t(o.entitlementRisks),
+    landValueCurrent: n(o.landValueCurrent), landValueEntitled: n(o.landValueEntitled), entitlementBudget: n(o.entitlementBudget), unlevered: /^y/i.test(o.unlevered.trim()) ? true : null,
   };
   // an operating building is never a development, whatever the renovation budget says
   const existingBuilding = (out.occupancy != null && out.occupancy > 0) || (out.capRateT12 != null && out.capRateT12 > 0) || (out.yearBuilt != null && /\b(19\d\d|20[01]\d|202[0-4])\b/.test(String(out.yearBuilt)));
@@ -179,6 +199,16 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     out.confidenceNotes = [out.confidenceNotes, "Strategy set to Acquisitions: the material describes an existing, operating building (year built / occupancy / T12), not ground-up construction."].filter(Boolean).join(" ");
   }
   return out;
+}
+
+/** The asset class the land is being entitled for, snapped to the list ("multi-family" is Multifamily, "hotel" is Hospitality). */
+export function assetClassNamed(raw: string | null | undefined): string | null {
+  const t = (raw ?? "").trim().toLowerCase().replace(/[^a-z ]/g, "");
+  if (!t) return null;
+  const exact = ASSET_CLASSES.find((a) => a.toLowerCase().replace(/[^a-z ]/g, "") === t);
+  if (exact) return exact;
+  const syn: [RegExp, string][] = [[/multi ?family|apartment|residential/, "Multifamily"], [/build.?(for|to).?rent|btr|sfr|single family/, "Build-For-Rent (SFR)"], [/condo/, "Condo"], [/student/, "Student Housing"], [/senior|assisted/, "Senior Housing"], [/hotel|hospitality|resort/, "Hospitality"], [/industrial|warehouse|logistics/, "Industrial"], [/medical/, "Medical Office"], [/flex/, "Office/Flex"], [/office/, "Office"], [/retail|shopping/, "Retail"], [/mixed/, "Mixed Use"], [/storage/, "Self Storage"], [/build to suit/, "Build To Suit"]];
+  return syn.find(([re]) => re.test(t))?.[1] ?? null;
 }
 
 /** House rules applied after extraction, whichever extractor ran. */
@@ -243,6 +273,33 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
     out.capRateT12 = null;
     out.capRateY1 = null;
   }
+  // land being entitled (Jonathan, Oct 6, 2026): no income and no building, usually a development; the pref is measured against the land's current and entitled values
+  if (out.assetClass === "Land") {
+    out.strategy = out.strategy ?? "Development";
+    out.occupancy = null;
+    out.yearBuilt = null;
+    out.capRateT12 = null;
+    out.capRateY1 = null;
+    out.yieldOnCost = null;
+    out.cashOnCash = null;
+    out.units = null;
+    out.squareFeet = null;
+    out.unitMix = null;
+    if (out.landValueCurrent == null && out.purchasePrice) out.landValueCurrent = out.purchasePrice;
+    if (out.totalDebt && out.landValueCurrent) out.ltv = pct(out.totalDebt, out.landValueCurrent);
+  }
+  // unlevered: no senior debt, the debt terms are empty
+  if (out.unlevered === true) {
+    out.totalDebt = 0;
+    out.ltv = null;
+    out.ltc = null;
+    out.interestRate = null;
+    out.rateIndex = null;
+    out.rateSpreadBps = null;
+    out.loanTerm = null;
+    out.amortization = null;
+    out.lenderType = null;
+  } else if (out.unlevered == null && out.totalDebt === 0 && out.totalCapitalization) out.unlevered = true;
   // a condo (for-sale) development sells out: no NOI, so no yields or cash on cash; the per-unit and per-foot sellout follow the total (Jonathan, Sep 23, 2026)
   if (out.assetClass === "Condo") {
     out.yieldOnCost = null;

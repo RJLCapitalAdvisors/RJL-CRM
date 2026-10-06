@@ -15,7 +15,7 @@ export type ChecklistItem = {
   strategy: ("Acquisitions" | "Development")[];
   onlyAssetClasses?: string[]; // include only for these classes
   excludeAssetClasses?: string[]; // skip for these classes
-  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose" | "purchasePrice" | "yieldOnCost" | "projectedSellout" | "selloutPerUnit" | "selloutPerFoot" | "unitMix"; // maps to a Deal column
+  core?: "occupancy" | "summary" | "sponsorExperience" | "onMarket" | "ltv" | "loanTerm" | "expectedClose" | "purchasePrice" | "yieldOnCost" | "projectedSellout" | "selloutPerUnit" | "selloutPerFoot" | "unitMix" | "entitledFor" | "entitlementPhase" | "entitlementOutstanding" | "entitlementRisks" | "landValueCurrent" | "landValueEntitled" | "entitlementBudget"; // maps to a Deal column
 };
 
 const RESIDENTIAL = ["Multifamily", "Build-For-Rent (SFR)", "Student Housing", "Senior Housing", "Mixed Use"];
@@ -50,6 +50,20 @@ export const DEFAULT_CHECKLIST: ChecklistItem[] = [
   { key: "debtTerms", label: "Terms of the debt", devLabel: "What debt is being used", question: "LTC/LTV, rate, interest-only period, term, amortization; term sheet if available", kind: "text", strategy: ["Acquisitions", "Development"] },
   { key: "loanTerms", label: "Loan term and I/O or amortization", question: "Loan term (years) and interest-only period / amortization", kind: "short", strategy: ["Acquisitions", "Development"], core: "loanTerm" },
   { key: "lender", label: "Who is the lender?", question: "Lender type or name: Fannie/Freddie, life co, bank, debt fund, credit union", kind: "short", strategy: ["Acquisitions", "Development"] },
+  // land entitlement deals (Jonathan, Oct 6, 2026; Cudjoe Key): what the deals@ list asks a sponsor entitling land
+  { key: "entitledFor", label: "What use the land is being entitled for (asset class)", question: "The asset class the land is being entitled for (multifamily, industrial, hospitality, mixed use) and the density or program sought", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "entitledFor" },
+  { key: "entitledUnderwriting", label: "Underwriting for the entitled phase (program, buildable units or SF, land value per unit or per buildable foot, exit)", question: "How the entitled land is underwritten: the program (units or buildable square feet), the land value per unit or per buildable foot once entitled, and the exit (sale to a developer, joint venture, or build)", kind: "text", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"] },
+  { key: "entitlementPhase", label: "Current entitlement phase (where the approvals stand today)", question: "Where the entitlement stands today: pre-application, application filed, hearings, approvals in hand, permits", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "entitlementPhase" },
+  { key: "entitlementOutstanding", label: "Outstanding entitlement items (approvals, hearings, permits and studies still needed)", question: "Every approval, hearing, permit, study or agreement still needed before the land is fully entitled", kind: "text", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "entitlementOutstanding" },
+  { key: "entitlementRisks", label: "Walk through the entitlement risks as of today (opposition, zoning, environmental, infrastructure, timing)", question: "The entitlement risks as of today: neighborhood or political opposition, zoning or comprehensive plan changes needed, environmental and wetlands, utilities and access, timing", kind: "text", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "entitlementRisks" },
+  { key: "entitlementTimeline", label: "Entitlement timeline (hearing dates and expected approval date)", question: "The hearing schedule and the expected date of full entitlement", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"] },
+  { key: "landValueCurrent", label: "Current value of the unentitled land (as-is, whole dollars; appraisal or broker opinion)", question: "The as-is value of the land today, unentitled, in whole dollars, and where the number comes from (appraisal, broker opinion, recent purchase price)", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "landValueCurrent" },
+  { key: "landValueEntitled", label: "Value of the land once entitled (whole dollars, with the basis for the number)", question: "The value of the land once fully entitled, in whole dollars, and the basis for it (comps, per-unit or per-buildable-foot land values, a developer's offer)", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "landValueEntitled" },
+  { key: "entitlementBudget", label: "Total entitlement budget (consultants, legal, fees, studies and carry, whole dollars)", question: "The total budget to get the land entitled: consultants, legal, application fees, studies, carry, in whole dollars", kind: "number", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"], core: "entitlementBudget" },
+  { key: "carryCosts", label: "Carry costs during entitlement (taxes, insurance, interest) per year", question: "What it costs to hold the land each year while it is entitled: taxes, insurance, interest", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"] },
+  { key: "sellerStory", label: "Seller story (who the seller is, how long they have held the land and why they are selling now)", question: "Who the seller is, how long they have held the land, and why they are selling now", kind: "text", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"] },
+  { key: "landComps", label: "Land comps (entitled and unentitled land sales)", question: "Comparable land sales, entitled and unentitled, with price per acre or per buildable unit", kind: "doc", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"] },
+  { key: "exitPlan", label: "Exit once entitled (sell to a developer, joint venture, or build)", question: "What happens once the land is entitled: sale to a developer, a joint venture, or building it out", kind: "short", strategy: ["Acquisitions", "Development"], onlyAssetClasses: ["Land"] },
   { key: "affordable", label: "Any affordable housing component?", question: "Does the property qualify as affordable housing to any extent (LIHTC, income restrictions)?", kind: "short", strategy: ["Acquisitions"], onlyAssetClasses: RESIDENTIAL },
 ];
 
@@ -108,6 +122,13 @@ export type DealLikeForChecklist = {
   amortization?: string | null;
   expectedClose?: string | null;
   purchasePrice?: number | null;
+  entitledFor?: string | null;
+  entitlementPhase?: string | null;
+  entitlementOutstanding?: string | null;
+  entitlementRisks?: string | null;
+  landValueCurrent?: number | null;
+  landValueEntitled?: number | null;
+  entitlementBudget?: number | null;
   details?: Record<string, string | null> | string | null;
 };
 
@@ -134,6 +155,7 @@ export const DOC_FILE_PATTERNS: Record<string, RegExp> = {
   leaseTradeOut: /trade[- ]?out/i,
   capexBudget: /capex|capital (?:budget|expenditure)|renovation budget/i,
   comps: /\bcomps?\b|comparables/i,
+  landComps: /land (?:comps?|sales?)|\bcomps?\b|comparables/i,
 };
 /**
  * Make the document items honest against the files actually on hand: the Excel model counts only when an Excel
@@ -190,6 +212,20 @@ export function answerFor(item: ChecklistItem, deal: DealLikeForChecklist): stri
       return deal.expectedClose ?? null;
     case "purchasePrice":
       return deal.purchasePrice != null ? `$${deal.purchasePrice.toLocaleString("en-US")}` : null;
+    case "entitledFor":
+      return deal.entitledFor ?? null;
+    case "entitlementPhase":
+      return deal.entitlementPhase ?? null;
+    case "entitlementOutstanding":
+      return deal.entitlementOutstanding ?? null;
+    case "entitlementRisks":
+      return deal.entitlementRisks ?? null;
+    case "landValueCurrent":
+      return deal.landValueCurrent != null ? `$${deal.landValueCurrent.toLocaleString("en-US")}` : null;
+    case "landValueEntitled":
+      return deal.landValueEntitled != null ? `$${deal.landValueEntitled.toLocaleString("en-US")}` : null;
+    case "entitlementBudget":
+      return deal.entitlementBudget != null ? `$${deal.entitlementBudget.toLocaleString("en-US")}` : null;
     default:
       return null;
   }

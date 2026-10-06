@@ -205,6 +205,15 @@ model Deal {
   selloutPerUnit      Float?   // Condo: average sellout per unit
   selloutPerFoot      Float?   // Condo: sellout price per square foot
   projectedReturns    String?
+  // Land being entitled (Jonathan, Oct 6, 2026; Cudjoe Key): the use it is entitled for, where the approvals stand, and the land's value today against its value once entitled
+  entitledFor            String?  // the asset class the land is being entitled for
+  entitlementPhase       String?
+  entitlementOutstanding String?
+  entitlementRisks       String?
+  landValueCurrent       Float?   // value of the unentitled land today
+  landValueEntitled      Float?   // value once entitled
+  entitlementBudget      Float?   // total entitlement budget
+  unlevered              Boolean  @default(false) // no senior debt in the capitalization: the debt terms collapse
   units               Int?
   squareFeet          Float?
   yearBuilt           String?

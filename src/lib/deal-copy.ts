@@ -2,7 +2,7 @@ import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
 import { rateText } from "@/lib/rates";
 import { parseDetails } from "@/lib/checklist";
 import { US_STATES } from "@/lib/taxonomy";
-import { isCondo, isPref, prefMetrics } from "@/lib/pref";
+import { isCondo, isLand, isPref, prefMetrics } from "@/lib/pref";
 
 /**
  * Generates the pieces of RJL's deal email exactly in the house style of the sent emails
@@ -34,7 +34,8 @@ const portfolioLoc = (kids: Child[]) => joinAnd([...new Set(kids.map((c) => [s(c
 
 export function subjectLine(d: D): string {
   const kids = childrenOf(d);
-  const parts = [s(d.assetClass), kids.length ? "Portfolio" : null, d.strategy === "Development" ? "Development" : d.strategy === "Acquisitions" ? "Acquisition" : null, "Opportunity"].filter(Boolean).join(" ");
+  // land: "Land Entitlement Opportunity in Cudjoe Key, FL | $4MM of Preferred Equity" (Jonathan, Oct 6, 2026)
+  const parts = isLand(d.assetClass) ? ["Land Entitlement Opportunity"].join(" ") : [s(d.assetClass), kids.length ? "Portfolio" : null, d.strategy === "Development" ? "Development" : d.strategy === "Acquisitions" ? "Acquisition" : null, "Opportunity"].filter(Boolean).join(" ");
   const loc = kids.length ? portfolioLoc(kids) : location(d);
   const ask = n(d.requestedAmount);
   const exec = s(d.executionType) ?? (s(d.requestType) === "Debt" ? "Debt" : s(d.requestType) ? "Equity" : null);
@@ -45,6 +46,7 @@ export function subjectLine(d: D): string {
 export function intro(d: D): string {
   const kids = childrenOf(d);
   if (kids.length) return portfolioIntro(d, kids);
+  if (isLand(d.assetClass)) return landIntro(d);
   const dev = d.strategy === "Development";
   const sponsor = s(d.sponsorName) ?? "the sponsor";
   const exec = s(d.executionType) ?? "capital";
@@ -86,6 +88,75 @@ export function intro(d: D): string {
   return [first, second, third, fourth, fifth].filter(Boolean).join(" ");
 }
 
+/** The opening paragraph on land being entitled (Jonathan, Oct 6, 2026): the site, the use it is being entitled for, where the approvals stand, the ask. */
+function landIntro(d: D): string {
+  const sponsor = s(d.sponsorName) ?? "the sponsor";
+  const exec = s(d.executionType) ?? "capital";
+  const prop = s(d.propertyName) ?? "the site";
+  const loc = location(d);
+  const acres = n(parseDetails(d.details).acres);
+  const use = s(d.entitledFor);
+  const phase = s(d.entitlementPhase);
+  const ask = n(d.requestedAmount);
+  const sourcing = s(parseDetails(d.details).sourcing);
+  const first = `RJL Capital Advisors is pleased to be representing ${sponsor} as they source ${exec} to entitle ${prop}${loc ? `, in ${loc}` : ""}.`;
+  const second = [acres ? `The site spans ${acres} acres` : null, use ? `${acres ? " and" : "The land"} is being entitled for ${use.toLowerCase()} development` : null].filter(Boolean).join("") + (acres || use ? "." : "");
+  const third = phase ? `Entitlements stand at: ${phase.replace(/[.]+$/, "")}.` : "";
+  const fourth = sourcing ? `The sponsor is buying the land ${/^(on|off)/i.test(sourcing) ? sourcing.charAt(0).toLowerCase() + sourcing.slice(1) : sourcing}${/[.!?]$/.test(sourcing) ? "" : "."}` : "";
+  const fifth = ask ? `<b>They are seeking ${usdShort(ask)} of ${exec} on this opportunity.</b>` : "";
+  return [first, second, third, fourth, fifth].filter(Boolean).join(" ");
+}
+
+/**
+ * Land Metrics (Jonathan, Oct 6, 2026): the land and the request against it. Value today, value once entitled, the
+ * entitlement budget, sources and uses, then the pref or the senior loan request measured on the land's values.
+ */
+export function landMetrics(d: D): string[] {
+  const out: string[] = [];
+  const acres = n(parseDetails(d.details).acres);
+  const addr = s(d.propertyAddress);
+  if (addr) out.push(`Address: ${[addr, location(d)].filter(Boolean).join(", ")}`);
+  if (acres) out.push(`Site: ${acres} acres${s(d.entitledFor) ? `, being entitled for ${s(d.entitledFor)}` : ""}`);
+  const now = n(d.landValueCurrent);
+  const entitled = n(d.landValueEntitled);
+  const budget = n(d.entitlementBudget);
+  const price = n(d.purchasePrice);
+  if (price) out.push(`Land Price: ${usd(price)}${acres ? ` (${usd(price / acres)} per acre)` : ""}`);
+  if (now) out.push(`Current Value of the Unentitled Land: ${usd(now)}${acres ? ` (${usd(now / acres)} per acre)` : ""}`);
+  if (entitled) out.push(`Value Once Entitled: ${usd(entitled)}${acres ? ` (${usd(entitled / acres)} per acre)` : ""}${now ? ` | ${(entitled / now).toFixed(2)}x the current value` : ""}`);
+  if (budget) out.push(`Total Entitlement Budget: ${usd(budget)}${now ? ` (${pct(Math.round((budget / now) * 10000) / 100)} of current value)` : ""}`);
+  const cap = n(d.totalCapitalization);
+  const debt = d.unlevered === true ? 0 : n(d.totalDebt);
+  const ask = n(d.requestedAmount);
+  const exec = s(d.executionType);
+  const pref = isPref(exec);
+  const senior = exec === "Senior Debt";
+  if (cap) {
+    const sponsorEq = debt != null ? cap - debt - (pref ? ask ?? 0 : 0) : null;
+    const sources = [debt ? `senior debt ${usd(debt)}` : null, pref && ask ? `preferred equity ${usd(ask)}` : senior && ask ? `senior loan ${usd(ask)}` : null, sponsorEq != null && sponsorEq > 0 ? `${pref || senior ? "sponsor equity" : "equity"} ${usd(sponsorEq)}` : null].filter(Boolean).join(", ");
+    const uses = [price ? `land ${usd(price)}` : null, budget ? `entitlement ${usd(budget)}` : null, cap - (price ?? 0) - (budget ?? 0) > 0 ? `carry, closing and other ${usd(cap - (price ?? 0) - (budget ?? 0))}` : null].filter(Boolean).join(", ");
+    out.push(`Total Capitalization: ${usd(cap)}${sources ? ` | Sources: ${sources}` : ""}${uses ? ` | Uses: ${uses}` : ""}`);
+  }
+  if (d.unlevered === true) out.push("Senior Debt: none, the deal is unlevered");
+  else if (debt) {
+    const rate = rateText(d as { interestRate?: string | null; rateIndex?: string | null; rateSpreadBps?: number | null });
+    const lev = [now ? `${pct(Math.round((debt / now) * 10000) / 100)} LTV on current value` : null, entitled ? `${pct(Math.round((debt / entitled) * 10000) / 100)} on entitled value` : null, cap ? `${pct(Math.round((debt / cap) * 10000) / 100)} LTC` : null].filter(Boolean).join(" | ");
+    out.push(`${senior ? "Senior Loan Requested" : "Senior Debt"}: ${usd(debt)}${lev ? ` | ${lev}` : ""}${rate ? ` @ ${rate}` : ""}${s(d.loanTerm) ? ` - ${[s(d.amortization), s(d.loanTerm)].filter(Boolean).join(" on a ")}` : ""}`);
+  }
+  if (pref) {
+    const pm = prefMetrics(d);
+    if (ask) out.push(`Total Pref Amount Requested: ${usd(ask)}`);
+    if (pm.lastDollar) out.push(`Last Dollar Exposure: ${usd(pm.lastDollar)}${pm.prefLtc != null ? ` | ${pm.prefLtc.toFixed(2)}% LTC` : ""}`);
+    if (pm.prefLtv != null) out.push(`Pref LTV on Current Land Value: ${pm.prefLtv.toFixed(2)}%`);
+    if (pm.prefLtvEntitled != null) out.push(`Pref LTV on Entitled Value: ${pm.prefLtvEntitled.toFixed(2)}%${pm.entitledCover != null ? ` (${pm.entitledCover.toFixed(2)}x cover)` : ""}`);
+  } else if (senior && ask && !debt) {
+    const lev = [now ? `${pct(Math.round((ask / now) * 10000) / 100)} LTV on current value` : null, entitled ? `${pct(Math.round((ask / entitled) * 10000) / 100)} on entitled value` : null, cap ? `${pct(Math.round((ask / cap) * 10000) / 100)} LTC` : null].filter(Boolean).join(" | ");
+    const rate = rateText(d as { interestRate?: string | null; rateIndex?: string | null; rateSpreadBps?: number | null });
+    out.push(`Senior Loan Requested: ${usd(ask)}${lev ? ` | ${lev}` : ""}${rate ? ` @ ${rate}` : ""}${s(d.loanTerm) ? ` - ${[s(d.amortization), s(d.loanTerm)].filter(Boolean).join(" on a ")}` : ""}`);
+  }
+  return out;
+}
+
 /** The opening paragraph for a portfolio: the properties by name and market, then the totals, then the ask. */
 function portfolioIntro(d: D, kids: Child[]): string {
   const dev = d.strategy === "Development";
@@ -108,6 +179,7 @@ function portfolioIntro(d: D, kids: Child[]): string {
 
 /** Deal Metrics bullets, one per line, only for values that exist. */
 export function metrics(d: D): string[] {
+  if (isLand(d.assetClass)) return underlyingLandMetrics(d);
   const dev = d.strategy === "Development";
   const p = assetProfile(s(d.assetClass));
   const per = perCountWord(p.countLabel);
@@ -187,6 +259,46 @@ export function metrics(d: D): string[] {
   if (close) out.push(`Closing Date: ${close}`);
   return out;
 }
+
+/** Deal Metrics and Returns on land (Jonathan, Oct 6, 2026): the entitled plan, the approvals, the exit, and the sponsor's returns; nothing per foot, per unit or on NOI. */
+function underlyingLandMetrics(d: D): string[] {
+  const out: string[] = [];
+  const det = parseDetails(d.details);
+  const use = s(d.entitledFor);
+  if (use) out.push(`Entitled For: ${use}${s(det.entitledUnderwriting) ? ` (${s(det.entitledUnderwriting)})` : ""}`);
+  else if (s(det.entitledUnderwriting)) out.push(`Entitled Plan: ${s(det.entitledUnderwriting)}`);
+  const phase = s(d.entitlementPhase);
+  if (phase) out.push(`Entitlement Phase: ${phase}`);
+  const outstanding = s(d.entitlementOutstanding);
+  if (outstanding) out.push(`Outstanding Items: ${outstanding}`);
+  const risks = s(d.entitlementRisks);
+  if (risks) out.push(`Entitlement Risks: ${risks}`);
+  const timeline = s(det.entitlementTimeline);
+  if (timeline) out.push(`Entitlement Timeline: ${timeline}`);
+  const carry = s(det.carryCosts);
+  if (carry) out.push(`Carry During Entitlement: ${carry}`);
+  const exit = s(det.exitPlan);
+  if (exit) out.push(`Exit Once Entitled: ${exit}`);
+  const eq = n(d.totalEquity);
+  if (eq) out.push(`Total Equity: ${usd(eq)}`);
+  const irr = n(d.irr);
+  const em = n(d.equityMultiple);
+  const hold = s(d.holdPeriod);
+  if ((irr || em) && !isPref(d.executionType)) out.push(`Expected Returns: ${[irr ? `${pct(irr)} IRR` : null, em ? `${irr ? "a " : ""}${em}x EM` : null].filter(Boolean).join(" and ")}${hold ? ` on a ${hold.replace(/\s*hold$/i, "")} hold` : ""}.`);
+  else if (hold) out.push(`${isPref(d.executionType) ? "Pref Term" : "Hold"}: ${hold}`);
+  const close = s(d.expectedClose);
+  if (close) out.push(`Closing Date: ${close}`);
+  return out;
+}
+
+const listHtml = (m: string[]) => {
+  const li = (x: string) => { const i = x.indexOf(": "); return i > 0 ? `<li><b>${x.slice(0, i)}:</b>${x.slice(i + 1)}</li>` : `<li>${x}</li>`; };
+  return m.length ? `<ul style="margin:0 0 12pt 18pt;list-style-type:disc;">${m.map(li).join("")}</ul>` : "";
+};
+/** The Land Metrics bullets as a list (no heading: the template writes its own). */
+export const landMetricsHtml = (d: D) => listHtml(landMetrics(d));
+/** The Deal Metrics bullets as a list without the heading, for a template that writes its own headings. */
+export const dealMetricsListHtml = (d: D) => listHtml(metrics(d));
 
 export function metricsHtml(d: D): string {
   // heading underlined, every bullet's lead-in bold, a gap after the list before Business Plan

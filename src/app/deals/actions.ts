@@ -40,6 +40,13 @@ export async function moveDeal(id: string, stage: string) {
 }
 
 async function dealData(fd: FormData) {
+  // unlevered (Jonathan, Oct 6, 2026): no senior debt, so the debt is zero and every debt term is cleared
+  const unlevered = fd.has("unleveredField") && (fd.get("unlevered") === "1" || fd.get("unlevered") === "on");
+  if (unlevered) {
+    fd.set("totalDebt", "0");
+    for (const k of ["rateIndex", "interestRate", "rateSpreadBps", "loanTerm", "amortization", "lenderType"]) fd.set(k, "");
+  }
+  const land = s(fd, "assetClass") === "Land";
   const sponsorName = s(fd, "sponsorName");
   const propertyName = s(fd, "propertyName");
   const sourcing = s(fd, "detail.sourcing");
@@ -62,6 +69,15 @@ async function dealData(fd: FormData) {
     state: s(fd, "state"),
     assetClass: s(fd, "assetClass"),
     strategy: s(fd, "strategy"),
+    // land entitlement (Jonathan, Oct 6, 2026)
+    entitledFor: s(fd, "entitledFor"),
+    entitlementPhase: s(fd, "entitlementPhase"),
+    entitlementOutstanding: s(fd, "entitlementOutstanding"),
+    entitlementRisks: s(fd, "entitlementRisks"),
+    landValueCurrent: num(fd, "landValueCurrent"),
+    landValueEntitled: num(fd, "landValueEntitled"),
+    entitlementBudget: num(fd, "entitlementBudget"),
+    ...(fd.has("unleveredField") ? { unlevered } : {}),
     onMarket: onMarketRaw == null ? null : onMarketRaw === "on",
     requestType: s(fd, "requestType") ?? (/Debt/.test(s(fd, "executionType") ?? "") ? "Debt" : s(fd, "executionType") ? "Equity" : null),
     requestedAmount: num(fd, "requestedAmount"),
@@ -69,7 +85,8 @@ async function dealData(fd: FormData) {
     totalEquity: num(fd, "totalCapitalization") != null && num(fd, "totalDebt") != null ? num(fd, "totalCapitalization")! - num(fd, "totalDebt")! : num(fd, "totalEquity"),
     purchasePrice: num(fd, "purchasePrice"),
     // a condo's LTV is on the gross sellout, its terminal value; a development has no LTV (the land price is not the value); else debt over price (Jonathan, Sep 28, 2026)
-    ltv: fd.has("totalDebt") ? (isCondo(s(fd, "assetClass")) && num(fd, "projectedSellout") ? pctCalc(num(fd, "totalDebt"), num(fd, "projectedSellout")) : s(fd, "strategy") === "Development" ? null : pctCalc(num(fd, "totalDebt"), num(fd, "purchasePrice"))) : num(fd, "ltv"),
+    // land: debt over the land's current value (Jonathan, Oct 6, 2026); unlevered: none
+    ltv: unlevered ? null : fd.has("totalDebt") ? (land && num(fd, "landValueCurrent") ? pctCalc(num(fd, "totalDebt"), num(fd, "landValueCurrent")) : isCondo(s(fd, "assetClass")) && num(fd, "projectedSellout") ? pctCalc(num(fd, "totalDebt"), num(fd, "projectedSellout")) : s(fd, "strategy") === "Development" ? null : pctCalc(num(fd, "totalDebt"), num(fd, "purchasePrice"))) : num(fd, "ltv"),
     loanTerm: s(fd, "loanTerm"),
     amortization: s(fd, "amortization"),
     equityMultiple: num(fd, "equityMultiple"),
