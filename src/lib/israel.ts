@@ -235,7 +235,7 @@ export function setIlRequired(lists: Partial<Record<IlCategory, IlRequiredItem[]
 }
 export const isCustomKey = (k: string) => k.startsWith("x_");
 /** An address is complete only when Google Maps could find it: a street with a house number (Jonathan, Sep 23, 2026). "Eliezer Yafe St." alone is not. */
-export const hasHouseNumber = (street: string | null | undefined) => Boolean(street && /d/.test(street));
+export const hasHouseNumber = (street: string | null | undefined) => Boolean(street && /\d/.test(street)); // a digit: the house number (the test looked for the letter d until Oct 6, 2026)
 /**
  * The total mirpeset size is the truth (Jonathan, Sep 23, 2026): when a ticket has a stated total and several mirpasot,
  * their sizes are made to add up to it exactly. A mirpeset with no size takes the remainder (split when several have

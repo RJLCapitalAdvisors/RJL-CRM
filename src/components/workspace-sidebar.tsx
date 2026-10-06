@@ -298,9 +298,12 @@ function IlTemplatesSubnav() {
   const pathname = usePathname();
   if (!pathname.startsWith("/israel/templates") && !pathname.startsWith("/israel/required-items")) return null;
   const onLists = pathname.startsWith("/israel/required-items");
+  const onForms = pathname.startsWith("/israel/templates/forms");
   const items = [
-    { href: "/israel/templates", label: "Email templates", icon: Mail, on: !onLists },
+    { href: "/israel/templates", label: "Email templates", icon: Mail, on: !onLists && !onForms },
     { href: "/israel/required-items", label: "Required Items Lists", icon: ListChecks, on: onLists },
+    // the public forms a developer or broker fills in to submit a project, an apartment or a house (Jonathan, Oct 6, 2026)
+    { href: "/israel/templates/forms", label: "Submission forms", icon: ClipboardList, on: onForms },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">

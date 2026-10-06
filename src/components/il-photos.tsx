@@ -68,7 +68,7 @@ export function PhotosWindow({ kind, id, photos }: { kind: "apartments" | "house
             <div key={p.id} className="group relative aspect-square overflow-hidden rounded-md border border-line bg-cream">
               <a href={`/api/israel/photos/${p.id}`} target="_blank" title={p.name}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/api/israel/photos/${p.id}`} alt={p.name} className="h-full w-full object-cover" loading="lazy" />
+                {/\.pdf$/i.test(p.name) ? <span className="flex h-full w-full items-center justify-center bg-cream px-2 text-center text-[11px] text-ink-soft">{p.name}</span> : <img src={`/api/israel/photos/${p.id}`} alt={p.name} className="h-full w-full object-cover" loading="lazy" />}
               </a>
               <button type="button" onClick={() => confirm("Remove this picture?") && remove(p.id)} className="absolute right-1 top-1 hidden rounded-full bg-white/90 p-0.5 text-ink shadow group-hover:block" title="Remove">
                 <X className="h-3.5 w-3.5" />
