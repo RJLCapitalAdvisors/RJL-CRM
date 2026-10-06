@@ -77,6 +77,7 @@ async function dealData(fd: FormData) {
     landValueCurrent: num(fd, "landValueCurrent"),
     landValueEntitled: num(fd, "landValueEntitled"),
     entitlementBudget: num(fd, "entitlementBudget"),
+    breakGroundDate: s(fd, "breakGroundDate"),
     ...(fd.has("unleveredField") ? { unlevered } : {}),
     onMarket: onMarketRaw == null ? null : onMarketRaw === "on",
     requestType: s(fd, "requestType") ?? (/Debt/.test(s(fd, "executionType") ?? "") ? "Debt" : s(fd, "executionType") ? "Equity" : null),

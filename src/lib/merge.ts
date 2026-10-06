@@ -1,7 +1,7 @@
 import { US_STATES } from "@/lib/taxonomy";
 import { cleanBusinessPlan } from "@/lib/style";
 import { uniqueChecklist, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
-import { dealMetricsListHtml, intro, landMetricsHtml, metricsHtml, subjectLine, usd } from "@/lib/deal-copy";
+import { dealMetricsListHtml, entitledUse, intro, landMetricsHtml, metricsHtml, subjectLine, usd } from "@/lib/deal-copy";
 import { prefMetrics } from "@/lib/pref";
 import { rateNumber, rateText } from "@/lib/rates";
 
@@ -70,6 +70,8 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.facts", label: "Bulleted list of every answered checklist item" },
   // land entitlement (Jonathan, Oct 6, 2026)
   { key: "deal.entitledFor", label: "Entitled for (asset class, land)" },
+  { key: "deal.entitledUse", label: "The use as a heading word: \"Hotel\" for Hospitality (land)" },
+  { key: "deal.breakGroundDate", label: "Break ground date (land)" },
   { key: "deal.entitlementPhase", label: "Current entitlement phase (land)" },
   { key: "deal.entitlementOutstanding", label: "Outstanding entitlement items (land)" },
   { key: "deal.entitlementRisks", label: "Entitlement risks as of today (land)" },
@@ -117,6 +119,7 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "openingLine") return ctx.openingLine ?? "";
   if (path === "deal.facts") return ctx.deal ? factsBlock(ctx.deal as DealLikeForChecklist) : "";
   if (path === "deal.landMetrics") return ctx.deal ? landMetricsHtml(ctx.deal) : "";
+  if (path === "deal.entitledUse") return ctx.deal ? entitledUse(ctx.deal) ?? "" : "";
   if (path === "deal.dealMetrics") return ctx.deal ? dealMetricsListHtml(ctx.deal) : "";
   if (["deal.landValuePerAcre", "deal.entitledValuePerAcre", "deal.valueUplift"].includes(path)) {
     const d = ctx.deal ?? {};

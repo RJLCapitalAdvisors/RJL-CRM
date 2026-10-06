@@ -168,6 +168,7 @@ function dealDataFrom(d: ExtractedDeal, propertyName: string, sponsorCompanyId: 
       landValueCurrent: d.landValueCurrent ?? null,
       landValueEntitled: d.landValueEntitled ?? null,
       entitlementBudget: d.entitlementBudget ?? null,
+      breakGroundDate: d.breakGroundDate ?? null,
       unlevered: d.unlevered === true,
       // LTV (debt over price) and LTC (debt over total capitalization) are separate figures; a development is quoted on cost
       ltc: d.ltc ?? (d.strategy === "Development" ? d.ltv : null),

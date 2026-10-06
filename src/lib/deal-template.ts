@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { isCondo, isPref } from "@/lib/pref";
+import { isCondo, isLand, isPref } from "@/lib/pref";
 import { renderTemplate, toHtml, type MergeContext } from "@/lib/merge";
 
 /**
@@ -13,8 +13,9 @@ export type DealForTemplate = { assetClass?: string | null; strategy?: string | 
 
 export function templateNameFor(deal: DealForTemplate): RegExp | null {
   const exec = deal.executionType ?? "";
-  if (exec === "Senior Debt") return /^Deal Template For All Debt Deals/i;
+  if (exec === "Senior Debt" && !isLand(deal.assetClass)) return /^Deal Template For All Debt Deals/i;
   if (exec === "Fund Investment") return /^Fund Raise Template$/i;
+  if (isLand(deal.assetClass)) return /^Land Entitlement/i; // pref, JV or a senior loan request on land being entitled (Jonathan, Oct 6, 2026)
   const pref = isPref(exec);
   const dev = deal.strategy === "Development";
   if (isCondo(deal.assetClass) && pref && dev) return /^Condo Pref Equity Development Deals/i;

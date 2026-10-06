@@ -213,6 +213,7 @@ model Deal {
   landValueCurrent       Float?   // value of the unentitled land today
   landValueEntitled      Float?   // value once entitled
   entitlementBudget      Float?   // total entitlement budget
+  breakGroundDate        String?  // when construction starts once entitled ("Q3 2027"); the first line of the use's metrics
   unlevered              Boolean  @default(false) // no senior debt in the capitalization: the debt terms collapse
   units               Int?
   squareFeet          Float?

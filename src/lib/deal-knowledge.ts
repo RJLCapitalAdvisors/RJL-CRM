@@ -214,7 +214,7 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   maybe("capRateT12", d.capRateT12); maybe("capRateY1", d.capRateY1); maybe("yieldOnCost", d.yieldOnCost); maybe("cashOnCash", d.cashOnCash); maybe("holdPeriod", d.holdPeriod);
   maybe("sponsorExperience", d.sponsorExperience); maybe("expectedClose", (d as { expectedClose?: string | null }).expectedClose ?? null);
   maybe("entitledFor", d.entitledFor); maybe("entitlementPhase", d.entitlementPhase); maybe("entitlementOutstanding", d.entitlementOutstanding); maybe("entitlementRisks", d.entitlementRisks);
-  maybe("landValueCurrent", d.landValueCurrent); maybe("landValueEntitled", d.landValueEntitled); maybe("entitlementBudget", d.entitlementBudget);
+  maybe("landValueCurrent", d.landValueCurrent); maybe("landValueEntitled", d.landValueEntitled); maybe("entitlementBudget", d.entitlementBudget); maybe("breakGroundDate", d.breakGroundDate);
   if (d.unlevered === true && !deal.unlevered) { core.unlevered = true; core.totalDebt = 0; filled++; }
   maybe("summary", d.summary); maybe("propertyAddress", d.propertyAddress); maybe("city", d.city); maybe("state", d.state); maybe("totalEquity", d.totalEquity);
   if (opts.overwrite) { maybe("assetClass", d.assetClass); maybe("strategy", d.strategy); maybe("executionType", d.executionType); maybe("requestType", d.requestType); maybe("projectedSellout", d.projectedSellout); }

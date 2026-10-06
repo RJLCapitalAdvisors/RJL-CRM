@@ -69,6 +69,7 @@ type DealLike = {
   landValueCurrent?: number | null;
   landValueEntitled?: number | null;
   entitlementBudget?: number | null;
+  breakGroundDate?: string | null;
   unlevered?: boolean | null;
 } | null;
 
@@ -298,6 +299,9 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
             <NumberInput name="entitlementBudget" defaultValue={d?.entitlementBudget} decimals={false} prefix="$" onValue={setEntBudget} />
           </Row>
           <Calc label="Entitlement budget as % of current value" value={pctOf(entBudget, landNow)} hint="entitlement budget ÷ current value" />
+          <Row label="Break ground date" hint="When construction starts once entitled; the first line of the use's metrics in the email.">
+            <Text name="breakGroundDate" value={d?.breakGroundDate} placeholder="Q3 2027" />
+          </Row>
         </Group>
       )}
 

@@ -65,6 +65,7 @@ export const ExtractedDealSchema = z.object({
   landValueCurrent: z.number().nullable(),
   landValueEntitled: z.number().nullable(),
   entitlementBudget: z.number().nullable(),
+  breakGroundDate: z.string().nullable(),
   unlevered: z.boolean().nullable(),
   contactName: z.string().nullable().describe("Name of the person who sent the deal"),
   contactEmail: z.string().nullable(),
@@ -79,7 +80,7 @@ export const EMPTY: ExtractedDeal = {
   details: {} as ExtractedDeal["details"],
   units: null, squareFeet: null, yearBuilt: null, unitMix: null, totalCapitalization: null, totalDebt: null, executionType: null, interestRate: null, rateIndex: null, rateSpreadBps: null,
   lenderType: null, irr: null, capRateT12: null, capRateY1: null, yieldOnCost: null, cashOnCash: null, projectedSellout: null, selloutPerUnit: null, selloutPerFoot: null, holdPeriod: null, expectedClose: null, amortization: null,
-  entitledFor: null, entitlementPhase: null, entitlementOutstanding: null, entitlementRisks: null, landValueCurrent: null, landValueEntitled: null, entitlementBudget: null, unlevered: null,
+  entitledFor: null, entitlementPhase: null, entitlementOutstanding: null, entitlementRisks: null, landValueCurrent: null, landValueEntitled: null, entitlementBudget: null, breakGroundDate: null, unlevered: null,
   contactName: null, contactEmail: null, confidenceNotes: null,
 };
 
@@ -162,6 +163,7 @@ const claudeOutput = () => z.object({
   landValueCurrent: str("Land deals only: the as-is value of the unentitled land today in US dollars, digits only (appraisal, broker opinion or recent purchase price)."),
   landValueEntitled: str("Land deals only: the value of the land once fully entitled in US dollars, digits only."),
   entitlementBudget: str("Land deals only: the total entitlement budget (consultants, legal, fees, studies, carry) in US dollars, digits only."),
+  breakGroundDate: str("Land deals only: when construction starts once the land is entitled, as 'Month Year' or 'Q# Year'."),
   unlevered: str("yes when the capitalization carries no senior debt (an all-equity or pref-only deal); otherwise empty."),
   contactName: str("Name of the person who sent the deal."),
   contactEmail: str("Email of the person who sent the deal."),
@@ -190,7 +192,7 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     capRateT12: n(o.capRateT12), capRateY1: n(o.capRateY1), yieldOnCost: n(o.yieldOnCost), cashOnCash: n(o.cashOnCash), projectedSellout: n(o.projectedSellout), selloutPerUnit: n(o.selloutPerUnit), selloutPerFoot: n(o.selloutPerFoot), holdPeriod: t(o.holdPeriod),
     expectedClose: t(o.expectedClose), amortization: t(o.amortization),
     entitledFor: assetClassNamed(o.entitledFor), entitlementPhase: t(o.entitlementPhase), entitlementOutstanding: t(o.entitlementOutstanding), entitlementRisks: t(o.entitlementRisks),
-    landValueCurrent: n(o.landValueCurrent), landValueEntitled: n(o.landValueEntitled), entitlementBudget: n(o.entitlementBudget), unlevered: /^y/i.test(o.unlevered.trim()) ? true : null,
+    landValueCurrent: n(o.landValueCurrent), landValueEntitled: n(o.landValueEntitled), entitlementBudget: n(o.entitlementBudget), breakGroundDate: t(o.breakGroundDate), unlevered: /^y/i.test(o.unlevered.trim()) ? true : null,
   };
   // an operating building is never a development, whatever the renovation budget says
   const existingBuilding = (out.occupancy != null && out.occupancy > 0) || (out.capRateT12 != null && out.capRateT12 > 0) || (out.yearBuilt != null && /\b(19\d\d|20[01]\d|202[0-4])\b/.test(String(out.yearBuilt)));
@@ -208,6 +210,14 @@ export function assetClassNamed(raw: string | null | undefined): string | null {
   const exact = ASSET_CLASSES.find((a) => a.toLowerCase().replace(/[^a-z ]/g, "") === t);
   if (exact) return exact;
   const syn: [RegExp, string][] = [[/multi ?family|apartment|residential/, "Multifamily"], [/build.?(for|to).?rent|btr|sfr|single family/, "Build-For-Rent (SFR)"], [/condo/, "Condo"], [/student/, "Student Housing"], [/senior|assisted/, "Senior Housing"], [/hotel|hospitality|resort/, "Hospitality"], [/industrial|warehouse|logistics/, "Industrial"], [/medical/, "Medical Office"], [/flex/, "Office/Flex"], [/office/, "Office"], [/retail|shopping/, "Retail"], [/mixed/, "Mixed Use"], [/storage/, "Self Storage"], [/build to suit/, "Build To Suit"]];
+  return syn.find(([re]) => re.test(t))?.[1] ?? null;
+}
+
+/** The use a land deal is being entitled for, read off its name and plan ("Cudjoe Key Hotel", "120 key resort" is Hospitality). */
+export function entitledUseFromText(text: string | null | undefined): string | null {
+  const t = (text ?? "").toLowerCase();
+  if (!t.trim()) return null;
+  const syn: [RegExp, string][] = [[/\bhotel|resort|\bkeys?\b|hospitality|lodg/, "Hospitality"], [/condo/, "Condo"], [/student housing|student beds/, "Student Housing"], [/senior (housing|living)|assisted living/, "Senior Housing"], [/build.?(for|to).?rent|\bbtr\b|\bsfr\b|single.family rental/, "Build-For-Rent (SFR)"], [/multi.?family|apartment|residential units|\bunits\b/, "Multifamily"], [/self.?storage/, "Self Storage"], [/warehouse|industrial|logistics|distribution/, "Industrial"], [/medical office/, "Medical Office"], [/\bflex\b/, "Office/Flex"], [/\boffice\b/, "Office"], [/retail|shopping center|grocery/, "Retail"], [/mixed.?use/, "Mixed Use"]];
   return syn.find(([re]) => re.test(t))?.[1] ?? null;
 }
 
@@ -286,6 +296,7 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
     out.squareFeet = null;
     out.unitMix = null;
     if (out.landValueCurrent == null && out.purchasePrice) out.landValueCurrent = out.purchasePrice;
+    if (!out.entitledFor) out.entitledFor = entitledUseFromText([out.propertyName, out.summary, out.details?.entitledUnderwriting, out.details?.businessPlan].filter(Boolean).join(" "));
     if (out.totalDebt && out.landValueCurrent) out.ltv = pct(out.totalDebt, out.landValueCurrent);
   }
   // unlevered: no senior debt, the debt terms are empty

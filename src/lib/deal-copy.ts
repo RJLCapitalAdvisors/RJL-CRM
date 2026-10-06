@@ -35,7 +35,7 @@ const portfolioLoc = (kids: Child[]) => joinAnd([...new Set(kids.map((c) => [s(c
 export function subjectLine(d: D): string {
   const kids = childrenOf(d);
   // land: "Land Entitlement Opportunity in Cudjoe Key, FL | $4MM of Preferred Equity" (Jonathan, Oct 6, 2026)
-  const parts = isLand(d.assetClass) ? ["Land Entitlement Opportunity"].join(" ") : [s(d.assetClass), kids.length ? "Portfolio" : null, d.strategy === "Development" ? "Development" : d.strategy === "Acquisitions" ? "Acquisition" : null, "Opportunity"].filter(Boolean).join(" ");
+  const parts = isLand(d.assetClass) ? `Land Entitlement${entitledUse(d) ? ` (${entitledUse(d)})` : ""} Opportunity` : [s(d.assetClass), kids.length ? "Portfolio" : null, d.strategy === "Development" ? "Development" : d.strategy === "Acquisitions" ? "Acquisition" : null, "Opportunity"].filter(Boolean).join(" ");
   const loc = kids.length ? portfolioLoc(kids) : location(d);
   const ask = n(d.requestedAmount);
   const exec = s(d.executionType) ?? (s(d.requestType) === "Debt" ? "Debt" : s(d.requestType) ? "Equity" : null);
@@ -88,6 +88,14 @@ export function intro(d: D): string {
   return [first, second, third, fourth, fifth].filter(Boolean).join(" ");
 }
 
+/** The use the land is being entitled for, as a word for a heading or a subject: Hospitality reads "Hotel" (Jonathan, Oct 6, 2026). */
+export function entitledUse(d: D): string | null {
+  const u = s(d.entitledFor);
+  if (!u) return null;
+  const WORDS: Record<string, string> = { Hospitality: "Hotel", "Build-For-Rent (SFR)": "BFR", "Notes (Distressed Debt)": "Notes", "Asset Class Agnostic": "Development" };
+  return WORDS[u] ?? u;
+}
+
 /** The opening paragraph on land being entitled (Jonathan, Oct 6, 2026): the site, the use it is being entitled for, where the approvals stand, the ask. */
 function landIntro(d: D): string {
   const sponsor = s(d.sponsorName) ?? "the sponsor";
@@ -100,7 +108,8 @@ function landIntro(d: D): string {
   const ask = n(d.requestedAmount);
   const sourcing = s(parseDetails(d.details).sourcing);
   const first = `RJL Capital Advisors is pleased to be representing ${sponsor} as they source ${exec} to entitle ${prop}${loc ? `, in ${loc}` : ""}.`;
-  const second = [acres ? `The site spans ${acres} acres` : null, use ? `${acres ? " and" : "The land"} is being entitled for ${use.toLowerCase()} development` : null].filter(Boolean).join("") + (acres || use ? "." : "");
+  const useWord = entitledUse(d)?.toLowerCase();
+  const second = [acres ? `The site spans ${acres} acres` : null, use ? `${acres ? " and" : "The land"} is being entitled for ${useWord === "hotel" ? "a hotel" : `${useWord} development`}` : null].filter(Boolean).join("") + (acres || use ? "." : "");
   const third = phase ? `Entitlements stand at: ${phase.replace(/[.]+$/, "")}.` : "";
   const fourth = sourcing ? `The sponsor is buying the land ${/^(on|off)/i.test(sourcing) ? sourcing.charAt(0).toLowerCase() + sourcing.slice(1) : sourcing}${/[.!?]$/.test(sourcing) ? "" : "."}` : "";
   const fifth = ask ? `<b>They are seeking ${usdShort(ask)} of ${exec} on this opportunity.</b>` : "";
@@ -116,7 +125,8 @@ export function landMetrics(d: D): string[] {
   const acres = n(parseDetails(d.details).acres);
   const addr = s(d.propertyAddress);
   if (addr) out.push(`Address: ${[addr, location(d)].filter(Boolean).join(", ")}`);
-  if (acres) out.push(`Site: ${acres} acres${s(d.entitledFor) ? `, being entitled for ${s(d.entitledFor)}` : ""}`);
+  const useWord = entitledUse(d)?.toLowerCase();
+  if (acres) out.push(`Site: ${acres} acres${useWord ? `, being entitled for ${useWord === "hotel" ? "a hotel" : `${useWord} development`}` : ""}`);
   const now = n(d.landValueCurrent);
   const entitled = n(d.landValueEntitled);
   const budget = n(d.entitlementBudget);
@@ -134,7 +144,8 @@ export function landMetrics(d: D): string[] {
   if (cap) {
     const sponsorEq = debt != null ? cap - debt - (pref ? ask ?? 0 : 0) : null;
     const sources = [debt ? `senior debt ${usd(debt)}` : null, pref && ask ? `preferred equity ${usd(ask)}` : senior && ask ? `senior loan ${usd(ask)}` : null, sponsorEq != null && sponsorEq > 0 ? `${pref || senior ? "sponsor equity" : "equity"} ${usd(sponsorEq)}` : null].filter(Boolean).join(", ");
-    const uses = [price ? `land ${usd(price)}` : null, budget ? `entitlement ${usd(budget)}` : null, cap - (price ?? 0) - (budget ?? 0) > 0 ? `carry, closing and other ${usd(cap - (price ?? 0) - (budget ?? 0))}` : null].filter(Boolean).join(", ");
+    const rest = cap - (price ?? 0) - (budget ?? 0);
+    const uses = budget ? [price ? `land ${usd(price)}` : null, `entitlement ${usd(budget)}`, rest > 0 ? `carry, closing and other ${usd(rest)}` : null].filter(Boolean).join(", ") : "";
     out.push(`Total Capitalization: ${usd(cap)}${sources ? ` | Sources: ${sources}` : ""}${uses ? ` | Uses: ${uses}` : ""}`);
   }
   if (d.unlevered === true) out.push("Senior Debt: none, the deal is unlevered");
@@ -264,9 +275,10 @@ export function metrics(d: D): string[] {
 function underlyingLandMetrics(d: D): string[] {
   const out: string[] = [];
   const det = parseDetails(d.details);
-  const use = s(d.entitledFor);
-  if (use) out.push(`Entitled For: ${use}${s(det.entitledUnderwriting) ? ` (${s(det.entitledUnderwriting)})` : ""}`);
-  else if (s(det.entitledUnderwriting)) out.push(`Entitled Plan: ${s(det.entitledUnderwriting)}`);
+  const ground = s(d.breakGroundDate);
+  if (ground) out.push(`Break Ground Date: ${ground}`);
+  // the heading already names the use ("Hotel Metrics"); the program line carries the underwriting for that phase
+  if (s(det.entitledUnderwriting)) out.push(`Program: ${s(det.entitledUnderwriting)}`);
   const phase = s(d.entitlementPhase);
   if (phase) out.push(`Entitlement Phase: ${phase}`);
   const outstanding = s(d.entitlementOutstanding);
@@ -303,6 +315,11 @@ export const dealMetricsListHtml = (d: D) => listHtml(metrics(d));
 export function metricsHtml(d: D): string {
   // heading underlined, every bullet's lead-in bold, a gap after the list before Business Plan
   const li = (x: string) => { const i = x.indexOf(": "); return i > 0 ? `<li><b>${x.slice(0, i)}:</b>${x.slice(i + 1)}</li>` : `<li>${x}</li>`; };
+  // land (Jonathan, Oct 6, 2026): the land first, then the use's own metrics ("Hotel Metrics")
+  if (isLand(d.assetClass)) {
+    const land = landMetrics(d), use = metrics(d);
+    return [land.length ? `<p><b><u>Land Metrics</u></b></p>${listHtml(land)}` : "", use.length ? `<p><b><u>${entitledUse(d) ?? "Deal"} Metrics</u></b></p>${listHtml(use)}` : ""].join("");
+  }
   const kids = childrenOf(d);
   if (kids.length) {
     // a portfolio: one block per property, in order, each under its own heading
