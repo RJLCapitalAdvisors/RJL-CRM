@@ -151,7 +151,7 @@ const claudeOutput = (scope: ExtractScope = { assetClass: null, strategy: null }
   assetClass: z.enum([...ASSET_CLASSES, ""]).describe("Asset class, or empty."),
   strategy: z.enum(["Acquisitions", "Development", ""]).describe("Development ONLY for ground-up / new construction. An existing building being bought, recapitalized, refinanced, renovated or leased up is Acquisitions."),
   requestType: z.enum(["Equity", "Debt", "Both", ""]).describe("Equity for JV/LP/pref/co-GP raises; Debt for loans/bridge/construction/refi."),
-  requestedAmount: str("Requested amount in US dollars, digits only (12500000)."),
+  requestedAmount: str("Requested amount in US dollars, digits only (12500000). On a Land deal: the preferred equity or loan the sponsor asks for at the land stage, exactly as the deck or memo states it (a '$14MM preferred equity commitment' is 14000000); never a percentage of the vertical build's equity."),
   purchasePrice: str("Acquisitions: purchase price. Developments: the LAND price only (never the total project cost). US dollars, digits only."),
   totalEquity: str("Total equity in US dollars, digits only."),
   ltv: str("LTV percent as a number: total debt over purchase price (65). Never the LTC."),
@@ -317,11 +317,11 @@ export function applyDealRules(d: ExtractedDeal): ExtractedDeal {
   if (out.requestType === "Equity" && !out.executionType) out.executionType = "JV Equity";
   // Underwriting rule (Jonathan, Sep 15 and 16): the requested equity amount is 90% of the total equity in the deal, as a round number
   const equity = out.totalEquity ?? (out.totalCapitalization != null && out.totalDebt != null && out.totalCapitalization > out.totalDebt ? out.totalCapitalization - out.totalDebt : null);
-  // on land the equity is the entitlement budget (land included); until that budget is known the sponsor's stated pref stands (Cudjoe Key, Oct 6, 2026)
-  if (out.requestType !== "Debt" && equity && equity > 0 && !(out.assetClass === "Land" && out.entitlementBudget == null)) {
+  // land (Jonathan, Oct 6, 2026): the ask is the pref or loan the sponsor states for the land stage (Cudjoe Key's deck asks $14MM); the 90% rule belongs to the vertical equity, not the land
+  if (out.requestType !== "Debt" && equity && equity > 0 && out.assetClass !== "Land") {
     out.requestedAmount = roundAsk(equity * 0.9);
     if (out.totalEquity == null) out.totalEquity = equity;
-  } else if (out.requestType !== "Debt" && out.requestedAmount) {
+  } else if (out.requestType !== "Debt" && out.requestedAmount && out.assetClass !== "Land") {
     out.requestedAmount = roundAsk(out.requestedAmount); // no equity figure to work from: at least make the stated ask a round number
   }
   // LTV is debt over price, LTC is debt over total capitalization, each on its own when the model left it out
