@@ -61,7 +61,7 @@ export default async function AqImportRunPage({ params }: { params: Promise<{ id
   });
   return (
     <>
-      <PageHeader title={<Link href="/acquisitions/ask/import" className="hover:underline">Import</Link>} subtitle={`${run.fileName} · ${run.rowCount} rows → ${run.propertyCount} properties`} />
+      <PageHeader title={<Link href="/acquisitions/import" className="hover:underline">Import</Link>} subtitle={`${run.fileName} · ${run.rowCount} rows → ${run.propertyCount} properties`} />
       <RunClient id={run.id} status={run.status} fileName={run.fileName} readDone={run.readDone} importDone={run.importDone} total={parsed.groups.length} rows={rows} report={runReport(run)} ignored={parsed.ignored} error={run.error} />
     </>
   );

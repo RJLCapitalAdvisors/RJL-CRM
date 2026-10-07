@@ -36,7 +36,16 @@ export default async function AcquisitionsDashboard() {
   );
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="RJL Acquisitions" />
+      <PageHeader
+        title="Dashboard"
+        subtitle="RJL Acquisitions"
+        actions={
+          // Import is its own section; until the sidebar carries it (shared file, Jonathan), it opens from here
+          <Link href="/acquisitions/import" className="btn-primary">
+            Import a file
+          </Link>
+        }
+      />
       <div className="space-y-4 px-8 py-5">
         {waiting.length > 0 && <WaitingList items={waiting.map((w) => ({ id: w.id, n: w.n, address: w.address, question: w.question, guess: w.guess, propertyId: w.propertyId, sourceFile: w.sourceFile, since: w.createdAt.toISOString() }))} />}
         <div className="card mx-auto max-w-4xl">

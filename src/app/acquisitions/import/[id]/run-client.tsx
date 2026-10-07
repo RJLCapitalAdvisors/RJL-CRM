@@ -305,7 +305,7 @@ export function RunClient({ id, status, fileName, readDone, importDone, total, r
                 onClick={() => {
                   if (confirm("Discard this import? Nothing in the CRM changes.")) start(async () => {
                     await deleteImportRun(id);
-                    router.push("/acquisitions/ask/import");
+                    router.push("/acquisitions/import");
                   });
                 }}
               >

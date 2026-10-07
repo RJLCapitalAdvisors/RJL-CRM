@@ -21,7 +21,7 @@ export function Uploader() {
       const res = await fetch("/api/acquisitions/import", { method: "POST", body: fd });
       const r = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
       if (!res.ok || !r.id) throw new Error(r.error ?? "The upload failed.");
-      router.push(`/acquisitions/ask/import/${r.id}`);
+      router.push(`/acquisitions/import/${r.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(null);

@@ -15,12 +15,12 @@ async function guard() {
 export async function setImportOverride(id: string, key: string, o: Override | null) {
   await guard();
   await saveOverride(id, key, o);
-  revalidatePath(`/acquisitions/ask/import/${id}`);
+  revalidatePath(`/acquisitions/import/${id}`);
 }
 
 /** Drop an import that was never written (nothing in the CRM changes). */
 export async function deleteImportRun(id: string) {
   await guard();
   await prisma.aqImportRun.deleteMany({ where: { id, status: { in: ["READING", "REVIEW", "FAILED"] } } });
-  revalidatePath("/acquisitions/ask/import");
+  revalidatePath("/acquisitions/import");
 }

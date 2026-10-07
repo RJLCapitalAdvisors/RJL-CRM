@@ -15,7 +15,7 @@ const STATUS: Record<string, { label: string; tone: string }> = {
 };
 
 /**
- * Ask the CRM > Import (Oct 7, 2026): the dedicated place for call exports. Code reads the whole file and folds it
+ * Import (Oct 7, 2026; its own section, not under Ask the CRM): the dedicated place for call exports. Code reads the whole file and folds it
  * into properties, Claude reads the calls a few properties at a time, Shawn reviews one line per property, Import
  * writes it, and the result is checked against the file. The chat stays for questions and instructions.
  */
@@ -55,7 +55,7 @@ export default async function AqImportPage() {
                 {runs.map((r) => (
                   <tr key={r.id} className="border-b border-line last:border-0 hover:bg-cream-50">
                     <td className="px-4 py-2">
-                      <Link href={`/acquisitions/ask/import/${r.id}`} className="font-medium text-sky-700 hover:underline">
+                      <Link href={`/acquisitions/import/${r.id}`} className="font-medium text-sky-700 hover:underline">
                         {r.fileName}
                       </Link>
                     </td>
@@ -78,7 +78,7 @@ export default async function AqImportPage() {
           )}
         </div>
         <div className="text-xs text-muted">
-          How files are read: <Link href="/acquisitions/settings/import-instructions" className="text-sky-700 hover:underline">Import instructions</Link> and <Link href="/acquisitions/settings/data-rules" className="text-sky-700 hover:underline">Data rules</Link>. Change them there or tell the <Link href="/acquisitions/ask" className="text-sky-700 hover:underline">Ask</Link> tab &quot;from now on…&quot;.
+          How files are read: <Link href="/acquisitions/settings/import-instructions" className="text-sky-700 hover:underline">Import instructions</Link> and <Link href="/acquisitions/settings/data-rules" className="text-sky-700 hover:underline">Data rules</Link>. Change them there or tell <Link href="/acquisitions/ask" className="text-sky-700 hover:underline">Ask the CRM</Link> &quot;from now on…&quot;.
         </div>
       </div>
     </>
