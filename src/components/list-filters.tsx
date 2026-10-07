@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
-import { ASSET_CLASSES, ROLES, US_STATES } from "@/lib/taxonomy";
+import { ASSET_CLASSES, NO_ASSET_CLASS, ROLES, US_STATES } from "@/lib/taxonomy";
 import { MultiSelect } from "./multi-select";
 
 export type ListFilterState = { q: string; roles: string[]; assets: string[]; state?: string };
@@ -44,7 +44,7 @@ export function ListFilters({ basePath, initial, placeholder, withState = false 
         <MultiSelect options={ROLES} value={roles} onChange={setRoles} placeholder="All roles" />
       </div>
       <div className="w-64">
-        <MultiSelect options={ASSET_CLASSES} value={assets} onChange={setAssets} placeholder="All asset classes" />
+        <MultiSelect options={[...ASSET_CLASSES, NO_ASSET_CLASS]} value={assets} onChange={setAssets} placeholder="All asset classes" />
       </div>
       {withState && (
         <select value={state} onChange={(e) => setState(e.target.value)} className="input w-32">

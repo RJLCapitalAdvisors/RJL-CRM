@@ -9,6 +9,7 @@ type ContactLike = {
   email: string | null;
   phone: string | null;
   title: string | null;
+  linkedin?: string | null;
   roles: string;
   accredited: boolean | null;
   streetAddress: string | null;
@@ -39,6 +40,9 @@ export function ContactForm({ contact, users, action, submitLabel = "Save" }: { 
       </Field>
       <Field label="Title" htmlFor="title">
         <input id="title" name="title" defaultValue={c?.title ?? ""} className="input" />
+      </Field>
+      <Field label="LinkedIn" htmlFor="linkedin">
+        <input id="linkedin" name="linkedin" defaultValue={c?.linkedin ?? ""} className="input" placeholder="https://www.linkedin.com/in/…" />
       </Field>
       <Field label="Company">
         <CompanyPicker initial={c?.company ?? null} />

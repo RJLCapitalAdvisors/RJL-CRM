@@ -24,6 +24,9 @@ export const ASSET_CLASSES = [
   "Asset Class Agnostic",
 ] as const;
 
+/** In the asset-class filter only: companies (and contacts) whose asset classes were never filled in (Jonathan, Oct 7, 2026). Never stored on a record. */
+export const NO_ASSET_CLASS = "Not available";
+
 export const CHECK_SIZES = ["$1-2MM", "$3-5MM", "$5-8MM", "$8-10MM", "$10-15MM", "$15-20MM", "$20-30MM", "$30-50MM", "$50-100MM", "$100MM+"] as const;
 // Old HubSpot buckets -> new buckets (a coarse old bucket becomes every new bucket it covers)
 export const CHECK_SIZE_MIGRATION: Record<string, string[]> = {

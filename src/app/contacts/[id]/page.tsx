@@ -52,7 +52,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
             initial={initial}
             title={name}
             subtitle={contact.company?.name}
-            lines={[contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : null, contact.phone].filter(Boolean)}
+            lines={[contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : null, contact.phone, contact.linkedin ? <a key="li" href={contact.linkedin} target="_blank" rel="noreferrer">LinkedIn</a> : null].filter(Boolean)}
             actions={
               <>
                 {contact.email && (

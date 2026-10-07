@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { ZoomBox } from "@/components/zoom-box";
 import { checkLabel } from "@/lib/ranges";
-import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { companiesWhere, companyFiltersFrom, companyFiltersQuery } from "@/lib/company-filters";
+import { ExportButton } from "./export-button";
 import { PageHeader, Pager } from "@/components/ui";
 import { ListFilters } from "@/components/list-filters";
 import { RoleCell } from "@/components/role-cell";
@@ -16,24 +17,14 @@ export const metadata = { title: "Companies" };
 
 export const dynamic = "force-dynamic";
 const PAGE = 50;
-const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);
 
 export default async function CompaniesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
-  const q = str(sp.q).trim();
-  const roles = list(sp.role);
-  const assets = list(sp.asset);
-  const state = str(sp.state);
+  const filters = companyFiltersFrom(sp);
+  const { q, roles, assets, state } = filters;
   const page = Math.max(1, Number(str(sp.page)) || 1);
-
-  const where: Prisma.CompanyWhereInput = {
-    AND: [
-      q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { contacts: { some: { email: { contains: q, mode: "insensitive" } } } }] } : {},
-      roles.length ? { OR: roles.map((r) => ({ roles: { contains: `"${r}"` } })) } : {},
-      assets.length ? { OR: assets.map((a) => ({ criteria: { assetClasses: { contains: `"${a}"` } } })) } : {},
-      state ? { state } : {},
-    ],
-  };
+  // the list and its Excel export share one definition of the filters ("Not available" = asset classes never filled in)
+  const where = companiesWhere(filters);
 
   const [total, rows] = await Promise.all([
     prisma.company.count({ where }),
@@ -46,15 +37,8 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
     }),
   ]);
 
-  const makeHref = (p: number) => {
-    const u = new URLSearchParams();
-    if (q) u.set("q", q);
-    for (const r of roles) u.append("role", r);
-    for (const a of assets) u.append("asset", a);
-    if (state) u.set("state", state);
-    u.set("page", String(p));
-    return `/companies?${u}`;
-  };
+  const makeHref = (p: number) => `/companies?${companyFiltersQuery(filters, { page: String(p) })}`;
+  const summary = [q ? `"${q}"` : "", roles.join(", "), assets.map((a) => (a === "Not available" ? "no asset classes" : a)).join(", "), state].filter(Boolean).join(" · ");
 
   return (
     <>
@@ -62,9 +46,12 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
         title="Companies"
         subtitle={`${total.toLocaleString()} companies`}
         actions={
-          <Link href="/companies/new" className="btn-primary">
-            New company
-          </Link>
+          <>
+            <ExportButton query={companyFiltersQuery(filters).toString()} total={total} summary={summary} />
+            <Link href="/companies/new" className="btn-primary">
+              New company
+            </Link>
+          </>
         }
       />
       <div className="px-8 py-4">

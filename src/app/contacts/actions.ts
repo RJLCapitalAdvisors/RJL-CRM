@@ -22,6 +22,7 @@ async function contactData(fd: FormData) {
     email: s(fd, "email")?.toLowerCase() ?? null,
     phone: s(fd, "phone"),
     title: s(fd, "title"),
+    linkedin: s(fd, "linkedin"),
     roles: toJson(roles),
     accredited: acc == null ? null : acc === "yes",
     streetAddress: s(fd, "streetAddress"),

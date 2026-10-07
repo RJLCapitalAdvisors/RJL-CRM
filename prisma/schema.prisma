@@ -76,6 +76,7 @@ model Contact {
   email         String?  @unique
   phone         String?
   title         String?
+  linkedin      String?  // the person's LinkedIn profile (Oct 7, 2026)
   roles         String   @default("[]")
   accredited    Boolean?
   streetAddress String?

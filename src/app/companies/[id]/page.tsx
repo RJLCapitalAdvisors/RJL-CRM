@@ -127,6 +127,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
                 <div className="truncate text-xs text-muted">
                   {k.email}
                   {k.title ? ` · ${k.title}` : ""}
+                  {k.linkedin && <> · <a href={k.linkedin} target="_blank" rel="noreferrer" className="hover:underline">LinkedIn</a></>}
                 </div>
               </div>
             ))}

@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db";
 import { PageHeader, Pager, RoleChips } from "@/components/ui";
 import { ListFilters } from "@/components/list-filters";
 import { fmtDate, fullName, str } from "@/lib/format";
-import { parseList } from "@/lib/taxonomy";
+import { NO_ASSET_CLASS, parseList } from "@/lib/taxonomy";
+import { noAssetClassesWhere } from "@/lib/company-filters";
 import { CompanyLogo } from "@/components/company-logo";
 
 export const metadata = { title: "Contacts" };
@@ -36,7 +37,15 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
         : {},
       roles.length ? { OR: roles.map((r) => ({ roles: { contains: `"${r}"` } })) } : {},
       // asset classes flow from the company's criteria to its contacts; a contact's own criteria also counts
-      assets.length ? { OR: assets.flatMap((a) => [{ criteria: { assetClasses: { contains: `"${a}"` } } }, { company: { criteria: { assetClasses: { contains: `"${a}"` } } } }]) } : {},
+      assets.length
+        ? {
+            OR: [
+              ...assets.filter((a) => a !== NO_ASSET_CLASS).flatMap((a) => [{ criteria: { assetClasses: { contains: `"${a}"` } } }, { company: { criteria: { assetClasses: { contains: `"${a}"` } } } }]),
+              // "Not available": neither the contact nor their company has the question answered (Oct 7, 2026)
+              ...(assets.includes(NO_ASSET_CLASS) ? [{ AND: [{ OR: [{ criteria: null }, { criteria: { assetClasses: { in: ["[]", ""] } } }] }, { OR: [{ company: null }, { company: noAssetClassesWhere }] }] }] : []),
+            ],
+          }
+        : {},
     ],
   };
 
