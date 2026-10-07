@@ -1,5 +1,7 @@
 # Moving RJL Acquisitions to Shawn's own accounts
 
+**Done on Oct 7, 2026.** Final shape: https://rjl-acquisitions.vercel.app hosted in Jonathan's Vercel team (a free Vercel account cannot share projects), on Shawn's own Supabase project and Anthropic organization, with the mailbox-scoped Azure app. rjl-crm.vercel.app runs with `CRM_SIDE=CA,IL`. The sections below are kept as the record of how.
+
 Decided Oct 7, 2026. The three CRMs stay one codebase in one repository, so Jonathan's improvements keep reaching the Acquisitions side. What moves is the *running system*: Shawn's deployment runs the same code with `CRM_SIDE=AQ`, which makes it serve only `/acquisitions`, against his own database, his own Claude key and his own mailbox app, under accounts he owns and pays for.
 
 ## What each person creates

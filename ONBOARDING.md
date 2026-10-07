@@ -4,11 +4,12 @@ Welcome, Shawn. This guide gets you building on the Acquisitions side of the RJL
 
 ## What this is
 
-One Next.js app, one Supabase database, one Vercel deployment at https://rjl-crm.vercel.app, three walled-off CRMs:
+One Next.js app in one repository, three walled-off CRMs, two deployments (since Oct 7, 2026):
 
-- RJL Capital Advisors at `/` (Jonathan's)
-- RJL Israel at `/israel` (Jonathan's)
-- RJL Acquisitions at `/acquisitions` (yours)
+- RJL Capital Advisors (`/`) and RJL Israel (`/israel`): Jonathan's, at https://rjl-crm.vercel.app, on his database
+- RJL Acquisitions (`/acquisitions`): yours, at **https://rjl-acquisitions.vercel.app**, on **your own Supabase database** and your own Claude key
+
+Both sites build from the same `main` branch, so a change merged there reaches both; each site serves only its own side (`CRM_SIDE`).
 
 Everything the team has decided lives in `docs/PROJECT-NOTES.md`. Claude reads it at the start of every session, and every new rule or decision goes in there as a short dated bullet, so any machine's Claude knows it next time.
 
@@ -26,26 +27,26 @@ Everything else (shared components, sign-in, mail reading, the assistant's share
 
 ## Set up once
 
-1. **Accounts.** Jonathan invites you to the GitHub repository `RJLCapitalAdvisors/RJL-CRM` and to the Vercel team. Get your own Anthropic API key.
+1. **Accounts.** You are a collaborator on the GitHub repository `RJLCapitalAdvisors/RJL-CRM` (done). Your Supabase organization and your Anthropic organization are yours; your site is hosted in Jonathan's Vercel team (free) and he can hand it to you later.
 2. **Claude Code.** Either the desktop app (Mac or Windows) or Claude Code on the web at https://claude.ai/code connected to the repository. On the desktop app you also need Node 24 and Git, then `git clone https://github.com/RJLCapitalAdvisors/RJL-CRM.git` and `npm install`.
-3. **Secrets.** Jonathan gives you `.env.local` values: `DATABASE_URL`, `DIRECT_URL` (Supabase), the Microsoft Graph app values, `ANTHROPIC_API_KEY` (yours). Never commit that file.
+3. **Secrets.** Make a `.env.local` in the repository folder with the same values your site runs on (Jonathan has them, or read them in Vercel under the rjl-acquisitions project > Settings > Environment Variables): `CRM_SIDE=AQ`, `DATABASE_URL` and `DIRECT_URL` (your Supabase), `ANTHROPIC_API_KEY` (yours), `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` (the RJL Acquisitions CRM app), `APP_SECRET`. Never commit that file. With these, `npm run dev` on your laptop shows your own data.
 4. **Your scope flag.** Set `CRM_SCOPE=AQ` in your environment (Windows: `setx CRM_SCOPE AQ`; Mac: add `export CRM_SCOPE=AQ` to your shell profile). With it set, Claude Code refuses to edit outside your side, to deploy production, to push to `main`, or to run a database command that can destroy data. Jonathan does not set it.
-5. **Run it.** `npm run dev`, open http://localhost:3000/acquisitions, sign in with your @rjlcapadvisors.com account.
+5. **Run it.** `npm run dev`, open http://localhost:3000 (it lands on Acquisitions), sign in with your @rjlcapadvisors.com account.
 
 ## How a change goes out
 
 1. Start on a fresh branch: `git checkout -b acq/<what-you-are-doing>` from `main`.
 2. Tell Claude what you want, in your own words, the way you would tell a colleague ("on the property card, put County after State"; "the Buyers pipeline needs a stage called Under LOI"). Claude reads the notes, makes the change, runs `npx tsc --noEmit` and `npm run build`, and writes the decision into `docs/PROJECT-NOTES.md`.
 3. Commit and push the branch, open a pull request to `main`. The Scope guard check confirms the change stayed on your side; Vercel builds a preview link for the pull request so you can click through it.
-4. Merge when the preview looks right. Merging deploys production. (Until Jonathan connects Vercel to GitHub, ask him to deploy.)
+4. Merge when the preview looks right. Once the rjl-acquisitions project is connected to GitHub in Vercel, merging deploys your site on its own; until then, tell Jonathan and he deploys it (a one-line command).
 
 Commit messages say what changed in plain words, one line, no ticket numbers.
 
 ## Things worth knowing
 
 - **Ask the CRM** (top of your sidebar) is for data, not code: drop a spreadsheet, tell it how to read the columns, confirm the import. What you teach it is kept under Settings > Data rules.
-- **Pipeline stages** are edited on the boards themselves (Edit stages). **Junk** numbers and properties are under Settings. None of that needs code.
-- **The database is shared.** A new field for a property or contact is an `Aq*` model change plus `npx prisma db push`; that is fine. Never rename or drop a column that has data without talking to Jonathan.
+- **Pipeline stages** are edited on the boards themselves (Edit stages). **Junk** numbers and properties have their own section in the sidebar. Your standing import instructions are under Settings > Import instructions. None of that needs code.
+- **The database is yours.** A new field for a property or contact is an `Aq*` model change plus `npx prisma db push` against your `.env.local`; that is fine. Never rename or drop a column that has data without a backup; the schema file is shared with Jonathan's sides, so keep your changes to the `Aq*` models.
 - **Deploy previews** are per pull request; production is `main`. If something on production breaks for Jonathan's sides, he will roll back, so keep pull requests small and on your side.
 - **When Claude says it cannot do something** because of scope, that is the guard working; describe the need to Jonathan.
 
