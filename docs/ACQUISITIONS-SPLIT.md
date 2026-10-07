@@ -55,3 +55,59 @@ Not needed on his side: `DEALS_MAILBOX`, `RESEND_*`, `ISRAEL_*`, `WHATSAPP_*`, `
 - Sign-in only unlocks that side; the login page says so.
 - The sidebar shows only that side's logo and pages.
 - The daily cron reads only that side's mailboxes; the blasts cron and the deals@ notification do nothing.
+
+## Jonathan's steps, in detail
+
+### 1. GitHub: let Shawn's Vercel read the repository (5 minutes)
+
+1. Open https://github.com/RJLCapitalAdvisors/RJL-CRM/settings/access (Settings > Collaborators and teams on the repository).
+2. Add people > type Shawn's GitHub username > choose the **Read** role > Add. He gets an email to accept.
+3. Read is enough: Vercel only needs to pull `main` to build. He cannot push to `main` (the scope guard and his branch habit cover his own changes, which still come in as pull requests to you).
+
+### 2. Azure: an app registration that signs Shawn in and reads only his mailbox (20 minutes)
+
+The existing app (the one in rjl-crm.vercel.app's variables) can read every mailbox in the tenant. Shawn's deployment gets its own app, limited to his mailbox by an Exchange policy.
+
+**Register the app**
+
+1. Go to https://entra.microsoft.com, sign in as the rjlcapadvisors.com admin.
+2. Identity > Applications > App registrations > **New registration**.
+   - Name: `RJL Acquisitions CRM`.
+   - Supported account types: *Accounts in this organizational directory only*.
+   - Redirect URI: platform **Web**, value `https://<Shawn's deployment address>/api/auth/callback` (for example `https://acq.rjlcapadvisors.com/api/auth/callback`; a Vercel address like `https://rjl-acquisitions.vercel.app/api/auth/callback` works too, and you can add the custom domain later under Authentication).
+   - Register.
+3. On the Overview page copy **Application (client) ID** and **Directory (tenant) ID**. These are his `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`.
+4. Certificates & secrets > **New client secret** > description `vercel`, expiry 24 months > Add. Copy the **Value** now (it is shown once). This is his `AZURE_CLIENT_SECRET`.
+5. API permissions > Add a permission > Microsoft Graph:
+   - **Delegated**: `openid`, `profile`, `email`, `User.Read` (sign-in).
+   - **Application**: `Mail.Read` (reading his mailbox into the Acquisitions email log).
+   - Then **Grant admin consent for RJL Capital Advisors** (the button above the list) so nobody is prompted.
+
+**Limit it to Shawn's mailbox (Exchange application access policy)**
+
+Without this, `Mail.Read` as an application permission can read every mailbox in the tenant. The policy restricts the app to a group.
+
+6. In the Microsoft 365 admin center (https://admin.microsoft.com) > Teams & groups > Active teams & groups > **Add a mail-enabled security group** named `Acquisitions CRM mailboxes`, with Shawn as its only member. Note its email address (for example `acq-crm@rjlcapadvisors.com`).
+7. Open PowerShell as administrator on your machine and run, line by line (answer the sign-in prompt with the admin account):
+   ```powershell
+   Install-Module ExchangeOnlineManagement -Scope CurrentUser
+   Connect-ExchangeOnline
+   New-ApplicationAccessPolicy -AppId <Application (client) ID from step 3> -PolicyScopeGroupId acq-crm@rjlcapadvisors.com -AccessRight RestrictAccess -Description "RJL Acquisitions CRM reads only the mailboxes in this group"
+   Test-ApplicationAccessPolicy -AppId <the same id> -Identity shawn@rjlcapadvisors.com
+   Test-ApplicationAccessPolicy -AppId <the same id> -Identity jonathan@rjlcapadvisors.com
+   ```
+   The first test should say `AccessCheckResult : Granted`, the second `Denied`. The policy takes up to 30 minutes to apply everywhere.
+8. Send Shawn the three values from steps 3 and 4 by a private channel (not email in the clear): client id, tenant id, client secret.
+
+### 3. DNS: a name of his own (optional, 10 minutes)
+
+1. In Shawn's Vercel project > Settings > Domains he adds `acq.rjlcapadvisors.com`; Vercel shows the record it wants (a CNAME to `cname.vercel-dns.com`).
+2. Wherever rjlcapadvisors.com's DNS lives (the registrar or Cloudflare), add that CNAME: name `acq`, target `cname.vercel-dns.com`.
+3. Once Vercel shows the domain as valid, add `https://acq.rjlcapadvisors.com/api/auth/callback` as a second redirect URI on the app registration (Authentication page), and his `APP_URL` / `NEXT_PUBLIC_APP_URL` become that address.
+
+### 4. The data copy (done with Claude, 15 minutes)
+
+1. Shawn sends you his Supabase project's two connection strings (Project settings > Database > Connection string: the *transaction pooler* one is `DATABASE_URL`, the *direct* one is `DIRECT_URL`).
+2. In this repository, Claude pushes the schema to his database (`npx prisma db push` with his strings in a local `.env.acq`), runs `scripts/migrate-acquisitions.ts --dry`, shows you the counts, then runs it for real.
+3. Shawn fills his Vercel variables (the table above), deploys, signs in with his Microsoft account, and checks his dashboard, properties, pipelines, junk lists and Ask the CRM against what he sees on rjl-crm.vercel.app today.
+4. When he says it matches, Claude sets `CRM_SIDE=CA,IL` on your Vercel project and redeploys; the Acquisitions pages vanish from your deployment and its data stays in your database as a backup.
