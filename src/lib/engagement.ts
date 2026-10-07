@@ -89,7 +89,17 @@ export async function createEngagementDraft(dealId: string, companyIds: string[]
       return {};
     }
   })();
-  await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify({ ...details, engagementGroups: groups.map((g) => g.name), engagementDraftedAt: new Date().toISOString(), engagementDraftId: draft.id, engagementMailbox: mailbox }) } });
+  // a letter drafted again (from the Agreed groups page, with groups the sponsor had struck put back) supersedes the earlier
+  // one: its sent and confirmed marks are forgotten so the Outlook watcher sees the new send and the reply reader starts over,
+  // and the groups on the new letter are no longer struck (Jonathan, Oct 7, 2026)
+  const again = Boolean(details.engagementDraftId || details.engagementSentAt);
+  const onLetter = new Set(groups.map((g) => g.id));
+  const engagementStruck = ((details.engagementStruck as { companyId: string | null }[] | undefined) ?? []).filter((s) => !s.companyId || !onLetter.has(s.companyId));
+  await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify({ ...details, engagementGroups: groups.map((g) => g.name), engagementDraftedAt: new Date().toISOString(), engagementDraftId: draft.id, engagementMailbox: mailbox, engagementStruck, engagementSentAt: undefined, engagementConfirmedAt: undefined, engagementConfirmedBy: undefined }) } });
+  if (again) {
+    const { logActivity } = await import("@/lib/activity");
+    await logActivity({ type: "NOTE", body: `Engagement letter drafted again with ${groups.length} groups: ${groups.map((g) => g.name).sort().join(", ")}`, dealId, companyId: deal.sponsorCompanyId });
+  }
 
   return { ok: true, webLink: fresh.webLink ?? "", outlookLink: await outlookDesktopLink(mailbox, draft.id), messageId: fresh.internetMessageId ?? null, mode: "new", attachments: 0, added };
 }
