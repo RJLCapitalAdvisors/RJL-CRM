@@ -2,13 +2,15 @@ import { prisma } from "@/lib/db";
 import { graph, graphConfigured } from "@/lib/graph";
 import { logActivity } from "@/lib/activity";
 import { toJson } from "@/lib/taxonomy";
-import { advance, chosenFiles, sendMessage, sendReplyAll, type LaunchItem } from "@/lib/send-deal";
+import { advance, chosenFiles, dealFiles, FAQ_KEY, sendMessage, sendReplyAll, type LaunchItem } from "@/lib/send-deal";
 
 /**
  * LAUNCH, paced like a person: one deal email every LAUNCH_GAP_MS from a mailbox, so thirty firms get thirty
  * individually sent emails over fifteen minutes instead of a burst that spam filters flag. The emails sit in a
- * queue (DealLaunch); a pump sends whatever is due. The Send deal page keeps pumping while it is open, and page
- * loads elsewhere pump too, so a launch finishes even if the page is closed.
+ * queue (DealLaunch); a pump sends whatever is due. The database's minute scheduler (pg_cron on Supabase) calls the pump
+ * route every minute and each run lasts under a minute, so a launch goes on by itself with the page closed and the
+ * laptop shut, and two minute runs never overlap. The Send deal page's poll sends what is due while it is open, so the
+ * countdown and the send agree to the second. Any number of pumps cannot burst: the claim checks the pacing in the database.
  */
 export const LAUNCH_GAP_MS = 12_000; // Oct 1, 2026: twelve seconds (Microsoft allows thirty a minute); heavy attachments still pace by size below
 /**
@@ -27,7 +29,14 @@ const isPassing = (msg: string) => /ErrorItemNotFound|\b50[234]\b|ECONNRESET|ETI
 const backoffMs = (attempt: number) => Math.min(30, 5 * attempt) * 60_000;
 const bytesOf = (src: Awaited<ReturnType<typeof chosenFiles>>) => (src ? src.atts.reduce((t, a) => t + ((a as { size?: number }).size ?? (a as { _bytes?: Uint8Array })._bytes?.byteLength ?? 0), 0) : 0);
 
-export type LaunchStatus = { total: number; sent: number; failed: number; bounced: number; queued: number; nextInMs: number; heldUntil: string | null; rows: { rowId: string; status: string; error: string | null; bounced?: string[] }[] };
+export type LaunchStatus = { total: number; sent: number; failed: number; bounced: number; queued: number; nextInMs: number; nextAt: string | null; serverNow: string; gapMs: number; heldUntil: string | null; rows: { rowId: string; status: string; error: string | null; bounced?: string[] }[] };
+
+/** The attachment bytes an email will carry, from the files' recorded sizes (no download): the pacing gap is set from this when the email is queued. */
+export async function attachmentBytes(dealId: string, keys: string[] | undefined): Promise<number> {
+  const files = await dealFiles(dealId).catch(() => []);
+  const picked = keys ? files.filter((f) => keys.includes(f.key)) : files.filter((f) => f.key !== FAQ_KEY);
+  return picked.reduce((t, f) => t + (f.key === FAQ_KEY ? 150_000 : f.size || 0), 0);
+}
 
 const BOUNCE_PREFIX = /^(?:(?:re|fw|fwd)\s*:\s*)?(?:undeliverable|undelivered(?: mail returned to sender)?|delivery (?:status notification|has failed|failure)|mail delivery failed|returned mail|failure notice)\s*[:(]?\s*/i;
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
@@ -129,6 +138,7 @@ export async function firstSentMessageId(dealId: string, rowId: string): Promise
 /** Put every firm's email in the queue. Nothing is sent here; the first goes out on the first pump. A follow-up replies all on the deal email that firm was sent. */
 export async function queueDealEmails(dealId: string, items: LaunchItem[], mailbox: string, fileKeys?: string[], opts: { followup?: boolean } = {}): Promise<void> {
   const kind = opts.followup ? "FOLLOWUP" : "SEND";
+  const bytes = await attachmentBytes(dealId, fileKeys);
   for (const item of items) {
     const row = await prisma.dealInvestor.findUnique({ where: { id: item.rowId }, select: { id: true, contactId: true } });
     if (!row) continue;
@@ -141,7 +151,7 @@ export async function queueDealEmails(dealId: string, items: LaunchItem[], mailb
     const already = opts.followup ? await prisma.dealLaunch.findFirst({ where: { dealId, rowId: row.id, kind: "FOLLOWUP", status: { in: ["SENT", "BOUNCED"] } }, orderBy: { sentAt: "asc" }, select: { sentAt: true } }) : null;
     const error = !people.length ? "nobody with an email picked" : opts.followup && already ? `already followed up${already.sentAt ? ` on ${already.sentAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}; a firm is followed up once` : opts.followup && !replyTo ? "no sent deal email on record to reply to" : null;
     await prisma.dealLaunch.create({
-      data: { dealId, rowId: row.id, mailbox, kind, replyToMessageId: replyTo?.messageId ?? null, toContactIds: toJson(people.map((p) => p.id)), cc: toJson(item.cc ?? []), subject: item.subject, html: item.html, fileKeys: fileKeys ? toJson(fileKeys) : null, status: error ? "FAILED" : "QUEUED", error },
+      data: { dealId, rowId: row.id, mailbox, kind, replyToMessageId: replyTo?.messageId ?? null, toContactIds: toJson(people.map((p) => p.id)), cc: toJson(item.cc ?? []), subject: item.subject, html: item.html, fileKeys: fileKeys ? toJson(fileKeys) : null, bytes, status: error ? "FAILED" : "QUEUED", error },
     });
   }
 }
@@ -164,14 +174,30 @@ export async function kickPump(): Promise<boolean> {
   }
 }
 
+/** When the mailbox last started or finished sending (0 when never). The gap is measured from here: Microsoft counts the upload, which starts at the claim. */
+async function lastSendMark(mailbox: string): Promise<number> {
+  const last = await prisma.dealLaunch.findFirst({ where: { mailbox, status: { in: ["SENT", "SENDING"] } }, orderBy: [{ claimedAt: "desc" }], select: { claimedAt: true, sentAt: true } });
+  return Math.max(last?.claimedAt?.getTime() ?? 0, last?.sentAt?.getTime() ?? 0);
+}
 /** Milliseconds until the mailbox may send again (0 when it may send now); the gap grows with the attachments the next email carries. */
 async function waitFor(mailbox: string, gapMs = LAUNCH_GAP_MS): Promise<number> {
-  const last = await prisma.dealLaunch.findFirst({ where: { mailbox, status: { in: ["SENT", "SENDING"] } }, orderBy: [{ claimedAt: "desc" }], select: { claimedAt: true, sentAt: true } });
-  const t = Math.max(last?.claimedAt?.getTime() ?? 0, last?.sentAt?.getTime() ?? 0);
-  return Math.max(0, t + gapMs - Date.now());
+  return Math.max(0, (await lastSendMark(mailbox)) + gapMs - Date.now());
 }
 /** Queued emails that may go now (none held back by a throttle wait). */
 const ready = (mailbox: string) => ({ mailbox, status: "QUEUED", OR: [{ notBefore: null }, { notBefore: { lte: new Date() } }] });
+/**
+ * Claim one email, in one statement that also checks the pacing: the claim fails when another pump sent (or started
+ * sending) from this mailbox inside the gap. Oct 7, 2026: three pumps that had each slept through the same gap woke
+ * together and each claimed a different email, so three went out within three seconds; a check before the sleep is not
+ * a check at the claim. The database decides, so any number of pumps cannot burst.
+ */
+async function claim(id: string, mailbox: string, gapMs: number): Promise<boolean> {
+  const n = await prisma.$executeRaw`UPDATE "DealLaunch" SET status = 'SENDING', "claimedAt" = (now() at time zone 'utc')
+    WHERE id = ${id} AND status = 'QUEUED'
+    AND NOT EXISTS (SELECT 1 FROM "DealLaunch" l WHERE l.mailbox = ${mailbox} AND l.status IN ('SENT', 'SENDING')
+      AND GREATEST(COALESCE(l."claimedAt", 'epoch'::timestamp), COALESCE(l."sentAt", 'epoch'::timestamp)) > (now() at time zone 'utc') - (${gapMs} * interval '1 millisecond'))`;
+  return n > 0;
+}
 
 /**
  * Send what is due from one mailbox, one email per gap, for as long as the time budget allows. Two pumps at once
@@ -183,20 +209,19 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
   const cache = new Map<string, Awaited<ReturnType<typeof chosenFiles>>>();
   if (!graphConfigured()) return { sent: 0, remaining: await prisma.dealLaunch.count({ where: { mailbox, status: "QUEUED" } }) };
   for (;;) {
-    const peek = await prisma.dealLaunch.findFirst({ where: ready(mailbox), orderBy: { createdAt: "asc" } });
-    if (!peek) break;
-    const peekKeys = peek.fileKeys ? (JSON.parse(peek.fileKeys) as string[]) : undefined;
-    const peekCache = `${peek.dealId}:${peek.fileKeys ?? ""}`;
-    if (!cache.has(peekCache)) cache.set(peekCache, await chosenFiles(peek.dealId, peekKeys));
-    const wait = await waitFor(mailbox, gapForBytes(bytesOf(cache.get(peekCache)!)));
+    const next = await prisma.dealLaunch.findFirst({ where: ready(mailbox), orderBy: { createdAt: "asc" } });
+    if (!next) break;
+    const gap = gapForBytes(next.bytes);
+    const wait = await waitFor(mailbox, gap);
     if (wait > 0) {
       if (Date.now() + wait - started > budgetMs) break; // the gap does not fit in this run: the next run takes it
       await new Promise((r) => setTimeout(r, wait));
     }
-    const next = await prisma.dealLaunch.findFirst({ where: ready(mailbox), orderBy: { createdAt: "asc" } });
-    if (!next) break;
-    const claimed = await prisma.dealLaunch.updateMany({ where: { id: next.id, status: "QUEUED" }, data: { status: "SENDING", claimedAt: new Date() } });
-    if (claimed.count === 0) continue; // another pump took it
+    if (!(await claim(next.id, mailbox, gap))) {
+      // another pump sent inside the gap (or took this email): look again, and if the new wait does not fit, stop
+      if (Date.now() - started > budgetMs) break;
+      continue;
+    }
     try {
       const row = await prisma.dealInvestor.findUniqueOrThrow({ where: { id: next.rowId }, include: { contact: { select: { companyId: true } } } });
       const ids = JSON.parse(next.toContactIds) as string[];
@@ -238,6 +263,7 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
     }
     if (Date.now() - started > budgetMs) break;
   }
+  void bytesOf;
   return { sent, remaining: await prisma.dealLaunch.count({ where: { mailbox, status: "QUEUED" } }) };
 }
 
@@ -256,7 +282,7 @@ export async function pumpAllLaunches(budgetMs = 45_000): Promise<number> {
 /** Where a deal's launch stands, for the progress note on the Send deal page. */
 export async function launchStatus(dealId: string, kind: "SEND" | "FOLLOWUP" = "SEND"): Promise<LaunchStatus> {
   const since = new Date(Date.now() - 7 * 86_400_000); // a bounce can arrive a day later; the firm still has to show as bounced
-  const rows = await prisma.dealLaunch.findMany({ where: { dealId, kind, createdAt: { gte: since } }, orderBy: { createdAt: "asc" }, select: { rowId: true, status: true, error: true, mailbox: true, notBefore: true } });
+  const rows = await prisma.dealLaunch.findMany({ where: { dealId, kind, createdAt: { gte: since } }, orderBy: { createdAt: "asc" }, select: { rowId: true, status: true, error: true, mailbox: true, notBefore: true, bytes: true } });
   const latest = new Map<string, (typeof rows)[number]>();
   for (const r of rows) latest.set(r.rowId, r);
   const list = [...latest.values()];
@@ -265,6 +291,12 @@ export async function launchStatus(dealId: string, kind: "SEND" | "FOLLOWUP" = "
   const holds = list.filter((r) => r.status === "QUEUED" && r.notBefore && r.notBefore.getTime() > Date.now()).map((r) => r.notBefore!.getTime());
   const allHeld = holds.length > 0 && holds.length === n(["QUEUED"]);
   const heldUntil = allHeld ? new Date(Math.min(...holds)).toISOString() : null;
-  const baseWait = mailbox ? await waitFor(mailbox) : 0;
-  return { total: list.length, sent: n(["SENT"]), failed: n(["FAILED"]), bounced: n(["BOUNCED"]), queued: n(["QUEUED", "SENDING"]), nextInMs: heldUntil ? Math.max(baseWait, Math.min(...holds) - Date.now()) : baseWait, heldUntil, rows: list.map((r) => ({ rowId: r.rowId, status: r.status, error: r.error, ...(r.status === "BOUNCED" ? { bounced: (r.error?.match(EMAIL_RE) ?? []).map((e) => e.toLowerCase()) } : {}) })) };
+  // the next email in line for this mailbox (any deal) sets the gap; the countdown on the page is this moment, not a guess
+  const nextRow = mailbox ? await prisma.dealLaunch.findFirst({ where: ready(mailbox), orderBy: { createdAt: "asc" }, select: { bytes: true } }) : null;
+  const gapMs = gapForBytes(nextRow?.bytes ?? list.find((r) => r.status === "QUEUED")?.bytes ?? 0);
+  const now = Date.now();
+  const mark = mailbox ? await lastSendMark(mailbox) : 0;
+  const due = Math.max(mark + gapMs, heldUntil ? Math.min(...holds) : 0, now);
+  const sendingNow = list.some((r) => r.status === "SENDING");
+  return { total: list.length, sent: n(["SENT"]), failed: n(["FAILED"]), bounced: n(["BOUNCED"]), queued: n(["QUEUED", "SENDING"]), nextInMs: due - now, nextAt: n(["QUEUED", "SENDING"]) > 0 ? new Date(sendingNow ? now : due).toISOString() : null, serverNow: new Date(now).toISOString(), gapMs, heldUntil, rows: list.map((r) => ({ rowId: r.rowId, status: r.status, error: r.error, ...(r.status === "BOUNCED" ? { bounced: (r.error?.match(EMAIL_RE) ?? []).map((e) => e.toLowerCase()) } : {}) })) };
 }

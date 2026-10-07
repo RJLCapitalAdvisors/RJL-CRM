@@ -392,10 +392,12 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
     if (noPeople.length) return setNote(`${noPeople.length} firm${noPeople.length === 1 ? " has" : "s have"} nobody picked: use the ▾ on the firm to pick who gets it, or x to leave it out.`);
     if (!armed || Date.now() - armed > 10_000) {
       setArmed(Date.now());
-      setNote(`Ready: ${items.length} individual email${items.length === 1 ? "" : "s"}, one every 30 seconds, ${chosenFiles.size} attachment${chosenFiles.size === 1 ? "" : "s"} each. Click LAUNCH again to send.`);
+      setNote(`Ready: ${items.length} individual email${items.length === 1 ? "" : "s"}, one at a time (every ${gapS} seconds or longer, set by the attachments' size), ${chosenFiles.size} attachment${chosenFiles.size === 1 ? "" : "s"} each. Click LAUNCH again to send.`);
       return;
     }
     setArmed(null);
+    setNote(`Sending the first of ${items.length}${chosenFiles.size ? ", uploading its attachments" : ""}…`);
+    setResults((s) => ({ ...s, ...Object.fromEntries(items.map((i) => [i.rowId, { ok: false, pending: true }])) }));
     start(async () => {
       try {
         const r = await launchAction(dealId, items, [...chosenFiles], mode);
@@ -420,16 +422,20 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
     if (bouncedIds.size) setTo((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, new Set([...v].filter((id) => !bouncedIds.has(id)))])));
     const trouble = st.rows.filter((x) => x.status === "FAILED" || x.status === "BOUNCED").map((x) => `${firms.find((f) => f.rowId === x.rowId)?.company ?? "a firm"} (${x.error ?? x.status.toLowerCase()})`);
     const held = st.heldUntil ? new Date(st.heldUntil) : null;
-    setNextAt(st.queued > 0 && !held ? Date.now() + st.nextInMs : null);
+    // the server says when the next email goes (its clock); shown on this clock by the difference between the two
+    const skew = Date.now() - new Date(st.serverNow).getTime();
+    setNextAt(st.queued > 0 && !held && st.nextAt ? new Date(st.nextAt).getTime() + skew : null);
+    setGapS(Math.round(st.gapMs / 1000));
     setNote(
       st.queued > 0
         ? held
           ? `${st.sent} of ${st.total} sent · ${st.queued} waiting. Microsoft paused attachment uploads from your mailbox for a few minutes (too many megabytes in a short time); sending resumes on its own at ${held.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}. Nothing is lost; the server keeps going whether or not this page is open.`
-          : `${st.sent} of ${st.total} sent · ${st.queued} to go. One email at a time, spaced for the attachments' size, so each lands as an individually sent email. The server keeps going if you leave or your laptop sleeps.`
+          : `${st.sent} of ${st.total} sent · ${st.queued} to go. One email every ${Math.round(st.gapMs / 1000)} seconds (set by the attachments' size: Microsoft limits the megabytes a mailbox may upload per minute), so each lands as an individually sent email. The server keeps going if you leave or your laptop sleeps.`
         : `${st.sent} of ${st.total} sent.${trouble.length ? ` Needs another go: ${trouble.join("; ")}. Use the ▾ on the firm to pick who gets it (the same people or others there), then "send again" on that firm.` : ""}`,
     );
   };
   const [nextAt, setNextAt] = useState<number | null>(null);
+  const [gapS, setGapS] = useState<number>(12);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (nextAt == null) return;
@@ -881,7 +887,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
       <div className="card flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="text-sm text-muted">
           {note ?? `${itemsToSend().length} ${followup ? "follow-up" : "email"}${itemsToSend().length === 1 ? "" : "s"} ready. Each firm gets the General ${followup ? "follow-up as a reply all on its deal email" : "email with its person's name"}, the ${chosenFiles.size} attachment${chosenFiles.size === 1 ? "" : "s"} ticked above and your signature.`}
-          {countdown != null && launching && <span className="ml-2 tabular-nums text-ink">next in {countdown}s</span>}
+          {countdown != null && launching && <span className="ml-2 tabular-nums text-ink">{countdown > 0 ? `next in ${countdown}s` : "sending now…"}</span>}
         </div>
         <div className="flex items-center gap-2">
           {!launching && Object.values(results).some((r) => !r.ok && !r.pending) && (

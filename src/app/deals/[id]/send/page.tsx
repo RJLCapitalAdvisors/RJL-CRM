@@ -46,7 +46,8 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   // a launch still going (or left behind when the tab closed): the page resumes pacing it and pumps in the background
   const launch = await launchStatus(deal.id).catch(() => null);
   const bouncedEmails = new Set((launch?.rows ?? []).flatMap((r) => r.bounced ?? []));
-  if (launch && launch.queued > 0 && me) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
+  // the minute scheduler keeps a launch going; the page's own poll sends what is due while it is open (a long pump here was one of three that woke together, Oct 7, 2026)
+  if (launch && launch.queued > 0 && me && !process.env.CRON_SECRET) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
   const team = (await prisma.user.findMany({ where: { active: true, ...CA_TEAM, email: { not: null } }, select: { name: true, email: true }, orderBy: { name: "asc" } })).filter((u) => u.email && u.email.toLowerCase() !== me?.email?.toLowerCase()).map((u) => ({ name: u.name, email: u.email! }));
   const sendState = ((): SendState | null => {
     try {

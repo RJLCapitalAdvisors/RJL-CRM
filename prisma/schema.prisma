@@ -911,6 +911,7 @@ model DealLaunch {
   error        String?
   notBefore    DateTime? // held back until then (Microsoft throttled the attachment upload); null = ready
   attempts     Int       @default(0)
+  bytes        Int       @default(0) // attachment bytes this email carries, known at queue time: the pacing gap and the page's countdown come from it (Oct 7, 2026)
   claimedAt    DateTime?
   sentAt       DateTime?
   createdAt    DateTime  @default(now())
