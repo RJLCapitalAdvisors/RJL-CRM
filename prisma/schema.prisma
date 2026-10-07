@@ -1248,6 +1248,33 @@ model AqPendingImport {
   @@index([status, createdAt])
 }
 
+// One file through the Import section (Oct 7, 2026): parsed by code into properties, read by Claude in small batches,
+// reviewed by Shawn, written in chunks, then checked against the file.
+model AqImportRun {
+  id            String    @id @default(cuid())
+  fileName      String
+  createdBy     String?
+  status        String    @default("READING") // READING | REVIEW | IMPORTING | DONE | FAILED
+  format        String    @default("terakotta")
+  rowCount      Int       @default(0)
+  ignoredRows   Int       @default(0)
+  propertyCount Int       @default(0)
+  groups        String    // JSON: the properties folded from the file, with every phone row and call
+  context       String?   // JSON: { crm: what the CRM held for each property when read, hints: possible duplicates }
+  decisions     String    @default("{}") // JSON: property key → Claude's reading (result, lists, junk, hold, why)
+  overrides     String    @default("{}") // JSON: property key → Shawn's changes on the review page
+  readDone      Int       @default(0)
+  importDone    Int       @default(0)
+  lockedUntil   DateTime? // one step at a time (two tabs, a reload): a step claims the run until this time
+  report        String?   // JSON: the merged import report and the check against the file
+  error         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  importedAt    DateTime?
+
+  @@index([createdAt])
+}
+
 model AqPropertyCompany {
   propertyId String
   property   AqProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
