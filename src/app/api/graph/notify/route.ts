@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { processDealsInbox } from "@/lib/deals-inbox";
 import { processIsraelInbox } from "@/lib/israel-intake";
 import { syncIsraelMailboxes } from "@/lib/israel-mail";
+import { servesSide } from "@/lib/side";
 
 export const maxDuration = 800; // a forward with three deals and a dozen PDFs needs more than five minutes (Sep 17)
 
@@ -14,6 +15,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as { value?: { clientState?: string }[] };
   const ok = (body.value ?? []).some((n) => n.clientState === process.env.CRON_SECRET);
   if (!ok) return new Response("Bad clientState", { status: 202 }); // 202 so Graph does not retry forever
+  if (!servesSide("CA") && !servesSide("IL")) return new Response("not served here", { status: 202 }); // Shawn's deployment has no deals@ (Oct 7, 2026)
   after(async () => {
     try {
       await processDealsInbox();

@@ -10,6 +10,7 @@ import { refreshMomentum } from "@/lib/momentum";
 import { scanAllIntros } from "@/lib/intros";
 import { detectIntroCalls } from "@/lib/intro-calls";
 import { enrichActiveDealsFromCalls } from "@/lib/fireflies";
+import { servesSide } from "@/lib/side";
 
 export const maxDuration = 800; // a forward with three deals and a dozen PDFs needs more than five minutes (Sep 17)
 
@@ -19,6 +20,11 @@ export async function GET(req: Request) {
   const key = new URL(req.url).searchParams.get("key");
   const secret = process.env.CRON_SECRET;
   if (!secret || (auth !== `Bearer ${secret}` && key !== secret)) return new Response("Unauthorized", { status: 401 });
+  // a deployment that serves only RJL Acquisitions (Shawn's, Oct 7, 2026) reads its mailboxes and stops
+  if (!servesSide("CA") && !servesSide("IL")) {
+    const acquisitionsMail = servesSide("AQ") ? await syncAcquisitionsMailboxes().catch((e) => String(e)) : "not served here";
+    return Response.json({ ok: true, acquisitionsMail });
+  }
   const [result, deals, subscription] = await Promise.all([syncAllMailboxes(), processDealsInbox().catch((e) => String(e)), ensureDealsSubscription().catch((e) => String(e))]);
   const stray = await linkStrayEmails().catch(() => 0);
   await refreshDashboardSignals().catch(() => undefined);

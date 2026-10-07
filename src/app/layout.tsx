@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { currentUser } from "@/lib/current-user";
 import "./globals.css";
 import { WorkspaceSidebar } from "@/components/workspace-sidebar";
+import { SIDES } from "@/lib/side";
 import { isAcquisitionsPath, isIsraelPath } from "@/lib/workspace";
 import { kickAcquisitionsMailSync } from "@/lib/acquisitions-mail";
 import { kickMailSync } from "@/lib/mail-sync";
@@ -25,7 +26,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body className={`flex min-h-screen ${isIsraelPath(pathname) ? "israel" : isAcquisitionsPath(pathname) ? "acquisitions" : ""}`}>
-        <WorkspaceSidebar user={user ? { name: user.name, workspaces: user.workspaces, granted: user.granted, accounts: user.accounts } : null} />
+        <WorkspaceSidebar user={user ? { name: user.name, workspaces: user.workspaces, granted: user.granted, accounts: user.accounts } : null} sides={SIDES} />
         <main className="min-w-0 flex-1">{children}</main>
       </body>
     </html>

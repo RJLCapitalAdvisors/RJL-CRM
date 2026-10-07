@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, SESSION_DAYS, signSession, verifySession } from "@/lib/session";
 import { aliasesOf, homeFor, parseWorkspaces, possibleByDomain, signInAllowed, workspacesByDomain, type Workspace } from "@/lib/access";
 import { sideOfPath } from "@/lib/workspace";
+import { servesSide } from "@/lib/side";
 import { isIsraelPath } from "@/lib/workspace";
 
 /** Step 2 of Microsoft sign-in: exchange the code, confirm who it is, match to a CRM user, set the session. */
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
   // Advisors, an @rjlisrael.com account opens RJL Israel), within what Jonathan allows the person under Settings
   const allowed = parseWorkspaces(user.workspaces, user.email ?? email);
   // an RJL CA address can open RJL Capital Advisors or RJL Acquisitions; Jonathan's list under Users says which (Shawn: Acquisitions only)
-  const granted = possibleByDomain(email).filter((x) => allowed.includes(x));
+  const granted = possibleByDomain(email).filter((x) => allowed.includes(x) && servesSide(x)); // and only the sides this deployment serves (Oct 7, 2026)
   if (!granted.length) return fail(`${email} does not open ${byDomain.includes("IL") ? "RJL Israel" : byDomain.includes("CA") ? "RJL Capital Advisors" : "the CRM"} yet. Ask Jonathan to open it for you.`);
 
   // someone with both businesses signs in twice, one account at a time; the second sign-in adds to the first

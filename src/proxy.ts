@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { workspacesByDomain } from "@/lib/access";
 import { isIsraelPath, sideOfPath } from "@/lib/workspace";
+import { SIDES, servesSide, sideHome } from "@/lib/side";
 
 /**
  * Sign-in gate for the hosted CRM. Preferred: Microsoft sign-in (signed rjl_user cookie, one person).
@@ -28,6 +29,13 @@ export async function proxy(req: NextRequest) {
     h.set("x-pathname", pathname);
     return NextResponse.next({ request: { headers: h } });
   };
+  // a deployment that serves one side (CRM_SIDE=AQ on Shawn's) sends every other side's page, "/" included, to its own home (Oct 7, 2026)
+  if (SIDES.length && !pathname.startsWith("/api/") && !PUBLIC.some((re) => re.test(pathname)) && !servesSide(sideOfPath(pathname))) {
+    const url = req.nextUrl.clone();
+    url.pathname = sideHome(SIDES[0]);
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
   if (!gated) return withPath();
   if (PUBLIC.some((re) => re.test(pathname))) return withPath();
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);

@@ -1,5 +1,6 @@
 import { login } from "./actions";
 import { str } from "@/lib/format";
+import { onlySide } from "@/lib/side";
 
 export const metadata = { title: "Sign in" };
 
@@ -10,7 +11,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const next = str(sp.next) || "/";
   const error = str(sp.error);
   // the side named on the link, else inferred from next (an /israel page means RJL Israel), else the generic page
-  const business = str(sp.business) === "IL" ? "IL" : str(sp.business) === "AQ" ? "AQ" : str(sp.business) === "CA" ? "CA" : /^\/israel(\/|$)/.test(next) ? "IL" : /^\/acquisitions(\/|$)/.test(next) ? "AQ" : next !== "/" ? "CA" : null;
+  const business = onlySide() ?? (str(sp.business) === "IL" ? "IL" : str(sp.business) === "AQ" ? "AQ" : str(sp.business) === "CA" ? "CA" : /^\/israel(\/|$)/.test(next) ? "IL" : /^\/acquisitions(\/|$)/.test(next) ? "AQ" : next !== "/" ? "CA" : null);
   const acquisitions = business === "AQ";
   const israel = business === "IL";
   const microsoft = Boolean(process.env.AZURE_CLIENT_ID && process.env.AZURE_TENANT_ID);
