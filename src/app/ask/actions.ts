@@ -75,27 +75,30 @@ export async function chatAction(threadId: string | null, workspace: Workspace, 
   let thread = threadId ? await prisma.chatThread.findFirst({ where: { id: threadId, userId: key }, include: { messages: { orderBy: { createdAt: "asc" }, take: 60 } } }) : null;
   if (!thread) thread = await prisma.chatThread.create({ data: { userId: key, workspace, title: shown.replace(/\s+/g, " ").slice(0, 80) }, include: { messages: true } });
 
-  // what the model sees: earlier turns (with their files, the most recent ones in full), then this one
+  // what the model sees: earlier turns, then this one. A file is replayed in full only on the two most recent turns that carried
+  // one (older files become a one-line reminder), and every file block is marked for prompt caching, so the turns that follow a
+  // drop reread it at a tenth of the price instead of paying for the whole file again (Oct 7, 2026)
   const history: HistoryMessage[] = [];
-  let fileBudget = 400_000; // the file dropped earlier in the thread stays in full view for the follow-up turns (Oct 5, 2026)
+  let fileBudget = 400_000;
+  let fileTurns = 0;
   const prior = [...thread.messages].reverse();
-  const priorText: string[] = [];
   for (const m of prior) {
     const d = readData(m.data);
     let content = m.content;
+    let blocks: { type: "text"; text: string; cache_control?: { type: "ephemeral" } }[] | null = null;
     if (m.role === "user" && d.attachments?.length) {
       const t = d.attachments.map(attachmentText).join("\n\n");
-      if (t.length <= fileBudget) {
-        content += "\n\n" + t;
+      if (t.length <= fileBudget && fileTurns < 2) {
+        blocks = [{ type: "text", text: content }, { type: "text", text: t, cache_control: { type: "ephemeral" } }];
         fileBudget -= t.length;
+        fileTurns++;
       } else content += "\n\n" + d.attachments.map((a) => `[Attached earlier: ${a.name} (${a.rows} rows); ask for it again if you need the rows]`).join("\n");
     }
     if (m.role === "assistant" && d.proposal) content += `\n\n[You proposed an import: ${d.proposal.summary}${d.importedAt ? " (the user imported it)" : " (not imported yet)"}]`;
-    priorText.unshift(content);
-    history.unshift({ role: m.role as "user" | "assistant", content });
+    history.unshift({ role: m.role as "user" | "assistant", content: blocks ?? content });
   }
-  const own = shown + (attachments.length ? "\n\n" + attachments.map(attachmentText).join("\n\n") : "") + (problems.length ? "\n\n[Files not read: " + problems.join("; ") + "]" : "");
-  history.push({ role: "user", content: own });
+  const ownText = shown + (problems.length ? "\n\n[Files not read: " + problems.join("; ") + "]" : "");
+  history.push({ role: "user", content: attachments.length ? [{ type: "text", text: ownText }, { type: "text", text: attachments.map(attachmentText).join("\n\n"), cache_control: { type: "ephemeral" } }] : ownText });
 
   const userRow = await prisma.chatMessage.create({ data: { threadId: thread.id, role: "user", content: shown, data: attachments.length ? JSON.stringify({ attachments }) : null } });
   let r: { answer: string; lookups: string[]; proposal: Proposal | null; savedRules: string[] };

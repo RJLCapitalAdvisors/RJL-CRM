@@ -22,7 +22,8 @@ import { stripDashes } from "@/lib/style";
  * (Settings > Import instructions, Acquisitions). The Acquisitions writer itself is in aq-import.ts.
  */
 
-export type HistoryMessage = { role: "user" | "assistant"; content: string };
+/** A turn's content: text, or text blocks (a dropped file is its own block, marked for prompt caching so later turns reread it at a tenth of the price; Oct 7, 2026). */
+export type HistoryMessage = { role: "user" | "assistant"; content: string | Anthropic.TextBlockParam[] };
 export type Sheet = { name: string; rows: number; csv: string };
 export type Attachment = { name: string; rows: number; sheets: Sheet[]; truncated: boolean };
 export type { CompanyRow, ContactRow, ImportResult, Proposal, PropertyRow };
@@ -339,7 +340,8 @@ export async function assistantTurn(ws: Workspace, history: HistoryMessage[], us
   const exec = ws === "IL" ? runIl : ws === "AQ" ? runAq : runCa;
   const tools: Anthropic.Tool[] = [...lookups, importTool(ws), SAVE_RULE, ...(ws === "AQ" ? [SAVE_IMPORT_INSTRUCTIONS, RESOLVE_PENDING] : [])];
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-  const system = `${base}\n${importGuide(ws, rules, instructions)}\nToday is ${today}. You are talking with ${userName}.`;
+  // the long, stable part of the system prompt (the guide, the standing instructions, the rules) is cached across turns; the date and name sit after it
+  const system: Anthropic.TextBlockParam[] = [{ type: "text", text: `${base}\n${importGuide(ws, rules, instructions)}`, cache_control: { type: "ephemeral" } }, { type: "text", text: `Today is ${today}. You are talking with ${userName}.` }];
   const client = new Anthropic();
   const messages: Anthropic.MessageParam[] = history.slice(-14).map((m) => ({ role: m.role, content: m.content }));
   const used: string[] = [];

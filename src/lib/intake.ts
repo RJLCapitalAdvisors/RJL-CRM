@@ -409,7 +409,8 @@ export async function extractWithClaude(rawText: string, subject?: string | null
   // first, what kind of deal this is, so the full schema carries only the fields that apply (Oct 6, 2026)
   let scope: ExtractScope = { assetClass: known.assetClass ?? null, strategy: known.strategy ?? null };
   if (!scope.assetClass) try {
-    const c = await client.messages.parse({ model: "claude-opus-5", max_tokens: 300, system: "You classify a commercial real estate deal from an email and its attachments. Answer only the two fields.", messages: [{ role: "user", content: content.slice(0, 80_000) }], output_config: { format: zodOutputFormat(classifyOutput) } });
+    // Sonnet (Oct 7, 2026): naming the asset class and the strategy needs no judgement over the model; the extraction itself stays on Opus
+    const c = await client.messages.parse({ model: "claude-sonnet-5", max_tokens: 300, system: "You classify a commercial real estate deal from an email and its attachments. Answer only the two fields.", messages: [{ role: "user", content: content.slice(0, 40_000) }], output_config: { format: zodOutputFormat(classifyOutput) } });
     if (c.parsed_output) scope = { assetClass: c.parsed_output.assetClass || null, strategy: scope.strategy ?? (c.parsed_output.strategy || null) };
   } catch (e) {
     console.error("intake classify failed, reading with the general schema:", String(e).slice(0, 160));

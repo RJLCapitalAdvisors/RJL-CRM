@@ -28,15 +28,31 @@ export async function attachmentToText(name: string, contentType: string | null,
       const SHEET_LAST = /cash ?flow|monthly|month|cf\b|schedule|amort|waterfall|calc/i;
       const rank = (n: string) => (SHEET_FIRST.test(n) && !SHEET_LAST.test(n) ? 0 : SHEET_LAST.test(n) ? 2 : 1);
       const names = [...wb.SheetNames].sort((a, b) => rank(a) - rank(b));
+      // Cost (Oct 7, 2026): a 330k-character model was mostly monthly cash-flow columns the extractor never needs. Hidden sheets
+      // are skipped; the facts sheets are read whole (60k chars each), middling sheets to 40k, cash-flow sheets to 20k with
+      // their lines cut at 16 cells (the annual columns sit first; the months run on to the right); a file stops at 240k.
+      const hidden = new Set((wb.Workbook?.Sheets ?? []).filter((x) => x.Hidden).map((x) => x.name));
+      const BUDGET = [60_000, 40_000, 20_000];
+      const CELLS = [60, 40, 16];
+      let total = 0;
       const parts: string[] = [];
       for (const sheetName of names) {
+        if (hidden.has(sheetName) || total >= 240_000) continue;
         const ws = wb.Sheets[sheetName];
+        const r = rank(sheetName);
         const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, blankrows: false, raw: false });
         const lines = rows
-          .map((r) => (r as unknown[]).map((c) => (c == null ? "" : String(c).trim())).join("\t").replace(/\t{3,}/g, "\t\t").replace(/\t+$/, ""))
+          .map((row) => (row as unknown[]).slice(0, CELLS[r]).map((c) => (c == null ? "" : String(c).trim())).join("\t").replace(/\t{3,}/g, "\t\t").replace(/\t+$/, ""))
           .filter((l) => l.replace(/\t/g, "").trim());
         if (!lines.length) continue;
-        parts.push(`--- Sheet: ${sheetName} ---\n${lines.slice(0, 3000).join("\n")}${lines.length > 3000 ? "\n…(sheet continues)" : ""}`);
+        let text = "", n = 0;
+        for (const l of lines) {
+          if (text.length + l.length > Math.min(BUDGET[r], 240_000 - total) || n >= 3000) break;
+          text += (text ? "\n" : "") + l;
+          n++;
+        }
+        total += text.length;
+        parts.push(`--- Sheet: ${sheetName} ---\n${text}${n < lines.length ? "\n…(sheet continues)" : ""}`);
       }
       return parts.join("\n\n");
     }

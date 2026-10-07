@@ -179,15 +179,20 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   const existingId = splitFirst.length > 1 ? null : await matchExistingDeal({ conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: cleanSubject, bodyText, senderEmail: external ? fromAddr : fwd.email, attachmentNames: names, attachmentText: texts.map((t) => `=== ${t.name} ===\n${t.text.slice(0, 1500)}`).join("\n") });
   if (existingId) {
     await releaseClaim();
+    // a file the ticket already holds (the OM resent with the sponsor's answers) was read when it first came; only what is new is read now (Oct 7, 2026)
+    const known = new Set((await prisma.dealFile.findMany({ where: { dealId: existingId }, select: { name: true } })).map((f) => f.name.toLowerCase()));
+    const fresh = texts.filter((t) => !known.has(t.name.toLowerCase()));
+    const resent = texts.filter((t) => known.has(t.name.toLowerCase())).map((t) => t.name);
+    const followText = assembleDealText(bodyText + (resent.length ? `\n\n[Attached again, already on the ticket and read before: ${resent.join(", ")}]` : ""), fresh);
     await recordDealEmail(existingId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "FOLLOWUP" });
     const files = (msg.hasAttachments ? await recordDealFiles(existingId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0) : 0) + (await recordPulled(existingId, ext));
-    const facts = await extractDealFacts(existingId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, { mayEnterFaq: true }).catch(() => 0);
-    // a deal that was lost and comes back: the new documents overwrite the old figures (Jonathan, Sep 25, 2026)
+    const facts = await extractDealFacts(existingId, followText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, { mayEnterFaq: true }).catch(() => 0);
+    // a deal that was lost and comes back: the new documents overwrite the old figures (Jonathan, Sep 25, 2026); then every file is read again
     const wasLost = (await prisma.deal.findUniqueOrThrow({ where: { id: existingId }, select: { stage: true } })).stage === "Deal Lost";
-    const merged = await mergeIntoDeal(existingId, rawText, cleanSubject, { modelAttached: names.some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: names, overwrite: wasLost }).catch(() => ({ filled: 0, changes: [], model: null }));
+    const merged = await mergeIntoDeal(existingId, wasLost ? rawText : followText, cleanSubject, { modelAttached: (wasLost ? names : fresh.map((t) => t.name)).some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: wasLost ? names : fresh.map((t) => t.name), overwrite: wasLost }).catch(() => ({ filled: 0, changes: [], model: null }));
     const filled = merged.filled;
     // the narratives take in what the new material adds (a sponsor deck, a write-up, the sponsor's answers)
-    await (await import("@/lib/enrich-narratives")).improveNarratives(existingId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => null);
+    await (await import("@/lib/enrich-narratives")).improveNarratives(existingId, followText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => null);
     if (!external) await applyForwarderInstructions(existingId, bodyText).catch(() => null);
     let deal = await prisma.deal.findUniqueOrThrow({ where: { id: existingId } });
     const wasMentioned = deal.stage === "Deal Mentioned";
