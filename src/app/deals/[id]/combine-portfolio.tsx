@@ -19,6 +19,15 @@ export function CombinePortfolio({ dealId, dealName }: { dealId: string; dealNam
   const [err, setErr] = useState<string | null>(null);
   const [busy, start] = useTransition();
   const box = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  // the panel floats over the page (position fixed) so the ticket's narrow, scrolling left column cannot clip it (Jonathan, Oct 8, 2026: the text was cut off on the left)
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const place = () => {
+    const r = btn.current?.getBoundingClientRect();
+    if (!r) return;
+    const w = Math.min(384, window.innerWidth - 16);
+    setAt({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) });
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -40,11 +49,11 @@ export function CombinePortfolio({ dealId, dealName }: { dealId: string; dealNam
 
   return (
     <div ref={box} className="relative">
-      <button type="button" className="btn-secondary" onClick={() => setOpen((o) => !o)} title="Take this and other tickets from the same sponsor out together as one deal">
+      <button ref={btn} type="button" className="btn-secondary" onClick={() => { if (!open) place(); setOpen((o) => !o); }} title="Take this and other tickets from the same sponsor out together as one deal">
         Combine into portfolio
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-96 rounded-md border border-line bg-paper p-3 text-sm shadow-lg">
+        <div className="fixed z-50 w-96 max-w-[calc(100vw-16px)] rounded-md border border-line bg-paper p-3 text-sm shadow-lg" style={at ? { top: at.top, left: at.left } : undefined}>
           <div className="mb-2 text-xs text-muted">
             Tickets from the same sponsor to take out together with <b>{dealName}</b>. The portfolio&apos;s numbers are the sum of the properties&apos; capital stacks; the email gets one intro in the plural, the totals, a Deal Metrics block per property, one business plan and one sponsor bio.
           </div>
