@@ -129,7 +129,7 @@ export async function attachToPortfolio(parentId: string, childIds: string[]): P
   const sponsor = parent.sponsorName ?? "Sponsor";
   const summary = parent.summary?.trim() ? null : await portfolioPlan(sponsor, parent.assetClass, portfolioLocation(all), all);
   const bio = parent.sponsorExperience?.trim() ? null : all.map((c) => c.sponsorExperience).find((b) => b?.trim()) ?? null;
-  await prisma.deal.update({ where: { id: parent.id }, data: { ...(summary ? { summary } : {}), ...(bio ? { sponsorExperience: bio } : {}), assetClass: parent.assetClass ?? all[0].assetClass, executionType: parent.executionType ?? all[0].executionType, requestType: parent.requestType ?? all[0].requestType } });
+  await prisma.deal.update({ where: { id: parent.id }, data: { ...(summary ? { summary } : {}), ...(bio ? { sponsorExperience: bio } : {}), sponsorCompanyId: parent.sponsorCompanyId ?? all.map((c) => c.sponsorCompanyId).find(Boolean) ?? null, assetClass: parent.assetClass ?? all[0].assetClass, executionType: parent.executionType ?? all[0].executionType, requestType: parent.requestType ?? all[0].requestType } });
   await recomputePortfolioTotals(parent.id);
   const names = children.map((c) => c.propertyName ?? c.name);
   await prisma.activity.create({ data: { type: "NOTE", body: `${names.join(", ")} joined this portfolio as ${names.length === 1 ? "a component" : "components"}; the totals are the sum of the components' capital stacks.`, dealId: parent.id, occurredAt: new Date() } }).catch(() => null);
