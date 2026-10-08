@@ -11,6 +11,17 @@ import { currentUser } from "@/lib/current-user";
 import { proposeManualChanges } from "@/lib/criteria-proposals";
 import { checkBucketsFor, holdBucketsFor, vintageBucketsFor } from "@/lib/ranges";
 
+/** The company page's picks for deal emails: the checkbox (on the emails) and the star (addressed to). A star implies the checkbox. */
+export async function setDealPicksAction(contactId: string, next: { send?: boolean; address?: boolean }) {
+  const c = await prisma.contact.findUnique({ where: { id: contactId }, select: { companyId: true, dealSend: true, dealAddress: true } });
+  if (!c) return { ok: false as const };
+  const address = next.address ?? c.dealAddress;
+  const send = address ? true : (next.send ?? c.dealSend);
+  await prisma.contact.update({ where: { id: contactId }, data: { dealSend: send, dealAddress: address } });
+  if (c.companyId) revalidatePath(`/companies/${c.companyId}`);
+  return { ok: true as const };
+}
+
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
   return typeof v === "string" && v.trim() ? v.trim() : null;

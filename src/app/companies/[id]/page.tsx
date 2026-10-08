@@ -14,6 +14,7 @@ import { refreshCompanyFromWebsite, updateCompany, updateCompanyCriteria } from 
 import { currentUser } from "@/lib/current-user";
 import { EmailLog } from "@/components/email-log";
 import { kickMailSync } from "@/lib/mail-sync";
+import { DealPicks } from "./deal-picks";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -119,11 +120,15 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
       right={
         <>
           <AssocCard title="Contacts" count={company.contacts.length} addHref={`/contacts/new?companyId=${company.id}`} empty="No contacts linked yet.">
+            {company.contacts.length > 1 && <div className="px-4 pt-2 text-[11px] text-muted">Tick who is on the firm&apos;s deal emails; star who they are addressed to. Nothing ticked: the Send deal page picks from the email log.</div>}
             {company.contacts.map((k) => (
               <div key={k.id} className="px-4 py-2.5 text-sm">
-                <Link href={`/contacts/${k.id}`} className="font-medium hover:underline">
-                  {fullName(k)}
-                </Link>
+                <div className="flex items-center justify-between gap-2">
+                  <Link href={`/contacts/${k.id}`} className="min-w-0 truncate font-medium hover:underline">
+                    {fullName(k)}
+                  </Link>
+                  {k.email && !k.departedAt && <DealPicks contactId={k.id} send={k.dealSend} address={k.dealAddress} />}
+                </div>
                 <div className="truncate text-xs text-muted">
                   {k.email}
                   {k.title ? ` · ${k.title}` : ""}

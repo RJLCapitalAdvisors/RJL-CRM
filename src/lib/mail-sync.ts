@@ -67,17 +67,12 @@ async function pageThrough(mailbox: string, folder: "sentitems" | "inbox", since
 /** The deal an email is about: its name in the subject; else, for someone on a deal's report or at its sponsor, the city or a property word. */
 /** A contact imported without a name gets it from the display name on the first email we see them on. */
 async function fillContactName(contactId: string, displayName: string | undefined) {
-  if (!displayName || displayName.includes("@")) return;
-  let n = displayName.replace(/^["']|["']$/g, "").replace(/\s*\([^)]*\)\s*$/, "").trim();
-  if (n.includes(",")) {
-    const [l, f] = n.split(",").map((x) => x.trim());
-    n = `${f} ${l}`;
-  }
-  const parts = n.split(/\s+/).filter((x) => x && !/^(mr|mrs|ms|dr)\.?$/i.test(x));
-  if (!parts.length || parts.length > 4) return;
+  const { splitPersonName } = await import("@/lib/person-name");
+  const split = splitPersonName(displayName);
+  if (!split.firstName) return;
   const c = await prisma.contact.findUnique({ where: { id: contactId }, select: { firstName: true, lastName: true } });
   if (!c || (c.firstName && c.firstName.trim())) return;
-  await prisma.contact.update({ where: { id: contactId }, data: { firstName: parts[0], lastName: parts.length > 1 ? parts.slice(1).join(" ") : c.lastName } }).catch(() => null);
+  await prisma.contact.update({ where: { id: contactId }, data: { firstName: split.firstName, lastName: split.lastName ?? c.lastName } }).catch(() => null);
 }
 
 /**
@@ -214,6 +209,8 @@ export async function syncMailbox(mailbox: string, opts: { sinceDays?: number } 
       },
     });
     if (outbound && sentDeal) await noteDealSent({ dealId: sentDeal, contactId, companyId, mailbox, graphId: m.id, hasAttachments: m.hasAttachments ?? false, when, toEmails: to.map((p) => p.address) }).catch(() => false);
+    // the name they go by is in their sign-off (Jonathan, Oct 8, 2026): an email they wrote sets the first name the greetings use
+    if (!outbound && contactId && act.body) await (await import("@/lib/person-name")).learnNameFromSignoff(contactId, act.body).catch(() => null);
     await bumpLastActivity(contactId, companyId, when);
     await attachParties(act.id, r.parties, when);
     logged++;

@@ -88,6 +88,10 @@ model Contact {
   ownerId String?
   owner   User?   @relation(fields: [ownerId], references: [id])
 
+  dealSend         Boolean   @default(false) // ticked on the company page: on every deal email the firm is sent (Oct 8, 2026)
+  dealAddress      Boolean   @default(false) // starred on the company page: the deal emails are addressed to them
+  signoffName      String?   // the name they sign emails with (Nate for Nathaniel); the first name follows it (Oct 8, 2026)
+  signoffAt        DateTime? // when the sign-off was last read
   marketingContact Boolean @default(false)
   unsubscribed     Boolean @default(false)
   departedAt       DateTime? // left the firm (auto-reply / bounce said so, Jonathan approved the removal)

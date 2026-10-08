@@ -159,6 +159,12 @@ export async function dealFiles(dealId: string): Promise<DealFile[]> {
 
 /** Who we usually write to at a firm: anyone on 40%+ of our outbound emails there in the last year (at least the most frequent). */
 export async function usualRecipients(companyId: string, candidates: { id: string; email: string | null }[]): Promise<string[]> {
+  // the company page's picks come first (Jonathan, Oct 8, 2026): anyone ticked "on deal emails" there is the list
+  const picked = await prisma.contact.findMany({ where: { companyId, dealSend: true, email: { not: null }, departedAt: null }, select: { id: true } });
+  if (picked.length) {
+    const ids = picked.map((p) => p.id).filter((id) => candidates.some((c) => c.id === id));
+    if (ids.length) return ids;
+  }
   const acts = await prisma.activity.findMany({ where: { companyId, type: "EMAIL", direction: "OUTBOUND", occurredAt: { gte: new Date(Date.now() - 365 * 86_400_000) } }, select: { meta: true }, take: 500 });
   const tally = new Map<string, number>();
   for (const a of acts) {

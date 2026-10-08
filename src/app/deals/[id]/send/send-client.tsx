@@ -15,7 +15,7 @@ import { statusOf } from "@/lib/tracker";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
 export type Person = { id: string; name: string; firstName?: string; email: string; title: string | null; bounced?: boolean };
-export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null; followups?: number };
+export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; addressTo?: string[]; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null; followups?: number };
 export type DealFileLite = { key: string; name: string; size: number; url?: string | null };
 /** fields: each marked ticket field as it was last refreshed, so a later refresh can tell an edited paragraph (kept) from an untouched one (replaced). */
 type Draft = { subject: string; html: string; touched: boolean; fields?: Record<string, string> };
@@ -79,7 +79,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   const ccList = () => cc.split(/[,;\s]+/).map((x) => x.trim()).filter((x) => x.includes("@"));
   const [drafts, setDrafts] = useState<Record<string, FirmDraft>>(() => Object.fromEntries(Object.entries(saved?.drafts ?? {}).map(([k, v]) => [k, "edits" in v ? v : { edits: [], touched: true, html: v.html, subject: v.subject }]))); // firms whose email was edited on its own: block edits over the General email
   // who the greeting addresses at each firm: the row's person, or whoever Jonathan stars (several: "Hi Dave/Jon")
-  const [primary, setPrimary] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((saved?.primary?.[f.rowId] ?? [f.primaryContactId]).filter((id) => f.people.some((p) => p.id === id)))])));
+  const [primary, setPrimary] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((saved?.primary?.[f.rowId] ?? (f.addressTo?.length ? f.addressTo : [f.primaryContactId])).filter((id) => f.people.some((p) => p.id === id)))]))); // starred on the company page first (Oct 8, 2026)
   const [learned, setLearned] = useState<Record<string, string>>({}); // first names typed into a greeting this session, by contact id
   const [current, setCurrent] = useState<string>(GENERAL);
   const [picker, setPicker] = useState<string | null>(null);

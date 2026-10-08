@@ -52,7 +52,9 @@ export async function contactForEmail(email: string, opts: { name?: string | nul
   const clean = email.trim().toLowerCase();
   const existing = await prisma.contact.findUnique({ where: { email: clean }, include: { company: true } });
   const company = existing?.company ?? (await companyForEmail(clean, opts.companyNameHint, opts.ownerId));
-  const [firstName, ...rest] = (opts.name ?? "").trim().split(/\s+/).filter(Boolean);
+  const { splitPersonName } = await import("@/lib/person-name");
+  const split = splitPersonName(opts.name); // "Brown, Tommy" is Tommy Brown, "Thompson, CCIM" loses the credential (Oct 8, 2026)
+  const firstName = split.firstName ?? undefined, rest = split.lastName ? [split.lastName] : [];
   const inherited = parseList(company?.roles);
   const roles = toJson([...(existing ? parseList(existing.roles) : []), ...inherited, ...(opts.extraRoles ?? [])]);
   if (existing) {
