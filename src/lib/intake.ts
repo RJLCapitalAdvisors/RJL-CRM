@@ -515,7 +515,8 @@ export function extractHeuristic(rawText: string, subject?: string | null, fromN
   const debtLine = lineAfter(text, /((?:\d{2}%\s*(?:LTV|LTC)|(?:bridge|construction|senior|agency|permanent) loan|debt:)[^\n]{0,160})/i);
   det.debtTerms = debtLine ?? (d.ltv != null ? `${d.ltv}% LTV${d.loanTerm ? ", " + d.loanTerm : ""}` : null);
   det.acres = lineAfter(text, /([\d.]+)\s*(?:acres?|ac\b)/i);
-  det.opportunityZone = /opportunity zone|\boz\b/.test(lower) ? "Yes" : null;
+  // "not in an opportunity zone" / "no OZ" is an answer too (Cudjoe Key, Oct 8, 2026); before, any mention read as Yes
+  det.opportunityZone = /\b(?:not?|isn'?t|is not)\b[^.\n]{0,40}\b(?:opportunity zone|oz)\b|\b(?:opportunity zone|oz)\b[^.\n]{0,25}\b(?:no|not|none)\b/.test(lower) ? "No" : /opportunity zone|\boz\b/.test(lower) ? "Yes" : null;
   det.affordable = /affordable|lihtc|income[- ]restricted|section 8/.test(lower) ? "Yes – mentioned" : null;
   det.sourcing = d.onMarket == null ? null : d.onMarket ? "on-market" : "completely off-market";
   const docs: [string, RegExp][] = [

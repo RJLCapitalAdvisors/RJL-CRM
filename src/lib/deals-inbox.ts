@@ -178,7 +178,8 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   // Is this about a deal we already have? Then it is a follow-up: files and answers join that ticket.
   const existingId = splitFirst.length > 1 ? null : await matchExistingDeal({ conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: cleanSubject, bodyText, senderEmail: external ? fromAddr : fwd.email, attachmentNames: names, attachmentText: texts.map((t) => `=== ${t.name} ===\n${t.text.slice(0, 1500)}`).join("\n") });
   if (existingId) {
-    await releaseClaim();
+    // the claim stays until the reply is sent: it used to be released here, so three runs that arrived together (the
+    // mailbox notification, the minute job and a page load) each processed the follow-up and each replied (Cudjoe Key, Oct 8, 2026)
     // a file the ticket already holds (the OM resent with the sponsor's answers) was read when it first came; only what is new is read now (Oct 7, 2026)
     const known = new Set((await prisma.dealFile.findMany({ where: { dealId: existingId }, select: { name: true } })).map((f) => f.name.toLowerCase()));
     const fresh = texts.filter((t) => !known.has(t.name.toLowerCase()));
@@ -190,7 +191,10 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     // a deal that was lost and comes back: the new documents overwrite the old figures (Jonathan, Sep 25, 2026); then every file is read again
     const wasLost = (await prisma.deal.findUniqueOrThrow({ where: { id: existingId }, select: { stage: true } })).stage === "Deal Lost";
     const merged = await mergeIntoDeal(existingId, wasLost ? rawText : followText, cleanSubject, { modelAttached: (wasLost ? names : fresh.map((t) => t.name)).some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: wasLost ? names : fresh.map((t) => t.name), overwrite: wasLost }).catch(() => ({ filled: 0, changes: [], model: null }));
-    const filled = merged.filled;
+    // then the open asks are put to the email one by one, so a written answer (a closing date, how the land was sourced, "not in an OZ") lands on the ticket (Oct 8, 2026)
+    const { fillMissingFromText } = await import("@/lib/deal-knowledge");
+    const asksFilled = await fillMissingFromText(existingId, followText, cleanSubject).catch(() => ({ filled: 0, keys: [] }));
+    const filled = merged.filled + asksFilled.filled;
     // the narratives take in what the new material adds (a sponsor deck, a write-up, the sponsor's answers)
     await (await import("@/lib/enrich-narratives")).improveNarratives(existingId, followText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => null);
     if (!external) await applyForwarderInstructions(existingId, bodyText).catch(() => null);
@@ -207,7 +211,8 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     } catch (e) {
       console.error("deals@ follow-up reply failed", e);
     }
-    await prisma.dealIntake.create({ data: { source: "WEBHOOK", fromEmail: external ? fromAddr : fwd.email, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, toEmail: MAILBOX(), subject: msg.subject, rawText: rawText.slice(0, 200_000), attachments: JSON.stringify(names), extracted: "{}", missing: "[]", notes: `Follow-up on existing deal ${existingId}`, status: "CONVERTED", messageId: ext } }).catch(() => null);
+    const done = { source: "WEBHOOK", fromEmail: external ? fromAddr : fwd.email, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, toEmail: MAILBOX(), subject: msg.subject, rawText: rawText.slice(0, 200_000), attachments: JSON.stringify(names), extracted: "{}", missing: "[]", notes: `Follow-up on existing deal ${existingId}`, status: "CONVERTED" };
+    await prisma.dealIntake.upsert({ where: { messageId: ext }, create: { ...done, messageId: ext }, update: done }).catch(() => null);
     await graph(`/users/${q(MAILBOX())}/messages/${q(msg.id)}`, { method: "PATCH", body: JSON.stringify({ isRead: true }) }).catch(() => {});
     return { dealId: existingId, replied };
   }

@@ -73,6 +73,7 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
       if (words.length > 40) {
         facts += await extractDealFacts(d.id, words, `${a.subject ?? "sponsor email"} (${stamp})`, { mayEnterFaq: true }).catch(() => 0);
         await mergeIntoDeal(d.id, words, a.subject ?? "").catch(() => 0);
+        await (await import("@/lib/deal-knowledge")).fillMissingFromText(d.id, words, a.subject ?? "the sponsor's email").catch(() => null); // the open asks, answered from the words (Oct 8, 2026)
         await (await import("@/lib/enrich-narratives")).improveNarratives(d.id, words, `${a.subject ?? "the sponsor's email"} (${stamp})`).catch(() => null);
       }
       // engagement letter confirmation

@@ -29,7 +29,7 @@ const isSystemAddress = (a: string) => {
   return MAILER.test(a.toLowerCase()) || BULK_HOSTS.some((h) => d === h || d.endsWith("." + h));
 };
 const REPLY = /^\s*(re|fwd?|fw)\s*:/i;
-const FIRST_SYNC_DAYS = 120;
+const FIRST_SYNC_DAYS = 730; // two years on a mailbox's first pass (Jonathan, Oct 8, 2026: four months left firms showing no correspondence that HubSpot had); the existing mailboxes were backfilled by hand the same day
 const PAGE = 50;
 
 type Party = { name?: string; address: string };

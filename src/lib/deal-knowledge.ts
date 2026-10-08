@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { fmtMoney } from "@/lib/format";
 import { graph, type GraphAttachment } from "@/lib/graph";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
-import { parseDetails, reconcileDocuments, uniqueChecklist } from "@/lib/checklist";
+import { missingFor, parseDetails, reconcileDocuments, uniqueChecklist, type ChecklistItem } from "@/lib/checklist";
 
 /**
  * A deal keeps learning. Every email about it that reaches deals@ after the first one is a follow-up:
@@ -122,6 +122,72 @@ const Facts = z.object({
 });
 
 /** Turn a follow-up email (plus attachment text) into Q&A facts on the deal. Returns how many were added. */
+/**
+ * Answer the ticket's open asks from the sponsor's words (Jonathan, Oct 8, 2026, Cudjoe Key: the sponsor's email answered
+ * the critical dates, the entitlement timeline, how the land was sourced and the Opportunity Zone question, and the reply
+ * still asked for them). The general extractor reads a document for the whole ticket; this pass takes only the items still
+ * missing, puts each item's own question to Claude with the email, and writes what is answered in the shape the item wants
+ * (a dropdown value, a number, a short line, Yes or No). Nothing already on the ticket is touched. Returns how many it filled.
+ */
+export async function fillMissingFromText(dealId: string, text: string, source: string): Promise<{ filled: number; keys: string[] }> {
+  if (!process.env.ANTHROPIC_API_KEY || text.trim().length < 40) return { filled: 0, keys: [] };
+  const deal = await prisma.deal.findUnique({ where: { id: dealId } });
+  if (!deal) return { filled: 0, keys: [] };
+  const { SOURCING_OPTIONS, SELLER_PROFILES } = await import("@/lib/taxonomy");
+  const { snapTo } = await import("@/lib/intake");
+  const ENUMS: Record<string, readonly string[]> = { sourcing: SOURCING_OPTIONS, sellerProfile: SELLER_PROFILES };
+  const YES_NO = new Set(["opportunityZone", "affordable", "shovelReady"]);
+  const items = missingFor(deal as never).filter((it) => it.kind !== "doc").slice(0, 30);
+  if (!items.length) return { filled: 0, keys: [] };
+  const shape = (it: ChecklistItem) => {
+    if (ENUMS[it.key]) return `one of: ${ENUMS[it.key].join(" | ")} (the closest; empty if the email does not say)`;
+    if (YES_NO.has(it.key)) return "Yes or No as the sponsor states it (empty if not addressed)";
+    if (it.kind === "number") return "US dollars or the number, digits only (empty if not stated)";
+    if (it.kind === "short") return "one short line in the sponsor's words (empty if not stated)";
+    return "one to three sentences in the sponsor's words (empty if not stated)";
+  };
+  const schema = z.object(Object.fromEntries(items.map((it) => [it.key, z.string().describe(`${it.question} Answer: ${shape(it)}.`)])) as Record<string, z.ZodString>);
+  const client = new Anthropic();
+  let out: Record<string, string>;
+  try {
+    const res = await client.messages.parse({
+      model: "claude-sonnet-5",
+      max_tokens: 3000,
+      system: "A deal sponsor wrote to RJL Capital Advisors about a deal. For each question below, answer ONLY from what this email (and the documents quoted in it) says, in the shape asked for. Empty string when the email does not address it. Never guess, never carry over from general knowledge. 'As soon as possible' is an answer to a closing date question. 'The sponsor already owns the land' answers how it was sourced. A property that is NOT in an Opportunity Zone is 'No'. No dashes as punctuation.",
+      messages: [{ role: "user", content: `DEAL: ${deal.propertyName ?? deal.name}\nSOURCE: ${source}\n\nEMAIL:\n${text.slice(0, 120_000)}` }],
+      output_config: { format: zodOutputFormat(schema) },
+    });
+    out = (res.parsed_output ?? {}) as Record<string, string>;
+  } catch {
+    return { filled: 0, keys: [] };
+  }
+  const details = parseDetails(deal.details);
+  const core: Record<string, unknown> = {};
+  const keys: string[] = [];
+  const num = (v: string) => { const n = Number(v.replace(/[^0-9.]/g, "")); return isFinite(n) && n > 0 ? n : null; };
+  for (const it of items) {
+    let v: string | number | null = (out[it.key] ?? "").trim();
+    if (!v) continue;
+    if (ENUMS[it.key]) v = snapTo(ENUMS[it.key], v);
+    else if (YES_NO.has(it.key)) v = /^y/i.test(v) ? "Yes" : /^n/i.test(v) ? "No" : null;
+    else if (it.kind === "number") v = num(v);
+    else v = stripDashes(v).slice(0, it.kind === "short" ? 200 : 1200);
+    if (v == null || v === "") continue;
+    if (it.core) {
+      const cur = (deal as Record<string, unknown>)[it.core];
+      if (cur != null && cur !== "") continue;
+      core[it.core] = it.core === "onMarket" ? /on-market/i.test(String(v)) : v;
+    } else {
+      if (details[it.key]) continue;
+      details[it.key] = String(v);
+    }
+    keys.push(it.key);
+  }
+  if (!keys.length) return { filled: 0, keys: [] };
+  await prisma.deal.update({ where: { id: dealId }, data: { ...core, details: JSON.stringify(details) } });
+  return { filled: keys.length, keys };
+}
+
 export async function extractDealFacts(dealId: string, text: string, source: string, opts: { mayEnterFaq?: boolean } = {}): Promise<number> {
   if (!process.env.ANTHROPIC_API_KEY || text.trim().length < 20) return 0;
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { facts: { orderBy: { createdAt: "desc" }, take: 60 } } });

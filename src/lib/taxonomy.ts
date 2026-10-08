@@ -292,6 +292,7 @@ export function stageTone(stage: string): string {
 // "On or Off Market?" and "What kind of seller?" are HubSpot's own option lists, word for word (Jonathan, Sep 16: they are
 // dropdowns for a reason; nothing gets added here). The extractor picks from these or leaves the field blank.
 export const SOURCING_OPTIONS = [
+  "already owned by the sponsor",
   "completely off-market",
   "off-market through a broker relationship",
   "on-market but through a quiet bidding process",
