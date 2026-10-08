@@ -9,6 +9,7 @@ import { RunClient, type ReviewRow } from "./run-client";
 
 export const metadata = { title: "Import" };
 export const dynamic = "force-dynamic";
+export const maxDuration = 120; // a typed answer is read again by Claude from this page
 
 const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
 
@@ -27,6 +28,15 @@ export default async function AqImportRunPage({ params }: { params: Promise<{ id
     const c = ctx.crm[g.key] ?? null;
     const wrong = new Set((r?.wrong ?? []).map((w) => w.phone));
     const nameOf = (k: string | null) => g.people.find((p) => p.key === k)?.name ?? null;
+    const who = (k: string | undefined) => (k === "operator" ? r?.operatorPerson?.name ?? "the operator" : nameOf(k ?? null) ?? "someone");
+    // what happens to the people, so a typed answer can be checked before Import
+    const people = [
+      r?.operatorPerson ? `New operator contact: ${r.operatorPerson.name}` : null,
+      r?.expandingOperator ? `${who(r.expandingOperator)} → Operators Pipeline` : null,
+      r?.buyer ? `${who(r.buyer)} → Buyers Pipeline` : null,
+      ...(r?.ownerRunsBusiness ?? []).filter((k) => k !== r?.expandingOperator).map((k) => `${who(k)} also Operator`),
+      r?.outcome !== "junk" && r?.propertyNote ? `Note: ${r.propertyNote}` : null,
+    ].filter((x): x is string => Boolean(x));
     return {
       key: g.key,
       n: i + 1,
@@ -45,6 +55,8 @@ export default async function AqImportRunPage({ params }: { params: Promise<{ id
       question: r?.question ?? null,
       guess: r?.guess ?? null,
       why: r?.why ?? null,
+      answer: read?.answer ?? null,
+      effects: people,
       by: read?.by ?? null,
       override: overrides[g.key]?.outcome ?? null,
       tags: tagsOf(g),

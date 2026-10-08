@@ -44,8 +44,10 @@ export type Reading = {
   expandingOperator?: string;
   buyer?: string;
   propertyNote?: string;
+  county?: string;
   skipTranscripts?: string[]; // digits of the numbers whose transcript is only a greeting or a machine
   by: "claude" | "rule" | "fallback";
+  answer?: string; // Shawn's own words on the review page, which this reading follows
 };
 export type CrmContext = { id: string; junk: string | null; result: string | null; lastCall: string | null; pipeline: boolean; dealStage: string | null; isDeal: boolean } | null;
 
@@ -115,7 +117,7 @@ export function ruleReading(g: PropertyGroup, ctx: CrmContext, hints: string[] |
 
 const letter = (i: number) => String.fromCharCode(65 + i);
 
-function describe(ref: string, g: PropertyGroup, ctx: CrmContext, hints: string[] | undefined): string {
+function describe(ref: string, g: PropertyGroup, ctx: CrmContext, hints: string[] | undefined, answer?: string): string {
   const f = g.facts;
   const who = new Map(g.people.map((p, i) => [p.key, letter(i)]));
   const lines: string[] = [];
@@ -138,6 +140,7 @@ function describe(ref: string, g: PropertyGroup, ctx: CrmContext, hints: string[
   lines.push(`Latest call: ${lastCallOf(g)?.replace("T", " ").slice(0, 16) ?? "never dialed"}`);
   lines.push(`In the CRM already: ${ctx ? `yes; ${ctx.junk ? `in Junk (${ctx.junk}); ` : ""}result ${ctx.result ?? "none"}; last call ${ctx.lastCall ?? "none"}; ${ctx.isDeal ? `active deal at ${ctx.dealStage}` : ctx.pipeline ? "on the Deals Pipeline list" : "not on a deal list"}` : "no, new"}`);
   if (hints?.length) lines.push(`Possible duplicate: ${hints.join("; ")}`);
+  if (answer) lines.push(`SHAWN'S ANSWER for this property (his decision; follow it exactly): ${answer}`);
   return lines.join("\n");
 }
 
@@ -168,9 +171,10 @@ const Out = z.object({
       operatorName: z.string().describe("only when a call or note names a real person running the business who is not an owner letter (e.g. 'ask for Jeff'); else empty"),
       operatorPhone: z.string().describe("that operator person's own number if given, else empty"),
       operatorEmail: z.string().describe("that operator person's email if given, else empty"),
-      ownerRunsBusiness: z.array(z.string()).describe("letters of owners the calls say also run the business"),
-      expandingOperator: z.string().describe("letter or 'operator' for the [Expanding Operator] tag, else empty"),
-      buyer: z.string().describe("letter or 'operator' for the [Buyer] tag, else empty"),
+      ownerRunsBusiness: z.array(z.string()).describe("letters of owners who should also carry the Operator role (without the Operators Pipeline): the calls say they run the business, or Shawn says so"),
+      expandingOperator: z.string().describe("letter or 'operator' to put on the Operators Pipeline (role Operator, status Pipeline): the [Expanding Operator] tag, or Shawn says so; else empty"),
+      buyer: z.string().describe("letter or 'operator' to put on the Buyers Pipeline (role Buyer): the [Buyer] tag, or Shawn says so; else empty"),
+      county: z.string().describe("the county the town is in (e.g. Ocean for Brick, NJ), without the word County; empty if you are not sure"),
       propertyNote: z.string().describe("a note for the property itself, e.g. 'Already listed with a broker', else empty"),
       skipTranscripts: z.array(z.string()).describe("digits of numbers whose transcript is only a voicemail greeting, an automated message or no real words"),
     }),
@@ -184,12 +188,15 @@ async function system(): Promise<Anthropic.TextBlockParam[]> {
 Rules of the road:
 - Every property gets exactly one reading, keyed by its ref. Never skip one.
 - Tags are Shawn's own word and come first; notes next; transcripts after. When tags conflict (Pipeline and Remove, Deal and Remove), read the times and notes; if the later word clearly settles it you may still not pick: set outcome hold with your best guess and a plain question.
+- Shawn's tags and his notes are what he wants done; read every one. A tag you do not recognize (he adds new ones): apply it the way its words plainly mean, and say in why how you read it so he can correct you.
+- [Operator] and [Property Owner] are tags on one number, like [Wrong Number]: whoever answered that number runs the business, or owns the real estate. Code moves the number to the right card; your part is the person: for [Operator], give operatorName from the call or notes (or, when it is one of the owner letters, put that letter in ownerRunsBusiness). Neither tag says anything about the call result.
 - A junk property: outcome junk with the reason from his notes ("doesn't fit" when he gave none). Never also pipeline, deal or callback.
 - [Push to HubSpot] means nothing. A property reached only through voicemail or nobody picking up is No answer. [Message] is No answer with a "Left message" autoNote.
 - Never dialed: look at the duplicate signs. A clear duplicate of a property Shawn reached is junk "Duplicate of [address]". Already in the CRM: leave callResult empty. No reason found: callResult Skipped. Unsure whether it is a duplicate: live, and say so in why.
 - A property already in Junk that this file tags Pipeline, Deal or FU- Call back: hold and ask.
 - Deal stages, first is the default: ${stages.join(", ")}.
 - Dates: Callback dates are counted from that call's date.
+- SHAWN'S ANSWER on a property is his decision, given on the review page: follow it exactly, over the defaults and your own guess. Do not hold that property again unless his words ask you something back. Map his words onto the fields (a person onto the Operators or Buyers Pipeline, an Operator role, a new operator contact, junk, the deal lists, a callback date, a note) and say in why how you applied it.
 - why is shown to Shawn beside every property; make it specific and short, e.g. "Tagged [FU- Call back]; note says call tomorrow before 4 for Jeff."
 
 SHAWN'S STANDING IMPORT INSTRUCTIONS:
@@ -204,9 +211,9 @@ const clean = (v: unknown, n = 400) => (typeof v === "string" && v.trim() ? v.tr
 const digits = (v: unknown) => (typeof v === "string" ? normalizePhone(v) : "");
 
 /** One batch: describe, ask, map the letters back to people. Returns readings by property key. */
-export async function readBatch(groups: PropertyGroup[], ctx: Record<string, CrmContext>, hints: Record<string, string[]>, sys?: Anthropic.TextBlockParam[]): Promise<Record<string, Reading>> {
+export async function readBatch(groups: PropertyGroup[], ctx: Record<string, CrmContext>, hints: Record<string, string[]>, sys?: Anthropic.TextBlockParam[], answers: Record<string, string> = {}): Promise<Record<string, Reading>> {
   const refs = groups.map((g, i) => ({ ref: `P${i + 1}`, g }));
-  const body = refs.map(({ ref, g }) => describe(ref, g, ctx[g.key] ?? null, hints[g.key])).join("\n\n");
+  const body = refs.map(({ ref, g }) => describe(ref, g, ctx[g.key] ?? null, hints[g.key], answers[g.key])).join("\n\n");
   const client = new Anthropic();
   const res = await client.messages.parse({ model: READ_MODEL, max_tokens: 16_000, system: sys ?? (await system()), messages: [{ role: "user", content: `Today is ${new Date().toISOString().slice(0, 10)}. ${refs.length} properties:\n\n${body}` }], output_config: { format: zodOutputFormat(Out) } });
   const list = (res.parsed_output?.readings ?? []) as unknown as Record<string, unknown>[];
@@ -235,9 +242,9 @@ export async function readBatch(groups: PropertyGroup[], ctx: Record<string, Crm
       outcome,
       callResult,
       callBackDate: callResult === "Callback" && /^\d{4}-\d{2}-\d{2}$/.test(String(r.callBackDate)) ? String(r.callBackDate) : undefined,
-      pipeline: r.pipeline === true || undefined,
+      pipeline: r.pipeline === true ? true : answers[g.key] ? false : undefined,
       priority: typeof r.priority === "number" && r.priority > 0 ? Math.min(5, Math.max(1, Math.round(r.priority))) : undefined,
-      deal: r.deal === true || undefined,
+      deal: r.deal === true ? true : answers[g.key] ? false : undefined,
       dealStage: clean(r.dealStage, 60),
       junkReason: clean(r.junkReason, 200),
       question: clean(r.question, 1000),
@@ -257,8 +264,10 @@ export async function readBatch(groups: PropertyGroup[], ctx: Record<string, Crm
       expandingOperator: toKey(r.expandingOperator),
       buyer: toKey(r.buyer),
       propertyNote: clean(r.propertyNote, 600),
+      county: clean(r.county, 60)?.replace(/\s+county$/i, ""),
       skipTranscripts: (Array.isArray(r.skipTranscripts) ? r.skipTranscripts : []).map(digits).filter((d) => d.length >= 7),
       by: "claude",
+      answer: answers[g.key],
     };
   }
   return out;

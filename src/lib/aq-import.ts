@@ -536,7 +536,7 @@ export async function runAqImport(p: Proposal, opts: { noHold?: boolean } = {}):
     const deal = r.deal === true || callResult === "Deal" || Boolean(r.dealStage) ? true : r.deal === false ? false : undefined;
     const otherResult = callResult && callResult !== "Deal" ? callResult : undefined;
     const stages = deal === true ? ["Deal"] : otherResult ? [otherResult] : deal === false ? [] : undefined;
-    const toPipeline = r.sendToPipeline === true || (deal === false && wasDeal);
+    const toPipeline = r.sendToPipeline === true || (deal === false && wasDeal && r.sendToPipeline !== false);
     const wantStage = deal === true ? r.dealStage ?? found?.dealStage ?? dealStages[0] : undefined;
     const dealStage = deal === true ? (wasDeal && stageIndex(found?.dealStage) > stageIndex(wantStage) ? found!.dealStage! : wantStage) : deal === false || otherResult ? null : undefined;
     const data = given({
@@ -596,7 +596,7 @@ export async function runAqImport(p: Proposal, opts: { noHold?: boolean } = {}):
       if (deal === true && !wasDeal) report.pipeline.push(`${r.address}: now an active deal on the Deals board (${dealStage})`);
       else if (deal === true && r.dealStage && dealStage !== found.dealStage) report.pipeline.push(`${r.address}: deal stage ${dealStage}`);
       else if (deal === true && r.dealStage && r.dealStage !== dealStage) report.unsure.push(`${r.address}: the file says stage ${r.dealStage}, but the deal is already at ${found.dealStage}; it was not moved backward`);
-      else if (deal === false && wasDeal) report.pipeline.push(`${r.address}: back to a potential deal on the Deals Pipeline list`);
+      else if (deal === false && wasDeal) report.pipeline.push(toPipeline ? `${r.address}: back to a potential deal on the Deals Pipeline list` : `${r.address}: off the Deals board, a normal live property`);
       else if (toPipeline && !found.pipelineAt) report.pipeline.push(`${r.address}: onto the Deals Pipeline list${r.pipelinePriority ? ` (priority ${r.pipelinePriority})` : ""}`);
       else if (r.sendToPipeline === false && found.pipelineAt) report.pipeline.push(`${r.address}: off the Deals Pipeline list`);
       if (staleCall) report.unsure.push(`${r.address}: the file's call (${r.lastCallDate}) is older than the one on the ticket; the ticket's result was kept`);

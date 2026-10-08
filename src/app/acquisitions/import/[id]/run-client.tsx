@@ -6,12 +6,12 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Loader2, Trash2 } from "lucide-react";
 import type { RunReport } from "@/lib/aq-import-runs";
 import type { Override } from "@/lib/aq-import-build";
-import { deleteImportRun, setImportOverride } from "../actions";
+import { answerImportProperty, deleteImportRun, setImportOverride } from "../actions";
 
 export type ReviewRow = {
   key: string; n: number; address: string; city: string; business: string | null; crmId: string | null; crmNote: string | null; hint: string[];
   read: boolean; outcome: "live" | "junk" | "hold" | null; list: "deal" | "pipeline" | null; callResult: string | null; callBackDate: string | null; junkReason: string | null;
-  question: string | null; guess: string | null; why: string | null; by: string | null; override: string | null;
+  question: string | null; guess: string | null; why: string | null; by: string | null; override: string | null; answer: string | null; effects: string[];
   tags: string[]; lastCall: string; dialed: number; numbers: number; junkNumbers: number; people: string[]; owner: string | null;
   calls: { number: string; who: string; when: string; disposition: string; tags: string[]; notes: string[]; transcript: string | null; junk: boolean }[];
 };
@@ -203,9 +203,19 @@ export function RunClient({ id, status, fileName, readDone, importDone, total, r
                         <td className="whitespace-nowrap px-2 py-2">
                           <Outcome r={r} />
                           {r.override && <div className="mt-0.5 text-[11px] text-muted">changed by you</div>}
+                          {r.effects.map((x) => (
+                            <div key={x} className="mt-0.5 text-[11px] text-ink">
+                              {x}
+                            </div>
+                          ))}
                         </td>
                         <td className="px-2 py-2 text-xs leading-5">
                           {r.outcome === "hold" && r.question ? <div className="font-medium text-amber-900">{r.question}</div> : null}
+                          {r.answer && (
+                            <div className="mb-0.5 text-sky-900">
+                              <b>Your answer:</b> {r.answer}
+                            </div>
+                          )}
                           <div className="text-muted">{r.why}</div>
                           {r.outcome === "hold" && editable && (
                             <div className="mt-1.5 flex flex-wrap gap-1">
@@ -217,6 +227,7 @@ export function RunClient({ id, status, fileName, readDone, importDone, total, r
                               ))}
                             </div>
                           )}
+                          {r.outcome === "hold" && editable && <AnswerBox id={id} rowKey={r.key} placeholder="Or tell me what to do, e.g. put the owner on my Operators Pipeline and keep the property live" />}
                         </td>
                         <td className="whitespace-nowrap px-2 py-2 text-xs text-muted">
                           {r.dialed ? `${r.dialed} of ${r.numbers} dialed` : `${r.numbers} numbers, none dialed`}
@@ -250,6 +261,11 @@ export function RunClient({ id, status, fileName, readDone, importDone, total, r
                           <td></td>
                           <td colSpan={editable ? 5 : 4} className="px-2 py-3 text-xs">
                             <Details r={r} />
+                            {editable && r.read && r.outcome !== "hold" && (
+                              <div className="mt-3 max-w-2xl">
+                                <AnswerBox id={id} rowKey={r.key} placeholder="Tell me what to do differently, e.g. add Joe as an operator contact, not on the pipeline" />
+                              </div>
+                            )}
                           </td>
                         </tr>
                       )}
@@ -326,6 +342,50 @@ function Bar({ done, total }: { done: number; total: number }) {
   return (
     <div className="h-2 overflow-hidden rounded-full bg-cream">
       <div className="h-full rounded-full bg-sky-600 transition-all" style={{ width: `${total ? Math.round((done / total) * 100) : 0}%` }} />
+    </div>
+  );
+}
+
+/** Shawn's own words on one property: Claude reads it again with them as the instruction and the row updates. */
+function AnswerBox({ id, rowKey, placeholder }: { id: string; rowKey: string; placeholder: string }) {
+  const router = useRouter();
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const send = async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    const r = await answerImportProperty(id, rowKey, text).catch((e) => ({ ok: false as const, reason: String(e instanceof Error ? e.message : e) }));
+    setBusy(false);
+    if (!r.ok) return setError(r.reason);
+    setText("");
+    router.refresh();
+  };
+  return (
+    <div className="mt-2">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            void send();
+          }
+        }}
+        disabled={busy}
+        rows={2}
+        placeholder={placeholder}
+        className="input w-full resize-y text-xs"
+      />
+      <div className="mt-1 flex items-center gap-2">
+        <button className="btn-secondary py-0.5 text-xs" disabled={busy || !text.trim()} onClick={() => void send()}>
+          {busy ? "Reading your answer…" : "Apply"}
+        </button>
+        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-700" />}
+        {error && <span className="text-[11px] text-red-700">{error}</span>}
+        {!busy && !error && <span className="text-[11px] text-muted">Claude re-reads this property with your words. Nothing is written until Import.</span>}
+      </div>
     </div>
   );
 }

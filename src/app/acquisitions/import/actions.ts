@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/current-user";
-import { saveOverride } from "@/lib/aq-import-runs";
+import { answerProperty, saveOverride } from "@/lib/aq-import-runs";
 import type { Override } from "@/lib/aq-import-build";
 
 async function guard() {
@@ -16,6 +16,19 @@ export async function setImportOverride(id: string, key: string, o: Override | n
   await guard();
   await saveOverride(id, key, o);
   revalidatePath(`/acquisitions/import/${id}`);
+}
+
+/** Shawn's own words on one property: Claude reads it again with them as the instruction. */
+export async function answerImportProperty(id: string, key: string, text: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+  await guard();
+  try {
+    const r = await answerProperty(id, key, text);
+    if (!r.ok) return r;
+  } catch (e) {
+    return { ok: false, reason: String(e instanceof Error ? e.message : e).slice(0, 300) };
+  }
+  revalidatePath(`/acquisitions/import/${id}`);
+  return { ok: true };
 }
 
 /** Drop an import that was never written (nothing in the CRM changes). */

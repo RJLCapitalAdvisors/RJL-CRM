@@ -101,6 +101,32 @@ async function readStepClaimed(id: string): Promise<{ done: number; total: numbe
   return { done, total: groups.length, status };
 }
 
+/**
+ * Shawn's own words on one property ("put the owner on my Operators Pipeline", "keep it live, he's an operator"):
+ * Claude reads that property again with his answer as the instruction, and the new reading replaces the old one.
+ * Nothing is written to the CRM until Import.
+ */
+export async function answerProperty(id: string, key: string, text: string): Promise<{ ok: true; reading: Reading } | { ok: false; reason: string }> {
+  const answer = text.trim().slice(0, 2000);
+  if (!answer) return { ok: false, reason: "Type what should happen first." };
+  const run = await prisma.aqImportRun.findUniqueOrThrow({ where: { id } });
+  if (run.status !== "REVIEW") return { ok: false, reason: "This import is no longer open for changes." };
+  const g = runGroups(run).groups.find((x) => x.key === key);
+  if (!g) return { ok: false, reason: "That property is not in this file." };
+  const ctx = runContext(run);
+  const got = await readBatch([g], ctx.crm, ctx.hints, await readSystem(), { [key]: answer });
+  const reading = got[key];
+  if (!reading) return { ok: false, reason: "Claude did not come back with a reading. Try again, or word it another way." };
+  // re-read the run so a change saved meanwhile on another property is kept
+  const fresh = await prisma.aqImportRun.findUniqueOrThrow({ where: { id } });
+  const decisions = runDecisions(fresh);
+  decisions[key] = reading;
+  const overrides = runOverrides(fresh);
+  delete overrides[key];
+  await prisma.aqImportRun.update({ where: { id }, data: { decisions: JSON.stringify(decisions), overrides: JSON.stringify(overrides) } });
+  return { ok: true, reading };
+}
+
 export async function saveOverride(id: string, key: string, o: Override | null) {
   const run = await prisma.aqImportRun.findUniqueOrThrow({ where: { id } });
   if (run.status !== "REVIEW") throw new Error("This import is no longer open for changes.");

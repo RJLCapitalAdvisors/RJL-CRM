@@ -1,6 +1,6 @@
 import type { CompanyRow, ContactRow, DatedText, JunkPhoneRow, Proposal, PropertyRow } from "@/lib/aq-import";
 import type { Reading } from "@/lib/aq-import-read";
-import { dialed, isBadNumber, lastCallOf, type Person, type PhoneRow, type PropertyGroup } from "@/lib/aq-terakotta";
+import { dialed, isBadNumber, lastCallOf, tagsOf, type Person, type PhoneRow, type PropertyGroup } from "@/lib/aq-terakotta";
 
 /**
  * From a folded property and its reading to the rows runAqImport writes (Oct 7, 2026). Everything mechanical in Shawn's
@@ -32,9 +32,9 @@ export function effective(r: Reading, o: Override | undefined): Reading {
     e.question = undefined;
     e.guess = undefined;
     if (o.outcome === "junk") Object.assign(e, { outcome: "junk", junkReason: o.junkReason ?? r.junkReason ?? "removed on Shawn's say-so", pipeline: undefined, deal: undefined, callResult: r.callResult === "Callback" || r.callResult === "Deal" ? undefined : r.callResult, callBackDate: undefined });
-    else if (o.outcome === "pipeline") Object.assign(e, { outcome: "live", pipeline: true, deal: undefined, callResult: r.callResult === "Deal" ? undefined : r.callResult });
+    else if (o.outcome === "pipeline") Object.assign(e, { outcome: "live", pipeline: true, deal: false, callResult: r.callResult === "Deal" ? undefined : r.callResult });
     else if (o.outcome === "deal") Object.assign(e, { outcome: "live", deal: true, pipeline: undefined, callResult: "Deal" });
-    else Object.assign(e, { outcome: "live", pipeline: undefined, deal: undefined, callResult: r.callResult === "Deal" ? undefined : r.callResult });
+    else Object.assign(e, { outcome: "live", pipeline: false, deal: false, callResult: r.callResult === "Deal" ? undefined : r.callResult });
   }
   if (o.callResult !== undefined) {
     e.callResult = o.callResult || undefined;
@@ -44,6 +44,10 @@ export function effective(r: Reading, o: Override | undefined): Reading {
 }
 
 /** One property's slice of the proposal: the property row, its people, its companies, its junk numbers. */
+const OWNER_TAG = /^(property owner|owner)$/i;
+const OPERATOR_TAG = /^operator$/i;
+const isOwnerTagged = (p: PhoneRow) => p.tags.some((t) => OWNER_TAG.test(t.trim()));
+
 export function buildProposalPart(g: PropertyGroup, r: Reading, sourceFile: string, inCrm: boolean): { property: PropertyRow; contacts: ContactRow[]; companies: CompanyRow[]; junkPhones: JunkPhoneRow[] } {
   const f = g.facts;
   const wrong = new Map((r.wrong ?? []).map((w) => [w.phone, w.reason]));
@@ -52,7 +56,23 @@ export function buildProposalPart(g: PropertyGroup, r: Reading, sourceFile: stri
 
   // ----- junk numbers: off every card, onto Junk Phone Numbers with the person and the property -----
   const junkPhones: JunkPhoneRow[] = g.phones.filter(isJunk).map((p) => ({ number: p.number, reason: wrong.get(p.digits) ?? (/bad number/i.test(p.disposition ?? "") ? "Bad number" : "Wrong number"), contact: nameOf(p.person) ?? (p.slot.startsWith("Store") ? f.businessName : undefined), property: f.address }));
-  const good = g.phones.filter((p) => !isJunk(p));
+  // whose number it is: the file's slot, unless Shawn tagged the number on the call (Oct 8, 2026). [Property Owner]: the
+  // owner answered it, so it goes on the owner's card as the number reached. [Operator]: the operator answered it, so it
+  // comes off the owner's card and goes on the operator. Both: that person owns and runs the business. An Owner Contact
+  // number with no name in the file goes on the main owner (Other Phones) rather than nowhere.
+  const main = g.people[0]?.key ?? null;
+  const both = new Set<string>();
+  const good = g.phones
+    .filter((p) => !isJunk(p))
+    .map((p): PhoneRow => {
+      const own = isOwnerTagged(p), op = p.tags.some((t) => OPERATOR_TAG.test(t.trim()));
+      if (op && !own) return { ...p, person: "operator" };
+      const person = p.person ?? (own || !p.slot.startsWith("Store") ? main : null);
+      if (op && own && person) both.add(person);
+      return person === p.person ? p : { ...p, person };
+    });
+  if (both.size) r = { ...r, ownerRunsBusiness: [...new Set([...(r.ownerRunsBusiness ?? []), ...both])] };
+  const opNumbers = good.filter((p) => p.person === "operator").map((p) => p.number);
 
   // ----- whose call it was -----
   const anyDialed = g.phones.some(dialed);
@@ -74,10 +94,11 @@ export function buildProposalPart(g: PropertyGroup, r: Reading, sourceFile: stri
 
   // ----- companies -----
   const companies: CompanyRow[] = [];
-  const store = good.filter((p) => p.slot.startsWith("Store"));
+  const store = good.filter((p) => p.slot.startsWith("Store") && p.person !== main);
   const business = vacant(f.businessName) ? undefined : f.businessName;
   if (f.ownerEntity) companies.push({ name: f.ownerEntity, roles: ["Owner"], properties: [f.address] });
-  if (business) companies.push({ name: business, roles: ["Operator"], phone: store[0]?.number, properties: [f.address] });
+  // the operator company carries the store phone, or the [Operator] number when nobody at the business was named
+  if (business) companies.push({ name: business, roles: ["Operator"], phone: store[0]?.number ?? (r.operatorPerson ? undefined : opNumbers[0]), properties: [f.address] });
 
   // ----- people -----
   const contacts: ContactRow[] = [];
@@ -89,7 +110,7 @@ export function buildProposalPart(g: PropertyGroup, r: Reading, sourceFile: stri
   if (r.operatorPerson) {
     const { firstName, lastName } = splitName(r.operatorPerson.name);
     const extra = (r.extraPhones ?? []).filter((x) => x.person === "operator").map((x) => x.phone);
-    const phones = [r.operatorPerson.phone, ...extra].filter((x): x is string => Boolean(x));
+    const phones = [...new Set([...opNumbers, r.operatorPerson.phone, ...extra].filter((x): x is string => Boolean(x)))];
     const emails = [r.operatorPerson.email, ...(r.emails ?? []).filter((x) => x.person === "operator").map((x) => x.email)].filter((x): x is string => Boolean(x));
     contacts.push({
       firstName,
@@ -98,6 +119,7 @@ export function buildProposalPart(g: PropertyGroup, r: Reading, sourceFile: stri
       company: business,
       phone: phones[0],
       secondaryPhone: phones[1],
+      otherPhones: phones.length > 2 ? phones.slice(2) : undefined,
       email: emails[0],
       storePhone: store[0]?.number,
       sendToPipeline: r.expandingOperator === "operator" ? true : undefined,
@@ -109,17 +131,19 @@ export function buildProposalPart(g: PropertyGroup, r: Reading, sourceFile: stri
 
   // ----- the property -----
   const noPeople = !g.people.length;
-  const tPhones = good.filter((p) => !p.slot.startsWith("Store")).sort((a, b) => order(a) - order(b));
+  const tPhones = good.filter((p) => p.person !== "operator" && (!p.slot.startsWith("Store") || isOwnerTagged(p))).sort((a, b) => order(a) - order(b));
   const property: PropertyRow = {
     ...f,
-    sourceList: sourceFile,
-    notes: [f.notes, r.propertyNote].filter(Boolean).join("\n") || undefined,
+    // the file's name as uploaded, without .csv (as the earlier imports wrote it)
+    sourceList: sourceFile.replace(/\.(csv|tsv|txt|xlsx|xls|xlsm)$/i, ""),
+    county: r.county,
+    notes: [f.notes, r.propertyNote, tagsOf(g).some((t) => /already listed/i.test(t)) && !/listed/i.test(r.propertyNote ?? "") ? "Already listed with a broker" : null, !r.operatorPerson && !business && opNumbers.length ? `Operator's number (tagged [Operator]): ${opNumbers.join(", ")}` : null].filter(Boolean).join("\n") || undefined,
     callResult: anyDialed || !inCrm ? (r.outcome === "junk" && (result === "Callback" || result === "Deal") ? undefined : result) : undefined,
     lastCallDate: anyDialed ? day(last) : undefined,
     callBackAt: result === "Callback" ? r.callBackDate : undefined,
-    sendToPipeline: r.outcome !== "junk" && r.pipeline ? true : undefined,
+    sendToPipeline: r.outcome === "junk" ? undefined : r.pipeline === true ? true : r.pipeline === false ? false : undefined,
     pipelinePriority: r.pipeline ? r.priority : undefined,
-    deal: r.outcome !== "junk" && r.deal ? true : undefined,
+    deal: r.outcome === "junk" ? undefined : r.deal === true ? true : r.deal === false ? false : undefined,
     dealStage: r.deal ? r.dealStage : undefined,
     junk: r.outcome === "junk" ? true : undefined,
     junkReason: r.outcome === "junk" ? r.junkReason ?? "doesn't fit" : undefined,
@@ -142,7 +166,7 @@ export function buildProposalPart(g: PropertyGroup, r: Reading, sourceFile: stri
 function personRow(person: Person, g: PropertyGroup, r: Reading, good: PhoneRow[], order: (p: PhoneRow) => number, business: string | undefined, ownerEntity: string | undefined, address: string, call: Partial<ContactRow> | undefined): ContactRow {
   const mine = good.filter((p) => p.person === person.key).sort((a, b) => order(a) - order(b));
   const reached = (r.primary ?? []).find((x) => x.person === person.key)?.phone;
-  const correct = mine.find((p) => p.tags.some((t) => /correct number/i.test(t)))?.digits;
+  const correct = mine.find((p) => isOwnerTagged(p) || p.tags.some((t) => /correct number/i.test(t)))?.digits;
   const given = (r.extraPhones ?? []).filter((x) => x.person === person.key).map((x) => x.phone);
   const first = mine.find((p) => p.digits === (reached ?? correct)) ?? mine[0];
   // Primary: the number he reached them on (or tagged Correct number), else T Phone 1. Secondary: a number they gave
