@@ -53,8 +53,8 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean; bounced?: string[] }>>({});
   /** The stage as it stands now: a follow-up sent in this session reads Followed Up at once (yellow, at the bottom), before the page refreshes (Jonathan, Oct 1, 2026). */
   const statusNow = (f: Firm) => (followup && results[f.rowId]?.ok && f.status === 2 ? 3 : f.status);
-  /** This round's firms: at the stage the round is for, with exactly the earlier rounds behind them, a thread to reply on, and not sent in this session. */
-  const shaded = (f: Firm) => followup && (statusNow(f) !== wantStatus || (f.followups ?? 0) !== round - 1 || !f.followupTo || Boolean(results[f.rowId]?.ok));
+  /** This round's firms: at the stage the round is for, with the earlier rounds behind them, a thread to reply on, and not sent in this session. A firm turned on with + gets whatever round it is due. */
+  const shaded = (f: Firm) => followup && (statusNow(f) !== wantStatus || (round > 1 ? (f.followups ?? 0) < round - 1 : (f.followups ?? 0) !== 0) || !f.followupTo || Boolean(results[f.rowId]?.ok));
   /** Follow ups: this round's firms first, then the other followed up or quiet ones, then the ones that answered, then passes, then firms with no sent email on record. */
   const bucket = (f: Firm) => (!f.followupTo ? 5 : !shaded(f) ? 0 : statusNow(f) === 2 || statusNow(f) === 3 ? 1 : statusNow(f) === 7 || statusNow(f) === 8 ? 4 : statusNow(f) === 1 ? 2 : 3);
   /** Follow ups: each token wears its stage colour, see-through; a pass is a light red. */
@@ -175,7 +175,9 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   // autosaves and the email must follow). "reset to template" renders it afresh.
   useEffect(() => {
     let cancelled = false;
-    const keepEdits = reload === 0 && Boolean(saved?.general?.touched) && saved?.templateId === templateId;
+    // edited in this session or saved as edited earlier: kept (Oct 8, 2026: a tab switch rebuilt Jonathan's follow-up note from the default
+    // because only the state saved before the page opened was consulted, and the autosave then wrote the default over his work)
+    const keepEdits = reload === 0 && (Boolean(general?.touched) || Boolean(saved?.general?.touched)) && (followup || saved?.templateId === templateId || general?.touched);
     const t = setTimeout(() => !cancelled && setRendering(true), 0);
     (followup ? previewFollowupEmail(dealId, round) : previewGeneralEmail(dealId, templateId))
       .then((r) => {
@@ -752,7 +754,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
       {followup && (
         <div className="card px-4 py-2.5 text-sm text-muted">
           {round > 1 ? <><b>Final follow-up (round {round}).</b> It goes to the firms still quiet after follow-up {round - 1}, as a <b>reply all</b> on that follow-up, so the whole thread sits quoted underneath. The line below is written above it, with the person&apos;s first name.</> : <>Each follow-up goes out as a <b>reply all</b> on the deal email that firm was sent, so the original sits quoted underneath and the thread stays one. The line below is written above it, with the person&apos;s first name. Firms with no sent email on record are shaded and cannot be followed up here.</>}
-          {" "}A firm gets each round once; anything else is shaded and left out unless you turn it on with +.
+          {" "}A firm turned on with + gets the next round it has not had; never two follow-ups to one firm within two days.
         </div>
       )}
 

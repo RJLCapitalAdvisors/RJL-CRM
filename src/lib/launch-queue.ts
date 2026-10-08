@@ -164,10 +164,11 @@ export async function firstSentMessageId(dealId: string, rowId: string): Promise
 /** Put every firm's email in the queue. Nothing is sent here; the first goes out on the first pump. A follow-up replies all on the deal email that firm was sent. */
 export async function queueDealEmails(dealId: string, items: LaunchItem[], mailbox: string, fileKeys?: string[], opts: { followup?: boolean; round?: number } = {}): Promise<void> {
   const kind = opts.followup ? "FOLLOWUP" : "SEND";
-  const round = opts.followup ? Math.max(1, opts.round ?? 1) : 1;
+  const pageRound = opts.followup ? Math.max(1, opts.round ?? 1) : 1;
   const bytes = await attachmentBytes(dealId, fileKeys);
-  // a later round replies on the latest follow-up the firm got, so the whole thread sits quoted underneath (Oct 8, 2026)
-  const last = opts.followup && round > 1 ? await lastFollowups(dealId) : new Map<string, { round: number; messageId: string | null; sentAt: Date }>();
+  // each firm gets the next round it has not had (Jonathan sent a final note from the first follow-up page on Oct 8 and every
+  // row failed as "already had follow-up 1"); a later round replies on the latest follow-up the firm got, so the thread sits quoted underneath
+  const last = opts.followup ? await lastFollowups(dealId) : new Map<string, { round: number; messageId: string | null; sentAt: Date }>();
   for (const item of items) {
     const row = await prisma.dealInvestor.findUnique({ where: { id: item.rowId }, select: { id: true, contactId: true } });
     if (!row) continue;
@@ -176,10 +177,12 @@ export async function queueDealEmails(dealId: string, items: LaunchItem[], mailb
     const open = await prisma.dealLaunch.findFirst({ where: { rowId: row.id, kind, status: { in: ["QUEUED", "SENDING"] } } });
     if (open) continue;
     const first = opts.followup ? await firstSentMessageId(dealId, row.id) : null;
-    const replyTo = round > 1 && last.get(row.id)?.messageId ? { messageId: last.get(row.id)!.messageId!, sentAt: last.get(row.id)!.sentAt } : first;
-    // a firm gets each round once (Jonathan, Oct 1, 2026: Royce got a second first follow-up after a single send and the launch); a later round is its own
-    const already = opts.followup ? await prisma.dealLaunch.findFirst({ where: { dealId, rowId: row.id, kind: "FOLLOWUP", round: { gte: round }, status: { in: ["SENT", "BOUNCED"] } }, orderBy: { sentAt: "asc" }, select: { sentAt: true } }) : null;
-    const error = !people.length ? "nobody with an email picked" : opts.followup && already ? `already had follow-up ${round}${already.sentAt ? ` on ${already.sentAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}; a firm gets each round once` : opts.followup && !replyTo ? "no sent deal email on record to reply to" : null;
+    const had = last.get(row.id);
+    const round = opts.followup ? Math.max(pageRound, (had?.round ?? 0) + 1) : 1;
+    const replyTo = had?.messageId ? { messageId: had.messageId, sentAt: had.sentAt } : first;
+    // never two follow-ups to one firm within two days (Jonathan, Oct 1, 2026: Royce got a second one after a single send and the launch)
+    const recent = had && Date.now() - had.sentAt.getTime() < 2 * 86_400_000 ? had : null;
+    const error = !people.length ? "nobody with an email picked" : opts.followup && recent ? `followed up ${recent.sentAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}; a firm gets at most one follow-up every two days` : opts.followup && !replyTo ? "no sent deal email on record to reply to" : null;
     await prisma.dealLaunch.create({
       data: { dealId, rowId: row.id, mailbox, kind, round, replyToMessageId: replyTo?.messageId ?? null, toContactIds: toJson(people.map((p) => p.id)), cc: toJson(item.cc ?? []), subject: item.subject, html: item.html, fileKeys: fileKeys ? toJson(fileKeys) : null, bytes, status: error ? "FAILED" : "QUEUED", error },
     });
@@ -264,7 +267,7 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
       if (!cache.has(cacheKey)) cache.set(cacheKey, await chosenFiles(next.dealId, keys));
       const followup = next.kind === "FOLLOWUP";
       if (followup && !next.replyToMessageId) throw new Error("no sent deal email on record to reply to");
-      if (followup && (await prisma.dealLaunch.findFirst({ where: { dealId: next.dealId, rowId: next.rowId, kind: "FOLLOWUP", round: { gte: next.round }, status: { in: ["SENT", "BOUNCED"] }, NOT: { id: next.id } }, select: { id: true } }))) throw new Error(`already had follow-up ${next.round}; a firm gets each round once`);
+      if (followup && (await prisma.dealLaunch.findFirst({ where: { dealId: next.dealId, rowId: next.rowId, kind: "FOLLOWUP", status: { in: ["SENT", "BOUNCED"] }, sentAt: { gte: new Date(Date.now() - 2 * 86_400_000) }, NOT: { id: next.id } }, select: { id: true } }))) throw new Error("followed up in the last two days; a firm gets at most one follow-up every two days");
       const messageId = followup
         ? await sendReplyAll(mailbox, next.replyToMessageId!, to, next.html, cache.get(cacheKey)!, JSON.parse(next.cc) as string[])
         : await sendMessage(mailbox, to, next.subject, next.html, cache.get(cacheKey)!, JSON.parse(next.cc) as string[]);
