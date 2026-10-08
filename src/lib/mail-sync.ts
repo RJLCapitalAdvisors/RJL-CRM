@@ -53,9 +53,10 @@ async function departureText(mailbox: string, m: Msg): Promise<string> {
 const q = (s: string) => encodeURIComponent(s);
 const isInternal = (addr: string) => INTERNAL.has(addr.toLowerCase().split("@")[1] ?? "");
 
-async function pageThrough(mailbox: string, folder: "sentitems" | "inbox", since: Date): Promise<Msg[]> {
+/** Newest first, at most 2,000 per folder per call: a long backfill is run in windows (`until`) so a busy mailbox is covered end to end (Oct 8, 2026: 18 months of Aviel's and Jonathan's mail stopped at the newest 2,000). */
+async function pageThrough(mailbox: string, folder: "sentitems" | "inbox", since: Date, until?: Date): Promise<Msg[]> {
   const out: Msg[] = [];
-  let url: string | null = `/users/${q(mailbox)}/mailFolders/${folder}/messages?$filter=receivedDateTime ge ${since.toISOString()}&$orderby=receivedDateTime desc&$top=${PAGE}&$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,sentDateTime,from,toRecipients,ccRecipients,hasAttachments,isDraft`;
+  let url: string | null = `/users/${q(mailbox)}/mailFolders/${folder}/messages?$filter=receivedDateTime ge ${since.toISOString()}${until ? ` and receivedDateTime lt ${until.toISOString()}` : ""}&$orderby=receivedDateTime desc&$top=${PAGE}&$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,sentDateTime,from,toRecipients,ccRecipients,hasAttachments,isDraft`;
   while (url && out.length < 2000) {
     const r: { value: Msg[]; "@odata.nextLink"?: string } = await graph(url);
     out.push(...r.value.filter((m) => !m.isDraft));
@@ -155,7 +156,7 @@ export async function dealResolver() {
   return dealFor;
 }
 
-export async function syncMailbox(mailbox: string, opts: { sinceDays?: number } = {}): Promise<{ scanned: number; logged: number; created: number }> {
+export async function syncMailbox(mailbox: string, opts: { sinceDays?: number; untilDays?: number } = {}): Promise<{ scanned: number; logged: number; created: number }> {
   const user = await prisma.user.findFirst({ where: { email: { equals: mailbox, mode: "insensitive" } } });
   // Sent Items show up in Graph a little after the send. A window that starts exactly where the last pass ended
   // misses an email sent during that pass, forever. Overlap the window; the Message-ID check keeps it from logging twice.
@@ -163,7 +164,8 @@ export async function syncMailbox(mailbox: string, opts: { sinceDays?: number } 
   const since = opts.sinceDays ? new Date(Date.now() - opts.sinceDays * 86_400_000) : user?.mailSyncedAt ? new Date(user.mailSyncedAt.getTime() - OVERLAP_MS) : new Date(Date.now() - FIRST_SYNC_DAYS * 86_400_000);
   let created = 0;
   const startedAt = new Date();
-  const [sent, inbox] = await Promise.all([pageThrough(mailbox, "sentitems", since), pageThrough(mailbox, "inbox", since)]);
+  const until = opts.untilDays ? new Date(Date.now() - opts.untilDays * 86_400_000) : undefined;
+  const [sent, inbox] = await Promise.all([pageThrough(mailbox, "sentitems", since, until), pageThrough(mailbox, "inbox", since, until)]);
   const messages = [...sent, ...inbox];
 
   const dealFor = await dealResolver();
@@ -215,7 +217,7 @@ export async function syncMailbox(mailbox: string, opts: { sinceDays?: number } 
     await attachParties(act.id, r.parties, when);
     logged++;
   }
-  if (user) await prisma.user.update({ where: { id: user.id }, data: { mailSyncedAt: startedAt } });
+  if (user && !until) await prisma.user.update({ where: { id: user.id }, data: { mailSyncedAt: startedAt } }); // a windowed backfill does not move the daily sync's mark
   return { scanned: messages.length, logged, created };
 }
 
@@ -260,7 +262,7 @@ export async function bumpLastActivity(contactId: string | null, companyId: stri
 }
 
 /** Every active team mailbox. Skips quietly when Microsoft is not configured. */
-export async function syncAllMailboxes(opts: { sinceDays?: number } = {}): Promise<Record<string, { scanned: number; logged: number; created: number } | string>> {
+export async function syncAllMailboxes(opts: { sinceDays?: number; untilDays?: number } = {}): Promise<Record<string, { scanned: number; logged: number; created: number } | string>> {
   if (!graphConfigured()) return {};
   // RJL Capital Advisors mailboxes only, and only those whose Email reading (Settings > Users) points here: an
   // @rjlisrael.com or partner address is RJL Israel's business, an RJL Acquisitions person's mailbox (Shawn) feeds that log
