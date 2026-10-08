@@ -7,7 +7,7 @@ import { CompanyLogo } from "@/components/company-logo";
 import { hasMarker, withFirstName, withoutName } from "@/lib/first-name-marker";
 import { applyEdits, diffBlocks, greetingName, splitBlocks, type FirmDraft } from "@/lib/firm-draft";
 import { Send, Star } from "lucide-react";
-import { refreshDealFields } from "@/lib/merge";
+import { dealFieldsOf, refreshDealFields } from "@/lib/merge";
 import { addFirmAction, launchAction, learnFirstNameAction, previewFollowupEmail, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction, searchInvestorCompanies } from "./actions";
 import { Eye } from "lucide-react";
 import { EmailRow, type EmailRowData } from "@/components/email-row";
@@ -17,7 +17,8 @@ import type { LaunchStatus } from "@/lib/launch-queue";
 export type Person = { id: string; name: string; firstName?: string; email: string; title: string | null; bounced?: boolean };
 export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null };
 export type DealFileLite = { key: string; name: string; size: number; url?: string | null };
-type Draft = { subject: string; html: string; touched: boolean };
+/** fields: each marked ticket field as it was last refreshed, so a later refresh can tell an edited paragraph (kept) from an untouched one (replaced). */
+type Draft = { subject: string; html: string; touched: boolean; fields?: Record<string, string> };
 /** Everything on this page that is worth keeping if you leave and come back (kept on the deal, per deal). A firm's draft is its block edits over the General email (an older save may carry a full html copy, converted on load). */
 export type SendState = { templateId?: string; general?: Draft | null; drafts?: Record<string, FirmDraft | Draft>; include?: string[]; to?: Record<string, string[]>; primary?: Record<string, string[]>; chosenFiles?: string[]; cc?: string; savedAt?: string };
 
@@ -177,35 +178,34 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
       .then((r) => {
         if (cancelled) return;
         if (keepEdits) {
-          let stale = false;
+          let unmarked = false;
+          let keptFields: string[] = [];
           setGeneral((g) => {
-            if (!g) return { subject: r.subject, html: r.html, touched: false };
-            const merged = refreshDealFields(g.html, r.html);
+            if (!g) return { subject: r.subject, html: r.html, touched: false, fields: dealFieldsOf(r.html) };
+            // the ticket's numbers go in where nothing was changed; a paragraph edited here or by a revision stands (Oct 8, 2026)
+            const merged = refreshDealFields(g.html, r.html, g.fields);
             if (merged == null) {
-              if (!/data-deal=/.test(r.html)) return g; // nothing to refresh (a follow-up carries no ticket fields): the edited email stands (Oct 1, 2026: it kept reverting)
-              stale = true; // saved before the fields were marked: the fresh email replaces it
-              return { subject: r.subject, html: r.html, touched: false };
+              if (/data-deal=/.test(r.html)) unmarked = true; // the edited email carries no field marks any more: it stands as it is, numbers and all
+              return g;
             }
-            return merged === g.html ? g : { ...g, html: merged };
+            keptFields = merged.kept;
+            return merged.html === g.html && g.fields ? { ...g, fields: merged.fields } : { ...g, html: merged.html, fields: merged.fields };
           });
           setDrafts((s) => {
             let changed = false;
             const n: typeof s = {};
             for (const [k, d] of Object.entries(s)) {
               if (!d.html) { n[k] = d; continue; } // block edits ride on the General email, which was refreshed above
-              const merged = refreshDealFields(d.html, r.html);
-              if (merged == null) {
-                if (!/data-deal=/.test(r.html)) { n[k] = d; continue; } // nothing to refresh: the firm's edit stands
-                changed = true; // an old, unmarked firm edit gives way to the General email
-                continue;
-              }
-              n[k] = merged === d.html ? d : { ...d, html: merged };
+              const merged = refreshDealFields(d.html, r.html, (d as Draft).fields);
+              if (merged == null) { n[k] = d; continue; } // nothing to refresh, or no marks left: the firm's edit stands
+              n[k] = merged.html === d.html ? d : { ...d, html: merged.html, fields: merged.fields };
               if (n[k] !== d) changed = true;
             }
             return changed ? n : s;
           });
-          if (stale) setNote("The email was rebuilt from the template with the ticket's current numbers; it had been saved before the ticket fields could be refreshed in place, so earlier hand edits were not kept.");
-        } else setGeneral({ subject: r.subject, html: r.html, touched: false });
+          if (unmarked) setNote("Your edited email was kept as it is. The ticket's numbers in it are not refreshed automatically any more, because the edited text no longer carries the field marks; check them before launching, or reset to template.");
+          else if (keptFields.length) setNote(`Your edits were kept (${keptFields.length} paragraph${keptFields.length === 1 ? "" : "s"} you changed); the rest took the ticket's current numbers.`);
+        } else setGeneral({ subject: r.subject, html: r.html, touched: false, fields: dealFieldsOf(r.html) });
         setVersion((v) => v + 1);
       })
       .catch(() => null)
@@ -309,7 +309,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
         return { ...s, [cur.rowId]: { edits, touched: true, ...keepSubject } };
       });
     } else {
-      setGeneral((g) => (g && g.html === html ? g : { subject: g?.subject ?? "", html, touched: true }));
+      setGeneral((g) => (g && g.html === html ? g : { subject: g?.subject ?? "", html, touched: true, fields: g?.fields }));
     }
   };
 
@@ -504,7 +504,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
     start(async () => {
       const r = await reviseGeneralEmailAction(dealId, general.subject, html, ask);
       if ("error" in r) return setNote(r.error);
-      setGeneral({ subject: r.subject, html: r.html, touched: true });
+      setGeneral((g) => ({ subject: r.subject, html: r.html, touched: true, fields: g?.fields })); // the baseline stays: what the revision changed now differs from it and is kept on refresh
       setVersion((v) => v + 1); // every firm follows the revised General email; a firm's own edits stay only where their blocks still match
       setAsk("");
       setNote(hasMarker(r.html) ? "Revised. Every firm's email now follows this version." : "Revised, but the greeting lost its name slot: each email will open with 'Hi there'. Reset to template if that is not what you want.");
@@ -524,7 +524,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
         }
         return { ...s, [cur.rowId]: { edits: prev?.edits ?? [], touched: true, subject: value, subjectBase: general.subject } };
       });
-    } else setGeneral((g) => ({ subject: value, html: g?.html ?? "", touched: true }));
+    } else setGeneral((g) => ({ subject: value, html: g?.html ?? "", touched: true, fields: g?.fields }));
   };
 
   const resetShown = () => {

@@ -385,6 +385,30 @@ export const landMetricsHtml = (d: D) => listHtml(landMetrics(d));
 /** The Deal Metrics bullets as a list without the heading, for a template that writes its own headings. */
 export const dealMetricsListHtml = (d: D) => listHtml(metrics(d));
 
+/**
+ * The Deal Metrics of a portfolio as one block (Jonathan, Oct 8, 2026: "the sum of all the capital stacks"): the capital
+ * stack summed across the properties, then the figures that cannot be summed as ranges across them (yield on cost, IRR and
+ * equity multiple, the hold), then the closing date. On a single deal it is the ordinary Deal Metrics list.
+ */
+export function portfolioMetrics(d: D): string[] {
+  const kids = childrenOf(d);
+  if (!kids.length) return metrics(d);
+  const out = portfolioTotalsLines(d, kids).filter((x) => !/^(Projects|Properties):/.test(x));
+  const nums = (k: string) => kids.map((c) => n(c[k])).filter((v): v is number => v != null && v > 0);
+  const range = (vals: number[], f: (v: number) => string) => (vals.length ? (Math.min(...vals) === Math.max(...vals) ? f(vals[0]) : `${f(Math.min(...vals))} to ${f(Math.max(...vals))}`) : null);
+  const yoc = range(nums("yieldOnCost"), pct);
+  if (yoc) out.push(`Yield on Cost at Stabilization: ${yoc}`);
+  const irr = range(nums("irr"), pct);
+  const em = range(nums("equityMultiple"), (v) => `${v}x`);
+  const holds = [...new Set(kids.map((c) => s(c.holdPeriod)).filter((x): x is string => Boolean(x)))];
+  const hold = s(d.holdPeriod) ?? (holds.length === 1 ? holds[0] : null);
+  if (irr || em) out.push(`Expected Returns: ${[irr ? `${irr} IRR` : null, em ? `${irr ? "a " : ""}${em} EM` : null].filter(Boolean).join(" and ")}${hold ? ` on a ${hold.replace(/\s*hold$/i, "")} hold` : ""}`);
+  const close = s(d.expectedClose) ?? kids.map((c) => s(c.expectedClose)).find(Boolean) ?? null;
+  if (close) out.push(`Closing Date: ${close}`);
+  return out;
+}
+export const portfolioMetricsListHtml = (d: D) => listHtml(portfolioMetrics(d));
+
 export function metricsHtml(d: D): string {
   // heading underlined, every bullet's lead-in bold, a gap after the list before Business Plan
   const li = (x: string) => { const i = x.indexOf(": "); return i > 0 ? `<li><b>${x.slice(0, i)}:</b>${x.slice(i + 1)}</li>` : `<li>${x}</li>`; };

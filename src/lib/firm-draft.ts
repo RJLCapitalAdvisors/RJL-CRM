@@ -8,7 +8,7 @@
  * change wins and that firm edit falls away. Client-safe (DOMParser when present; a tag-level splitter otherwise).
  */
 export type BlockEdit = { base: string[]; html: string };
-export type FirmDraft = { subject?: string; subjectBase?: string; edits: BlockEdit[]; touched: true; html?: string };
+export type FirmDraft = { subject?: string; subjectBase?: string; edits: BlockEdit[]; touched: true; html?: string; fields?: Record<string, string> };
 
 export type Split = { open: string; close: string; blocks: string[] };
 

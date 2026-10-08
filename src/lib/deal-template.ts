@@ -9,10 +9,11 @@ import { renderTemplate, toHtml, type MergeContext } from "@/lib/merge";
  */
 const RESIDENTIAL = ["Multifamily", "Build-For-Rent (SFR)", "Student Housing", "Senior Housing"];
 
-export type DealForTemplate = { assetClass?: string | null; strategy?: string | null; executionType?: string | null; requestType?: string | null };
+export type DealForTemplate = { id?: string; assetClass?: string | null; strategy?: string | null; executionType?: string | null; requestType?: string | null; portfolio?: boolean };
 
 export function templateNameFor(deal: DealForTemplate): RegExp | null {
   const exec = deal.executionType ?? "";
+  if (deal.portfolio) return /^Portfolio/i; // several properties as one deal (Jonathan, Oct 8, 2026): the plural intro and the summed capital stack
   if (exec === "Senior Debt" && !isLand(deal.assetClass)) return /^Deal Template For All Debt Deals/i;
   if (exec === "Fund Investment") return /^Fund Raise Template$/i;
   if (isLand(deal.assetClass)) return /^Land Entitlement/i; // pref, JV or a senior loan request on land being entitled (Jonathan, Oct 6, 2026)
@@ -24,7 +25,8 @@ export function templateNameFor(deal: DealForTemplate): RegExp | null {
 }
 
 export async function templateForDeal(deal: DealForTemplate): Promise<{ id: string; name: string; subject: string; bodyHtml: string } | null> {
-  const re = templateNameFor(deal);
+  const portfolio = deal.portfolio ?? (typeof deal.id === "string" ? (await prisma.deal.count({ where: { parentDealId: deal.id } })) > 0 : false);
+  const re = templateNameFor({ ...deal, portfolio });
   if (!re) return null;
   const all = await prisma.emailTemplate.findMany({ where: { kind: "DEAL", workspace: "CA", NOT: { name: { startsWith: "(archived)" } } }, select: { id: true, name: true, subject: true, bodyHtml: true } });
   return all.find((t) => re.test(t.name)) ?? null;

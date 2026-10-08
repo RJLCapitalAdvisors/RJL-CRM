@@ -1,7 +1,7 @@
 import { US_STATES } from "@/lib/taxonomy";
 import { cleanBusinessPlan } from "@/lib/style";
 import { uniqueChecklist, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
-import { dealMetricsListHtml, entitledUse, intro, landMetricsHtml, metricsHtml, subjectLine, usd } from "@/lib/deal-copy";
+import { dealMetricsListHtml, entitledUse, intro, landMetricsHtml, metricsHtml, portfolioMetricsListHtml, subjectLine, usd } from "@/lib/deal-copy";
 import { prefMetrics } from "@/lib/pref";
 import { rateNumber, rateText } from "@/lib/rates";
 
@@ -61,7 +61,8 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.summary", label: "Deal summary / business plan" },
   { key: "deal.subjectLine", label: "House-style subject: Asset Acquisition Opportunity in City, ST | $X of JV Equity" },
   { key: "deal.intro", label: "House-style intro paragraph (adapts to asset class and development vs acquisition)" },
-  { key: "deal.metrics", label: "Deal Metrics bullet list (per foot / per unit as the asset class calls for)" },
+  { key: "deal.metrics", label: "Deal Metrics bullet list (per foot / per unit as the asset class calls for; a portfolio: the totals, then one block per property)" },
+  { key: "deal.portfolioMetrics", label: "A portfolio's Deal Metrics as one list: the capital stack summed across the properties, yield and returns as ranges, the closing date (a single deal: the ordinary list)" },
   { key: "deal.lastDollar", label: "Last dollar exposure (pref/mezz)" },
   { key: "deal.prefLtc", label: "Pref LTC %" },
   { key: "deal.prefLtv", label: "Pref LTV %" },
@@ -132,6 +133,7 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "deal.occupancyNote") { const o = ctx.deal?.occupancy; return typeof o === "number" && ctx.deal?.strategy !== "Development" ? ` (currently ${o}% occupied)` : ""; }
   if (path === "deal.entitledUse") return ctx.deal ? entitledUse(ctx.deal) ?? "" : "";
   if (path === "deal.dealMetrics") return ctx.deal ? dealMetricsListHtml(ctx.deal) : "";
+  if (path === "deal.portfolioMetrics") return ctx.deal ? portfolioMetricsListHtml(ctx.deal) : "";
   if (["deal.verticalCostPerKey", "deal.verticalCostPerFoot", "deal.landBudget"].includes(path)) {
     const d = ctx.deal ?? {};
     const cost = typeof d.verticalCost === "number" ? d.verticalCost : null;
@@ -204,25 +206,47 @@ export function renderTemplate(text: string, ctx: MergeContext, opts?: { mark?: 
   });
 }
 
-/** Put the ticket's current values into an email that was saved earlier: each marked element is replaced by its fresh twin. Null when the saved html carries no marks. */
-export function refreshDealFields(savedHtml: string, freshHtml: string): string | null {
-  const re = /<(span|div) data-deal="([^"]+)">/g;
-  const freshOf = new Map<string, string>();
-  for (const m of freshHtml.matchAll(re)) {
-    const end = closeOf(freshHtml, m.index! + m[0].length, m[1]);
-    if (end >= 0) freshOf.set(m[2], freshHtml.slice(m.index!, end));
+const MARK_RE = /<(span|div)\b[^>]*\bdata-deal="([^"]+)"[^>]*>/g;
+/** Every marked field in an email, by path, as its full element: the baseline a later refresh compares against. */
+export function dealFieldsOf(html: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of html.matchAll(MARK_RE)) {
+    const end = closeOf(html, m.index! + m[0].length, m[1]);
+    if (end >= 0 && !(m[2] in out)) out[m[2]] = html.slice(m.index!, end);
   }
+  return out;
+}
+const sameText = (a: string, b: string) => a.replace(/<[^>]+>/g, "").replace(/\s+|&nbsp;|&#8203;/g, "") === b.replace(/<[^>]+>/g, "").replace(/\s+|&nbsp;|&#8203;/g, "");
+/**
+ * Put the ticket's current values into an email that was saved earlier: each marked element is replaced by its fresh twin,
+ * unless the person changed that element since it was last refreshed (its text no longer matches the baseline it was given
+ * then): an edited paragraph stands, and the refresh never undoes a revision (Jonathan, Oct 8, 2026: "revisions are not
+ * sticking"). Returns the html and the new baseline; null when the saved html carries no marks at all.
+ */
+export function refreshDealFields(savedHtml: string, freshHtml: string, baseline?: Record<string, string>): { html: string; fields: Record<string, string>; kept: string[] } | null {
+  const freshOf = dealFieldsOf(freshHtml);
+  const fields: Record<string, string> = {};
+  const kept: string[] = [];
   let out = "", at = 0, hits = 0;
-  for (const m of savedHtml.matchAll(re)) {
+  for (const m of savedHtml.matchAll(MARK_RE)) {
     if (m.index! < at) continue; // a mark inside one already replaced
     const end = closeOf(savedHtml, m.index! + m[0].length, m[1]);
-    const fresh = freshOf.get(m[2]);
+    const fresh = freshOf[m[2]];
     if (end < 0 || fresh == null) continue;
+    const current = savedHtml.slice(m.index!, end);
+    const base = baseline?.[m[2]];
+    hits++;
+    if (base != null && !sameText(current, base)) {
+      // changed by hand or by a revision since the last refresh: it stands, and becomes its own baseline
+      kept.push(m[2]);
+      fields[m[2]] = current;
+      continue;
+    }
     out += savedHtml.slice(at, m.index!) + fresh;
     at = end;
-    hits++;
+    fields[m[2]] = fresh;
   }
-  return hits ? out + savedHtml.slice(at) : null;
+  return hits ? { html: out + savedHtml.slice(at), fields, kept } : null;
 }
 /** Index just past the close tag that matches an open <tag> whose contents start at `from`. */
 function closeOf(html: string, from: number, tag: string): number {
