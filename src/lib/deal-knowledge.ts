@@ -153,7 +153,7 @@ export async function fillMissingFromText(dealId: string, text: string, source: 
     const res = await client.messages.parse({
       model: "claude-sonnet-5",
       max_tokens: 3000,
-      system: "A deal sponsor wrote to RJL Capital Advisors about a deal. For each question below, answer ONLY from what this email (and the documents quoted in it) says, in the shape asked for. Empty string when the email does not address it. Never guess, never carry over from general knowledge. 'As soon as possible' is an answer to a closing date question. 'The sponsor already owns the land' answers how it was sourced. A property that is NOT in an Opportunity Zone is 'No'. No dashes as punctuation.",
+      system: "A deal sponsor wrote to RJL Capital Advisors about a deal. For each question below, answer ONLY from what this email (and the documents quoted in it) says, in the shape asked for. Empty string when the email does not address it. Never guess, never carry over from general knowledge. 'As soon as possible' is an answer to a closing date question; write it as a plain statement, never echo the question or leave a question mark. 'The sponsor already owns the land' answers how it was sourced. A property that is NOT in an Opportunity Zone is 'No'. No dashes as punctuation.",
       messages: [{ role: "user", content: `DEAL: ${deal.propertyName ?? deal.name}\nSOURCE: ${source}\n\nEMAIL:\n${text.slice(0, 120_000)}` }],
       output_config: { format: zodOutputFormat(schema) },
     });
@@ -172,7 +172,7 @@ export async function fillMissingFromText(dealId: string, text: string, source: 
     else if (YES_NO.has(it.key)) v = /^y/i.test(v) ? "Yes" : /^n/i.test(v) ? "No" : null;
     else if (it.kind === "number") v = num(v);
     else v = stripDashes(v).slice(0, it.kind === "short" ? 200 : 1200);
-    if (v == null || v === "") continue;
+    if (v == null || v === "" || (typeof v === "string" && (/\?/.test(v) || v.length < 3))) continue; // a question echoed back ("capital? ASAP?") is not an answer
     if (it.core) {
       const cur = (deal as Record<string, unknown>)[it.core];
       if (cur != null && cur !== "") continue;
@@ -183,6 +183,8 @@ export async function fillMissingFromText(dealId: string, text: string, source: 
     }
     keys.push(it.key);
   }
+  // land the sponsor already owns has no seller: the seller story is answered by that fact (Cudjoe Key, Oct 8, 2026)
+  if (details.sourcing === "already owned by the sponsor" && !details.sellerStory) { details.sellerStory = "Not applicable: the sponsor already owns the land"; keys.push("sellerStory"); }
   if (!keys.length) return { filled: 0, keys: [] };
   await prisma.deal.update({ where: { id: dealId }, data: { ...core, details: JSON.stringify(details) } });
   return { filled: keys.length, keys };
