@@ -8,14 +8,14 @@ import { hasMarker, withFirstName, withoutName } from "@/lib/first-name-marker";
 import { applyEdits, diffBlocks, greetingName, splitBlocks, type FirmDraft } from "@/lib/firm-draft";
 import { Send, Star } from "lucide-react";
 import { dealFieldsOf, refreshDealFields } from "@/lib/merge";
-import { addFirmAction, launchAction, learnFirstNameAction, previewFollowupEmail, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction, searchInvestorCompanies } from "./actions";
+import { addFirmAction, cancelLaunchAction, launchAction, learnFirstNameAction, previewFollowupEmail, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction, searchInvestorCompanies } from "./actions";
 import { Eye } from "lucide-react";
 import { EmailRow, type EmailRowData } from "@/components/email-row";
 import { statusOf } from "@/lib/tracker";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
 export type Person = { id: string; name: string; firstName?: string; email: string; title: string | null; bounced?: boolean };
-export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null };
+export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null; followups?: number };
 export type DealFileLite = { key: string; name: string; size: number; url?: string | null };
 /** fields: each marked ticket field as it was last refreshed, so a later refresh can tell an edited paragraph (kept) from an untouched one (replaced). */
 type Draft = { subject: string; html: string; touched: boolean; fields?: Record<string, string> };
@@ -44,16 +44,19 @@ function FileIcon({ name }: { name: string }) {
  * Everything you do here saves itself to the deal a second after you do it, so you can leave and come back.
  * Bottom: "Send preview email to me" (the General one goes with a blank greeting) and LAUNCH (each firm gets its own email).
  */
-export function SendClient({ mode = "send", dealId, firms, templates, defaultTemplateId, files, saved, team = [], initialLaunch = null }: { mode?: "send" | "followup"; dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[]; initialLaunch?: LaunchStatus | null }) {
+export function SendClient({ mode = "send", round = 1, dealId, firms, templates, defaultTemplateId, files, saved, team = [], initialLaunch = null }: { mode?: "send" | "followup"; round?: number; dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[]; initialLaunch?: LaunchStatus | null }) {
   const followup = mode === "followup";
+  // Follow ups come in rounds (Jonathan, Oct 8, 2026): round 1 goes to firms sent and quiet; the final round (2) to firms still quiet after follow-up 1
+  const wantStatus = round > 1 ? 3 : 2;
   /** Follow ups: a firm that answered, passed, was already followed up, or has no sent email on record is shaded out and left out by default. */
   // what each firm's launch did this session; declared before the helpers below read it (the Follow ups page crashed on first render when it came after them, Oct 1, 2026)
   const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean; bounced?: string[] }>>({});
   /** The stage as it stands now: a follow-up sent in this session reads Followed Up at once (yellow, at the bottom), before the page refreshes (Jonathan, Oct 1, 2026). */
   const statusNow = (f: Firm) => (followup && results[f.rowId]?.ok && f.status === 2 ? 3 : f.status);
-  const shaded = (f: Firm) => followup && (statusNow(f) !== 2 || !f.followupTo);
-  /** Follow ups: quiet firms first, then followed up, then the ones that answered, then passes, then firms with no sent email on record. */
-  const bucket = (f: Firm) => (!f.followupTo ? 5 : statusNow(f) === 2 ? 0 : statusNow(f) === 3 ? 1 : statusNow(f) === 7 || statusNow(f) === 8 ? 4 : statusNow(f) === 1 ? 2 : 3);
+  /** This round's firms: at the stage the round is for, with exactly the earlier rounds behind them, a thread to reply on, and not sent in this session. */
+  const shaded = (f: Firm) => followup && (statusNow(f) !== wantStatus || (f.followups ?? 0) !== round - 1 || !f.followupTo || Boolean(results[f.rowId]?.ok));
+  /** Follow ups: this round's firms first, then the other followed up or quiet ones, then the ones that answered, then passes, then firms with no sent email on record. */
+  const bucket = (f: Firm) => (!f.followupTo ? 5 : !shaded(f) ? 0 : statusNow(f) === 2 || statusNow(f) === 3 ? 1 : statusNow(f) === 7 || statusNow(f) === 8 ? 4 : statusNow(f) === 1 ? 2 : 3);
   /** Follow ups: each token wears its stage colour, see-through; a pass is a light red. */
   const tone = (f: Firm, selected = false): React.CSSProperties | undefined => {
     if (!followup) return undefined;
@@ -174,7 +177,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
     let cancelled = false;
     const keepEdits = reload === 0 && Boolean(saved?.general?.touched) && saved?.templateId === templateId;
     const t = setTimeout(() => !cancelled && setRendering(true), 0);
-    (followup ? previewFollowupEmail(dealId) : previewGeneralEmail(dealId, templateId))
+    (followup ? previewFollowupEmail(dealId, round) : previewGeneralEmail(dealId, templateId))
       .then((r) => {
         if (cancelled) return;
         if (keepEdits) {
@@ -246,7 +249,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
     const t = setTimeout(() => {
       setSaveState("saving");
       const state: SendState = { templateId, general, drafts, include: [...include], to: Object.fromEntries(Object.entries(to).map(([k, v]) => [k, [...v]])), primary: Object.fromEntries(Object.entries(primary).map(([k, v]) => [k, [...v]])), chosenFiles: [...chosenFiles], cc, savedAt: new Date().toISOString() };
-      saveSendStateAction(dealId, state, mode)
+      saveSendStateAction(dealId, state, mode, round)
         .then(() => setSaveState("saved"))
         .catch(() => setSaveState("dirty"));
     }, 1000);
@@ -357,7 +360,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
     }
     setArmedOne(null);
     start(async () => {
-      const r = await launchAction(dealId, [{ rowId: f.rowId, toContactIds: ids, subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() }], [...chosenFiles], mode);
+      const r = await launchAction(dealId, [{ rowId: f.rowId, toContactIds: ids, subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() }], [...chosenFiles], mode, round);
       if (!r.ok) return setNote(r.reason);
       applyStatus(r.status);
       if (r.status.queued > 0) setLaunching(true);
@@ -400,7 +403,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
     setResults((s) => ({ ...s, ...Object.fromEntries(items.map((i) => [i.rowId, { ok: false, pending: true }])) }));
     start(async () => {
       try {
-        const r = await launchAction(dealId, items, [...chosenFiles], mode);
+        const r = await launchAction(dealId, items, [...chosenFiles], mode, round);
         if (!r.ok) return setNote(r.reason);
         applyStatus(r.status);
         if (r.status.queued > 0) setLaunching(true);
@@ -460,7 +463,7 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
       return setNote(`Pick who at ${f.company} gets it first (▾), then click send again.`);
     }
     start(async () => {
-      const r = await launchAction(dealId, [{ rowId: f.rowId, toContactIds: ids, subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() }], [...chosenFiles], mode);
+      const r = await launchAction(dealId, [{ rowId: f.rowId, toContactIds: ids, subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() }], [...chosenFiles], mode, round);
       if (!r.ok) return setNote(r.reason);
       applyStatus(r.status);
       if (r.status.queued > 0) setLaunching(true);
@@ -631,8 +634,8 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
                     {res?.pending && <span className="text-xs text-sky-700">queued</span>}
                     {res && !res.ok && !res.pending && <span className="text-xs text-red-700" title={res.error}>{res.bounced?.length ? "bounced" : "failed"}</span>}
                     {!followup && f.status >= 2 && !res && <span className="text-xs text-muted">{on ? "sending again" : "sent earlier"}</span>}
-                    {followup && !res && <span className="text-xs text-muted">{!f.followupTo ? "no sent email on record" : f.status === 2 ? `sent ${f.sentOn ? new Date(f.sentOn).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "earlier"}, quiet` : f.status === 3 ? "followed up" : f.status >= 7 ? "passed" : "answered"}</span>}
-                    {followup && res?.ok && <span className="text-xs text-muted">followed up</span>}
+                    {followup && !res && <span className="text-xs text-muted">{!f.followupTo ? "no sent email on record" : f.status === 2 ? `sent ${f.sentOn ? new Date(f.sentOn).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "earlier"}, quiet` : f.status === 3 ? `followed up${(f.followups ?? 0) > 1 ? ` ${f.followups}x` : ""}, quiet` : f.status >= 7 ? "passed" : "answered"}</span>}
+                    {followup && res?.ok && <span className="text-xs text-muted">{round > 1 ? `follow-up ${round} sent` : "followed up"}</span>}
                   </button>
                   {(
                     <>
@@ -748,7 +751,8 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
       </div>}
       {followup && (
         <div className="card px-4 py-2.5 text-sm text-muted">
-          Each follow-up goes out as a <b>reply all</b> on the deal email that firm was sent, so the original sits quoted underneath and the thread stays one. The line below is written above it, with the person&apos;s first name. Firms with no sent email on record are shaded and cannot be followed up here.
+          {round > 1 ? <><b>Final follow-up (round {round}).</b> It goes to the firms still quiet after follow-up {round - 1}, as a <b>reply all</b> on that follow-up, so the whole thread sits quoted underneath. The line below is written above it, with the person&apos;s first name.</> : <>Each follow-up goes out as a <b>reply all</b> on the deal email that firm was sent, so the original sits quoted underneath and the thread stays one. The line below is written above it, with the person&apos;s first name. Firms with no sent email on record are shaded and cannot be followed up here.</>}
+          {" "}A firm gets each round once; anything else is shaded and left out unless you turn it on with +.
         </div>
       )}
 
@@ -890,6 +894,24 @@ export function SendClient({ mode = "send", dealId, firms, templates, defaultTem
           {countdown != null && launching && <span className="ml-2 tabular-nums text-ink">{countdown > 0 ? `next in ${countdown}s` : "sending now…"}</span>}
         </div>
         <div className="flex items-center gap-2">
+          {launching && (
+            <button
+              type="button"
+              className="btn-secondary border-red-600 text-red-700"
+              disabled={pending}
+              title="Nothing more goes out of this launch; what was sent stays sent. Use it when an old launch is stuck or no longer wanted."
+              onClick={() =>
+                start(async () => {
+                  const r = await cancelLaunchAction(dealId, mode);
+                  applyStatus(r.status);
+                  setLaunching(false);
+                  setNote(`Launch ended: ${r.ended} email${r.ended === 1 ? "" : "s"} that had not gone out ${r.ended === 1 ? "was" : "were"} cancelled. ${r.status.sent} of ${r.status.total} had been sent.`);
+                })
+              }
+            >
+              End this launch
+            </button>
+          )}
           {!launching && Object.values(results).some((r) => !r.ok && !r.pending) && (
             <button
               type="button"

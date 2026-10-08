@@ -22,8 +22,11 @@ export const maxDuration = 300; // a launch paces itself: one email at a time, a
 
 /** Send deal: pick who at each agreed firm gets it, personalize the first line, review, then drafts land in your Outlook to fire one by one. */
 /** Follow ups: the Send deal page again, but every email is a reply-all on the deal email that firm was sent, and firms that answered or passed are shaded out (Jonathan, Oct 1, 2026). */
-export default async function FollowUpsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function FollowUpsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
+  const sp = await searchParams;
+  // round 1: firms sent and quiet; round 2 (the final follow-up): firms still quiet after follow-up 1 (Jonathan, Oct 8, 2026)
+  const round = Math.max(1, Math.min(3, Number(Array.isArray(sp.round) ? sp.round[0] : sp.round) || 1));
   await syncSendDrafts().catch(() => 0);
   const [deal, templates] = await Promise.all([
     prisma.deal.findUnique({ where: { id }, include: { investors: { include: { contact: { include: { company: { include: { contacts: { where: { email: { not: null }, departedAt: null }, orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }] } } } } } }, orderBy: { createdAt: "asc" } } } }),
@@ -47,11 +50,12 @@ export default async function FollowUpsPage({ params }: { params: Promise<{ id: 
   // a launch still going (or left behind when the tab closed): the page resumes pacing it and pumps in the background
   const launch = await launchStatus(deal.id, "FOLLOWUP").catch(() => null);
   const bouncedEmails = new Set((launch?.rows ?? []).flatMap((r) => r.bounced ?? []));
-  if (launch && launch.queued > 0 && me) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
+  if (launch && launch.queued > 0 && me && !process.env.CRON_SECRET) after(() => pumpLaunches(me.email, 270_000).catch(() => null)); // the minute scheduler drives sending; locally the page does
   const team = (await prisma.user.findMany({ where: { active: true, ...CA_TEAM, email: { not: null } }, select: { name: true, email: true }, orderBy: { name: "asc" } })).filter((u) => u.email && u.email.toLowerCase() !== me?.email?.toLowerCase()).map((u) => ({ name: u.name, email: u.email! }));
   const sendState = ((): SendState | null => {
     try {
-      const st = (JSON.parse(deal.details || "{}") as { followupState?: SendState }).followupState;
+      const det = JSON.parse(deal.details || "{}") as Record<string, SendState | undefined>;
+      const st = det[round > 1 ? `followupState${round}` : "followupState"];
       return st && typeof st === "object" ? st : null;
     } catch {
       return null;
@@ -62,6 +66,10 @@ export default async function FollowUpsPage({ params }: { params: Promise<{ id: 
     if (r.contact.companyId && !defaults.has(r.contact.companyId)) defaults.set(r.contact.companyId, await usualRecipients(r.contact.companyId, r.contact.company?.contacts ?? []));
   }
   const sentOn = await firstSentMessageIds(deal.id).catch(() => new Map<string, { messageId: string; sentAt: Date }>());
+  const { lastFollowups } = await import("@/lib/launch-queue");
+  const followups = await lastFollowups(deal.id).catch(() => new Map<string, { round: number; messageId: string | null; sentAt: Date }>());
+  // a later round replies on the latest follow-up the firm got (else the deal email), so the whole thread is quoted
+  const replyOn = (rowId: string) => (round > 1 && followups.get(rowId)?.messageId ? followups.get(rowId)!.messageId : sentOn.get(rowId)?.messageId ?? null);
   // the email a follow-up replies to, shown on the firm's token so there is no doubt which thread it joins (Jonathan, Oct 1, 2026)
   const sentIds = [...new Set([...sentOn.values()].map((x) => x?.messageId).filter((x): x is string => Boolean(x)))];
   const sentActs = sentIds.length ? await prisma.activity.findMany({ where: { externalId: { in: sentIds }, type: "EMAIL" }, orderBy: { occurredAt: "asc" } }) : [];
@@ -82,7 +90,8 @@ export default async function FollowUpsPage({ params }: { params: Promise<{ id: 
   };
   const firms: Firm[] = deal.investors.map((r) => ({
     rowId: r.id,
-    followupTo: sentOn.get(r.id)?.messageId ?? null,
+    followupTo: replyOn(r.id),
+    followups: followups.get(r.id)?.round ?? 0,
     sentOn: sentOn.get(r.id)?.sentAt.toISOString() ?? null,
     sentEmail: sentEmailFor(r.id),
     status: r.status,
@@ -109,10 +118,13 @@ export default async function FollowUpsPage({ params }: { params: Promise<{ id: 
   return (
     <>
       <PageHeader
-        title={`Follow ups · ${name}`}
-        subtitle={`${firms.filter((f) => f.status === 2 && f.followupTo).length} firms sent and quiet · ${firms.filter((f) => f.status >= 4 || f.status === 3).length} answered, passed or already followed up (shaded; turn one on with + to include it anyway)`}
+        title={`${round > 1 ? `Final follow-up (round ${round})` : "Follow ups"} · ${name}`}
+        subtitle={round > 1 ? `${firms.filter((f) => f.status === 3 && (f.followups ?? 0) === round - 1 && f.followupTo).length} firms still quiet after follow-up ${round - 1} · the rest are shaded (turn one on with + to include it anyway)` : `${firms.filter((f) => f.status === 2 && f.followupTo).length} firms sent and quiet · ${firms.filter((f) => f.status >= 4 || f.status === 3).length} answered, passed or already followed up (shaded; turn one on with + to include it anyway)`}
         actions={
           <>
+            <Link href={`/deals/${deal.id}/followup${round > 1 ? "" : "?round=2"}`} className="btn-secondary" title={round > 1 ? "Back to the first follow-up" : "A last note to the firms still quiet after follow-up 1, as a reply all on that follow-up"}>
+              {round > 1 ? "First follow-up" : "Final follow-up"}
+            </Link>
             <SendToOne dealId={deal.id} />
             <Link href={`/deals/${deal.id}/send`} className="btn-secondary">
               Send deal
@@ -123,7 +135,7 @@ export default async function FollowUpsPage({ params }: { params: Promise<{ id: 
           </>
         }
       />
-      <SendClient mode="followup" dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size, url: fileUrl(f.key) }))} saved={sendState} team={team} initialLaunch={launch && (launch.queued > 0 || launch.failed > 0 || launch.bounced > 0) ? launch : null} />
+      <SendClient mode="followup" round={round} dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size, url: fileUrl(f.key) }))} saved={sendState} team={team} initialLaunch={launch && (launch.queued > 0 || launch.failed > 0 || launch.bounced > 0) ? launch : null} />
     </>
   );
 }

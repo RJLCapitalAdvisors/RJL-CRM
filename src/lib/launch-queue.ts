@@ -113,6 +113,32 @@ export async function firstSentMessageIds(dealId: string): Promise<Map<string, {
   return out;
 }
 
+/** Each firm's latest follow-up that went out: how many rounds it has had, and the message the next round replies to (so the thread quotes the latest). */
+export async function lastFollowups(dealId: string): Promise<Map<string, { round: number; messageId: string | null; sentAt: Date }>> {
+  const out = new Map<string, { round: number; messageId: string | null; sentAt: Date }>();
+  const sent = await prisma.dealLaunch.findMany({ where: { dealId, kind: "FOLLOWUP", status: { in: ["SENT", "BOUNCED"] } }, orderBy: { sentAt: "asc" }, select: { rowId: true, round: true, sentMessageId: true, sentAt: true } });
+  for (const s of sent) {
+    const prev = out.get(s.rowId);
+    out.set(s.rowId, { round: Math.max(prev?.round ?? 0, s.round, (prev?.round ?? 0) + 1), messageId: s.sentMessageId ?? prev?.messageId ?? null, sentAt: s.sentAt ?? prev?.sentAt ?? new Date() });
+  }
+  return out;
+}
+
+/**
+ * End a launch (Jonathan, Oct 8, 2026): whatever is still queued, or stuck mid-send, is cancelled so a new launch can start.
+ * Park Station's first follow-up had two rows left in SENDING since Oct 1 (the server stopped mid-send; both went out by hand
+ * the next day), and the page took them for a launch still running.
+ */
+export async function cancelLaunch(dealId: string, kind: "SEND" | "FOLLOWUP" = "SEND"): Promise<number> {
+  const r = await prisma.dealLaunch.updateMany({ where: { dealId, kind, status: { in: ["QUEUED", "SENDING"] } }, data: { status: "CANCELLED", error: "ended by hand before it went out", claimedAt: null, notBefore: null } });
+  return r.count;
+}
+
+/** A row left in SENDING for twenty minutes did not finish (the server stopped mid-send): it fails rather than hold a launch open forever. */
+async function sweepStale(): Promise<void> {
+  await prisma.dealLaunch.updateMany({ where: { status: "SENDING", claimedAt: { lt: new Date(Date.now() - 20 * 60_000) } }, data: { status: "FAILED", error: "did not finish: the server stopped mid-send; check Sent Items before sending it again" } }).catch(() => null);
+}
+
 /** Put a deal's failed emails back in the queue (fresh attempts, no hold). Returns how many. */
 export async function retryFailed(dealId: string, kind: "SEND" | "FOLLOWUP" = "SEND"): Promise<number> {
   const since = new Date(Date.now() - 24 * 3_600_000);
@@ -136,9 +162,12 @@ export async function firstSentMessageId(dealId: string, rowId: string): Promise
 }
 
 /** Put every firm's email in the queue. Nothing is sent here; the first goes out on the first pump. A follow-up replies all on the deal email that firm was sent. */
-export async function queueDealEmails(dealId: string, items: LaunchItem[], mailbox: string, fileKeys?: string[], opts: { followup?: boolean } = {}): Promise<void> {
+export async function queueDealEmails(dealId: string, items: LaunchItem[], mailbox: string, fileKeys?: string[], opts: { followup?: boolean; round?: number } = {}): Promise<void> {
   const kind = opts.followup ? "FOLLOWUP" : "SEND";
+  const round = opts.followup ? Math.max(1, opts.round ?? 1) : 1;
   const bytes = await attachmentBytes(dealId, fileKeys);
+  // a later round replies on the latest follow-up the firm got, so the whole thread sits quoted underneath (Oct 8, 2026)
+  const last = opts.followup && round > 1 ? await lastFollowups(dealId) : new Map<string, { round: number; messageId: string | null; sentAt: Date }>();
   for (const item of items) {
     const row = await prisma.dealInvestor.findUnique({ where: { id: item.rowId }, select: { id: true, contactId: true } });
     if (!row) continue;
@@ -146,12 +175,13 @@ export async function queueDealEmails(dealId: string, items: LaunchItem[], mailb
     // one live entry per row and kind: a second LAUNCH click while the first is still going does not double-send
     const open = await prisma.dealLaunch.findFirst({ where: { rowId: row.id, kind, status: { in: ["QUEUED", "SENDING"] } } });
     if (open) continue;
-    const replyTo = opts.followup ? await firstSentMessageId(dealId, row.id) : null;
-    // a firm is followed up once (Jonathan, Oct 1, 2026: Royce got a second one after a single send and the launch): never again
-    const already = opts.followup ? await prisma.dealLaunch.findFirst({ where: { dealId, rowId: row.id, kind: "FOLLOWUP", status: { in: ["SENT", "BOUNCED"] } }, orderBy: { sentAt: "asc" }, select: { sentAt: true } }) : null;
-    const error = !people.length ? "nobody with an email picked" : opts.followup && already ? `already followed up${already.sentAt ? ` on ${already.sentAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}; a firm is followed up once` : opts.followup && !replyTo ? "no sent deal email on record to reply to" : null;
+    const first = opts.followup ? await firstSentMessageId(dealId, row.id) : null;
+    const replyTo = round > 1 && last.get(row.id)?.messageId ? { messageId: last.get(row.id)!.messageId!, sentAt: last.get(row.id)!.sentAt } : first;
+    // a firm gets each round once (Jonathan, Oct 1, 2026: Royce got a second first follow-up after a single send and the launch); a later round is its own
+    const already = opts.followup ? await prisma.dealLaunch.findFirst({ where: { dealId, rowId: row.id, kind: "FOLLOWUP", round: { gte: round }, status: { in: ["SENT", "BOUNCED"] } }, orderBy: { sentAt: "asc" }, select: { sentAt: true } }) : null;
+    const error = !people.length ? "nobody with an email picked" : opts.followup && already ? `already had follow-up ${round}${already.sentAt ? ` on ${already.sentAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}; a firm gets each round once` : opts.followup && !replyTo ? "no sent deal email on record to reply to" : null;
     await prisma.dealLaunch.create({
-      data: { dealId, rowId: row.id, mailbox, kind, replyToMessageId: replyTo?.messageId ?? null, toContactIds: toJson(people.map((p) => p.id)), cc: toJson(item.cc ?? []), subject: item.subject, html: item.html, fileKeys: fileKeys ? toJson(fileKeys) : null, bytes, status: error ? "FAILED" : "QUEUED", error },
+      data: { dealId, rowId: row.id, mailbox, kind, round, replyToMessageId: replyTo?.messageId ?? null, toContactIds: toJson(people.map((p) => p.id)), cc: toJson(item.cc ?? []), subject: item.subject, html: item.html, fileKeys: fileKeys ? toJson(fileKeys) : null, bytes, status: error ? "FAILED" : "QUEUED", error },
     });
   }
 }
@@ -208,6 +238,7 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
   let sent = 0;
   const cache = new Map<string, Awaited<ReturnType<typeof chosenFiles>>>();
   if (!graphConfigured()) return { sent: 0, remaining: await prisma.dealLaunch.count({ where: { mailbox, status: "QUEUED" } }) };
+  await sweepStale();
   for (;;) {
     const next = await prisma.dealLaunch.findFirst({ where: ready(mailbox), orderBy: { createdAt: "asc" } });
     if (!next) break;
@@ -233,7 +264,7 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
       if (!cache.has(cacheKey)) cache.set(cacheKey, await chosenFiles(next.dealId, keys));
       const followup = next.kind === "FOLLOWUP";
       if (followup && !next.replyToMessageId) throw new Error("no sent deal email on record to reply to");
-      if (followup && (await prisma.dealLaunch.findFirst({ where: { dealId: next.dealId, rowId: next.rowId, kind: "FOLLOWUP", status: { in: ["SENT", "BOUNCED"] }, NOT: { id: next.id } }, select: { id: true } }))) throw new Error("already followed up; a firm is followed up once");
+      if (followup && (await prisma.dealLaunch.findFirst({ where: { dealId: next.dealId, rowId: next.rowId, kind: "FOLLOWUP", round: { gte: next.round }, status: { in: ["SENT", "BOUNCED"] }, NOT: { id: next.id } }, select: { id: true } }))) throw new Error(`already had follow-up ${next.round}; a firm gets each round once`);
       const messageId = followup
         ? await sendReplyAll(mailbox, next.replyToMessageId!, to, next.html, cache.get(cacheKey)!, JSON.parse(next.cc) as string[])
         : await sendMessage(mailbox, to, next.subject, next.html, cache.get(cacheKey)!, JSON.parse(next.cc) as string[]);
@@ -242,7 +273,7 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
       if (followup) {
         // a follow-up after no response: the row reads Followed Up, nothing else moves
         await prisma.dealInvestor.update({ where: { id: row.id }, data: { ...(row.status === 2 ? { status: 3 } : {}), updatedAt: now } });
-        for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: "Follow-up sent (Follow ups): reply-all on the deal email", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now, meta }).catch(() => {});
+        for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: `Follow-up ${next.round} sent (Follow ups): reply-all on the ${next.round > 1 ? "thread" : "deal email"}`, externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now, meta }).catch(() => {});
       } else {
         await prisma.dealInvestor.update({ where: { id: row.id }, data: { status: Math.max(row.status, 2), bodyOverride: next.html, extraContactIds: toJson(people.map((p) => p.id).filter((id) => id !== row.contactId)), sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: now } });
         for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: "Deal email sent (Send deal)", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now, meta }).catch(() => {});
@@ -281,8 +312,9 @@ export async function pumpAllLaunches(budgetMs = 45_000): Promise<number> {
 
 /** Where a deal's launch stands, for the progress note on the Send deal page. */
 export async function launchStatus(dealId: string, kind: "SEND" | "FOLLOWUP" = "SEND"): Promise<LaunchStatus> {
+  await sweepStale();
   const since = new Date(Date.now() - 7 * 86_400_000); // a bounce can arrive a day later; the firm still has to show as bounced
-  const rows = await prisma.dealLaunch.findMany({ where: { dealId, kind, createdAt: { gte: since } }, orderBy: { createdAt: "asc" }, select: { rowId: true, status: true, error: true, mailbox: true, notBefore: true, bytes: true } });
+  const rows = await prisma.dealLaunch.findMany({ where: { dealId, kind, createdAt: { gte: since }, NOT: { status: "CANCELLED" } }, orderBy: { createdAt: "asc" }, select: { rowId: true, status: true, error: true, mailbox: true, notBefore: true, bytes: true } });
   const latest = new Map<string, (typeof rows)[number]>();
   for (const r of rows) latest.set(r.rowId, r);
   const list = [...latest.values()];

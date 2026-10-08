@@ -5,11 +5,11 @@ import { after } from "next/server";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/current-user";
 import { createSendDrafts, finalizeEngagement, renderDealEmail, renderGeneralDealEmail, reviseDealEmail, sendPreviewToSelf, type LaunchItem, type SendItem } from "@/lib/send-deal";
-import { kickPump, launchStatus, pumpLaunches, queueDealEmails, retryFailed, type LaunchStatus } from "@/lib/launch-queue";
+import { cancelLaunch, kickPump, launchStatus, pumpLaunches, queueDealEmails, retryFailed, type LaunchStatus } from "@/lib/launch-queue";
 
 type Mode = "send" | "followup";
 const KIND = (mode: Mode) => (mode === "followup" ? "FOLLOWUP" : "SEND") as "SEND" | "FOLLOWUP";
-const STATE_KEY = (mode: Mode) => (mode === "followup" ? "followupState" : "sendState");
+const STATE_KEY = (mode: Mode, round = 1) => (mode === "followup" ? (round > 1 ? `followupState${round}` : "followupState") : "sendState");
 /** The pump runs on the server from here on; when it cannot be reached (no CRON_SECRET locally), this request pumps for a while itself. */
 async function drive(mailbox: string) {
   if (!(await kickPump())) after(() => pumpLaunches(mailbox, 270_000).catch(() => null));
@@ -73,10 +73,10 @@ export async function createSendDraftsAction(dealId: string, templateId: string,
 }
 
 /** LAUNCH: queue one email per firm, send the first now, the rest one every 30 seconds while the page keeps pumping. */
-export async function launchAction(dealId: string, items: LaunchItem[], fileKeys?: string[], mode: Mode = "send") {
+export async function launchAction(dealId: string, items: LaunchItem[], fileKeys?: string[], mode: Mode = "send", round = 1) {
   const me = await currentUser();
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the emails go from your own mailbox." };
-  await queueDealEmails(dealId, items, me.email, fileKeys, { followup: mode === "followup" });
+  await queueDealEmails(dealId, items, me.email, fileKeys, { followup: mode === "followup", round });
   await pumpLaunches(me.email, 5_000);
   // the server keeps sending on its own from here (the pump route calls itself while anything is queued)
   await drive(me.email);
@@ -115,7 +115,17 @@ export async function previewGeneralEmail(dealId: string, templateId: string) {
 }
 
 /** The follow-up's General email: a line asking for a read, with the name slot, above the quoted deal email (Jonathan, Oct 1, 2026). */
-export async function previewFollowupEmail(dealId: string) {
+/** End this launch (Jonathan, Oct 8, 2026): nothing more goes out of it; what was sent stays sent. */
+export async function cancelLaunchAction(dealId: string, mode: Mode = "send"): Promise<{ ok: true; ended: number; status: LaunchStatus }> {
+  const ended = await cancelLaunch(dealId, KIND(mode));
+  revalidatePath(`/deals/${dealId}`);
+  revalidatePath(`/deals/${dealId}/send`);
+  revalidatePath(`/deals/${dealId}/followup`);
+  return { ok: true, ended, status: await launchStatus(dealId, KIND(mode)) };
+}
+
+/** The follow-up line: round 1 asks for confirmation of receipt; the final round (2) says it is the last note (Jonathan, Oct 8, 2026). */
+export async function previewFollowupEmail(dealId: string, round = 1) {
   const { FIRST_NAME_MARKER } = await import("@/lib/first-name-marker");
   const { signatureFor } = await import("@/lib/followup");
   const me = await currentUser();
@@ -123,7 +133,10 @@ export async function previewFollowupEmail(dealId: string) {
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { name: true, propertyName: true } });
   const first = await prisma.dealLaunch.findFirst({ where: { dealId, kind: "SEND", status: { in: ["SENT", "BOUNCED"] } }, orderBy: { createdAt: "asc" }, select: { subject: true } });
   const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
-  return { subject: first ? `RE: ${first.subject}` : `RE: ${deal?.propertyName ?? deal?.name ?? "the deal"}`, html: `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">Hi ${FIRST_NAME_MARKER} - please confirm receipt of the below, and let me know if ${deal?.propertyName ?? "this"} is something you would like to take a closer look at.</p>${signature ? `<div data-signature="1">${signature}</div>` : ""}</div>` };
+  const line = round > 1
+    ? `Hi ${FIRST_NAME_MARKER} - following up one last time on ${deal?.propertyName ?? "the below"}. If it is not a fit for you right now, no problem at all; a quick note either way would be appreciated so I can close the loop with the sponsor.`
+    : `Hi ${FIRST_NAME_MARKER} - please confirm receipt of the below, and let me know if ${deal?.propertyName ?? "this"} is something you would like to take a closer look at.`;
+  return { subject: first ? `RE: ${first.subject}` : `RE: ${deal?.propertyName ?? deal?.name ?? "the deal"}`, html: `<div style="${F}"><p style="margin:0 0 10pt 0;${F}">${line}</p>${signature ? `<div data-signature="1">${signature}</div>` : ""}</div>` };
 }
 
 /** "Emphasize the business plan more": Claude edits the General email as asked. */
@@ -133,11 +146,11 @@ export async function reviseGeneralEmailAction(dealId: string, subject: string, 
 }
 
 /** Autosave for the Send deal page: the General email, per-firm edits, who gets what, files, template. Kept on the deal. */
-export async function saveSendStateAction(dealId: string, state: Record<string, unknown>, mode: Mode = "send") {
+export async function saveSendStateAction(dealId: string, state: Record<string, unknown>, mode: Mode = "send", round = 1) {
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { details: true } });
   if (!deal) return { ok: false as const };
   const details = JSON.parse(deal.details || "{}") as Record<string, unknown>;
-  details[STATE_KEY(mode)] = state;
+  details[STATE_KEY(mode, round)] = state;
   await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify(details) } });
   return { ok: true as const };
 }
