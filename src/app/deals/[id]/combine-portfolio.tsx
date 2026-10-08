@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { combinePortfolioAction, portfolioCandidatesAction } from "../actions";
+import { combinePortfolioAction, portfolioCandidatesAction, portfolioSelfAction } from "../actions";
 
 type Cand = { id: string; name: string; city: string | null; stage: string; ask: string | null };
 
@@ -14,6 +14,8 @@ export function CombinePortfolio({ dealId, dealName }: { dealId: string; dealNam
   const [cands, setCands] = useState<Cand[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [name, setName] = useState("");
+  // "this ticket is the portfolio" when it already carries the report, the letter or components; else a new ticket
+  const [self, setSelf] = useState<boolean | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, start] = useTransition();
   const box = useRef<HTMLDivElement>(null);
@@ -21,17 +23,18 @@ export function CombinePortfolio({ dealId, dealName }: { dealId: string; dealNam
   useEffect(() => {
     if (!open) return;
     if (!cands) portfolioCandidatesAction(dealId).then(setCands);
+    if (self === null) portfolioSelfAction(dealId).then(setSelf);
     const onDoc = (e: MouseEvent) => {
       if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
-  }, [open, cands, dealId]);
+  }, [open, cands, self, dealId]);
 
   const go = () =>
     start(async () => {
       setErr(null);
-      const r = await combinePortfolioAction([dealId, ...picked], name);
+      const r = await combinePortfolioAction([dealId, ...picked], name, self ? dealId : null);
       if (r && "error" in r) setErr(r.error);
     });
 
@@ -43,7 +46,7 @@ export function CombinePortfolio({ dealId, dealName }: { dealId: string; dealNam
       {open && (
         <div className="absolute right-0 z-30 mt-1 w-96 rounded-md border border-line bg-paper p-3 text-sm shadow-lg">
           <div className="mb-2 text-xs text-muted">
-            Tickets from the same sponsor to take out together with <b>{dealName}</b>. The email gets one intro, a Deal Metrics block per property, one business plan and one sponsor bio.
+            Tickets from the same sponsor to take out together with <b>{dealName}</b>. The portfolio&apos;s numbers are the sum of the properties&apos; capital stacks; the email gets one intro in the plural, the totals, a Deal Metrics block per property, one business plan and one sponsor bio.
           </div>
           {!cands ? (
             <div className="py-3 text-center text-xs text-muted">Loading…</div>
@@ -64,12 +67,22 @@ export function CombinePortfolio({ dealId, dealName }: { dealId: string; dealNam
               ))}
             </ul>
           )}
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Portfolio name (optional), e.g. Tides Sunbelt Portfolio" className="input mt-2 text-xs" />
+          <div className="mt-2 space-y-1 text-xs">
+            <label className="flex cursor-pointer items-start gap-2">
+              <input type="radio" name="pf-into" className="mt-0.5 accent-sky-600" checked={self === true} onChange={() => setSelf(true)} />
+              <span><b>{dealName}</b> is the portfolio: the ticked tickets become its properties. Its report, agreed groups, letter and emails stay; its numbers become the sum.</span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2">
+              <input type="radio" name="pf-into" className="mt-0.5 accent-sky-600" checked={self === false} onChange={() => setSelf(false)} />
+              <span>Make a new portfolio ticket with all of them as properties.</span>
+            </label>
+          </div>
+          {self === false && <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Portfolio name (optional), e.g. Tides Sunbelt Portfolio" className="input mt-2 text-xs" />}
           {err && <div className="mt-1 text-xs text-red-700">{err}</div>}
           <div className="mt-2 flex items-center justify-between">
             <span className="text-xs text-muted">{picked.length + 1} tickets</span>
-            <button type="button" className="btn-primary px-3 py-1.5 text-xs" disabled={busy || picked.length === 0} onClick={go}>
-              {busy ? "Combining…" : "Create portfolio"}
+            <button type="button" className="btn-primary px-3 py-1.5 text-xs" disabled={busy || picked.length === 0 || self === null} onClick={go}>
+              {busy ? "Combining…" : self ? "Add to this portfolio" : "Create portfolio"}
             </button>
           </div>
         </div>

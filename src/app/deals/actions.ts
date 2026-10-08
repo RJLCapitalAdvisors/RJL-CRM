@@ -142,7 +142,9 @@ export async function updateDeal(id: string, fd: FormData) {
   const existing = await prisma.deal.findUniqueOrThrow({ where: { id }, select: { details: true } });
   const details = parseDetails(existing.details);
   for (const key of Array.from(fd.keys())) if (key.startsWith("detail.")) details[key.slice(7)] = s(fd, key);
-  await prisma.deal.update({ where: { id }, data: { ...(await dealData(fd)), details: JSON.stringify(details) } });
+  const saved = await prisma.deal.update({ where: { id }, data: { ...(await dealData(fd)), details: JSON.stringify(details) }, select: { parentDealId: true } });
+  // a component's numbers flow into its portfolio's totals (the sum of the components' capital stacks)
+  if (saved.parentDealId) await (await import("@/lib/portfolio")).recomputePortfolioTotals(saved.parentDealId).catch(() => null);
   revalidatePath(`/deals/${id}`);
   revalidatePath("/deals");
 }
@@ -223,11 +225,19 @@ export async function portfolioCandidatesAction(dealId: string) {
   const { fmtMoney } = await import("@/lib/format");
   return rows.map((r) => ({ id: r.id, name: r.propertyName ?? r.name, city: [r.city, r.state].filter(Boolean).join(", ") || null, stage: r.stage, ask: r.requestedAmount ? fmtMoney(r.requestedAmount) : null }));
 }
-export async function combinePortfolioAction(dealIds: string[], name: string | null) {
-  const { combineIntoPortfolio } = await import("@/lib/portfolio");
+/** Does this ticket already carry the work (a report, an engagement letter, components, a later stage)? Then it should be the portfolio, not a component of a new one. */
+export async function portfolioSelfAction(dealId: string): Promise<boolean> {
+  const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { stage: true, details: true, _count: { select: { investors: true, children: true } } } });
+  if (!d) return false;
+  const later = ["Engagement Letter Sent", "Engagement Letter Signed", "Deal Taken To Market", "Intro To Capital Made", "Term Sheet Issued", "Term Sheet Signed"].includes(d.stage);
+  return d._count.children > 0 || d._count.investors > 0 || later || /"engagementGroups"|"portfolio":true/.test(d.details || "");
+}
+export async function combinePortfolioAction(dealIds: string[], name: string | null, into: string | null = null) {
+  const { combineIntoPortfolio, attachToPortfolio } = await import("@/lib/portfolio");
   let out: { id: string; name: string };
   try {
-    out = await combineIntoPortfolio(dealIds, name);
+    // into: an existing ticket is the portfolio and the others join it (its report, groups, letter and emails stay); else a new ticket
+    out = into ? await attachToPortfolio(into, dealIds.filter((id) => id !== into)) : await combineIntoPortfolio(dealIds, name);
   } catch (e) {
     return { error: String(e instanceof Error ? e.message : e).slice(0, 200) };
   }

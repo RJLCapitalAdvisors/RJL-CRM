@@ -31,12 +31,27 @@ type Child = Record<string, unknown> & { propertyName: string | null; name: stri
 const childrenOf = (d: D): Child[] => (Array.isArray(d.children) ? (d.children as Child[]) : []);
 const joinAnd = (xs: string[]) => (xs.length <= 1 ? xs[0] ?? "" : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 const portfolioLoc = (kids: Child[]) => joinAnd([...new Set(kids.map((c) => [s(c.city), s(c.state)].filter(Boolean).join(", ")).filter(Boolean))]);
+/** For a subject line: two markets by city, more by state ("Nevada and Arizona"), so four cities do not crowd it out. */
+const portfolioSubjectLoc = (kids: Child[]) => {
+  const cities = [...new Set(kids.map((c) => [s(c.city), s(c.state)].filter(Boolean).join(", ")).filter(Boolean))];
+  if (cities.length <= 2) return joinAnd(cities);
+  const states = [...new Set(kids.map((c) => s(c.state)).filter((x): x is string => Boolean(x)))].map((st) => US_STATES[st] ?? st);
+  return states.length ? joinAnd(states) : joinAnd(cities);
+};
+/** The sum of the components' numbers (the portfolio ticket holds the same sums; the components are the source of truth when both exist). */
+const kidSum = (kids: Child[], k: string, fallback: unknown) => {
+  const vals = kids.map((c) => n(c[k])).filter((v): v is number => v != null);
+  return vals.length ? vals.reduce((a, b) => a + b, 0) : n(fallback);
+};
+const WORD_NUMBERS = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const countWord = (k: number) => WORD_NUMBERS[k] ?? String(k);
 
 export function subjectLine(d: D): string {
   const kids = childrenOf(d);
   // land: "Land Entitlement Opportunity in Cudjoe Key, FL | $4MM of Preferred Equity" (Jonathan, Oct 6, 2026)
-  const parts = isLand(d.assetClass) ? `Land Entitlement${entitledUse(d) ? ` (${entitledUse(d)})` : ""} Opportunity` : [s(d.assetClass), kids.length ? "Portfolio" : null, d.strategy === "Development" ? "Development" : d.strategy === "Acquisitions" ? "Acquisition" : null, "Opportunity"].filter(Boolean).join(" ");
-  const loc = kids.length ? portfolioLoc(kids) : location(d);
+  // a portfolio of developments is a "pipeline" (Jonathan, Oct 8, 2026): "Industrial Development Pipeline Opportunity in Nevada and Arizona"
+  const parts = isLand(d.assetClass) ? `Land Entitlement${entitledUse(d) ? ` (${entitledUse(d)})` : ""} Opportunity` : kids.length ? [s(d.assetClass), d.strategy === "Development" ? "Development Pipeline" : "Portfolio Acquisition", "Opportunity"].filter(Boolean).join(" ") : [s(d.assetClass), d.strategy === "Development" ? "Development" : d.strategy === "Acquisitions" ? "Acquisition" : null, "Opportunity"].filter(Boolean).join(" ");
+  const loc = kids.length ? portfolioSubjectLoc(kids) : location(d);
   const ask = n(d.requestedAmount);
   const exec = s(d.executionType) ?? (s(d.requestType) === "Debt" ? "Debt" : s(d.requestType) ? "Equity" : null);
   return `${parts}${loc ? ` in ${loc}` : ""}${ask ? ` | ${usdShort(ask)}${exec ? ` of ${exec}` : ""}` : ""}`;
@@ -184,24 +199,57 @@ export function landMetrics(d: D): string[] {
   return out;
 }
 
-/** The opening paragraph for a portfolio: the properties by name and market, then the totals, then the ask. */
+/**
+ * The opening paragraph for a portfolio, in the plural (Jonathan, Oct 8, 2026): developments are the sponsor's "pipeline",
+ * acquisitions a portfolio. The properties by name and market, then what they add up to, then the ask across the set.
+ */
 function portfolioIntro(d: D, kids: Child[]): string {
   const dev = d.strategy === "Development";
   const sponsor = s(d.sponsorName) ?? "the sponsor";
   const exec = s(d.executionType) ?? "capital";
   const p = assetProfile(s(d.assetClass));
+  const cls = s(d.assetClass)?.toLowerCase() ?? "";
   const named = joinAnd(kids.map((c) => `${s(c.propertyName) ?? c.name}${[s(c.city), s(c.state)].filter(Boolean).length ? ` in ${[s(c.city), s(c.state)].filter(Boolean).join(", ")}` : ""}`));
+  const k = countWord(kids.length);
   const first = dev
-    ? `RJL Capital Advisors is pleased to be working with ${sponsor} as they source ${exec} to develop a ${kids.length} property ${s(d.assetClass) ?? ""} portfolio: ${named}.`.replace(/\s+/g, " ")
-    : `RJL Capital Advisors is pleased to be representing ${sponsor} as they raise ${exec} for the purchase of a ${kids.length} property ${s(d.assetClass) ?? ""} portfolio: ${named}.`.replace(/\s+/g, " ");
-  const count = n(d.units);
-  const sf = n(d.squareFeet);
+    ? `RJL Capital Advisors is pleased to be working with ${sponsor} as they source ${exec} for their pipeline of ${k} ${cls} developments: ${named}.`.replace(/\s+/g, " ")
+    : `RJL Capital Advisors is pleased to be representing ${sponsor} as they raise ${exec} for the purchase of a portfolio of ${k} ${cls} properties: ${named}.`.replace(/\s+/g, " ");
+  const count = kidSum(kids, "units", d.units);
+  const sf = kidSum(kids, "squareFeet", d.squareFeet);
   const year = s(d.yearBuilt);
   const facts = [count && p.countLabel ? `${count.toLocaleString("en-US")} ${p.countLabel.toLowerCase()}` : null, sf ? `${sf.toLocaleString("en-US")} square feet` : null].filter(Boolean) as string[];
-  const second = facts.length ? `Together the properties ${dev ? "will total" : "total"} ${joinAnd(facts)}${year ? `, ${/to/.test(year) ? "built between" : "built in"} ${year.replace(" to ", " and ")}` : ""}.` : "";
-  const ask = n(d.requestedAmount);
-  const fifth = ask ? `<b>They are seeking ${usdShort(ask)} of ${exec} across the portfolio.</b>` : "";
+  const second = facts.length ? `Together the ${dev ? "projects will total" : "properties total"} ${joinAnd(facts)}${year && !dev ? `, ${/to/.test(year) ? "built between" : "built in"} ${year.replace(" to ", " and ")}` : ""}.` : "";
+  const ask = n(d.requestedAmount) ?? kidSum(kids, "requestedAmount", null);
+  const fifth = ask ? `<b>They are seeking ${usdShort(ask)} of ${exec} across the ${dev ? "pipeline" : "portfolio"}.</b>` : "";
   return [first, second, fifth].filter(Boolean).join(" ");
+}
+
+/** The sum of the components' capital stacks, as the first block of a portfolio's metrics (Jonathan, Oct 8, 2026). */
+function portfolioTotalsLines(d: D, kids: Child[]): string[] {
+  const dev = d.strategy === "Development";
+  const p = assetProfile(s(d.assetClass));
+  const out: string[] = [];
+  const sf = kidSum(kids, "squareFeet", d.squareFeet);
+  const count = kidSum(kids, "units", d.units);
+  const cap = kidSum(kids, "totalCapitalization", d.totalCapitalization);
+  const price = kidSum(kids, "purchasePrice", d.purchasePrice);
+  const debt = kidSum(kids, "totalDebt", d.totalDebt);
+  const eq = kidSum(kids, "totalEquity", d.totalEquity);
+  const ask = n(d.requestedAmount) ?? kidSum(kids, "requestedAmount", null);
+  const exec = s(d.executionType) ?? "capital";
+  const perBits = (amount: number) => {
+    const bits: string[] = [];
+    if (p.perFoot && sf) bits.push(`${usdCents(amount / sf)} per foot`);
+    if (p.perCount && count) bits.push(`${usd(amount / count)} per ${perCountWord(p.countLabel)}`);
+    return bits.length ? ` (${bits.join(" | ")})` : "";
+  };
+  out.push(`${dev ? "Projects" : "Properties"}: ${kids.length}${count && p.countLabel ? ` | ${count.toLocaleString("en-US")} ${p.countLabel.toLowerCase()}` : ""}${sf ? ` | ${sf.toLocaleString("en-US")} square feet` : ""}`);
+  if (cap) out.push(`Total Capitalization: ${usd(cap)}${perBits(cap)}`);
+  if (price) out.push(`${dev ? "Total Land Price" : "Total Purchase Price"}: ${usd(price)}${perBits(price)}`);
+  if (debt) out.push(`Total Debt: ${usd(debt)}${cap ? ` | ${pct(Math.round((debt / cap) * 10000) / 100)} LTC` : ""}`);
+  if (eq) out.push(`Total Equity: ${usd(eq)}`);
+  if (ask) out.push(`${exec} Requested: ${usd(ask)}${eq ? ` | ${pct(Math.round((ask / eq) * 10000) / 100)} of the total equity` : ""}`);
+  return out;
 }
 
 /** Deal Metrics bullets, one per line, only for values that exist. */
@@ -347,8 +395,10 @@ export function metricsHtml(d: D): string {
   }
   const kids = childrenOf(d);
   if (kids.length) {
-    // a portfolio: one block per property, in order, each under its own heading
-    return kids
+    // a portfolio: the sum of the capital stacks first, then one block per property, in order, each under its own heading
+    const totals = portfolioTotalsLines(d, kids);
+    const head = totals.length ? `<p><b><u>${d.strategy === "Development" ? "Pipeline" : "Portfolio"} Totals</u></b></p><ul style="margin:0 0 12pt 18pt;list-style-type:disc;">${totals.map(li).join("")}</ul>` : "";
+    return head + kids
       .map((c) => {
         const m = metrics({ ...c, strategy: c.strategy ?? d.strategy, executionType: c.executionType ?? d.executionType, assetClass: c.assetClass ?? d.assetClass });
         return m.length ? `<p><b><u>Deal Metrics: ${s(c.propertyName) ?? c.name}${[s(c.city), s(c.state)].filter(Boolean).length ? ` (${[s(c.city), s(c.state)].filter(Boolean).join(", ")})` : ""}</u></b></p><ul style="margin:0 0 12pt 18pt;list-style-type:disc;">${m.map(li).join("")}</ul>` : "";
@@ -360,7 +410,10 @@ export function metricsHtml(d: D): string {
 }
 export function metricsText(d: D): string {
   const kids = childrenOf(d);
-  if (kids.length) return kids.map((c) => { const m = metrics({ ...c, strategy: c.strategy ?? d.strategy, executionType: c.executionType ?? d.executionType, assetClass: c.assetClass ?? d.assetClass }); return m.length ? `Deal Metrics: ${s(c.propertyName) ?? c.name}\n${m.map((x) => `• ${x}`).join("\n")}` : ""; }).filter(Boolean).join("\n\n");
+  if (kids.length) {
+    const totals = portfolioTotalsLines(d, kids);
+    return [totals.length ? `${d.strategy === "Development" ? "Pipeline" : "Portfolio"} Totals\n${totals.map((x) => `• ${x}`).join("\n")}` : "", ...kids.map((c) => { const m = metrics({ ...c, strategy: c.strategy ?? d.strategy, executionType: c.executionType ?? d.executionType, assetClass: c.assetClass ?? d.assetClass }); return m.length ? `Deal Metrics: ${s(c.propertyName) ?? c.name}\n${m.map((x) => `• ${x}`).join("\n")}` : ""; })].filter(Boolean).join("\n\n");
+  }
   const m = metrics(d);
   return m.length ? `Deal Metrics\n${m.map((x) => `• ${x}`).join("\n")}` : "";
 }
