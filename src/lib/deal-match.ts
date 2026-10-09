@@ -35,7 +35,9 @@ export function subjectMatchesDeal(subject: string | null | undefined, d: DealNa
   if (subj.trim().length < 4) return false;
   for (const p of dealPhrases(d)) if (subj.includes(norm(p))) return true;
   const ws = words(d.propertyName ?? d.name);
-  if (!ws.length) return false;
+  // a name that boils down to one word ("High 5" is just "high") only matches as the whole phrase above: on Oct 9, 2026 the
+  // mail backfill filed 67 "high" emails on SLX Capital's High 5 and made 23 report rows from them
+  if (ws.length < 2) return false;
   const hits = ws.filter((w) => subj.includes(` ${w} `)).length; // whole words: "multi" is not "multifamily"
   const need = ws.length <= 2 ? ws.length : Math.ceil(ws.length * 0.6);
   return hits >= need;
