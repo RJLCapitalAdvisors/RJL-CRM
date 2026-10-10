@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { mailReadsFor } from "@/lib/access";
-import { houseSubjectMatches, subjectLooselyMatchesDeal, subjectMatchesDeal } from "@/lib/deal-match";
+import { houseSubjectMatches, subjectHasDealPhrase, subjectLooselyMatchesDeal, subjectMatchesDeal } from "@/lib/deal-match";
 import { noteDealSent } from "@/lib/deal-outbound";
 import { DEPARTURE_SUBJECT, HUMAN_DEPARTURE, noteDepartureIfAny } from "@/lib/departures";
 import { emailHtmlToText } from "@/lib/attachments";
@@ -137,7 +137,7 @@ export async function attachParties(activityId: string, parties: Resolved["parti
 
 export async function dealResolver() {
   // legacy HubSpot intro records are not tickets: an email is never filed on one
-  const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, parentDealId: true, propertyAddress: true, sponsorCompany: { select: { roles: true } }, investors: { select: { contactId: true, contact: { select: { companyId: true } } } }, _count: { select: { files: true, facts: true } } } })).filter((d) => !isLegacyIntroTicket({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, investorCount: d.investors.length }) && !isBlindIntro({ ...d, fileCount: d._count.files, factCount: d._count.facts }));
+  const activeDeals = (await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] } }, select: { id: true, createdAt: true, name: true, propertyName: true, sponsorName: true, city: true, state: true, assetClass: true, strategy: true, requestedAmount: true, executionType: true, requestType: true, sponsorCompanyId: true, hubspotId: true, stage: true, parentDealId: true, propertyAddress: true, sponsorCompany: { select: { roles: true } }, investors: { select: { contactId: true, contact: { select: { companyId: true } } } }, _count: { select: { files: true, facts: true } } } })).filter((d) => !isLegacyIntroTicket({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, investorCount: d.investors.length }) && !isBlindIntro({ ...d, fileCount: d._count.files, factCount: d._count.facts }));
   // an email about one property of a portfolio belongs to the portfolio
   const up = (id: string | undefined) => (id ? (activeDeals.find((d) => d.id === id)?.parentDealId ?? id) : id);
   // Park Station, Sep 29, 2026: every reply to its launch was pinned to "Stablewood | Core Acquisitions" because the word
@@ -146,13 +146,21 @@ export async function dealResolver() {
   // a stub the mention detector made ranks last, so a real ticket wins any name match (ACRE's stub took Park Station's replies, Oct 5, 2026)
   activeDeals.sort((a, b) => Number(a.stage === "Deal Mentioned") - Number(b.stage === "Deal Mentioned"));
   const tied = (d: (typeof activeDeals)[number], contactId: string | null, companyId: string | null) => (contactId && d.investors.some((r) => r.contactId === contactId)) || (companyId && (d.sponsorCompanyId === companyId || d.investors.some((r) => r.contact.companyId === companyId)));
-  const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null) =>
-    up(
-      activeDeals.find((d) => tied(d, contactId, companyId) && (subjectMatchesDeal(subject, d) || houseSubjectMatches(subject, d)))?.id ??
-        activeDeals.find((d) => subjectMatchesDeal(subject, d))?.id ??
-        activeDeals.find((d) => houseSubjectMatches(subject, d))?.id ??
-        activeDeals.find((d) => tied(d, contactId, companyId) && subjectLooselyMatchesDeal(subject, d))?.id,
+  // Oct 10, 2026: the 18-month backfill filed a Nov 2025 "Dallas Multifamily" launch on Infinity on the Oaks (a Sep 2026 ticket in
+  // Dallas) and made twenty Deal Sent rows from it. An email dated before the ticket existed (45 days' grace; a ticket imported
+  // from HubSpot carries its import date, so it gets 400) is filed on it only when the subject carries the ticket's full name.
+  const fresh = (d: { createdAt: Date; hubspotId: string | null }, when?: Date) => !when || when.getTime() >= d.createdAt.getTime() - (d.hubspotId ? 400 : 45) * 86_400_000;
+  const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null, when?: Date) => {
+    const named = (d: (typeof activeDeals)[number]) => subjectHasDealPhrase(subject, d);
+    const fuzzy = (d: (typeof activeDeals)[number]) => fresh(d, when) && subjectMatchesDeal(subject, d);
+    const house = (d: (typeof activeDeals)[number]) => fresh(d, when) && houseSubjectMatches(subject, d);
+    return up(
+      activeDeals.find((d) => tied(d, contactId, companyId) && (named(d) || fuzzy(d) || house(d)))?.id ??
+        activeDeals.find((d) => named(d) || fuzzy(d))?.id ??
+        activeDeals.find((d) => house(d))?.id ??
+        activeDeals.find((d) => tied(d, contactId, companyId) && fresh(d, when) && subjectLooselyMatchesDeal(subject, d))?.id,
     );
+  };
   return dealFor;
 }
 
@@ -193,7 +201,7 @@ export async function syncMailbox(mailbox: string, opts: { sinceDays?: number; u
     if (!outbound && departureHint(m)) await noteDepartureIfAny({ subject: m.subject ?? null, text: await departureText(mailbox, m), fromAddress: from?.address ?? null, contactId, messageId: m.internetMessageId ?? null }).catch(() => 0);
 
     const when = new Date(m.sentDateTime ?? m.receivedDateTime ?? Date.now());
-    const sentDeal = dealFor(m.subject ?? "", contactId, companyId);
+    const sentDeal = dealFor(m.subject ?? "", contactId, companyId, when);
     const act = await prisma.activity.create({
       data: {
         type: "EMAIL",

@@ -28,12 +28,21 @@ export function dealPhrases(d: DealNames): string[] {
   return out;
 }
 
+/** The subject carries one of the deal's names in full ("Infinity on the Oaks", "Kansas City, KS"): the one match that holds on any date. */
+export function subjectHasDealPhrase(subject: string | null | undefined, d: DealNames): boolean {
+  if (!subject) return false;
+  const subj = norm(subject.replace(/^\s*((re|fw|fwd|aw|wg)\s*:\s*)+/i, ""));
+  if (subj.trim().length < 4) return false;
+  for (const p of dealPhrases(d)) if (subj.includes(norm(p))) return true;
+  return false;
+}
+
 /** True when the subject names this deal: one of its phrases in full, or most of the property name's words. */
 export function subjectMatchesDeal(subject: string | null | undefined, d: DealNames): boolean {
   if (!subject) return false;
   const subj = norm(subject.replace(/^\s*((re|fw|fwd|aw|wg)\s*:\s*)+/i, ""));
   if (subj.trim().length < 4) return false;
-  for (const p of dealPhrases(d)) if (subj.includes(norm(p))) return true;
+  if (subjectHasDealPhrase(subject, d)) return true;
   const ws = words(d.propertyName ?? d.name);
   // a name that boils down to one word ("High 5" is just "high") only matches as the whole phrase above: on Oct 9, 2026 the
   // mail backfill filed 67 "high" emails on SLX Capital's High 5 and made 23 report rows from them

@@ -17,6 +17,7 @@ export async function noteDealSent(opts: { dealId: string; contactId: string | n
   const deal = await prisma.deal.findUnique({ where: { id: opts.dealId }, include: { _count: { select: { files: true } } } });
   if (!deal || !opts.contactId) return false;
   if (opts.companyId && opts.companyId === deal.sponsorCompanyId) return false; // to the sponsor: not a send
+  if (opts.when.getTime() < deal.createdAt.getTime() - (deal.hubspotId ? 400 : 45) * 86_400_000) return false; // sent before the ticket existed: another deal's email (the backfill, Oct 10, 2026)
   const contact = await prisma.contact.findUnique({ where: { id: opts.contactId }, include: { company: { select: { id: true, roles: true, domain: true } } } });
   if (!contact) return false;
   const roles = contact.company?.roles ?? "";
