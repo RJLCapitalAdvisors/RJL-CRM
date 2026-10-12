@@ -11,7 +11,7 @@ import { possibleDuplicates } from "@/lib/deal-dedupe";
 import { reportsDue, type ReportDue } from "@/lib/report-due";
 import { dismissTodoAction, approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction , handleStaleDeal , openReportDraftAction, markReportSentAction , markDealLostFromLaunchAction } from "./todo-actions";
 import { DraftButton } from "./draft-button";
-import { listMomentum } from "@/lib/momentum";
+import { listMomentum, momentumLines } from "@/lib/momentum";
 import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
 import { currentUser } from "@/lib/current-user";
 import { kickMailSync } from "@/lib/mail-sync";
@@ -163,7 +163,17 @@ export default async function Dashboard() {
                     <div className="truncate text-xs text-muted">
                       {m.party} · {days(m.waitingSince)}d · {KIND[m.kind] ?? m.kind}
                     </div>
-                    <div className="mt-0.5 text-xs text-ink-soft">{m.summary}</div>
+                    {(() => {
+                      // at most eight lines: open asks as bullets, a count of what the ticket already answers; the full text on hover
+                      const v = momentumLines(m.kind, m.summary);
+                      return (
+                        <div className="mt-0.5 line-clamp-[8] text-xs leading-snug text-ink-soft" title={m.summary ?? undefined}>
+                          {m.kind === "LP_ASK" && <div>{m.party} asks:</div>}
+                          {v.lines.map((l, i) => <div key={i}>{l}</div>)}
+                          {v.more && <div className="text-muted">{v.more}</div>}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="act-col">
                     <DraftButton block action={openMomentumDraft.bind(null, m.id)} title="Reply on that thread in Outlook, blank, with your signature" />

@@ -75,6 +75,28 @@ export function parseAsks(summary: string | null): { asks: string[]; answered: s
   const clean = (x: string) => x.replace(/^\s*\|?\s*(Already on the ticket:\s*)+/i, "").trim();
   return { asks: (open ?? "").split(";").map(clean).filter((x) => x && !/^already on the ticket/i.test(x)), answered: (done ?? "").split(" / ").map(clean).filter(Boolean) };
 }
+/**
+ * The dashboard's view of a momentum item, at most eight lines (Jonathan, Oct 12, 2026: "too wordy"). An LP ask shows the open asks
+ * as short bullets (at most five, each cut to one line) and a count of the asks the ticket already answers, never the answers
+ * themselves; anything else shows its summary cut to the same length. The full text stays on hover.
+ */
+export function momentumLines(kind: string, summary: string | null): { lines: string[]; more: string | null } {
+  const short = (x: string, n = 90) => (x.length > n ? `${x.slice(0, n - 1).replace(/\s+\S*$/, "")}…` : x);
+  const key = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (kind === "LP_ASK") {
+    const { asks, answered } = parseAsks(summary);
+    const answeredKeys = new Set(answered.map((a) => key(a.split(" -> ")[0])));
+    const open = asks.filter((a, i) => !answeredKeys.has(key(a)) && asks.findIndex((b) => key(b) === key(a)) === i);
+    const done = answered.filter((a, i) => answered.findIndex((b) => key(b.split(" -> ")[0]) === key(a.split(" -> ")[0])) === i).length;
+    const lines = open.slice(0, 5).map((a) => `• ${short(a)}`);
+    const extra = open.length - lines.length;
+    const tail = [extra > 0 ? `+${extra} more ask${extra === 1 ? "" : "s"}` : null, done ? `${done} already answered on the ticket` : null].filter(Boolean).join(" · ");
+    return { lines: lines.length ? lines : ["Nothing open: the ticket answers everything asked"], more: tail || null };
+  }
+  const text = (summary ?? "").replace(/\s+/g, " ").trim();
+  return { lines: text ? [short(text, 360)] : [], more: null };
+}
+
 /** Earlier open asks plus the new ones (no repeats); an ask now answered from the ticket moves to the answered list. */
 export function mergeAsks(existingSummary: string | null, asks: string[], answered: { ask: string; answer: string }[]): { asks: string[]; answered: string[] } {
   const prev = parseAsks(existingSummary);
