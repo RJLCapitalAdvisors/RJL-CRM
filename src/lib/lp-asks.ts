@@ -136,9 +136,20 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const dateTag = a.occurredAt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     let reportRows = await prisma.dealInvestor.findMany({ where: { dealId, contact: { companyId: a.companyId! } } });
     if (!reportRows.length && a.contactId) {
-      // the firm answered a deal email but was never put on the report (sent by hand): add it as Deal Sent first
-      if (!(await isSponsorSide(dealId, a.contactId))) await prisma.dealInvestor.create({ data: { dealId, contactId: a.contactId, status: 2, updatedAt: a.occurredAt } }).catch(() => null);
+      // the firm answered a deal email but was never put on the report (sent by hand): add it as Deal Sent first, but only a
+      // capital source, only from a recent email, and never a firm someone took off this report or the sponsor struck from the
+      // letter (Jonathan, Oct 12, 2026: MORVAY USA, a sponsor on another deal, was put on Shallow Bay from its own August emails
+      // after Mike Chernine had erased it from the list)
+      const firm = await prisma.company.findUnique({ where: { id: a.companyId! }, select: { roles: true } });
+      const capital = /Investor|Lender/i.test(firm?.roles ?? "");
+      const fresh = Date.now() - a.occurredAt.getTime() < LOOKBACK_DAYS * DAY;
+      const firmPeople = (await prisma.contact.findMany({ where: { companyId: a.companyId! }, select: { id: true } })).map((p) => p.id);
+      const removed = await prisma.trackerRemoval.findFirst({ where: { dealId, contactId: { in: firmPeople } }, select: { id: true } }).catch(() => null);
+      const dealDet = (await prisma.deal.findUnique({ where: { id: dealId }, select: { details: true } }))?.details;
+      const struck = ((): boolean => { try { return ((JSON.parse(dealDet || "{}").engagementStruck ?? []) as { companyId: string | null }[]).some((s) => s.companyId === a.companyId); } catch { return false; } })();
+      if (capital && fresh && !removed && !struck && !(await isSponsorSide(dealId, a.contactId))) await prisma.dealInvestor.create({ data: { dealId, contactId: a.contactId, status: 2, updatedAt: a.occurredAt } }).catch(() => null);
       reportRows = await prisma.dealInvestor.findMany({ where: { dealId, contactId: a.contactId } });
+      if (!reportRows.length) continue; // not added: nothing on the report to move
     }
     // Rule: a real reply from an LP means they are looking at it. Confirming receipt is Taking a look, not Sent awaiting
     // response. Only an auto-reply or out-of-office leaves the status alone.
