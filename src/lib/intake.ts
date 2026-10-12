@@ -32,7 +32,7 @@ export const ExtractedDealSchema = z.object({
   occupancy: z.number().nullable().describe("Percent"),
   onMarket: z.boolean().nullable(),
   sponsorExperience: z.string().nullable().describe("Sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes."),
-  summary: z.string().nullable().describe("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), the value-add opportunity, notable physical attributes. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
+  summary: z.string().nullable().describe("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), then the value-add thesis, which must never be left out (what the sponsor will do to create value: a departing tenant and who backfills it, vacancy and who leases it, a repositioning, a renovation), then notable physical attributes. No figures at all, in digits or in words: no percentages, dollars, dates, square footage, counts, returns. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
   details: z.record(z.string(), z.string().nullable()).describe("Checklist answers by Required Items List key"),
   // underwriting snapshot
   units: z.number().nullable(),
@@ -163,7 +163,7 @@ const claudeOutput = (scope: ExtractScope = { assetClass: null, strategy: null }
   occupancy: str("Occupancy percent as a number (91)."),
   onMarket: z.enum(["on", "off", ""]).describe("on if marketed/listed, off if off-market."),
   sponsorExperience: str("Sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes."),
-  summary: str("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), the value-add opportunity, notable physical attributes. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
+  summary: str("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), then the value-add thesis, which must never be left out (what the sponsor will do to create value: a departing tenant and who backfills it, vacancy and who leases it, a repositioning, a renovation), then notable physical attributes. No figures at all, in digits or in words: no percentages, dollars, dates, square footage, counts, returns. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
   details: z.object(
     Object.fromEntries(
       detailItems(scope)

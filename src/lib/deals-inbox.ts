@@ -331,6 +331,8 @@ ${text.slice(0, 2000)}` });
   if (msg.hasAttachments) await recordDealFiles(intake.dealId, MAILBOX(), msg.id, external ? fromAddr : fwd.email, received).catch(() => 0);
   await recordPulled(intake.dealId, ext);
   await extractDealFacts(intake.dealId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => 0);
+  // the business plan on its own, from the whole package, the value-add thesis required (Hedges Greene, Oct 12, 2026)
+  await (await import("@/lib/enrich-narratives")).writeBusinessPlan(intake.dealId, rawText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => null);
   await enrichFromCalls(intake.dealId).catch(() => null); // Fireflies calls with the sponsor feed the bio and business plan
   // whoever forwarded it to deals@ owns the deal
   const owner = fromAddr ? await prisma.user.findFirst({ where: { email: { equals: fromAddr, mode: "insensitive" } } }) : null;

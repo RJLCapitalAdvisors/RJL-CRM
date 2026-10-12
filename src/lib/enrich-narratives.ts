@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { cleanBusinessPlan, houseText, stripDashes } from "@/lib/style";
+import { cleanBusinessPlan, houseText, planProblems, stripDashes } from "@/lib/style";
 
 /**
  * Follow-on material improves the ticket's two narratives (Jonathan, Sep 28, 2026: Certes sent a write-up, a sponsor
@@ -18,6 +18,50 @@ const Out = z.object({
   bioChanged: z.boolean().describe("True only when the bio was rewritten with new substance (a placeholder like 'Attached' or a one-line stub counts as nothing)."),
   why: z.string().describe("One short line: what the new material added, or 'nothing new'."),
 });
+
+const Plan = z.object({
+  plan: z.string().describe("The business plan paragraph, 4 to 6 sentences of flowing prose."),
+  thesis: z.string().describe("One line: the value-add thesis the paragraph carries (what the sponsor will do to create value), as a check that it is there."),
+});
+
+/**
+ * The business plan, written on its own from the whole package when a ticket is made (Jonathan, Oct 12, 2026: Citivest's Hedges
+ * Greene came in without the one thing the deal is about, backfilling the Staples box with a grocer). The general extractor
+ * writes the plan as one field among sixty and the no-figures filter then cut whole sentences, the thesis with them. This call
+ * has one job, the thesis is required, figures are forbidden in words as well as digits, and a sentence the filter would still
+ * cut is sent back once to be said in words. Returns the plan written, or null when nothing usable came back.
+ */
+export async function writeBusinessPlan(dealId: string, text: string, source: string): Promise<string | null> {
+  if (!process.env.ANTHROPIC_API_KEY || text.trim().length < 300) return null;
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { name: true, propertyName: true, sponsorName: true, assetClass: true, strategy: true, city: true, state: true, summary: true, sponsorCompanyId: true } });
+  if (!deal) return null;
+  const system = [
+    "You write the business plan paragraph of a real estate capital raise email for RJL Capital Advisors. Plain, factual, professional prose an institutional investor reads in thirty seconds.",
+    "Shape, in this order: where the property is and the market context; the anchor or key tenants (or the resident base); THE VALUE-ADD THESIS; notable physical attributes. 4 to 6 sentences.",
+    "The value-add thesis is the point of the paragraph and must never be left out: what the sponsor will do to create value, in concrete terms. A departing tenant and who backfills it (a grocer for the Staples box), vacancy and who it is leased to, a repositioning, a renovation program, an entitlement, a development. Name the tenant, the space and the intended use in words.",
+    "No figures of any kind, in digits or in words: no percentages, dollars, rents, dates, years, square footage, unit counts, returns, cap rates, prices, costs or timelines, and nothing about the seller, the lender, the exit, the closing or how the deal was sourced. Every one of those has its own field. Say 'well above the in-place rent', never a number.",
+    "Never name investor groups. No dashes as punctuation, no bullet points, no headings.",
+  ].join(" ");
+  const client = new Anthropic();
+  let plan: string | null = null;
+  try {
+    const res = await client.messages.parse({ model: "claude-sonnet-5", max_tokens: 1500, system, messages: [{ role: "user", content: `DEAL: ${deal.propertyName ?? deal.name}${deal.city ? ` (${deal.city}, ${deal.state ?? ""})` : ""}\nSPONSOR: ${deal.sponsorName ?? "unknown"}\nASSET CLASS: ${deal.assetClass ?? ""} · STRATEGY: ${deal.strategy ?? ""}\n\nTHE MATERIAL (${source}):\n${text.slice(0, 60000)}` }], output_config: { format: zodOutputFormat(Plan) } });
+    plan = res.parsed_output?.plan ?? null;
+    // a sentence the no-figures filter would cut goes back once, to be said in words rather than lost
+    const bad = planProblems(plan);
+    if (plan && bad.length) {
+      const again = await client.messages.parse({ model: "claude-sonnet-5", max_tokens: 1500, system, messages: [{ role: "user", content: `This paragraph was written for ${deal.propertyName ?? deal.name}:\n\n${plan}\n\nThese sentences carry a figure or a fact that has its own field and would be cut: \n${bad.map((b) => `- ${b}`).join("\n")}\n\nRewrite the whole paragraph keeping every sentence's substance (the value-add thesis above all) with those things said in words or left out. 4 to 6 sentences.` }], output_config: { format: zodOutputFormat(Plan) } });
+      plan = again.parsed_output?.plan ?? plan;
+    }
+  } catch (e) {
+    console.error("business plan write failed", dealId, String(e).slice(0, 200));
+    return null;
+  }
+  const out = cleanBusinessPlan(stripDashes(plan));
+  if (!out || out.length < 120) return null;
+  await prisma.deal.update({ where: { id: dealId }, data: { summary: out } });
+  return out;
+}
 
 const PLACEHOLDER = /^(?:see |as |is |please see )?attached\.?$|^n\/?a$|^tbd$|^-+$/i;
 const thin = (s: string | null | undefined) => !s || s.trim().length < 60 || PLACEHOLDER.test(s.trim());

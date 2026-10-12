@@ -39,12 +39,26 @@ export function houseText(s: string | null | undefined): string | null {
  * yields, loan terms, exit, close timing, year built, square footage, unit counts, seller and sourcing. Applied
  * when the paragraph is written and again when it is rendered into an email, so older tickets comply too.
  */
+/** The sentences of a paragraph, a decimal never mistaken for a full stop (Oct 12, 2026: "a record low 2.5 percent" was cut at the "2."). */
+export function planSentences(t: string): string[] {
+  const guarded = t.replace(/(\d)\.(\d)/g, "$1\u0000$2");
+  return (guarded.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) ?? [guarded]).map((x) => x.replace(/\u0000/g, ".").trim()).filter(Boolean);
+}
+
+/** The sentences the business plan filter would cut (figures, fields of their own): what a rewrite has to say in words instead. */
+export function planProblems(s: string | null | undefined): string[] {
+  const t = houseText(s);
+  return t ? planSentences(t).filter((x) => BANNED_IN_PLAN.test(x)) : [];
+}
+
+const BANNED_IN_PLAN = /\$|\d(?:\.\d+)?\s?%|\b(irr|equity multiple|multiple of|cash[- ]on[- ]cash|cap rate|yield on cost|yoc|noi|ltv|ltc|loan|debt|lender|amortiz|interest rate|exit|disposition|refinanc|hold period|year hold|closing|close (?:in|by|date)|under contract|purchase price|total cap|capitalization|basis|cost|budget|seller|sourc(?:ed|ing)|off[- ]market|on[- ]market|built in|constructed in|vintage|square feet|square foot|sq\.? ?ft|\bsf\b|nrsf|rentable|units?\b|keys\b|beds\b|acres?\b|occupan)/i;
+
 export function cleanBusinessPlan(s: string | null | undefined): string | null {
   const t = houseText(s);
   if (!t) return null;
   const banned = /\$|\d(?:\.\d+)?\s?%|\b(irr|equity multiple|multiple of|cash[- ]on[- ]cash|cap rate|yield on cost|yoc|noi|ltv|ltc|loan|debt|lender|amortiz|interest rate|exit|disposition|refinanc|hold period|year hold|closing|close (?:in|by|date)|under contract|purchase price|total cap|capitalization|basis|cost|budget|seller|sourc(?:ed|ing)|off[- ]market|on[- ]market|built in|constructed in|vintage|square feet|square foot|sq\.? ?ft|\bsf\b|nrsf|rentable|units?\b|keys\b|beds\b|acres?\b|occupan)/i;
-  const sentences = t.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) ?? [t];
-  const kept = sentences.map((x) => x.trim()).filter((x) => x && !banned.test(x));
+  void banned;
+  const kept = planSentences(t).filter((x) => !BANNED_IN_PLAN.test(x));
   const out = kept.slice(0, 6).join(" ").trim();
   return out || null;
 }
