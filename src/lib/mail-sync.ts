@@ -29,6 +29,8 @@ const isSystemAddress = (a: string) => {
   return MAILER.test(a.toLowerCase()) || BULK_HOSTS.some((h) => d === h || d.endsWith("." + h));
 };
 const REPLY = /^\s*(re|fwd?|fw)\s*:/i;
+/** Older than this when it is logged, an email is history: filed, but no automation reacts to it (Oct 12, 2026). */
+export const HISTORY_DAYS = 14;
 const FIRST_SYNC_DAYS = 730; // two years on a mailbox's first pass (Jonathan, Oct 8, 2026: four months left firms showing no correspondence that HubSpot had); the existing mailboxes were backfilled by hand the same day
 const PAGE = 50;
 
@@ -218,7 +220,10 @@ export async function syncMailbox(mailbox: string, opts: { sinceDays?: number; u
         meta: JSON.stringify({ from, to, cc, mailbox, hasAttachments: m.hasAttachments ?? false }),
       },
     });
-    if (outbound && sentDeal) await noteDealSent({ dealId: sentDeal, contactId, companyId, mailbox, graphId: m.id, hasAttachments: m.hasAttachments ?? false, when, toEmails: to.map((p) => p.address) }).catch(() => false);
+    // an email from more than two weeks ago reaches the log only through a backfill: it is history, filed for the record, and never
+    // puts a firm on a report, attaches files or moves a stage (Oct 12, 2026: the 18-month backfill pushed eleven tickets to market)
+    const recent = Date.now() - when.getTime() < HISTORY_DAYS * 86_400_000;
+    if (outbound && sentDeal && recent) await noteDealSent({ dealId: sentDeal, contactId, companyId, mailbox, graphId: m.id, hasAttachments: m.hasAttachments ?? false, when, toEmails: to.map((p) => p.address) }).catch(() => false);
     // the name they go by is in their sign-off (Jonathan, Oct 8, 2026): an email they wrote sets the first name the greetings use
     if (!outbound && contactId && act.body) await (await import("@/lib/person-name")).learnNameFromSignoff(contactId, act.body).catch(() => null);
     await bumpLastActivity(contactId, companyId, when);

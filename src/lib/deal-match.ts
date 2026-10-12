@@ -93,7 +93,9 @@ export function houseSubjectMatches(subject: string | null | undefined, deal: { 
   const norm = " " + subj.replace(/[^a-z0-9$.,]+/g, " ") + " ";
   if (!norm.includes(" " + city + " ") && !norm.includes(" in " + city)) return false;
   const amounts = amountsIn(subject);
-  if (!amounts.length) return true;
+  // Oct 12, 2026: with no amount, any "Opportunity in Houston" newsletter matched every Houston ticket (Fortitude's "Inside The Silos:
+  // A Houston Development Opportunity" was filed on Rycore and made a Deal Sent row). The house subject always carries the ask.
+  if (!amounts.length) return false;
   if (!deal.requestedAmount) return false;
   return amounts.some((x) => Math.abs(x - deal.requestedAmount!) / deal.requestedAmount! < 0.02);
 }

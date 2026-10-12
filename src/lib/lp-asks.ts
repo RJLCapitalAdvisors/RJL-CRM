@@ -71,6 +71,15 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const byName = preferReal(candidates.filter((x) => subjectMatchesDeal(a.subject, x) || houseSubjectMatches(a.subject, x)));
     let dealId: string | null = a.dealId && candidates.some((x) => x.id === a.dealId) && (onReport.has(a.dealId) || stageOf.get(a.dealId) !== "Deal Mentioned" || !byName.length) ? a.dealId : null;
     if (!dealId) dealId = byName[0]?.id ?? null;
+    // an email from before the ticket existed answers some other deal (Oct 12, 2026: the backfill turned May and July replies into asks
+    // and Deal Sent rows on September tickets)
+    if (dealId) {
+      const made = await prisma.deal.findUnique({ where: { id: dealId }, select: { createdAt: true, hubspotId: true } });
+      if (made && a.occurredAt.getTime() < made.createdAt.getTime() - (made.hubspotId ? 400 : 45) * DAY) {
+        await prisma.lpAskScan.upsert({ where: { externalId: a.externalId! }, create: { externalId: a.externalId!, result: "older than the deal" }, update: { result: "older than the deal", scannedAt: new Date() } }).catch(() => {});
+        continue;
+      }
+    }
     // the sponsor answering about their own deal is not an LP response (Sep 23, 2026: Pearl Capital's "call to discuss gameplan" had
     // landed in Items Needed from Sponsor on its own Galleria Trace report)
     const sponsorOf = await prisma.deal.findFirst({ where: { sponsorCompanyId: a.companyId!, stage: { in: [...ACTIVE_STAGES] } }, select: { id: true } });

@@ -18,6 +18,7 @@ export async function noteDealSent(opts: { dealId: string; contactId: string | n
   if (!deal || !opts.contactId) return false;
   if (opts.companyId && opts.companyId === deal.sponsorCompanyId) return false; // to the sponsor: not a send
   if (opts.when.getTime() < deal.createdAt.getTime() - (deal.hubspotId ? 400 : 45) * 86_400_000) return false; // sent before the ticket existed: another deal's email (the backfill, Oct 10, 2026)
+  if (Date.now() - opts.when.getTime() > 30 * 86_400_000) return false; // a month-old email does not take a deal to market today (Oct 12, 2026)
   const contact = await prisma.contact.findUnique({ where: { id: opts.contactId }, include: { company: { select: { id: true, roles: true, domain: true } } } });
   if (!contact) return false;
   const roles = contact.company?.roles ?? "";
@@ -79,7 +80,7 @@ export async function relinkRecentOutbound(days = 30): Promise<{ linked: number;
   const acts = await prisma.activity.findMany({ where: { type: "EMAIL", direction: "OUTBOUND", dealId: null, occurredAt: { gte: since }, contactId: { not: null } }, orderBy: { occurredAt: "asc" } });
   let linked = 0, rows = 0;
   for (const a of acts) {
-    const dealId = dealFor(a.subject ?? "", a.contactId, a.companyId);
+    const dealId = dealFor(a.subject ?? "", a.contactId, a.companyId, a.occurredAt);
     if (!dealId) continue;
     await prisma.activity.update({ where: { id: a.id }, data: { dealId } });
     linked++;
