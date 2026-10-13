@@ -46,7 +46,7 @@ async function departureText(mailbox: string, m: Msg): Promise<string> {
     const c = full.body?.content ?? "";
     const text = full.body?.contentType?.toLowerCase() === "html" ? emailHtmlToText(c) : c;
     // the quoted original below the reply would name the very people we wrote to; keep what the replier wrote
-    return (text.split(/\n\s*(?:From:|-----Original Message-----|On .{5,80} wrote:)/i)[0] || text).slice(0, 6000) || m.bodyPreview || "";
+    return (text.split(/\n\s*>?\s*(?:From:|-----Original Message-----|On .{5,140}? wrote:)/i)[0] || text).slice(0, 6000) || m.bodyPreview || "";
   } catch {
     return m.bodyPreview ?? "";
   }
