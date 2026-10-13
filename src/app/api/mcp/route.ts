@@ -21,14 +21,15 @@ const result = (id: Rpc["id"], r: unknown) => json({ jsonrpc: "2.0", id: id ?? n
 const error = (id: Rpc["id"], code: number, message: string, status = 200) => json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, status);
 const text = (v: unknown) => ({ content: [{ type: "text", text: typeof v === "string" ? v : JSON.stringify(v, null, 2) }] });
 
+/** MCP_API_KEY holds one key per person, comma separated (Jonathan and Aviel, Oct 13, 2026), so one can be revoked without the other. */
 function authorized(req: Request): boolean {
-  const key = process.env.MCP_API_KEY;
-  if (!key) return false;
+  const keys = (process.env.MCP_API_KEY ?? "").split(",").map((k) => k.trim()).filter(Boolean);
+  if (!keys.length) return false;
   const h = req.headers.get("authorization") ?? "";
-  const bearer = /^bearer\s+(.+)$/i.exec(h)?.[1]?.trim();
+  const bearer = /^bearers+(.+)$/i.exec(h)?.[1]?.trim();
   const q = new URL(req.url).searchParams.get("key");
   const x = req.headers.get("x-api-key");
-  return bearer === key || q === key || x === key;
+  return keys.some((key) => bearer === key || q === key || x === key);
 }
 
 const TOOLS = [
