@@ -303,6 +303,40 @@ function commonMissing(a: Record<string, unknown>, apartment: boolean): string[]
   if (apartment && typeof a.sellerType === "string" && a.sellerType.startsWith("Yad Rishona") && !a.projectId && !a.projectName) out.push("Project name");
   return out;
 }
+/**
+ * What the ticket holds for each item on its Required Items List (Jonathan, Oct 13, 2026: "a way to quickly reference what
+ * was provided against the list"), as "Label: value" pairs in the list's order; blank items are left out (they are the
+ * missing list). A list field is read as its count, a yes or no as the word, a number as the number.
+ */
+export function providedOn(cat: IlCategory, row: Record<string, unknown>): { label: string; value: string }[] {
+  const out: { label: string; value: string }[] = [];
+  const show = (key: string, v: unknown): string | null => {
+    if (v == null || v === "" || v === "[]") return null;
+    if (typeof v === "boolean") return v ? "Yes" : "No";
+    if (typeof v === "number") return key === "priceNis" ? `₪${v.toLocaleString("en-US")}` : /sqm/i.test(key) ? `${v} m²` : String(v);
+    if (v instanceof Date) return v.toISOString().slice(0, 10);
+    if (typeof v === "string") {
+      if (key === "mirpasot") { const list = parseMirpasot(v); return list.length ? `${list.length} (${list.map((m) => [m.sqm != null ? `${m.sqm} m²` : null, m.direction, m.sukka ? `sukka ${m.sukka}` : null].filter(Boolean).join(" ")).filter(Boolean).join("; ")})` : null; }
+      if (/^\s*\[/.test(v)) { const l = parseJsonList(v).filter((x) => x !== ""); return l.length ? l.join(", ") : null; }
+      return v.length > 140 ? `${v.slice(0, 137)}...` : v;
+    }
+    return String(v);
+  };
+  for (const { key, label } of IL_REQUIRED[cat]) {
+    if (key === "amenities" && cat === "projects") {
+      const yes = parseJsonList(typeof row.amenities === "string" ? row.amenities : "[]"), no = parseJsonList(typeof row.amenitiesNo === "string" ? row.amenitiesNo : "[]");
+      if (yes.length || no.length) out.push({ label, value: [yes.length ? `yes: ${yes.join(", ")}` : null, no.length ? `no: ${no.join(", ")}` : null].filter(Boolean).join("; ") });
+      continue;
+    }
+    if (isCustomKey(key)) { const v = parseExtra(row.extra)[key]; if (v) out.push({ label, value: v }); continue; }
+    if (blankOn(row, key)) continue;
+    const v = key === "developerId" && typeof row.developerName === "string" ? row.developerName : key === "projectId" && typeof row.projectName === "string" ? row.projectName : row[key];
+    const s = show(key, v);
+    if (s) out.push({ label, value: s });
+  }
+  return out;
+}
+
 /** Labels of the apartment list items still blank. Empty means complete. */
 export function apartmentMissing(a: Record<string, unknown>): string[] {
   const base = IL_REQUIRED.apartments.filter(({ key }) => blankOn(a, key)).map((f) => f.label);

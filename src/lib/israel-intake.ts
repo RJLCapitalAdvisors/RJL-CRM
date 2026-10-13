@@ -124,7 +124,7 @@ export type IntakeInput = {
   sourceLabel: string; // "Email from Yael Tzur" / "WhatsApp from +972 52 300 1122"
   mailbox: string; // where it arrived (address or WhatsApp number)
 };
-export type IntakeRow = { id: string; kind: "apartments" | "houses" | "projects"; name: string; degem?: string | null; line: string; price: string; missing: string[] };
+export type IntakeRow = { id: string; kind: "apartments" | "houses" | "projects"; name: string; degem?: string | null; line: string; price: string; missing: string[]; provided?: { label: string; value: string }[] };
 type Kind = "projects" | "apartments" | "houses";
 const kindWord = (k: Kind) => (k === "houses" ? "House" : k === "projects" ? "Project" : "Apartment");
 
@@ -629,6 +629,16 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
       if (r.kind === "houses") { const row = await prisma.ilHouse.findUnique({ where: { id: r.id }, omit: { floorplan: true } }); if (row) r.missing = hm(row as unknown as Record<string, unknown>); }
     }
   }
+  // what each ticket now holds, item by item, so the reply can be checked against the email (Jonathan, Oct 13, 2026)
+  {
+    const { providedOn } = await import("@/lib/israel");
+    for (const r of rows) {
+      const row = r.kind === "apartments" ? await prisma.ilApartment.findUnique({ where: { id: r.id }, omit: { floorplan: true }, include: { developer: { select: { name: true } }, project: { select: { name: true } } } }) : r.kind === "houses" ? await prisma.ilHouse.findUnique({ where: { id: r.id }, omit: { floorplan: true }, include: { developer: { select: { name: true } } } }) : await prisma.ilProject.findUnique({ where: { id: r.id }, omit: { brochure: true } });
+      if (!row) continue;
+      const rec = row as unknown as Record<string, unknown> & { developer?: { name: string } | null; project?: { name: string } | null };
+      r.provided = providedOn(r.kind, { ...rec, developerName: rec.developer?.name ?? rec.developerName, projectName: rec.project?.name ?? rec.projectName });
+    }
+  }
   await mark(`created ${rows.length}`);
   const note = agent ? `Agent on file: ${[agent.firstName, agent.lastName].filter(Boolean).join(" ") || agent.email || agent.phone}.` : null;
   // whatever the project knows (units, stories, delivery) fills blanks on the units filed under it
@@ -668,8 +678,10 @@ function replyHtml(rows: IntakeRow[], base: string, note: string | null): string
   const font = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
   const grey = 'style="color:#6b716e;"';
   const head = (r: IntakeRow) => `<b><a href="${base}/israel/${r.kind}/${r.id}">${esc(r.name)}</a></b>${r.degem ? ` <span ${grey}>type ${esc(r.degem)}</span>` : ""}${r.kind !== "apartments" ? ` <span ${grey}>(${r.kind === "houses" ? "house" : "project"})</span>` : ""}${r.line ? ` <span ${grey}>${esc(r.line)}</span>` : ""}${r.price ? ` <span ${grey}>${esc(r.price)}</span>` : ""}`;
+  // what was read, item by item, under what is still missing, so the two can be held against the email (Jonathan, Oct 13, 2026)
+  const provided = (r: IntakeRow) => (r.provided?.length ? `<div style="margin:0 0 2pt 0;color:#6b716e;">Read from the email and its files (${r.provided.length}):</div><div style="margin:0 0 6pt 18pt;color:#6b716e;font-size:10pt;line-height:1.35;">${r.provided.map((p) => `<b>${esc(p.label)}:</b> ${esc(p.value)}`).join(" · ")}</div>` : "");
   const perTicket = (r: IntakeRow) => `<p style="margin:10pt 0 4pt 0;">${head(r)}</p>
-${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still needed to complete the ticket (${r.missing.length}):</div><ol style="margin:0 0 6pt 18pt;">${r.missing.map((m) => `<li>${esc(m)}</li>`).join("")}</ol>` : `<div style="margin:0 0 6pt 0;">Nothing missing. The ticket is complete.</div>`}`;
+${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still needed to complete the ticket (${r.missing.length}):</div><ol style="margin:0 0 6pt 18pt;">${r.missing.map((m) => `<li>${esc(m)}</li>`).join("")}</ol>` : `<div style="margin:0 0 6pt 0;">Nothing missing. The ticket is complete.</div>`}${provided(r)}`;
   const projects = rows.filter((r) => r.kind === "projects");
   const units = rows.filter((r) => r.kind !== "projects");
   let blocks = projects.map(perTicket).join("");
@@ -677,7 +689,7 @@ ${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still needed to complete th
   else {
     // a batch: the units in one list, then what is missing grouped by item and named by unit
     const groups = groupedMissing(units);
-    blocks += `<p style="margin:10pt 0 4pt 0;"><b>${units.length} units</b></p><ul style="margin:0 0 6pt 18pt;">${units.map((r) => `<li>${head(r)}${r.missing.length ? "" : ` <span ${grey}>complete</span>`}</li>`).join("")}</ul>`;
+    blocks += `<p style="margin:10pt 0 4pt 0;"><b>${units.length} units</b></p><ul style="margin:0 0 6pt 18pt;">${units.map((r) => `<li>${head(r)}${r.missing.length ? "" : ` <span ${grey}>complete</span>`}${r.provided?.length ? `<div style="color:#6b716e;font-size:9.5pt;line-height:1.35;">${r.provided.map((p) => `${esc(p.label)} ${esc(p.value)}`).join(" · ")}</div>` : ""}</li>`).join("")}</ul>`;
     blocks += groups.length
       ? `<div style="margin:6pt 0 4pt 0;">Still needed across the units (${groups.length}):</div><ol style="margin:0 0 6pt 18pt;">${groups.map((g) => `<li>${esc(g.item)} <span ${grey}>(${esc(g.who)})</span></li>`).join("")}</ol>`
       : `<div style="margin:0 0 6pt 0;">Nothing missing. Every unit is complete.</div>`;
@@ -686,7 +698,7 @@ ${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still needed to complete th
 <p>${rows.length === 1 ? `${kindWord(rows[0].kind)} ticket updated in` : `${rows.length} tickets updated in`} RJL Israel (a new listing gets a new ticket; a second email about the same unit updates the one we have). ${rows.some((r) => r.missing.length) ? "Everything waits in The Que until approved; the items below are what the tickets still need." : "Everything is complete and waits in The Que for approval."}</p>
 ${blocks}
 ${note ? `<p ${grey}>${esc(note)}</p>` : ""}
-<p style="color:#6b716e;font-size:9pt;">Reply to the agent for the missing items and forward their answer here; edit anything on the ticket in the CRM. A floorplan attached to the email is saved on the ticket.</p>
+<p style="color:#6b716e;font-size:9pt;">Reply to the agent for the missing items and forward their answer here; edit anything on the ticket in the CRM. A floorplan attached to the email is saved on the ticket. The attached "What was read" file is the text of this email and its files as the CRM read them, to check the tickets against.</p>
 </div>`;
 }
 
@@ -715,13 +727,36 @@ export const NO_APARTMENT_TEXT = "I could not find an apartment or a house in th
 /** Jonathan is copied on every reply the Israel deals mailbox sends, so he sees each deal as it comes in (Sep 23, 2026). ISRAEL_REPLY_CC overrides; empty turns it off. */
 const REPLY_CC = () => (process.env.ISRAEL_REPLY_CC ?? "jonathan@rjlisrael.com").split(/[,;\s]+/).map((x) => x.trim().toLowerCase()).filter((x) => x.includes("@"));
 
-async function replyOnThread(msg: Msg, html: string) {
+async function replyOnThread(msg: Msg, html: string, attachments: { name: string; contentType: string; bytes: Uint8Array }[] = []) {
   const draft = await graph<{ id: string }>(`/users/${q(ISRAEL_MAILBOX())}/messages/${q(msg.id)}/createReply`, { method: "POST", body: JSON.stringify({}) });
   const sender = msg.from?.emailAddress.address?.toLowerCase() ?? "";
   const to = sender ? [{ emailAddress: { address: sender } }] : [];
   const cc = REPLY_CC().filter((x) => x !== sender).map((address) => ({ emailAddress: { address } }));
   await graph(`/users/${q(ISRAEL_MAILBOX())}/messages/${q(draft.id)}`, { method: "PATCH", body: JSON.stringify({ body: { contentType: "html", content: html }, toRecipients: to, ccRecipients: cc }) });
+  const { addAttachment } = await import("@/lib/graph");
+  for (const a of attachments) await addAttachment(ISRAEL_MAILBOX(), draft.id, a).catch((e) => console.error("israel reply attachment failed", a.name, e));
   await graph(`/users/${q(ISRAEL_MAILBOX())}/messages/${q(draft.id)}/send`, { method: "POST" });
+}
+
+/**
+ * "What was read": the email's own text and the text of every file and page the intake read, as one HTML file attached to
+ * the reply (Jonathan, Oct 13, 2026), so the tickets can be checked against the source. HTML rather than PDF because most of
+ * it is Hebrew: a browser lays Hebrew out right to left, a PDF drawn here would not.
+ */
+export function sourceTextHtml(msg: { subject: string | null; receivedDateTime?: string; from?: { emailAddress: { name?: string; address?: string } } }, bodyText: string, files: IntakeFile[]): { name: string; contentType: string; bytes: Uint8Array } {
+  const block = (t: string) => `<pre style="white-space:pre-wrap;font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:0 0 14pt 0;" dir="auto">${esc(t)}</pre>`;
+  const read = files.filter((f) => f.text && f.text.trim());
+  const skipped = files.filter((f) => !f.text || !f.text.trim());
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>What was read</title></head><body style="font-family:Calibri,Arial,sans-serif;font-size:11pt;max-width:900px;margin:24px auto;padding:0 16px;">
+<h2 style="margin:0 0 4pt 0;">What the CRM read</h2>
+<div style="color:#6b716e;margin:0 0 14pt 0;">${esc(msg.subject ?? "(no subject)")} · from ${esc(msg.from?.emailAddress.name ?? msg.from?.emailAddress.address ?? "?")}${msg.receivedDateTime ? ` · ${esc(new Date(msg.receivedDateTime).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }))}` : ""}</div>
+<h3 style="margin:0 0 4pt 0;">The email</h3>
+${block(bodyText.trim() || "(no text in the email body)")}
+${read.map((f) => `<h3 style="margin:0 0 4pt 0;">${esc(f.name)}</h3>${block((f.text ?? "").length > 40_000 ? `${(f.text ?? "").slice(0, 40_000)}\n\n[... ${(f.text ?? "").length - 40_000} more characters not shown]` : (f.text ?? ""))}`).join("")}
+${skipped.length ? `<h3 style="margin:0 0 4pt 0;">Files read as pictures or not read</h3><ul>${skipped.map((f) => `<li>${esc(f.name)} (${f.type ?? "unknown type"}, ${Math.round(f.size / 1024)} KB)</li>`).join("")}</ul>` : ""}
+</body></html>`;
+  const stem = (msg.subject ?? "email").replace(/^\s*(fwd?|re|fw)\s*:\s*/i, "").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 60) || "email";
+  return { name: `What was read - ${stem}.html`, contentType: "text/html", bytes: new TextEncoder().encode(html) };
 }
 
 export async function processIsraelMessage(messageId: string): Promise<{ apartments: number } | { skipped: string }> {
@@ -751,9 +786,10 @@ export async function processIsraelMessage(messageId: string): Promise<{ apartme
   const linkNotes = [...cloud.notes.map((n) => n.replace(/^OneDrive folder had no/, "The OneDrive folder had no")), sites.length ? `Read ${sites.length} web page${sites.length === 1 ? "" : "s"} from the email's links.` : null].filter(Boolean).join(" ");
   const r = await intakeApartments({ channel: "EMAIL", key, subject: msg.subject, body: bodyText, files, sender: { name: msg.from?.emailAddress.name, email: from || null }, sourceLabel: `Email from ${msg.from?.emailAddress.name ?? from}`, mailbox: ISRAEL_MAILBOX() });
   // the reply always goes; when Microsoft refuses it, it is kept and sent on the next inbox pass
+  const source = sourceTextHtml(msg, bodyText, files);
   const send = async (html: string) => {
     try {
-      await replyOnThread(msg, html);
+      await replyOnThread(msg, html, [source]);
       await prisma.ilInbound.updateMany({ where: { messageId: key }, data: { pendingReply: null, graphId: msg.id } }).catch(() => null);
     } catch (e) {
       console.error("israel intake reply failed", e);
