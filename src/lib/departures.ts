@@ -102,10 +102,14 @@ export async function addReplacementContacts(text: string, departedContactId: st
 }
 
 /** One inbound email: if it says someone left, queue the removal for that person only. Returns proposals made. */
-export async function noteDepartureIfAny(opts: { subject: string | null; text: string | null; fromAddress: string | null; contactId: string | null; messageId: string | null }): Promise<number> {
+export async function noteDepartureIfAny(opts: { subject: string | null; text: string | null; fromAddress: string | null; contactId: string | null; messageId: string | null; when?: Date | null }): Promise<number> {
   if (!looksLikeDeparture(opts.subject, opts.text)) return 0;
+  // a notice older than two weeks when it is read is history (the mailbox backfill filed sixty of them in Data updates, Oct 13, 2026)
+  if (opts.when && Date.now() - opts.when.getTime() > 14 * 86_400_000) return 0;
   const text = (opts.text ?? "").replace(/\s+/g, " ");
   const ids = new Set<string>();
+  const autoReply = !BOUNCE_SUBJECT.test(opts.subject ?? "") && DEPARTURE_SUBJECT.test(opts.subject ?? "");
+  const senderDomain = opts.fromAddress?.split("@")[1]?.toLowerCase();
 
   if (BOUNCE_SUBJECT.test(opts.subject ?? "")) {
     // a bounce: the address that failed
@@ -118,11 +122,14 @@ export async function noteDepartureIfAny(opts: { subject: string | null; text: s
     // an auto-reply: the named person, else the sender when the notice is about them
     const name = departedNameIn(text);
     if (name) {
+      // "Wendy Ruberti is no longer employed with ...": that person, found at the sender's firm first, then anywhere by full name,
+      // then by last name at the firm. Never the one who wrote, unless the name is theirs (Jonathan, Oct 13, 2026: a colleague's
+      // reply about someone else was removing the colleague)
       const parts = norm(name).split(" ");
       const first = parts[0], last = parts[parts.length - 1];
-      const sender = opts.fromAddress?.split("@")[1]?.toLowerCase();
-      const cands = await prisma.contact.findMany({ where: { firstName: { equals: first, mode: "insensitive" }, lastName: { contains: last, mode: "insensitive" } }, select: { id: true, email: true } });
-      const pick = cands.find((c) => sender && c.email?.toLowerCase().endsWith(`@${sender}`)) ?? (cands.length === 1 ? cands[0] : null) ?? (opts.contactId && cands.some((c) => c.id === opts.contactId) ? { id: opts.contactId } : null);
+      const cands = await prisma.contact.findMany({ where: { firstName: { equals: first, mode: "insensitive" }, lastName: { contains: last, mode: "insensitive" }, departedAt: null }, select: { id: true, email: true } });
+      const atFirm = senderDomain ? await prisma.contact.findMany({ where: { email: { endsWith: `@${senderDomain}`, mode: "insensitive" }, lastName: { equals: last, mode: "insensitive" }, departedAt: null }, select: { id: true, email: true } }) : [];
+      const pick = cands.find((c) => senderDomain && c.email?.toLowerCase().endsWith(`@${senderDomain}`)) ?? (cands.length === 1 ? cands[0] : null) ?? (atFirm.length === 1 ? atFirm[0] : null);
       if (pick) ids.add(pick.id);
     } else if (opts.contactId && /\bI(?:'m| am) no longer|\bI (?:have )?(?:left|moved on)/i.test(text)) {
       // the sender says it about themselves ("I am no longer with X")
@@ -142,7 +149,9 @@ export async function noteDepartureIfAny(opts: { subject: string | null; text: s
         if (named.length === 1) ids.add(named[0].id);
         else if (!named.length && cands.length === 1 && cands[0].email?.toLowerCase() !== opts.fromAddress?.toLowerCase()) ids.add(cands[0].id); // one person at that firm on our side of the thread
       }
-      if (!ids.size && opts.contactId && /no longer|has left|is no longer|moved on|departed|trying to reach is no/i.test(text)) ids.add(opts.contactId);
+      // nobody resolvable: only an auto-reply from the person's own mailbox points at the sender ("The person you are trying to reach is no
+      // longer with the firm"); a human colleague's note about an unnamed or unknown person proposes nothing rather than the colleague
+      if (!ids.size && opts.contactId && autoReply && !/\b(?:he|she|they)\b[^.]{0,30}(?:no longer|has left|have left|moved on)/i.test(text) && /no longer|has left|is no longer|moved on|departed|trying to reach is no/i.test(text)) ids.add(opts.contactId);
     }
   }
   let n = 0;

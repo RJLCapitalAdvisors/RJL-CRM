@@ -196,11 +196,11 @@ export async function syncMailbox(mailbox: string, opts: { sinceDays?: number; u
     created += r.created;
     if (!r.contactId && !r.companyId) {
       // a bounce or auto-reply from a mail system about someone we know: "so-and-so is no longer with the firm"
-      if (!outbound && departureHint(m)) await noteDepartureIfAny({ subject: m.subject ?? null, text: await departureText(mailbox, m), fromAddress: from?.address ?? null, contactId: null, messageId: m.internetMessageId ?? null }).catch(() => 0);
+      if (!outbound && departureHint(m)) await noteDepartureIfAny({ subject: m.subject ?? null, text: await departureText(mailbox, m), fromAddress: from?.address ?? null, contactId: null, messageId: m.internetMessageId ?? null, when: new Date(m.sentDateTime ?? m.receivedDateTime ?? Date.now()) }).catch(() => 0);
       continue; // nobody we track
     }
     const contactId = r.contactId, companyId = r.companyId;
-    if (!outbound && departureHint(m)) await noteDepartureIfAny({ subject: m.subject ?? null, text: await departureText(mailbox, m), fromAddress: from?.address ?? null, contactId, messageId: m.internetMessageId ?? null }).catch(() => 0);
+    if (!outbound && departureHint(m)) await noteDepartureIfAny({ subject: m.subject ?? null, text: await departureText(mailbox, m), fromAddress: from?.address ?? null, contactId, messageId: m.internetMessageId ?? null, when: new Date(m.sentDateTime ?? m.receivedDateTime ?? Date.now()) }).catch(() => 0);
 
     const when = new Date(m.sentDateTime ?? m.receivedDateTime ?? Date.now());
     const sentDeal = dealFor(m.subject ?? "", contactId, companyId, when);

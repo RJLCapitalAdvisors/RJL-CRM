@@ -9,7 +9,7 @@ import { EXTRA_FIELD_LABELS, PROPOSAL_FIELDS, type Change, type ProposalField } 
 import { STALE_DAYS, staleDeals } from "@/lib/stale-deals";
 import { possibleDuplicates } from "@/lib/deal-dedupe";
 import { reportsDue, type ReportDue } from "@/lib/report-due";
-import { dismissTodoAction, approveProposal, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction , handleStaleDeal , openReportDraftAction, markReportSentAction , markDealLostFromLaunchAction } from "./todo-actions";
+import { dismissTodoAction, approveProposal, approveProposals, dismissProposals, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction , handleStaleDeal , openReportDraftAction, markReportSentAction , markDealLostFromLaunchAction } from "./todo-actions";
 import { DraftButton } from "./draft-button";
 import { listMomentum, momentumLines } from "@/lib/momentum";
 import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
@@ -97,6 +97,12 @@ export default async function Dashboard() {
   const companies = new Map((await prisma.company.findMany({ where: { id: { in: proposals.map((p) => p.companyId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   const people = new Map((await prisma.contact.findMany({ where: { id: { in: proposals.map((p) => p.contactId).filter(Boolean) as string[] } }, select: { id: true, firstName: true, lastName: true } })).map((c) => [c.id, [c.firstName, c.lastName].filter(Boolean).join(" ")]));
   const dealNames = new Map((await prisma.deal.findMany({ where: { id: { in: proposals.map((p) => p.dealId).filter(Boolean) as string[] } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+  // departures the mailbox history turned up (the notice is older than sixty days): one group, one decision (Jonathan, Oct 13, 2026)
+  const removalRefs = proposals.filter((p) => p.changes.includes("removeContact") && p.sourceRef).map((p) => p.sourceRef as string);
+  const refDates = new Map((removalRefs.length ? await prisma.activity.findMany({ where: { externalId: { in: removalRefs } }, select: { externalId: true, occurredAt: true } }) : []).map((a) => [a.externalId as string, a.occurredAt]));
+  const olderRemovals = proposals.filter((p) => p.changes.includes("removeContact") && p.sourceRef && (refDates.get(p.sourceRef)?.getTime() ?? Date.now()) < Date.now() - 60 * 86_400_000);
+  const olderIds = new Set(olderRemovals.map((p) => p.id));
+  const dataCount = proposals.length - olderRemovals.length + (olderRemovals.length ? 1 : 0) + stale.length + dupes.length;
   const today = new Date();
   const quietCount = quiet.reduce((n, g) => n + g.rows.length, 0);
   const cols = showCriteria ? "2xl:grid-cols-5" : "2xl:grid-cols-4";
@@ -288,7 +294,7 @@ export default async function Dashboard() {
           </Window>
         )}
         {showCriteria && (
-          <Window title="Data updates" count={proposals.length + stale.length + dupes.length} empty="Nothing to approve. Criteria corrections from investor emails, notes, calls or teammates, people who left their firm, and deals that went quiet land here.">
+          <Window title="Data updates" count={dataCount} empty="Nothing to approve. Criteria corrections from investor emails, notes, calls or teammates, people who left their firm, and deals that went quiet land here.">
             {dupes.length > 0 && (
               <div className="border-b border-line bg-cream-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
                 Possible duplicates ({dupes.length}) · one deal, one ticket
@@ -342,7 +348,20 @@ export default async function Dashboard() {
                   </div>
                 </Item>
               ))}
-              {proposals.map((p) => {
+              {olderRemovals.length > 0 && (
+                <Item className="flex items-center justify-between gap-3 px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold">Older departures from the mailbox history ({olderRemovals.length})</div>
+                    <div className="mt-0.5 text-xs text-muted">Auto-replies and bounces from more than sixty days ago, read when the mailboxes were backfilled. Approve marks them all departed (no more emails, off the pickers); each stays in the CRM.</div>
+                    <div className="mt-1 line-clamp-3 text-xs text-ink-soft">{olderRemovals.map((p) => `${p.contactId ? people.get(p.contactId) || "Contact" : "Contact"}${p.companyId && companies.get(p.companyId) ? ` (${companies.get(p.companyId)})` : ""}`).join(" · ")}</div>
+                  </div>
+                  <div className="act-col">
+                    <ItemForm action={approveProposals.bind(null, olderRemovals.map((p) => p.id))} className="btn-soft act">Approve all</ItemForm>
+                    <ItemForm action={dismissProposals.bind(null, olderRemovals.map((p) => p.id))} className="btn-grey act">Dismiss all</ItemForm>
+                  </div>
+                </Item>
+              )}
+              {proposals.filter((p) => !olderIds.has(p.id)).map((p) => {
                 const changes = JSON.parse(p.changes) as Change[];
                 return (
                   <Item key={p.id} className="flex items-center justify-between gap-3 px-3 py-2.5">

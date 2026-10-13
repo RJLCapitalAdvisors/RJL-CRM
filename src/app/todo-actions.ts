@@ -37,6 +37,20 @@ export async function approveProposal(id: string) {
   revalidatePath("/");
 }
 
+/** The older departures the mailbox history turned up, as one decision (Jonathan, Oct 13, 2026). */
+export async function approveProposals(ids: string[]) {
+  await requireCriteriaAdmin();
+  const { applyProposal } = await import("@/lib/criteria-proposals");
+  for (const id of ids) await applyProposal(id).catch(() => null);
+  revalidatePath("/");
+}
+export async function dismissProposals(ids: string[]) {
+  await requireCriteriaAdmin();
+  const { rejectProposal } = await import("@/lib/criteria-proposals");
+  for (const id of ids) await rejectProposal(id).catch(() => null);
+  revalidatePath("/");
+}
+
 export async function dismissProposal(id: string) {
   await requireCriteriaAdmin();
   const { rejectProposal } = await import("@/lib/criteria-proposals");
