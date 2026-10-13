@@ -370,27 +370,86 @@ export async function renderGeneralDealEmail(opts: { templateId: string; dealId:
 const Revised = z.object({ subject: z.string().describe("The subject line, unchanged unless the request was about it."), html: z.string().describe("The full email HTML after the change.") });
 
 /** Apply a plain-English request ("emphasize the business plan more") to the email; everything else stays as it was. */
-export async function reviseDealEmail(opts: { dealId: string; subject: string; html: string; instruction: string }): Promise<{ subject: string; html: string } | { error: string }> {
+/** The newest spreadsheet on the deal (its own files and a portfolio's parts), read as text: the model the sponsor last sent. */
+async function latestSpreadsheet(dealId: string): Promise<{ name: string; receivedAt: Date; text: string } | null> {
+  const f = await prisma.dealFile.findFirst({ where: { OR: [{ dealId }, { deal: { parentDealId: dealId } }], AND: { OR: [".xlsx", ".xlsm", ".xls"].map((ext) => ({ name: { endsWith: ext, mode: "insensitive" as const } })) } }, orderBy: { receivedAt: "desc" } });
+  if (!f) return null;
+  try {
+    const bytes = f.url ? await (await import("@/lib/cloud-links")).fetchCloudFileByUrl(f.url, f.name) : new Uint8Array(await graph<ArrayBuffer>(`/users/${encodeURIComponent(f.mailbox)}/messages/${encodeURIComponent(f.graphId)}/attachments/${encodeURIComponent(f.attachmentId)}/$value`, { raw: true }));
+    if (!bytes) return null;
+    const text = await (await import("@/lib/attachments")).attachmentToText(f.name, f.contentType, bytes);
+    return text ? { name: f.name, receivedAt: f.receivedAt, text } : null;
+  } catch {
+    return null;
+  }
+}
+
+const money = (v: unknown) => (typeof v === "number" && v >= 1000 ? `$${Math.round(v).toLocaleString("en-US")}` : v == null || v === "" ? "blank" : String(v));
+
+/**
+ * "Ask the CRM to change this email" (Jonathan, Oct 13, 2026: "update all the metrics based on the most recent model they
+ * sent us" did nothing, because this only ever saw the email's text). Three steps now. When the request is about the
+ * deal's figures, the ticket is updated first: the instruction's own figures and, when it refers to the model or the
+ * latest numbers, the newest spreadsheet on the deal are read by the extractor and the underwriting fields replace what
+ * is there (`overwriteNumbers`; the narrative is not touched). Then the General email is rendered afresh from the template
+ * and its marked figures are refreshed in place (a paragraph edited by hand stays). Then Claude applies whatever wording
+ * the request still asks for. The ticket changes come back so the page can say what moved.
+ */
+export async function reviseDealEmail(opts: { dealId: string; subject: string; html: string; instruction: string; templateId?: string | null; fields?: Record<string, string> | null; senderName?: string; mailbox?: string }): Promise<{ subject: string; html: string; fields?: Record<string, string>; changes: string[] } | { error: string }> {
   if (!process.env.ANTHROPIC_API_KEY) return { error: "Claude is not configured." };
   const deal = await prisma.deal.findUnique({ where: { id: opts.dealId }, include: { facts: { orderBy: { createdAt: "desc" }, take: 40 } } });
-  const facts = deal?.facts.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n") ?? "";
+  if (!deal) return { error: "Deal not found." };
+  const instruction = opts.instruction.trim();
+  const changes: string[] = [];
+  let html = opts.html;
+  let fields = opts.fields ?? undefined;
+  // step 1: the ticket, when the request is about figures
+  const aboutFigures = /metric|number|figure|price|capitaliz|\bcap\b|debt|loan|equity|\bask\b|raise|irr|multiple|yield|occupan|rent|noi|model|underwrit|\$|\d{2,}|mm\b|million/i.test(instruction);
+  const fromModel = /model|underwriting|most recent|latest|updated|newest|they sent|was sent|sent (?:us|over)|attached/i.test(instruction);
+  if (aboutFigures) {
+    const model = fromModel ? await latestSpreadsheet(opts.dealId) : null;
+    const text = [`INSTRUCTION FROM ${opts.senderName ?? "the team"} (the figures stated here are authoritative wherever they differ from the documents):\n${instruction}`, model ? `\n\n=== ${model.name} (the latest model, received ${model.receivedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}) ===\n${model.text}` : ""].join("");
+    try {
+      const { mergeIntoDeal } = await import("@/lib/deal-knowledge");
+      const r = await mergeIntoDeal(opts.dealId, text, "Instruction on the Send deal page", { modelAttached: Boolean(model), attachments: model ? [model.name] : [], overwriteNumbers: true });
+      for (const c of r.changes) changes.push(`${c.label}: ${money(c.from)} to ${money(c.to)}`);
+      if (changes.length) await logActivity({ type: "NOTE", body: `Ticket updated from the Send deal page ("${instruction.slice(0, 160)}"${model ? `, read with ${model.name}` : ""}): ${changes.join("; ")}.`, dealId: opts.dealId, companyId: deal.sponsorCompanyId }).catch(() => null);
+    } catch (e) {
+      return { error: `Could not update the ticket: ${String(e instanceof Error ? e.message : e).slice(0, 160)}` };
+    }
+    if (fromModel && !model) changes.push("No spreadsheet is on this deal, so only the figures in your request were applied");
+    // step 2: the email's figures follow the ticket
+    if (changes.length && opts.templateId) {
+      try {
+        const fresh = await renderGeneralDealEmail({ templateId: opts.templateId, dealId: opts.dealId, senderName: opts.senderName ?? "RJL Capital Advisors", mailbox: opts.mailbox ?? "jonathan@rjlcapadvisors.com" });
+        const { refreshDealFields } = await import("@/lib/merge");
+        const merged = refreshDealFields(html, fresh.html, fields);
+        if (merged) { html = merged.html; fields = merged.fields; }
+        else { html = fresh.html; fields = (await import("@/lib/merge")).dealFieldsOf(fresh.html); } // no marks to refresh: the fresh email, edits lost
+      } catch { /* the wording step still runs on the email as it is */ }
+    }
+  }
+  // step 3: the wording
+  const facts = deal.facts.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n");
   try {
     const client = new Anthropic();
     const res = await client.messages.parse({
       model: "claude-opus-5",
-      max_tokens: 6000,
+      max_tokens: 8000,
       system: [
         "You edit an outbound deal email for RJL Capital Advisors, a real estate capital advisor emailing institutional investors. Apply the requested change and nothing else.",
         "Keep: the HTML structure and inline styles, every data-deal attribute (those elements take the ticket's latest numbers), the greeting line with its empty <span data-first-name> placeholder, the bold lead-ins, the signature block at the end (verbatim), and every fact and number. Never invent figures; if the request needs information you do not have, work with what is in the email and the deal notes.",
-        "Tone: concise, direct, professional, one-to-one (not a blast). Return the complete email HTML.",
+        "When the ticket changes listed below were already applied, the email already carries those figures: do not change them again. Apply only what else the request asks for; if nothing else is asked, return the email exactly as given.",
+        "Tone: concise, direct, professional, one-to-one (not a blast). No dashes as punctuation. Return the complete email HTML.",
       ].join(" "),
-      messages: [{ role: "user", content: ["REQUEST:", opts.instruction.trim(), "", "SUBJECT:", opts.subject, "", "EMAIL HTML:", opts.html, "", "DEAL NOTES (Questions answered on the ticket, for reference):", facts || "(none)"].join("\n") }],
+      messages: [{ role: "user", content: ["REQUEST:", instruction, "", "TICKET CHANGES ALREADY APPLIED AND REFLECTED IN THE EMAIL:", changes.length ? changes.map((c) => `- ${c}`).join("\n") : "(none)", "", "SUBJECT:", opts.subject, "", "EMAIL HTML:", html, "", "DEAL NOTES (Questions answered on the ticket, for reference):", facts || "(none)"].join("\n") }],
       output_config: { format: zodOutputFormat(Revised) },
     });
     const out = res.parsed_output;
-    if (!out?.html) return { error: "No revision came back." };
-    return { subject: out.subject || opts.subject, html: out.html };
+    if (!out?.html) return changes.length ? { subject: opts.subject, html, fields, changes } : { error: "No revision came back." };
+    return { subject: out.subject || opts.subject, html: out.html, fields, changes };
   } catch (e) {
+    if (changes.length) return { subject: opts.subject, html, fields, changes: [...changes, `The wording step failed (${String(e instanceof Error ? e.message : e).slice(0, 120)}); the figures were updated`] };
     return { error: String(e instanceof Error ? e.message : e).slice(0, 200) };
   }
 }

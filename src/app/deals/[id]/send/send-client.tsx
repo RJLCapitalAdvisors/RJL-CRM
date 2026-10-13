@@ -507,12 +507,13 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     const html = editor.current?.innerHTML ?? general?.html ?? "";
     if (!general || !html || !ask.trim()) return;
     start(async () => {
-      const r = await reviseGeneralEmailAction(dealId, general.subject, html, ask);
+      const r = await reviseGeneralEmailAction(dealId, general.subject, html, ask, followup ? null : templateId, general.fields ?? null);
       if ("error" in r) return setNote(r.error);
-      setGeneral((g) => ({ subject: r.subject, html: r.html, touched: true, fields: g?.fields })); // the baseline stays: what the revision changed now differs from it and is kept on refresh
+      setGeneral((g) => ({ subject: r.subject, html: r.html, touched: true, fields: r.fields ?? g?.fields })); // a refreshed email brings its new baseline; otherwise the baseline stays so the revision is kept on refresh
       setVersion((v) => v + 1); // every firm follows the revised General email; a firm's own edits stay only where their blocks still match
       setAsk("");
-      setNote(hasMarker(r.html) ? "Revised. Every firm's email now follows this version." : "Revised, but the greeting lost its name slot: each email will open with 'Hi there'. Reset to template if that is not what you want.");
+      const moved = r.changes.length ? `Ticket updated: ${r.changes.join("; ")}. ` : "";
+      setNote(hasMarker(r.html) ? `${moved}Revised. Every firm's email now follows this version.` : `${moved}Revised, but the greeting lost its name slot: each email will open with 'Hi there'. Reset to template if that is not what you want.`);
     });
   };
 
@@ -699,23 +700,41 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
         </div>
       </div>
 
-      {/* attachments: only what the sponsor sent us on this deal */}
-      <div className="card flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2.5 text-sm">
-        <span className="text-xs text-muted">Attachments</span>
-        {files.length === 0 && <span className="text-xs text-muted">No files from the sponsor on this deal yet (they arrive through deals@).</span>}
-        {files.map((f) => (
-          <label key={f.key} className="flex cursor-pointer items-center gap-1.5">
-            <input type="checkbox" className="accent-ink" checked={chosenFiles.has(f.key)} onChange={() => setChosenFiles((s) => { const n = new Set(s); if (n.has(f.key)) n.delete(f.key); else n.add(f.key); return n; })} />
-            <FileIcon name={f.name} />
-            <span>{f.name}</span>
-            {f.url && (
-              <a href={f.url} target="_blank" rel="noreferrer" className="text-muted hover:text-ink" title="See this file before you send it (opens in a new tab)" onClick={(e) => e.stopPropagation()}>
-                <Eye className="h-3.5 w-3.5" />
-              </a>
-            )}
-            <span className="text-xs text-muted">{f.size >= 1_000_000 ? `${(f.size / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1000))} KB`}</span>
-          </label>
-        ))}
+      {/* attachments: only what the sponsor sent us on this deal, in three columns (PDFs, Excel, other; Jonathan, Oct 13, 2026),
+          each column scrolling past five files so the window stays the same height */}
+      <div className="card px-4 py-2 text-sm">
+        {files.length === 0 && <span className="text-xs text-muted">Attachments: no files from the sponsor on this deal yet (they arrive through deals@).</span>}
+        {files.length > 0 && (
+          <div className="grid grid-cols-3 gap-x-5">
+            {([["PDFs", (n: string) => /\.pdf$/i.test(n)], ["Excel", (n: string) => /\.(xlsx|xlsm|xls|csv)$/i.test(n)], ["Other", (n: string) => !/\.(pdf|xlsx|xlsm|xls|csv)$/i.test(n)]] as [string, (n: string) => boolean][]).map(([title, test]) => {
+              const group = files.filter((f) => test(f.name));
+              const ticked = group.filter((f) => chosenFiles.has(f.key)).length;
+              return (
+                <div key={title} className="min-w-0">
+                  <div className="mb-0.5 text-[11px] text-muted">
+                    {title} <span className="text-stone-400">{group.length}{ticked ? ` · ${ticked} ticked` : ""}</span>
+                  </div>
+                  <div className="max-h-[7.25rem] space-y-0.5 overflow-y-auto pr-1">
+                    {group.length === 0 && <div className="text-xs text-stone-400">none</div>}
+                    {group.map((f) => (
+                      <label key={f.key} className="flex cursor-pointer items-center gap-1.5 leading-tight" title={f.name}>
+                        <input type="checkbox" className="shrink-0 accent-ink" checked={chosenFiles.has(f.key)} onChange={() => setChosenFiles((s) => { const n = new Set(s); if (n.has(f.key)) n.delete(f.key); else n.add(f.key); return n; })} />
+                        <FileIcon name={f.name} />
+                        <span className="min-w-0 truncate">{f.name}</span>
+                        {f.url && (
+                          <a href={f.url} target="_blank" rel="noreferrer" className="shrink-0 text-muted hover:text-ink" title="See this file before you send it (opens in a new tab)" onClick={(e) => e.stopPropagation()}>
+                            <Eye className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                        <span className="shrink-0 text-[11px] text-muted">{f.size >= 1_000_000 ? `${(f.size / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1000))} KB`}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* the template: the General email is that exact template with the deal's facts filled in (a follow-up has no template: one line above the quoted deal email) */}

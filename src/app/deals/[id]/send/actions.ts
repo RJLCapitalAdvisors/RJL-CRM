@@ -140,9 +140,16 @@ export async function previewFollowupEmail(dealId: string, round = 1) {
 }
 
 /** "Emphasize the business plan more": Claude edits the General email as asked. */
-export async function reviseGeneralEmailAction(dealId: string, subject: string, html: string, instruction: string) {
+export async function reviseGeneralEmailAction(dealId: string, subject: string, html: string, instruction: string, templateId?: string | null, fields?: Record<string, string> | null) {
   if (!instruction.trim()) return { error: "Say what to change." };
-  return reviseDealEmail({ dealId, subject, html, instruction });
+  const me = await currentUser();
+  try {
+    const r = await reviseDealEmail({ dealId, subject, html, instruction, templateId, fields, senderName: me?.name ?? undefined, mailbox: me?.email ?? undefined });
+    if (!("error" in r) && r.changes.length) { revalidatePath(`/deals/${dealId}`); revalidatePath(`/deals/${dealId}/send`); }
+    return r;
+  } catch (e) {
+    return { error: `That did not go through: ${String(e instanceof Error ? e.message : e).slice(0, 160)}` };
+  }
 }
 
 /** Autosave for the Send deal page: the General email, per-firm edits, who gets what, files, template. Kept on the deal. */

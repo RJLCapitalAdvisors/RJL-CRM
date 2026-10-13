@@ -231,7 +231,7 @@ const showVal = (k: string, v: unknown) => (v == null || v === "" ? "blank" : ["
  * `overwrite`: the email's documents replace what the ticket has (a deal that comes back after being lost, or a
  * ticket re-read on purpose): every extracted value that differs is written and listed as a change, narrative included.
  */
-export async function mergeIntoDeal(dealId: string, rawText: string, subject: string, opts: { modelAttached?: boolean; attachments?: string[]; overwrite?: boolean } = {}): Promise<MergeResult> {
+export async function mergeIntoDeal(dealId: string, rawText: string, subject: string, opts: { modelAttached?: boolean; attachments?: string[]; overwrite?: boolean; overwriteNumbers?: boolean } = {}): Promise<MergeResult> {
   const { extractWithClaude } = await import("@/lib/intake");
   await (await import("@/lib/required-items")).loadChecklist();
   const none: MergeResult = { filled: 0, changes: [], model: null };
@@ -259,7 +259,8 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   const FROM_MODEL = new Set(["landValueCurrent", "landValueEntitled", "entitlementBudget", "verticalCost", "verticalDebt", "purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "irr", "equityMultiple", "yieldOnCost", "capRateT12", "capRateY1", "cashOnCash", "units", "squareFeet", "occupancy", "interestRate", "rateIndex", "rateSpreadBps", "loanTerm", "holdPeriod", "expectedClose", "unitMix", "yearBuilt"]);
   const same = (a: unknown, b: unknown) => (typeof a === "number" && typeof b === "number" ? Math.abs(a - b) < 1e-6 : String(a ?? "").trim() === String(b ?? "").trim());
   const maybe = (k: keyof typeof deal, v: unknown) => {
-    if ((opts.overwrite || (model && FROM_MODEL.has(k as string))) && v != null && v !== "" && !same(deal[k], v)) {
+    // overwriteNumbers: the underwriting figures replace what is there, the narrative only fills blanks (an instruction typed on the Send deal page, Oct 13, 2026)
+    if ((opts.overwrite || ((model || opts.overwriteNumbers) && FROM_MODEL.has(k as string))) && v != null && v !== "" && !same(deal[k], v)) {
       core[k as string] = v;
       changes.push({ field: k as string, label: FIELD_LABELS[k as string] ?? String(k), from: deal[k], to: v });
       filled++;
