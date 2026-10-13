@@ -403,6 +403,7 @@ export async function reviseDealEmail(opts: { dealId: string; subject: string; h
   const changes: string[] = [];
   let html = opts.html;
   let fields = opts.fields ?? undefined;
+  let subject = opts.subject;
   // step 1: the ticket, when the request is about figures
   const aboutFigures = /metric|number|figure|price|capitaliz|\bcap\b|debt|loan|equity|\bask\b|raise|irr|multiple|yield|occupan|rent|noi|model|underwrit|\$|\d{2,}|mm\b|million/i.test(instruction);
   const fromModel = /model|underwriting|most recent|latest|updated|newest|they sent|was sent|sent (?:us|over)|attached/i.test(instruction);
@@ -423,6 +424,8 @@ export async function reviseDealEmail(opts: { dealId: string; subject: string; h
       try {
         const fresh = await renderGeneralDealEmail({ templateId: opts.templateId, dealId: opts.dealId, senderName: opts.senderName ?? "RJL Capital Advisors", mailbox: opts.mailbox ?? "jonathan@rjlcapadvisors.com" });
         const { refreshDealFields } = await import("@/lib/merge");
+        // a subject still carrying the old ask was the template's: it follows the ticket too
+        if (deal.requestedAmount && subject.includes(`$${Math.round(deal.requestedAmount).toLocaleString("en-US")}`)) subject = fresh.subject;
         const merged = refreshDealFields(html, fresh.html, fields);
         if (merged) { html = merged.html; fields = merged.fields; }
         else { html = fresh.html; fields = (await import("@/lib/merge")).dealFieldsOf(fresh.html); } // no marks to refresh: the fresh email, edits lost
@@ -442,14 +445,14 @@ export async function reviseDealEmail(opts: { dealId: string; subject: string; h
         "When the ticket changes listed below were already applied, the email already carries those figures: do not change them again. Apply only what else the request asks for; if nothing else is asked, return the email exactly as given.",
         "Tone: concise, direct, professional, one-to-one (not a blast). No dashes as punctuation. Return the complete email HTML.",
       ].join(" "),
-      messages: [{ role: "user", content: ["REQUEST:", instruction, "", "TICKET CHANGES ALREADY APPLIED AND REFLECTED IN THE EMAIL:", changes.length ? changes.map((c) => `- ${c}`).join("\n") : "(none)", "", "SUBJECT:", opts.subject, "", "EMAIL HTML:", html, "", "DEAL NOTES (Questions answered on the ticket, for reference):", facts || "(none)"].join("\n") }],
+      messages: [{ role: "user", content: ["REQUEST:", instruction, "", "TICKET CHANGES ALREADY APPLIED AND REFLECTED IN THE EMAIL:", changes.length ? changes.map((c) => `- ${c}`).join("\n") : "(none)", "", "SUBJECT:", subject, "", "EMAIL HTML:", html, "", "DEAL NOTES (Questions answered on the ticket, for reference):", facts || "(none)"].join("\n") }],
       output_config: { format: zodOutputFormat(Revised) },
     });
     const out = res.parsed_output;
-    if (!out?.html) return changes.length ? { subject: opts.subject, html, fields, changes } : { error: "No revision came back." };
-    return { subject: out.subject || opts.subject, html: out.html, fields, changes };
+    if (!out?.html) return changes.length ? { subject, html, fields, changes } : { error: "No revision came back." };
+    return { subject: out.subject || subject, html: out.html, fields, changes };
   } catch (e) {
-    if (changes.length) return { subject: opts.subject, html, fields, changes: [...changes, `The wording step failed (${String(e instanceof Error ? e.message : e).slice(0, 120)}); the figures were updated`] };
+    if (changes.length) return { subject, html, fields, changes: [...changes, `The wording step failed (${String(e instanceof Error ? e.message : e).slice(0, 120)}); the figures were updated`] };
     return { error: String(e instanceof Error ? e.message : e).slice(0, 200) };
   }
 }
