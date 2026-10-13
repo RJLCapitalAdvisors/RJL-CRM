@@ -114,7 +114,7 @@ export async function createReplyAllDraft(mailbox: string, messageId: string): P
 }
 
 /** Hidden characters (zero-width spaces left by an old template) are a spam-filter tell; subjects go out clean. */
-export const cleanSubject = (s: string) => s.replace(/[​-‍﻿⁠]/g, "").replace(/s{2,}/g, " ").trim();
+export const cleanSubject = (s: string) => s.replace(/[​-‍﻿⁠]/g, "").replace(/s{2,}/g, " ").trim(); // runs of whitespace (the regex had lost its backslash and ate every double s: "Class A" would have gone out as "Cla  A", Oct 13, 2026)
 
 export async function createDraft(mailbox: string, msg: { subject: string; toRecipients: string[]; ccRecipients?: string[]; bodyHtml: string }): Promise<GraphMessage> {
   return graph<GraphMessage>(`/users/${q(mailbox)}/messages`, {
