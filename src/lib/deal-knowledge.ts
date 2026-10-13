@@ -295,6 +295,13 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   const price = (core.purchasePrice as number | undefined) ?? deal.purchasePrice;
   const cap = (core.totalCapitalization as number | undefined) ?? deal.totalCapitalization;
   const pctOf = (a: number | null, b: number | null) => (a != null && b ? Math.round((a / b) * 10000) / 100 : null);
+  // total equity is always total capitalization less debt (Jonathan, Oct 13, 2026: Park Station kept the old equity after the model update)
+  if (cap != null && debt != null && cap > debt && Math.abs((deal.totalEquity ?? 0) - (cap - debt)) >= 1) {
+    if ("totalDebt" in core || "totalCapitalization" in core || deal.totalEquity == null) {
+      core.totalEquity = cap - debt;
+      if (deal.totalEquity != null) changes.push({ field: "totalEquity", label: "Total equity", from: deal.totalEquity, to: cap - debt });
+    }
+  }
   if ("totalDebt" in core || "purchasePrice" in core || "totalCapitalization" in core) {
     core.ltc = pctOf(debt, cap);
     const sellout = (core.projectedSellout as number | undefined) ?? deal.projectedSellout;
