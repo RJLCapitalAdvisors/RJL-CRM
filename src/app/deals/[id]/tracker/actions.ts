@@ -187,12 +187,17 @@ export async function createFollowUpCampaign(dealId: string, fd: FormData) {
 const strip = (v: string | null) => (v ? v.split("\n").map((l) => l.replace(/^\s*[•\-*]\s*/, "").trim()).filter(Boolean).join("\n") || null : null);
 export async function saveTrackerMeta(dealId: string, fd: FormData) {
   const themes = strip(s(fd, "trackerThemes")), items = strip(s(fd, "trackerItemsNote"));
-  const before = await prisma.deal.findUnique({ where: { id: dealId }, select: { trackerThemes: true, trackerItemsNote: true } });
+  const before = await prisma.deal.findUnique({ where: { id: dealId }, select: { trackerThemes: true, trackerItemsNote: true, details: true } });
   const edited = before != null && (before.trackerThemes !== themes || before.trackerItemsNote !== items);
+  // the section edited is locked against the automatic writer until Refresh report (Oct 13, 2026); emptying it counts
+  const details = (() => { try { return JSON.parse(before?.details || "{}") as Record<string, unknown>; } catch { return {}; } })();
+  const locks = { ...((details.trackerLocks as Record<string, string> | undefined) ?? {}) };
+  if (before && before.trackerThemes !== themes) locks.themes = new Date().toISOString();
+  if (before && before.trackerItemsNote !== items) locks.items = new Date().toISOString();
   await prisma.deal.update({
     where: { id: dealId },
     // a hand edit is the text from now on: the writer keeps it and only adjusts for new notes, answered or passed groups (Jonathan, Sep 17)
-    data: { trackerPreparedFor: s(fd, "trackerPreparedFor"), trackerThemes: themes, trackerItemsNote: items, trackerSummaryAt: new Date(), ...(edited ? { trackerManualAt: new Date() } : {}) },
+    data: { trackerPreparedFor: s(fd, "trackerPreparedFor"), trackerThemes: themes, trackerItemsNote: items, trackerSummaryAt: new Date(), ...(edited ? { trackerManualAt: new Date(), details: JSON.stringify({ ...details, trackerLocks: locks }) } : {}) },
   });
   touch(dealId);
   revalidatePath(`/share/tracker`);
@@ -209,9 +214,9 @@ export async function refreshReportAction(dealId: string): Promise<{ ok: true; l
     const r = await refreshResponses(dealId);
     const { detectIntroCalls } = await import("@/lib/intro-calls");
     const calls = await detectIntroCalls().catch(() => ({ checked: 0, moved: 0 }));
-    const { ensureTrackerSummary } = await import("@/lib/tracker-summary");
-    await prisma.deal.update({ where: { id: dealId }, data: { trackerSummaryAt: null } }).catch(() => null);
-    await ensureTrackerSummary(dealId).catch(() => null);
+    // Refresh report is the explicit rewrite: both sections from the notes and requests, hand edits and their locks cleared
+    const { generateTrackerSummary } = await import("@/lib/tracker-summary");
+    await generateTrackerSummary(dealId, { force: true }).catch(() => null);
     revalidatePath(`/deals/${dealId}/tracker`);
     revalidatePath(`/deals/${dealId}`);
     revalidatePath("/share/tracker");

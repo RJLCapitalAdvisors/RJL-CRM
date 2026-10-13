@@ -18,7 +18,7 @@ const Out = z.object({
 
 const SYSTEM = `You maintain investor progress reports for RJL Capital Advisors, a real estate capital advisory firm. You are given the investor rows of one report (firm, status, note). Write the "Notable Feedback Themes" and "Items Needed from Sponsor" sections exactly in the house style: plain, factual, analyst tone, no marketing language, no speculation beyond what the notes say. Themes summarize why groups passed or hesitated and what interested groups are focused on; each ends with the firm(s) in parentheses. Items are concrete deliverables the sponsor still owes (models, rent rolls, calls to schedule, answers to questions), each with the requesting firm(s) in parentheses, and they come only from the Outstanding requests list: a request that appears in a note but not in that list has been dealt with and must not be listed. Every outstanding request is listed, one per line. A group whose status is Not A Fit, Pass or Term Sheet Issued is owed nothing: none of its requests appear in Items Needed; a theme may still cite a passed group for why it passed, and a term sheet group for what it is focused on. When the message carries sections written by hand, keep that wording as the base and change only what the notes and requests require. Skip rows with no note. Do not restate statuses. Be terse: fragments, not full sentences; one clause per theme; never explain or editorialize. Match this register exactly: "Occupancy and asset vintage flagged as a concern (Hamilton Lane)", "Argus model requested by multiple groups (Corebridge, MLG Capital)", "Return underwriting fell short of minimum thresholds for one group (Blue Vista)". Use the firm names as given.`;
 
-export async function generateTrackerSummary(dealId: string): Promise<{ themes: string[]; items: string[] } | null> {
+export async function generateTrackerSummary(dealId: string, opts: { force?: boolean } = {}): Promise<{ themes: string[]; items: string[] } | null> {
   if (!process.env.ANTHROPIC_API_KEY) return null;
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { investors: { include: { contact: { include: { company: true } } } } } });
   if (!deal) return null;
@@ -54,6 +54,25 @@ export async function generateTrackerSummary(dealId: string): Promise<{ themes: 
   });
   if (!res.parsed_output) return null;
   const out = { themes: res.parsed_output.themes.map((x) => stripDashes(x)), items: res.parsed_output.items.map((x) => stripDashes(x)) };
+  // a section Jonathan edited by hand (an emptied Items Needed included) is his until he clicks Refresh report: the automatic
+  // writer leaves it as it is, and only appends requests that arrived after his edit (Oct 13, 2026: a cleared Items Needed
+  // came back on the PDF eight seconds after a row was removed)
+  const det = (await prisma.deal.findUnique({ where: { id: dealId }, select: { details: true } }))?.details;
+  const details = (() => { try { return JSON.parse(det || "{}") as Record<string, unknown>; } catch { return {}; } })();
+  const locks = (details.trackerLocks ?? {}) as { themes?: string; items?: string };
+  if (!opts.force) {
+    if (locks.themes) out.themes = (deal.trackerThemes ?? "").split("\n").filter(Boolean);
+    if (locks.items) {
+      const kept = (deal.trackerItemsNote ?? "").split("\n").filter(Boolean);
+      const since = new Date(locks.items);
+      const fresh = await prisma.momentum.findMany({ where: { dealId, kind: "LP_ASK", createdAt: { gt: since } }, select: { party: true, summary: true } });
+      for (const m of fresh) if (!fromPassed(m.party) && !isSponsor(m.party)) for (const a of parseAsks(m.summary).asks) { const line = `${a} (${m.party})`; if (!kept.some((k) => k.toLowerCase() === line.toLowerCase())) kept.push(line); }
+      out.items = kept;
+    }
+  } else if (details.trackerLocks) {
+    delete details.trackerLocks;
+    await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify(details), trackerManualAt: null } }).catch(() => null);
+  }
   await prisma.deal.update({ where: { id: dealId }, data: { trackerThemes: out.themes.join("\n") || null, trackerItemsNote: out.items.join("\n") || null, trackerSummaryAt: new Date(), trackerSummaryKey: await summaryKey(dealId) } });
   return out;
 }

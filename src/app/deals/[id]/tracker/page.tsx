@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RefreshButton } from "./refresh-button";
+import { DownloadPdfButton } from "./download-pdf";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
@@ -95,9 +96,7 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
         <TrackerContactPicker dealId={deal.id} />
         <div className="flex items-center rounded-md border border-line bg-paper" title="Drag this file straight into an Outlook email, or click to download">
           <AttachmentList files={[{ id: "report-pdf", kind: "faq", name: progressReportFileName(name), size: 0, date: "", url: pdfUrl }]} />
-          <a href={pdfUrl} download className="btn-soft mr-1 px-2.5 py-1 text-xs" title="Download the PDF">
-            Download PDF
-          </a>
+          <DownloadPdfButton url={pdfUrl} />
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-1.5 text-xs">
           <span className="text-muted">Show</span>

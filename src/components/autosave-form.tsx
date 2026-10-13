@@ -10,11 +10,27 @@ import { useEffect, useRef, useState, useTransition, type ReactNode } from "reac
  * component's state keeps the new pick (the mirpasot count showed 1 with three rows on screen). Calling the action
  * ourselves leaves the DOM alone.
  */
+/** Every autosaving form on the page, so a download or a send can wait for pending saves (Oct 13, 2026: the PDF went out before the cleared box had saved). */
+const forms = new Set<() => Promise<void>>();
+export async function flushAutosaves(): Promise<void> {
+  await Promise.all([...forms].map((f) => f().catch(() => null)));
+}
+
 export function AutoSaveForm({ action, children, className }: { action: (fd: FormData) => void | Promise<void>; children: ReactNode; className?: string }) {
   const ref = useRef<HTMLFormElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inflight = useRef<Promise<void> | null>(null);
   const [state, setState] = useState<"idle" | "pending" | "saved">("idle");
   const [, start] = useTransition();
+  useEffect(() => {
+    const flush = async () => {
+      if (timer.current) { clearTimeout(timer.current); timer.current = null; ref.current?.requestSubmit(); }
+      await new Promise((r) => setTimeout(r, 0));
+      if (inflight.current) await inflight.current;
+    };
+    forms.add(flush);
+    return () => { forms.delete(flush); };
+  }, []);
 
   const schedule = (delay: number) => {
     if (timer.current) clearTimeout(timer.current);
@@ -35,11 +51,13 @@ export function AutoSaveForm({ action, children, className }: { action: (fd: For
       onSubmit={(e) => {
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
-        start(async () => {
+        const run = (async () => {
           await action(fd);
           setState("saved");
           setTimeout(() => setState("idle"), 1800);
-        });
+        })();
+        inflight.current = run;
+        start(() => { void run; });
       }}
       onInput={(e) => {
         const t = e.target as HTMLElement;
