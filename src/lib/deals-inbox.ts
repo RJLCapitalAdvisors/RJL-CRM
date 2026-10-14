@@ -230,7 +230,8 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
       const own = texts.filter((t) => part.attachments.some((n) => n.toLowerCase() === t.name.toLowerCase()));
       const text = assembleDealText(`THIS EMAIL CONTAINS ${parts.length} DEALS. Extract ONLY the deal "${part.name}" (${part.hint}). Ignore the others.\n\n${bodyText}`, own.length ? own : []);
       const key = i === 0 ? ext : `${ext}#${i + 1}`;
-      if (i === 0) await releaseClaim();
+      // the claim stays until this part's own intake row takes its place (Oct 14, 2026: it was released here, before any work, so a
+      // second trigger processed the two-deal St Rose email in parallel and Jonathan got two replies)
       // a resumed run: this part already has its ticket
       const donePart = await prisma.dealIntake.findFirst({ where: { messageId: key, dealId: { not: null } }, select: { dealId: true } });
       if (donePart?.dealId) {
@@ -253,11 +254,13 @@ ${text.slice(0, 2000)}` });
         await (await import("@/lib/enrich-narratives")).improveNarratives(same.id, text, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => null);
         if (before.stage === "Deal Mentioned" || before.stage === "Deal Lost") await prisma.deal.update({ where: { id: same.id }, data: { stage: "Deal Received" } });
         if (before.stage === "Deal Lost") await prisma.activity.create({ data: { type: "NOTE", body: "The deal came back: brought back to Deal Received and the ticket re-read from the new email.", dealId: same.id, occurredAt: received } }).catch(() => null);
-        await prisma.dealIntake.create({ data: { source: "WEBHOOK", fromEmail: external ? fromAddr : fwd.email, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, toEmail: MAILBOX(), subject: `${cleanSubject} - ${part.name}`, rawText: text.slice(0, 200_000), attachments: JSON.stringify(part.attachments), extracted: "{}", missing: "[]", notes: `Follow-up on existing deal ${same.id}`, status: "CONVERTED", messageId: key } }).catch(() => null);
+        const donePartRow = { source: "WEBHOOK", fromEmail: external ? fromAddr : fwd.email, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, toEmail: MAILBOX(), subject: `${cleanSubject} - ${part.name}`, rawText: text.slice(0, 200_000), attachments: JSON.stringify(part.attachments), extracted: "{}", missing: "[]", notes: `Follow-up on existing deal ${same.id}`, status: "CONVERTED", dealId: same.id };
+        await prisma.dealIntake.upsert({ where: { messageId: key }, create: { ...donePartRow, messageId: key }, update: donePartRow }).catch(() => null); // the first part turns the claim row into its record
         created.push({ id: same.id, name: before.propertyName ?? before.name });
         continue;
       }
       const intakeN = await processIntake({ rawText: text, subject: `${cleanSubject} - ${part.name}`, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, fromEmail: external ? fromAddr : fwd.email, toEmail: MAILBOX(), source: "WEBHOOK", attachments: own.map((t) => t.name) });
+      if (key === ext) await releaseClaim(); // the new ticket's own row takes the message id now that the work is done
       await prisma.dealIntake.update({ where: { id: intakeN.id }, data: { messageId: key } }).catch(() => null);
       await recordDealEmail(intakeN.dealId, { messageId: key, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "INTAKE" }).catch(() => null);
       if (msg.hasAttachments) {
