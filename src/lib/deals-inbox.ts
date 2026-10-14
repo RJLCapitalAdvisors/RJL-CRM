@@ -106,6 +106,37 @@ export async function replyOnThread(msg: Msg, html: string, fileSources: { mailb
   await graph(`/users/${q(MAILBOX())}/messages/${q(draft.id)}/send`, { method: "POST" });
 }
 
+/**
+ * RJL's own outreach (our pipeline list sent to a capital source, or their reply to it) is not a sponsor submission: the
+ * extractor names RJL as the sponsor. Oct 13, 2026: Aviel forwarded Caliber's reply to his "OZ Dealflow" email and the
+ * several-deals path opened seven tickets with RJL as the sponsor, one per line of our own pipeline.
+ */
+async function isOwnSponsor(dealId: string): Promise<boolean> {
+  const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { sponsorName: true, sponsorCompany: { select: { domain: true, name: true } } } });
+  if (!d) return false;
+  const dom = (d.sponsorCompany?.domain ?? "").toLowerCase();
+  return /^(rjlcapadvisors|rjlequities)\.com$/.test(dom) || /^rjl\b/i.test((d.sponsorName ?? d.sponsorCompany?.name ?? "").trim());
+}
+/** No ticket for our own outreach: the ticket just made is removed, the forwarder's "remember to..." still becomes a to-do, and deals@ says so. */
+async function fileOwnOutreach(msg: Msg, ext: string, dealIds: string[], forwarder: string | null, bodyText: string, rawText: string): Promise<{ skipped: string }> {
+  const notes = "RJL's own outreach (our pipeline sent to a capital source): no ticket opened";
+  await prisma.dealIntake.updateMany({ where: { dealId: { in: dealIds } }, data: { dealId: null, status: "CONVERTED", notes } }).catch(() => null);
+  for (const id of dealIds) await prisma.deal.delete({ where: { id } }).catch((e) => console.error("own-outreach ticket removal failed", id, e));
+  let todoLine = "";
+  if (forwarder) {
+    const { looksLikeReminder, createTodoFromEmail } = await import("@/lib/todos");
+    if (looksLikeReminder(bodyText, msg.subject)) {
+      const todo = await createTodoFromEmail({ userEmail: forwarder, subject: msg.subject, bodyText, messageId: ext }).catch(() => null);
+      if (todo) todoLine = `<p>Added to your To do list on the Dashboard: <b>${todo.text.replace(/</g, "&lt;")}</b></p>`;
+    }
+  }
+  const row = { source: "WEBHOOK", fromEmail: forwarder ?? msg.from?.emailAddress.address ?? null, toEmail: MAILBOX(), subject: msg.subject, rawText: rawText.slice(0, 200_000), extracted: "{}", missing: "[]", status: "CONVERTED", notes };
+  await prisma.dealIntake.upsert({ where: { messageId: ext }, create: { ...row, messageId: ext }, update: row }).catch(() => null);
+  await replyOnThread(msg, `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt"><p>This reads as RJL's own outreach (our pipeline sent to a capital source), not a sponsor submission, so no ticket was opened.</p>${todoLine}</div>`).catch((e) => console.error("own-outreach reply failed", e));
+  await graph(`/users/${q(MAILBOX())}/messages/${q(msg.id)}`, { method: "PATCH", body: JSON.stringify({ isRead: true }) }).catch(() => {});
+  return { skipped: "own outreach" };
+}
+
 export async function processDealsMessage(messageId: string): Promise<{ dealId: string; replied: boolean } | { skipped: string }> {
   await loadChecklist(); // the Required Items List as Jonathan last edited it
   const msg = await graph<Msg>(`/users/${q(MAILBOX())}/messages/${q(messageId)}?$select=id,internetMessageId,subject,receivedDateTime,hasAttachments,isRead,from,body,conversationId`);
@@ -266,6 +297,7 @@ ${text.slice(0, 2000)}` });
         continue;
       }
       const intakeN = await processIntake({ rawText: text, subject: `${cleanSubject} - ${part.name}`, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, fromEmail: external ? fromAddr : fwd.email, toEmail: MAILBOX(), source: "WEBHOOK", attachments: own.map((t) => t.name) });
+      if (await isOwnSponsor(intakeN.dealId)) return fileOwnOutreach(msg, ext, [intakeN.dealId], INTERNAL.test(fromAddr) ? fromAddr : null, bodyText, rawText);
       if (key === ext) await releaseClaim(); // the new ticket's own row takes the message id now that the work is done
       await prisma.dealIntake.update({ where: { id: intakeN.id }, data: { messageId: key } }).catch(() => null);
       await recordDealEmail(intakeN.dealId, { messageId: key, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "INTAKE" }).catch(() => null);
@@ -334,6 +366,7 @@ ${text.slice(0, 2000)}` });
     source: "WEBHOOK",
     attachments: names,
   });
+  if (await isOwnSponsor(intake.dealId)) return fileOwnOutreach(msg, ext, [intake.dealId], INTERNAL.test(fromAddr) ? fromAddr : null, bodyText, rawText);
   await releaseClaim();
   await prisma.dealIntake.update({ where: { id: intake.id }, data: { messageId: ext } });
   await recordDealEmail(intake.dealId, { messageId: ext, graphId: msg.id, conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: msg.subject, fromEmail: external ? fromAddr : fwd.email, receivedAt: received, kind: "INTAKE" }).catch(() => null);

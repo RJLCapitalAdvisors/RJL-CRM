@@ -347,7 +347,7 @@ export async function detectMultipleDeals(bodyText: string, attachmentNames: str
   const res = await client.messages.parse({
     model: "claude-sonnet-5",
     max_tokens: 2000,
-    system: "You triage emails sent to a real estate capital advisor's deal inbox. Decide how many DISTINCT deals (separate properties or separately-capitalized opportunities) the email presents. Most emails present exactly one deal, often with several files (OM, model, comps) that all belong to it: that is one entry. Only split when the email clearly offers separate deals (different properties, each with its own ask). Assign every listed file to the deal it belongs to.",
+    system: "You triage emails sent to a real estate capital advisor's deal inbox. Decide how many DISTINCT deals (separate properties or separately-capitalized opportunities) the email presents. Most emails present exactly one deal, often with several files (OM, model, comps) that all belong to it: that is one entry. Only split when the email clearly offers separate deals (different properties, each with its own ask). Assign every listed file to the deal it belongs to. The advisor's OWN outreach is never a list of deals: an email from RJL Capital Advisors to an investor or capital source listing 'deals we are working on', a pipeline teaser, or the investor's reply to one, returns an empty list.",
     messages: [{ role: "user", content: `EMAIL BODY:\n${bodyText.slice(0, 6000)}\n\nATTACHMENTS: ${attachmentNames.join(" | ") || "(none)"}\n\nFIRST LINES OF EACH ATTACHMENT:\n${peek.slice(0, 40000)}` }],
     output_config: { format: zodOutputFormat(Split) },
   });

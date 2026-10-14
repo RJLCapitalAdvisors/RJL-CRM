@@ -54,8 +54,11 @@ export function nameWithin(a: string, b: string): boolean {
   if (/^(plaza|center|centre|portfolio|apartments|apartment|village|park|place|square|commons|crossing|station|tower|towers|lofts|ranch|estates|the)$/.test(short)) return false;
   return new RegExp(`(^| )${short.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`).test(long);
 }
+// asset classes, strategies and forms shared by any two tickets of the same kind; "Brooklyn, NY Multifamily Development" and
+// "Miami, FL High-Rise Multifamily Development" share two of these and nothing else (Jonathan, Oct 14, 2026)
+const GENERIC = new Set(["multifamily", "industrial", "retail", "office", "development", "redevelopment", "residential", "commercial", "mixed", "high", "rise", "ground", "hotel", "hospitality", "storage", "student", "housing", "senior", "living", "townhomes", "townhome", "community", "condo", "condos", "condominium", "condominiums", "land", "site", "project", "property", "properties", "shopping", "warehouse", "flex", "medical", "logistics", "build", "rent", "acquisition", "recap", "recapitalization", "equity", "debt", "construction", "phase", "north", "south", "east", "west", "county", "city", "class", "opportunity", "zone", "fund", "units", "unit"]);
 export function similarName(a: string, b: string): boolean {
-  const w = (s: string) => new Set(normName(s).split(" ").filter((x) => x.length > 3));
+  const w = (s: string) => new Set(normName(s).split(" ").filter((x) => x.length > 3 && !GENERIC.has(x)));
   const A = w(a), B = w(b);
   let hit = 0;
   for (const x of A) if (B.has(x)) hit++;
@@ -105,6 +108,8 @@ export async function possibleDuplicates(): Promise<DupePair[]> {
       let why: string | null = null;
       if (normName(x.propertyName ?? x.name).length >= 4 && normName(x.propertyName ?? x.name) === normName(y.propertyName ?? y.name)) why = "same name";
       else if (certainMatch(x.propertyName ?? x.name, ctx, y)) why = "same address";
+      // two tickets in different known cities are different deals however alike the names (the name rules stay for tickets with no city)
+      else if (cityOf(x.city) && cityOf(y.city) && cityOf(x.city) !== cityOf(y.city)) continue;
       else if (similarName(x.propertyName ?? x.name, y.propertyName ?? y.name)) why = "similar names";
       else if (nameWithin(x.propertyName ?? x.name, y.propertyName ?? y.name)) why = "one name contains the other";
       else if (sameSponsorAndCity(ctx, y)) why = `same sponsor, both in ${y.city}`;

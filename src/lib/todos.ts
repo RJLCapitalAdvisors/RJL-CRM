@@ -9,7 +9,7 @@ import { stripDashes } from "@/lib/style";
  * such as "remind me to handle this" or "to do: call him back". That is not a deal: the note is read, the people in
  * the forwarded email are named, and a short item lands on the forwarder's dashboard until they dismiss it.
  */
-const REMINDER = /\b(remind me|reminder|to[\s-]?do|todo|follow[\s-]?up (on|with) (this|him|her|them)|handle this|deal with this|don'?t forget|note to self|add to my list)\b/i;
+const REMINDER = /\b(remind me|reminder|to[\s-]?do|todo|follow[\s-]?up (on|with) (this|him|her|them)|handle this|deal with this|don'?t forget|note to self|add to my list|remember to|make sure (we|to|you|i))\b/i;
 
 /** The forwarder's own words: everything above the forwarded header. */
 export function forwardNote(bodyText: string): string {
