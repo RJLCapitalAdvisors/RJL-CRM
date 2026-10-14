@@ -144,7 +144,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
                 Clear new ticks
               </button>
             )}
-            <DraftButton label="Done" readyLabel="Open letter in Outlook" disabled={picked.size === 0} action={async () => { const r = await createEngagementLetter(dealId, [...picked]); if (r.ok) forget(); return r; }} title="Drafts the engagement letter with the ticked groups" />
+            <DraftButton label="Done" readyLabel="Open letter in Outlook" action={async () => { if (!picked.size) return { ok: false as const, reason: "Tick the groups to carve out first: the suggested groups above the list, or the boxes on the left of each row." }; const r = await createEngagementLetter(dealId, [...picked]); if (r.ok) forget(); return r; }} title="Drafts the engagement letter with the ticked groups" />
           </div>
         </div>
       )}

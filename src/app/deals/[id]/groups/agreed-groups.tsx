@@ -134,9 +134,10 @@ export function AgreedGroups({ dealId, groups, struck, confirmed, signed }: { de
               <DraftButton
                 label="Draft engagement letter"
                 readyLabel="Open letter in Outlook"
-                disabled={ticked.size === 0 || pending}
+                disabled={pending}
                 title="Drafts the engagement letter to the sponsor with the ticked groups, in your Outlook"
                 action={async () => {
+                  if (!ticked.size) return { ok: false as const, reason: "Tick at least one group first." };
                   const r = await createEngagementLetter(dealId, [...ticked]);
                   if (r.ok) setDone(`Letter drafted with ${ticked.size} groups.`);
                   return r;
