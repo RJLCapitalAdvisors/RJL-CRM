@@ -394,7 +394,13 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     if (!items.length) return setNote("Nothing to send: no firm is ticked, or the ticked firms were already sent.");
     if (!general) return setNote("The General email is still rendering. Give it a moment, or click 'reset to template'.");
     const noPeople = items.filter((i) => !i.toContactIds.length);
-    if (noPeople.length) return setNote(`${noPeople.length} firm${noPeople.length === 1 ? " has" : "s have"} nobody picked: use the ▾ on the firm to pick who gets it, or x to leave it out.`);
+    if (noPeople.length) {
+      // name the firms and jump to the first one: "1 firm has nobody picked" with the firm off screen looked like a stuck button (Aurea, Oct 14, 2026)
+      const names = noPeople.map((i) => firms.find((f) => f.rowId === i.rowId)?.company ?? "a firm");
+      setCurrent(noPeople[0].rowId);
+      setTimeout(() => document.getElementById(`firm-${noPeople[0].rowId}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 0);
+      return setNote(`Nobody picked at ${names.join(", ")}: use the ▾ on the firm to pick who gets it, or x to leave it out.`);
+    }
     if (!armed || Date.now() - armed > 10_000) {
       setArmed(Date.now());
       setNote(`Ready: ${items.length} individual email${items.length === 1 ? "" : "s"}, one at a time (every ${gapS} seconds or longer, set by the attachments' size), ${chosenFiles.size} attachment${chosenFiles.size === 1 ? "" : "s"} each. Click LAUNCH again to send.`);
@@ -626,12 +632,12 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
             const res = results[f.rowId];
             const selected = current === f.rowId;
             return (
-              <div key={f.rowId} className="relative">
+              <div key={f.rowId} id={`firm-${f.rowId}`} className="relative">
                 <div style={tone(f, selected)} className={`${pill(selected, on)} ${res?.ok ? "border-emerald-500" : ""} ${shaded(f) && !on && !selected ? "opacity-60" : ""} ${selected ? "ring-2 ring-sky-600 ring-offset-1" : ""}`} title={shaded(f) ? (f.followupTo ? "Answered, passed or already followed up: left out unless you turn it on with +" : "No sent deal email on record for this firm: a follow-up cannot reply to it") : undefined}>
                   <button type="button" className="flex items-center gap-1.5" onClick={() => setCurrent(f.rowId)} title={f.status >= 2 ? "Sent earlier; the + sends it again with the current email" : "Show this firm's email"}>
                     <CompanyLogo domain={f.domain} name={f.company} size={18} />
                     <span className="font-medium">{f.company}</span>
-                    <span className="text-xs text-muted">{chosen.length ? chosen.map((p) => p.name.split(" ")[0]).join(", ") : "nobody picked"}</span>
+                    <span className={`text-xs ${chosen.length || !on ? "text-muted" : "text-red-700"}`}>{chosen.length ? chosen.map((p) => p.name.split(" ")[0]).join(", ") : "nobody picked"}</span>
                     {draftFor(f)?.touched && !res && <span className="text-xs text-sky-700" title="This firm's email has its own edits on top of the General email">edited</span>}
                     {res?.ok && <span className="text-xs text-emerald-700">sent</span>}
                     {res?.pending && <span className="text-xs text-sky-700">queued</span>}
