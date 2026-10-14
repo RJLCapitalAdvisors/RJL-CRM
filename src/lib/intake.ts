@@ -418,7 +418,8 @@ export async function extractWithClaude(rawText: string, subject?: string | null
   const response = await client.messages.parse({
     model: "claude-opus-5",
     max_tokens: 16000,
-    system: systemPrompt(rules),
+    // the rules are the same on every call; cached, the repeat reads within a few minutes (a sponsor's three emails, a multi-deal forward, the sponsor-reply sweep) pay a tenth for them (Oct 14, 2026)
+    system: [{ type: "text", text: systemPrompt(rules), cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content }],
     output_config: { format: zodOutputFormat(claudeOutput(scope)) },
   });

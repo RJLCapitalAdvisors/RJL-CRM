@@ -173,7 +173,10 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
   };
 
   // Several deals in one email (three models, two OMs)? Decide that first, so each joins or opens its own ticket.
-  const splitFirst = names.length >= 2 || bodyText.length > 400 ? await detectMultipleDeals(bodyText, names, texts).catch(() => []) : [];
+  // a reply on a thread already filed under a deal is one deal unless it carries several files (Oct 14, 2026: one Claude read fewer per follow-up)
+  const threadId = (msg as Msg & { conversationId?: string }).conversationId ?? null;
+  const onKnownThread = !!threadId && !!(await prisma.dealEmail.findFirst({ where: { conversationId: threadId }, select: { id: true } }).catch(() => null));
+  const splitFirst = names.length >= 2 || (bodyText.length > 400 && !onKnownThread) ? await detectMultipleDeals(bodyText, names, texts).catch(() => []) : [];
 
   // Is this about a deal we already have? Then it is a follow-up: files and answers join that ticket.
   const existingId = splitFirst.length > 1 ? null : await matchExistingDeal({ conversationId: (msg as Msg & { conversationId?: string }).conversationId ?? null, subject: cleanSubject, bodyText, senderEmail: external ? fromAddr : fwd.email, attachmentNames: names, attachmentText: texts.map((t) => `=== ${t.name} ===\n${t.text.slice(0, 1500)}`).join("\n") });
@@ -190,13 +193,16 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
     const facts = await extractDealFacts(existingId, followText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`, { mayEnterFaq: true }).catch(() => 0);
     // a deal that was lost and comes back: the new documents overwrite the old figures (Jonathan, Sep 25, 2026); then every file is read again
     const wasLost = (await prisma.deal.findUniqueOrThrow({ where: { id: existingId }, select: { stage: true } })).stage === "Deal Lost";
-    const merged = await mergeIntoDeal(existingId, wasLost ? rawText : followText, cleanSubject, { modelAttached: (wasLost ? names : fresh.map((t) => t.name)).some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: wasLost ? names : fresh.map((t) => t.name), overwrite: wasLost }).catch(() => ({ filled: 0, changes: [], model: null }));
+    // the full Opus re-read of the ticket only when there is new material to read: a fresh file, a long write-up, or a deal coming back.
+    // A short reply with no file is read by the two targeted Sonnet passes (facts, open asks), which fill the same blanks (Oct 14, 2026: cost)
+    const fullRead = wasLost || fresh.length > 0 || bodyText.length > 6000;
+    const merged = fullRead ? await mergeIntoDeal(existingId, wasLost ? rawText : followText, cleanSubject, { modelAttached: (wasLost ? names : fresh.map((t) => t.name)).some((n) => /\.(xlsx|xlsm|xls)$/i.test(n)), attachments: wasLost ? names : fresh.map((t) => t.name), overwrite: wasLost }).catch(() => ({ filled: 0, changes: [], model: null })) : { filled: 0, changes: [], model: null };
     // then the open asks are put to the email one by one, so a written answer (a closing date, how the land was sourced, "not in an OZ") lands on the ticket (Oct 8, 2026)
     const { fillMissingFromText } = await import("@/lib/deal-knowledge");
     const asksFilled = await fillMissingFromText(existingId, followText, cleanSubject).catch(() => ({ filled: 0, keys: [] }));
     const filled = merged.filled + asksFilled.filled;
-    // the narratives take in what the new material adds (a sponsor deck, a write-up, the sponsor's answers)
-    await (await import("@/lib/enrich-narratives")).improveNarratives(existingId, followText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => null);
+    // the narratives take in what the new material adds (a sponsor deck, a write-up, the sponsor's answers); a few lines with no file carry none
+    if (fresh.length > 0 || bodyText.length > 1500) await (await import("@/lib/enrich-narratives")).improveNarratives(existingId, followText, `${cleanSubject} (${received.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).catch(() => null);
     if (!external) await applyForwarderInstructions(existingId, bodyText).catch(() => null);
     let deal = await prisma.deal.findUniqueOrThrow({ where: { id: existingId } });
     const wasMentioned = deal.stage === "Deal Mentioned";

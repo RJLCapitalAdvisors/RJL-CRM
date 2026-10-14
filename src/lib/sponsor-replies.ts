@@ -72,9 +72,11 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
       const { extractDealFacts, mergeIntoDeal } = await import("@/lib/deal-knowledge");
       if (words.length > 40) {
         facts += await extractDealFacts(d.id, words, `${a.subject ?? "sponsor email"} (${stamp})`, { mayEnterFaq: true }).catch(() => 0);
-        await mergeIntoDeal(d.id, words, a.subject ?? "").catch(() => 0);
+        // the full Opus re-read only for a long write-up; a few lines are read by the facts pass and the open-asks pass, which fill the same blanks
+        // (Oct 14, 2026: 108 of 123 sponsor replies in a month were under 1,500 characters and each ran four Claude reads)
+        if (words.length > 6000) await mergeIntoDeal(d.id, words, a.subject ?? "").catch(() => 0);
         await (await import("@/lib/deal-knowledge")).fillMissingFromText(d.id, words, a.subject ?? "the sponsor's email").catch(() => null); // the open asks, answered from the words (Oct 8, 2026)
-        await (await import("@/lib/enrich-narratives")).improveNarratives(d.id, words, `${a.subject ?? "the sponsor's email"} (${stamp})`).catch(() => null);
+        if (words.length > 1500) await (await import("@/lib/enrich-narratives")).improveNarratives(d.id, words, `${a.subject ?? "the sponsor's email"} (${stamp})`).catch(() => null);
       }
       // engagement letter confirmation
       const det = JSON.parse(d.details || "{}") as Record<string, unknown>;
