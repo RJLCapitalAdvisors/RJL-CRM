@@ -27,6 +27,8 @@ export async function proposeNamingConventions(): Promise<{ checked: number; pro
   const deals = await prisma.deal.findMany({ where: { stage: { in: STAGES }, parentDealId: null }, select: { id: true, name: true, propertyName: true, propertyAddress: true, sponsorName: true, hubspotId: true, _count: { select: { files: true, facts: true } } } });
   let proposed = 0;
   for (const d of deals) {
+    // RJL is never the sponsor: a ticket that reads that way is our own outreach misread as a submission (Oct 14, 2026), and is not renamed after it
+    if (/^rjl\b/i.test((d.sponsorName ?? "").trim())) continue;
     const target = conventionalName({ ...d, fileCount: d._count.files, factCount: d._count.facts });
     if (!target || target === clean(d.name)) continue;
     const pending = await prisma.criteriaProposal.findFirst({ where: { dealId: d.id, status: "PENDING", changes: { contains: '"dealName"' } } });
