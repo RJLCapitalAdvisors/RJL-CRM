@@ -681,6 +681,8 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
 
 export const appBase = () => (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
 
+/** A unit line without its location (rooms, size, migrash): the location is said once, above the units. */
+const unitFacts = (line: string) => line.split(" · ").filter((x) => /rooms|m²|migrash/.test(x)).join(" · ");
 /** What tells one unit of a batch from another in the reply: the type code (degem), else the name with its rooms and size. */
 const unitTag = (r: IntakeRow) => r.degem?.trim() || [r.name, r.line].filter(Boolean).join(", ");
 /**
@@ -714,7 +716,7 @@ function replyHtml(rows: IntakeRow[], base: string, note: string | null, skipped
   const units = rows.filter((r) => r.kind !== "projects");
   const status = (r: IntakeRow) => (r.missing.length ? `<span ${grey}>${r.missing.length} needed</span>` : `<span ${grey}>complete</span>`);
   const link = (r: IntakeRow) => `<a href="${base}/israel/${r.kind}/${r.id}">${esc(r.name)}</a>`;
-  const unitLine = (r: IntakeRow) => `<li>${link(r)}${r.degem ? ` <span ${grey}>type ${esc(r.degem)}</span>` : ""}${r.kind === "houses" ? ` <span ${grey}>(house)</span>` : ""}${r.line ? ` <span ${grey}>${esc(r.line)}</span>` : ""} · ${status(r)}</li>`;
+  const unitLine = (r: IntakeRow) => `<li>${link(r)}${r.degem ? ` <span ${grey}>type ${esc(r.degem)}</span>` : ""}${r.kind === "houses" ? ` <span ${grey}>(house)</span>` : ""}${unitFacts(r.line) ? ` <span ${grey}>${esc(unitFacts(r.line))}</span>` : ""} · ${status(r)}</li>`;
   const used = new Set<string>();
   const blocks = projects.map((p) => {
     const mine = units.filter((u) => u.projectId === p.id);
@@ -850,7 +852,8 @@ export function requestPages(rows: IntakeRow[], allText: string): import("@/lib/
     }
     for (const m of [...new Set(list.flatMap((u) => u.missing))]) if (!listed.has(m)) items.push({ label: m, needed: true });
     const word = kind === "houses" ? "Houses" : "Apartments";
-    const lead = list.slice(0, 8).map((u) => [u.degem ? `Type ${u.degem}` : u.name, u.line || null, u.price || null].filter(Boolean).join(" · "));
+    // the unit's own facts only (type, rooms, size, price): the location is on the page already (Jonathan, Oct 15, 2026)
+    const lead = list.slice(0, 8).map((u) => [u.degem ? `Type ${u.degem}` : list.length > 1 ? u.name : null, unitFacts(u.line) || null, u.price || null].filter(Boolean).join(" · ")).filter(Boolean);
     if (list.length > 8) lead.push(`and ${list.length - 8} more`);
     return { heading: list.length ? `${word} (${list.length} on file)` : `${word} (none on file yet: everything below is needed)`, lead, items };
   };

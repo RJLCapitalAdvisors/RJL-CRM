@@ -150,20 +150,23 @@ export async function buildIsraelRequestPdf(pages: RequestPage[], meta: RequestM
     if (pg.subtitle) push(fit(drawable(reg, text(pg.subtitle)), reg, 9, width), reg, muted, 0, 9);
     gap(4);
     ops.push({ kind: "rule" }); h += 8;
-    push(fit(drawable(reg, text("Bold: still needed.  Regular: found in the email and its files.")), reg, 8.5, width), reg, muted, 0, 8.5);
-    gap(6);
+    gap(4);
     for (const sec of pg.sections) {
       push(drawable(bold, text(sec.heading)), bold, navy, 0, size + 1);
       for (const l of sec.lead ?? []) push(fit(drawable(reg, text(l)), reg, size - 0.5, width), reg, muted, 0, size - 0.5);
       if (sec.lead?.length) gap(2);
-      for (const it of sec.items) {
-        const font = it.needed ? bold : reg;
-        const label = drawable(font, text(it.label));
-        const value = it.value ? drawable(reg, text(it.value)) : "";
-        if (it.needed) {
-          for (const l of wrap(`• ${label}`, bold, size, width)) push(l, bold, ink, 0);
-        } else {
-          const lab = fit(`• ${label}`, reg, size, width * 0.62);
+      // Needed on top in bold, Received beneath in regular, each under its own header (Jonathan, Oct 15, 2026)
+      const needed = sec.items.filter((it) => it.needed), received = sec.items.filter((it) => !it.needed);
+      if (needed.length) {
+        push("Needed", bold, muted, 0, size - 1);
+        for (const it of needed) for (const l of wrap(`• ${drawable(bold, text(it.label))}`, bold, size, width)) push(l, bold, ink, 0);
+        gap(3);
+      }
+      if (received.length) {
+        push("Received", bold, muted, 0, size - 1);
+        for (const it of received) {
+          const value = it.value ? drawable(reg, text(it.value)) : "";
+          const lab = fit(`• ${drawable(reg, text(it.label))}`, reg, size, width * 0.62);
           const w = reg.widthOfTextAtSize(`${lab}: `, size);
           ops.push({ kind: "text", s: `${lab}${value ? ":" : ""}`, font: reg, size, color: ink, x: 0, dy: 0 });
           if (value) ops.push({ kind: "text", s: fit(value, reg, size - 0.5, width - w), font: reg, size: size - 0.5, color: muted, x: w, dy: 0 });
