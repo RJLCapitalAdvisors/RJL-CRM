@@ -67,7 +67,7 @@ export async function findCalls(terms: string[], transcripts?: Transcript[], opt
 const Enriched = z.object({
   summary: z.string().describe("The business plan paragraph, rewritten to fold in what the calls added. Same rules: location and market first, anchors/key tenants, value-add thesis, physical attributes; 4-6 sentences; flowing prose; no dashes; nothing that has its own field. Return the existing text unchanged if the calls add nothing."),
   sponsorExperience: z.string().describe("The sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes. Fold in what the calls added; return the existing text unchanged if nothing new."),
-  facts: z.array(z.object({ question: z.string(), answer: z.string(), askedByInvestor: z.boolean().describe("True only if an investor (LP) on the call asked this and the sponsor answered it.") })).describe("Concrete things said on the calls that an investor would ask about and that are not already on the ticket. Empty if none."),
+  facts: z.array(z.object({ question: z.string(), answer: z.string(), askedByInvestor: z.boolean().describe("True only if an investor (LP) on the call asked this and the sponsor answered it."), aboutThisDeal: z.boolean().describe("True only when the answer is about THIS property and this raise (its site, tenants, plan, numbers, timeline, capital stack). False for the sponsor's firm in general: their buy box, deals per year, hold periods, how they usually fund capex, who manages their centers, anchor preferences, other deals.") })).describe("Concrete things said on the calls that an investor would ask about and that are not already on the ticket. Empty if none."),
   changed: z.boolean().describe("True if either narrative changed."),
   // blank ticket fields the calls settle (Jonathan, Sep 24, 2026: closing date, sourcing, GC, loan terms, acreage and the rest come off calls too)
   fields: z.object({
@@ -82,6 +82,16 @@ const Enriched = z.object({
   details: z.array(z.object({ key: z.string(), answer: z.string() })).describe("Answers to the listed open checklist questions that the calls clearly give, by key; quote or closely paraphrase the sponsor. Skip anything not said. Never carry a number that belongs to the model (price, capitalization, debt, returns)."),
 });
 
+/** A call is about this deal when its title or notes name the property (its distinctive words), its street, or its city. */
+const GENERIC_PROPERTY = /\b(shopping|center|centre|plaza|apartments?|portfolio|development|industrial|retail|multifamily|office|park|village|commons|square|tower|towers|lofts|the)\b/g;
+export function callIsAboutDeal(c: Transcript, deal: { propertyName: string | null; propertyAddress: string | null; city: string | null; name: string }): boolean {
+  const hay = norm(`${c.title} ${c.overview} ${c.bullets} ${c.actionItems} ${c.keywords.join(" ")}`).replace(/\s+/g, " ");
+  const prop = norm(deal.propertyName ?? deal.name).replace(GENERIC_PROPERTY, " ").replace(/\s+/g, " ").trim();
+  const street = norm((deal.propertyAddress ?? "").split(",")[0]).replace(/^\s*\d+[a-z]?\s+/, "").replace(/\b(sw|se|nw|ne|n|s|e|w|rd|road|st|street|ave|avenue|blvd|dr|drive|hwy|highway|pkwy|parkway|ln|lane|way)\b/g, " ").replace(/\s+/g, " ").trim();
+  const city = norm(deal.city ?? "").trim();
+  return [prop, street, city].some((k) => k.length >= 4 && new RegExp(`\\b${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(hay));
+}
+
 /** Enrich a deal's business plan and sponsor bio from Fireflies calls with the sponsor. Returns what happened. */
 export async function enrichFromCalls(dealId: string, transcripts?: Transcript[]): Promise<{ calls: number; changed: boolean; facts: number; filled?: string[] }> {
   if (!firefliesConfigured() || !process.env.ANTHROPIC_API_KEY) return { calls: 0, changed: false, facts: 0 };
@@ -93,6 +103,10 @@ export async function enrichFromCalls(dealId: string, transcripts?: Transcript[]
   const terms = [deal.sponsorName, deal.sponsorCompany?.name, deal.sponsorCompany?.domain, ...(deal.sponsorCompany?.contacts ?? []).flatMap((c) => [[c.firstName, c.lastName].filter(Boolean).join(" "), c.email ?? ""])].filter((x): x is string => Boolean(x && x.length > 3));
   const phrases = [deal.propertyName].filter((x): x is string => Boolean(x && x.length > 3));
   const calls = (await findCalls(terms, transcripts, { phrases }).catch(() => [])).slice(0, 5);
+  // a call with the sponsor is not a call about this deal (Oct 15, 2026: Hedges Greene in Tualatin took five FAQ answers about
+  // Citivest's buy box from the Everett intro calls). Only calls that name the property, its street or its city feed the ticket's
+  // facts, fields and business plan; the others may only inform the sponsor bio.
+  const dealCalls = calls.filter((c) => callIsAboutDeal(c, deal));
   if (!calls.length) {
     await prisma.deal.update({ where: { id: dealId }, data: { callsEnrichedAt: new Date() } }).catch(() => null);
     return { calls: 0, changed: false, facts: 0 };
@@ -100,7 +114,9 @@ export async function enrichFromCalls(dealId: string, transcripts?: Transcript[]
   const client = new Anthropic();
   const known = deal.facts.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n");
   void transcripts;
-  const callText = calls.map((c) => `=== ${c.title} (${c.date.toISOString().slice(0, 10)}; ${c.participants.join(", ")}) ===\n${c.overview}\n${c.bullets}\n${c.actionItems}`).join("\n\n");
+  const oneCall = (c: Transcript) => `=== ${c.title} (${c.date.toISOString().slice(0, 10)}; ${c.participants.join(", ")}) ===\n${c.overview}\n${c.bullets}\n${c.actionItems}`;
+  const otherCalls = calls.filter((c) => !dealCalls.includes(c));
+  const callText = [dealCalls.length ? `CALLS ABOUT THIS DEAL (facts, fields, details and the business plan come only from these):\n\n${dealCalls.map(oneCall).join("\n\n")}` : "CALLS ABOUT THIS DEAL: none. Return no facts, no fields, no details, and the business plan unchanged.", otherCalls.length ? `OTHER CALLS WITH THE SPONSOR, about other deals or the firm (use them for the sponsor bio only, never for this deal's facts or fields):\n\n${otherCalls.map(oneCall).join("\n\n")}` : ""].filter(Boolean).join("\n\n");
   const res = await client.messages.parse({
     model: "claude-opus-5",
     max_tokens: 3000,
@@ -110,6 +126,12 @@ export async function enrichFromCalls(dealId: string, transcripts?: Transcript[]
   });
   const out = res.parsed_output;
   if (!out) return { calls: calls.length, changed: false, facts: 0 };
+  if (!dealCalls.length) {
+    // nothing said about this property: the sponsor bio is all the other calls may change
+    const b = out.changed ? houseText(out.sponsorExperience) : null;
+    await prisma.deal.update({ where: { id: dealId }, data: { callsEnrichedAt: new Date(), ...(b && b !== deal.sponsorExperience ? { sponsorExperience: b } : {}) } });
+    return { calls: calls.length, changed: Boolean(b && b !== deal.sponsorExperience), facts: 0, filled: b && b !== deal.sponsorExperience ? ["sponsorExperience"] : [] };
+  }
   const data: Record<string, unknown> = { callsEnrichedAt: new Date() };
   const filled: string[] = [];
   if (out.changed) {
@@ -143,9 +165,9 @@ export async function enrichFromCalls(dealId: string, transcripts?: Transcript[]
   }
   if (detailsChanged) data.details = JSON.stringify(details);
   await prisma.deal.update({ where: { id: dealId }, data });
-  const source = `Call: ${calls.map((c) => `${c.title} (${c.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).join("; ")}`.slice(0, 500);
-  const fresh = out.facts.filter((f) => f.question.trim() && f.answer.trim());
-  if (fresh.length) await prisma.dealFact.createMany({ data: fresh.map((f) => ({ dealId, question: houseText(f.question) ?? f.question, answer: houseText(f.answer) ?? f.answer, source, inFaq: Boolean(f.askedByInvestor) })) });
+  const source = `Call: ${dealCalls.map((c) => `${c.title} (${c.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })})`).join("; ")}`.slice(0, 500);
+  const fresh = out.facts.filter((f) => f.question.trim() && f.answer.trim() && f.aboutThisDeal);
+  if (fresh.length) await prisma.dealFact.createMany({ data: fresh.map((f) => ({ dealId, question: houseText(f.question) ?? f.question, answer: houseText(f.answer) ?? f.answer, source, inFaq: Boolean(f.askedByInvestor && f.aboutThisDeal) })) });
   return { calls: calls.length, changed: filled.length > 0, facts: fresh.length, filled };
 }
 
