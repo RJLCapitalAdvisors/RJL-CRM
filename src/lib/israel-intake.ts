@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { graph, graphConfigured, realmFor } from "@/lib/graph";
 import { attachmentToText, emailHtmlToText } from "@/lib/attachments";
-import { IL_MACHSAN_LOCATIONS, IL_PARKING, IL_REQUIRED, isCustomKey, nis, parseExtra, pricePerMeter, sqm, reconcileMirpasot, hasHouseNumber } from "@/lib/israel";
+import { IL_MACHSAN_LOCATIONS, IL_PARKING, IL_REQUIRED, isCustomKey, nis, parseExtra, pricePerMeter, sqm, reconcileMirpasot, hasHouseNumber, IL_AMENITIES } from "@/lib/israel";
 import { loadIlRequired } from "@/lib/required-items";
 import { stripDashes } from "@/lib/style";
 
@@ -124,7 +124,7 @@ export type IntakeInput = {
   sourceLabel: string; // "Email from Yael Tzur" / "WhatsApp from +972 52 300 1122"
   mailbox: string; // where it arrived (address or WhatsApp number)
 };
-export type IntakeRow = { id: string; kind: "apartments" | "houses" | "projects"; name: string; degem?: string | null; line: string; price: string; missing: string[]; provided?: { label: string; value: string }[] };
+export type IntakeRow = { id: string; kind: "apartments" | "houses" | "projects"; name: string; degem?: string | null; line: string; price: string; missing: string[]; provided?: { label: string; value: string }[]; projectId?: string | null; projectName?: string | null };
 type Kind = "projects" | "apartments" | "houses";
 const kindWord = (k: Kind) => (k === "houses" ? "House" : k === "projects" ? "Project" : "Apartment");
 
@@ -507,7 +507,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     if (!existing?.brochureType) await attachBrochure(input.files, projectRow.id).catch(() => null);
     const fresh = await prisma.ilProject.findUnique({ where: { id: projectRow.id }, omit: { brochure: true } });
     const { projectMissing } = await import("@/lib/israel");
-    rows.push({ id: projectRow.id, kind: "projects", name: projectRow.name, line: [proj.totalUnits ? `${proj.totalUnits} units` : null, proj.stories ? `${proj.stories} stories` : null, [proj.neighborhood, proj.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: "", missing: fresh ? projectMissing(fresh as unknown as Record<string, unknown>) : [] });
+    rows.push({ id: projectRow.id, kind: "projects", projectId: projectRow.id, name: projectRow.name, line: [proj.totalUnits ? `${proj.totalUnits} units` : null, proj.stories ? `${proj.stories} stories` : null, [proj.neighborhood, proj.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: "", missing: fresh ? projectMissing(fresh as unknown as Record<string, unknown>) : [] });
   }
   const mirpasot = (a: ExtractedApartment) => {
     const list = reconcileMirpasot(a.mirpesetSqm, a.mirpasot.filter((m) => m.sqm != null || m.direction.length || m.sukka).slice(0, 3));
@@ -562,7 +562,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
       const housePlan = !found?.floorplanType && (await attachPlanPage(a, house.id, "houses").catch(() => false));
       if (!housePlan && extracted.apartments.length === 1 && !(found?.floorplanType)) await attachFloorplan(input.files, house.id, "houses").catch(() => null);
       const { houseMissing } = await import("@/lib/israel");
-      rows.push({ id: house.id, kind: "houses", name: house.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, a.migrashSqm ? `${sqm(a.migrashSqm)} migrash` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: found ? houseMissing((await prisma.ilHouse.findUnique({ where: { id: house.id } })) as unknown as Record<string, unknown>) : missingForHouse(a, Boolean(developer), planFile || Boolean(planImageFor(a))) });
+      rows.push({ id: house.id, kind: "houses", projectId: houseData.projectId, projectName: a.projectName ?? null, name: house.name, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, a.migrashSqm ? `${sqm(a.migrashSqm)} migrash` : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: found ? houseMissing((await prisma.ilHouse.findUnique({ where: { id: house.id } })) as unknown as Record<string, unknown>) : missingForHouse(a, Boolean(developer), planFile || Boolean(planImageFor(a))) });
       continue;
     }
     let project = null as { id: string } | null;
@@ -618,7 +618,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     const ownPlan = !foundApt?.floorplanType && (await attachPlanPage(a, created.id).catch(() => false));
     if (!ownPlan && extracted.apartments.length === 1 && !(foundApt?.floorplanType)) await attachFloorplan(input.files, created.id).catch(() => null);
     if (aptData.projectId) touchedProjects.add(aptData.projectId);
-    rows.push({ id: created.id, kind: "apartments", name: created.name, degem: created.degem ?? a.degem ?? null, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: foundApt ? (await import("@/lib/israel")).apartmentMissing((await prisma.ilApartment.findUnique({ where: { id: created.id } })) as unknown as Record<string, unknown>) : missingFor(a, Boolean(developer), planFile || Boolean(planImageFor(a))) });
+    rows.push({ id: created.id, kind: "apartments", projectId: aptData.projectId, projectName: a.projectName ?? null, name: created.name, degem: created.degem ?? a.degem ?? null, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: foundApt ? (await import("@/lib/israel")).apartmentMissing((await prisma.ilApartment.findUnique({ where: { id: created.id } })) as unknown as Record<string, unknown>) : missingFor(a, Boolean(developer), planFile || Boolean(planImageFor(a))) });
   }
   // the project's building facts and developers flow to the units filed under it; the reply lists what is still missing after that
   for (const pid of touchedProjects) await syncProjectToUnits(pid).catch(() => null);
@@ -674,31 +674,29 @@ function groupedMissing(units: IntakeRow[]): { item: string; tags: string[]; all
   });
 }
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-function replyHtml(rows: IntakeRow[], base: string, note: string | null): string {
+function replyHtml(rows: IntakeRow[], base: string, note: string | null, skippedFiles: string[] = []): string {
+  // Oct 15, 2026: the email itself is short. What is needed and what was found is the attached one-page-per-project sheet,
+  // and the forwarded files ride along again, so the sheet can be held against them.
   const font = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
   const grey = 'style="color:#6b716e;"';
-  const head = (r: IntakeRow) => `<b><a href="${base}/israel/${r.kind}/${r.id}">${esc(r.name)}</a></b>${r.degem ? ` <span ${grey}>type ${esc(r.degem)}</span>` : ""}${r.kind !== "apartments" ? ` <span ${grey}>(${r.kind === "houses" ? "house" : "project"})</span>` : ""}${r.line ? ` <span ${grey}>${esc(r.line)}</span>` : ""}${r.price ? ` <span ${grey}>${esc(r.price)}</span>` : ""}`;
-  // what was read, item by item, under what is still missing, so the two can be held against the email (Jonathan, Oct 13, 2026)
-  const provided = (r: IntakeRow) => (r.provided?.length ? `<div style="margin:0 0 2pt 0;color:#6b716e;">Read from the email and its files (${r.provided.length}):</div><div style="margin:0 0 6pt 18pt;color:#6b716e;font-size:10pt;line-height:1.35;">${r.provided.map((p) => `<b>${esc(p.label)}:</b> ${esc(p.value)}`).join(" · ")}</div>` : "");
-  const perTicket = (r: IntakeRow) => `<p style="margin:10pt 0 4pt 0;">${head(r)}</p>
-${r.missing.length ? `<div style="margin:0 0 4pt 0;">Still needed to complete the ticket (${r.missing.length}):</div><ol style="margin:0 0 6pt 18pt;">${r.missing.map((m) => `<li>${esc(m)}</li>`).join("")}</ol>` : `<div style="margin:0 0 6pt 0;">Nothing missing. The ticket is complete.</div>`}${provided(r)}`;
   const projects = rows.filter((r) => r.kind === "projects");
   const units = rows.filter((r) => r.kind !== "projects");
-  let blocks = projects.map(perTicket).join("");
-  if (units.length <= 1) blocks += units.map(perTicket).join("");
-  else {
-    // a batch: the units in one list, then what is missing grouped by item and named by unit
-    const groups = groupedMissing(units);
-    blocks += `<p style="margin:10pt 0 4pt 0;"><b>${units.length} units</b></p><ul style="margin:0 0 6pt 18pt;">${units.map((r) => `<li>${head(r)}${r.missing.length ? "" : ` <span ${grey}>complete</span>`}${r.provided?.length ? `<div style="color:#6b716e;font-size:9.5pt;line-height:1.35;">${r.provided.map((p) => `${esc(p.label)} ${esc(p.value)}`).join(" · ")}</div>` : ""}</li>`).join("")}</ul>`;
-    blocks += groups.length
-      ? `<div style="margin:6pt 0 4pt 0;">Still needed across the units (${groups.length}):</div><ol style="margin:0 0 6pt 18pt;">${groups.map((g) => `<li>${esc(g.item)} <span ${grey}>(${esc(g.who)})</span></li>`).join("")}</ol>`
-      : `<div style="margin:0 0 6pt 0;">Nothing missing. Every unit is complete.</div>`;
-  }
+  const status = (r: IntakeRow) => (r.missing.length ? `<span ${grey}>${r.missing.length} needed</span>` : `<span ${grey}>complete</span>`);
+  const link = (r: IntakeRow) => `<a href="${base}/israel/${r.kind}/${r.id}">${esc(r.name)}</a>`;
+  const unitLine = (r: IntakeRow) => `<li>${link(r)}${r.degem ? ` <span ${grey}>type ${esc(r.degem)}</span>` : ""}${r.kind === "houses" ? ` <span ${grey}>(house)</span>` : ""}${r.line ? ` <span ${grey}>${esc(r.line)}</span>` : ""} · ${status(r)}</li>`;
+  const used = new Set<string>();
+  const blocks = projects.map((p) => {
+    const mine = units.filter((u) => u.projectId === p.id);
+    mine.forEach((u) => used.add(u.id));
+    return `<p style="margin:8pt 0 2pt 0;"><b>${link(p)}</b>${p.line ? ` <span ${grey}>${esc(p.line)}</span>` : ""} · ${status(p)}</p>${mine.length ? `<ul style="margin:0 0 4pt 18pt;">${mine.map(unitLine).join("")}</ul>` : `<div style="margin:0 0 4pt 18pt;color:#6b716e;">no unit on file yet</div>`}`;
+  });
+  const rest = units.filter((u) => !used.has(u.id));
+  if (rest.length) blocks.push(`<ul style="margin:8pt 0 4pt 18pt;">${rest.map(unitLine).join("")}</ul>`);
   return `<div style="${font}">
-<p>${rows.length === 1 ? `${kindWord(rows[0].kind)} ticket updated in` : `${rows.length} tickets updated in`} RJL Israel (a new listing gets a new ticket; a second email about the same unit updates the one we have). ${rows.some((r) => r.missing.length) ? "Everything waits in The Que until approved; the items below are what the tickets still need." : "Everything is complete and waits in The Que for approval."}</p>
-${blocks}
+<p>${rows.length === 1 ? `${kindWord(rows[0].kind)} ticket updated in` : `${rows.length} tickets updated in`} RJL Israel. The attached PDF has one page per project with its apartments: what is still needed in <b>bold</b>, what was found in regular type. The files you forwarded are attached again, to compare.</p>
+${blocks.join("")}
 ${note ? `<p ${grey}>${esc(note)}</p>` : ""}
-<p style="color:#6b716e;font-size:9pt;">Reply to the agent for the missing items and forward their answer here; edit anything on the ticket in the CRM. A floorplan attached to the email is saved on the ticket. The attached "What was read" file is the text of this email and its files as the CRM read them, to check the tickets against.</p>
+<p style="color:#6b716e;font-size:9pt;">Everything waits in The Que until approved. Reply to the agent for what is needed and forward the answer here; edit anything on the ticket in the CRM.${skippedFiles.length ? ` Not attached again (too large): ${skippedFiles.map(esc).join(", ")}.` : ""}</p>
 </div>`;
 }
 
@@ -739,24 +737,124 @@ async function replyOnThread(msg: Msg, html: string, attachments: { name: string
 }
 
 /**
- * "What was read": the email's own text and the text of every file and page the intake read, as one HTML file attached to
- * the reply (Jonathan, Oct 13, 2026), so the tickets can be checked against the source. HTML rather than PDF because most of
- * it is Hebrew: a browser lays Hebrew out right to left, a PDF drawn here would not.
+ * "Unit types (degamim)": a range of rooms in the material ("4-6 rooms and penthouses") means at least that many unit
+ * types; when fewer are on file, the full list of types is asked for as one item (Jonathan, Oct 15, 2026).
  */
-export function sourceTextHtml(msg: { subject: string | null; receivedDateTime?: string; from?: { emailAddress: { name?: string; address?: string } } }, bodyText: string, files: IntakeFile[]): { name: string; contentType: string; bytes: Uint8Array } {
-  const block = (t: string) => `<pre style="white-space:pre-wrap;font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:0 0 14pt 0;" dir="auto">${esc(t)}</pre>`;
-  const read = files.filter((f) => f.text && f.text.trim());
-  const skipped = files.filter((f) => !f.text || !f.text.trim());
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>What was read</title></head><body style="font-family:Calibri,Arial,sans-serif;font-size:11pt;max-width:900px;margin:24px auto;padding:0 16px;">
-<h2 style="margin:0 0 4pt 0;">What the CRM read</h2>
-<div style="color:#6b716e;margin:0 0 14pt 0;">${esc(msg.subject ?? "(no subject)")} · from ${esc(msg.from?.emailAddress.name ?? msg.from?.emailAddress.address ?? "?")}${msg.receivedDateTime ? ` · ${esc(new Date(msg.receivedDateTime).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }))}` : ""}</div>
-<h3 style="margin:0 0 4pt 0;">The email</h3>
-${block(bodyText.trim() || "(no text in the email body)")}
-${read.map((f) => `<h3 style="margin:0 0 4pt 0;">${esc(f.name)}</h3>${block((f.text ?? "").length > 40_000 ? `${(f.text ?? "").slice(0, 40_000)}\n\n[... ${(f.text ?? "").length - 40_000} more characters not shown]` : (f.text ?? ""))}`).join("")}
-${skipped.length ? `<h3 style="margin:0 0 4pt 0;">Files read as pictures or not read</h3><ul>${skipped.map((f) => `<li>${esc(f.name)} (${f.type ?? "unknown type"}, ${Math.round(f.size / 1024)} KB)</li>`).join("")}</ul>` : ""}
-</body></html>`;
-  const stem = (msg.subject ?? "email").replace(/^\s*(fwd?|re|fw)\s*:\s*/i, "").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 60) || "email";
-  return { name: `What was read - ${stem}.html`, contentType: "text/html", bytes: new TextEncoder().encode(html) };
+export function degamimAsk(text: string, have: number): string | null {
+  const m = text.match(/(\d(?:\.5)?)\s*(?:-|–|to|עד)\s*(\d(?:\.5)?)\s*(?:rooms?|bedrooms?|חדרים|חד['׳]?)/i);
+  if (!m) return null;
+  const lo = Number(m[1]), hi = Number(m[2]);
+  if (!(hi > lo) || hi - lo > 6) return null;
+  const pent = /penthouse|פנטהאו[זס]/i.test(text);
+  const n = Math.floor(hi - lo) + 1 + (pent ? 1 : 0);
+  if (n <= have) return null;
+  return `Unit types (degamim): the material mentions ${m[1]} to ${m[2]} rooms${pent ? " and penthouses" : ""}, so at least ${n} unit types; ${have ? `${have} on file` : "none on file"}. Every type with its own details is needed`;
+}
+/** A project's key for finding it in the text: its first distinctive words, parentheticals (the Hebrew) dropped. */
+const nameKey = (name: string) => name.replace(/\s*\(.*?\)\s*/g, " ").trim().split(/\s+/).filter((w) => w.length > 2).slice(0, 3).join(" ").toLowerCase();
+/**
+ * The part of the material about one project: from its name to the next project's name (so a rooms range under one
+ * project never reads as another's), or the whole text when the name is not found and it is the only project.
+ */
+function textNear(all: string, name: string, others: string[], only: boolean): string {
+  const low = all.toLowerCase();
+  const key = nameKey(name);
+  const i = key ? low.indexOf(key) : -1;
+  if (i < 0) return only ? all : "";
+  let end = Math.min(all.length, i + 4000);
+  for (const o of others) {
+    const k = nameKey(o);
+    if (!k || k === key) continue;
+    let j = low.indexOf(k, i + key.length);
+    while (j >= 0 && j < end) { end = j; j = -1; }
+  }
+  return all.slice(i, end); // from the name on: a look-back read the previous project's rooms range as this one's
+}
+
+/**
+ * The request sheet's pages: one per project with the units filed under it, then one per batch of units with no
+ * project ticket. Each page lists every item of the Required Items List once: needed in bold (any unit lacking it), found in
+ * regular (every unit has it), items that do not apply left out.
+ */
+export function requestPages(rows: IntakeRow[], allText: string): import("@/lib/israel-request-pdf").RequestPage[] {
+  type Section = import("@/lib/israel-request-pdf").RequestSection;
+  type Page = import("@/lib/israel-request-pdf").RequestPage;
+  const projects = rows.filter((r) => r.kind === "projects");
+  const units = rows.filter((r) => r.kind !== "projects");
+  const amenityLine = (m: string) => /\(yes or no\)$/.test(m) && (IL_AMENITIES as readonly string[]).some((a) => m.startsWith(a));
+  const projectSection = (p: IntakeRow): Section => {
+    const items: { label: string; value?: string | null; needed: boolean }[] = [];
+    const listed = new Set<string>();
+    for (const { key, label } of IL_REQUIRED.projects) {
+      listed.add(label);
+      const value = p.provided?.find((x) => x.label === label)?.value ?? null;
+      if (p.missing.includes(label)) items.push({ label, needed: true });
+      else if (key === "amenities" && p.missing.some(amenityLine)) {
+        const open = p.missing.filter(amenityLine).map((m) => m.replace(/ \(yes or no\)$/, ""));
+        items.push({ label: open.length >= IL_AMENITIES.length ? label : `${label}: still to answer ${open.join(", ")}${value ? ` (answered: ${value})` : ""}`, needed: true });
+      }
+      else if (value) items.push({ label, value, needed: false });
+    }
+    for (const m of p.missing) if (!listed.has(m) && !amenityLine(m)) items.push({ label: m, needed: true });
+    return { heading: "Project", items };
+  };
+  const unitSection = (list: IntakeRow[], kind: "apartments" | "houses", nearText: string): Section => {
+    const items: { label: string; value?: string | null; needed: boolean }[] = [];
+    const ask = kind === "apartments" ? degamimAsk(nearText, list.length) : null;
+    if (ask) items.push({ label: ask, needed: true });
+    const listed = new Set<string>();
+    for (const { label } of IL_REQUIRED[kind]) {
+      listed.add(label);
+      const needed = list.length === 0 || list.some((u) => u.missing.includes(label));
+      if (needed) { items.push({ label, needed: true }); continue; }
+      const values = list.map((u) => u.provided?.find((x) => x.label === label)?.value ?? null);
+      if (!values.every(Boolean)) continue; // applies to no unit (no machsan, no mirpeset): not asked, not found
+      const same = values.every((v) => v === values[0]);
+      items.push({ label, value: same ? values[0] : "per unit, see the tickets", needed: false });
+    }
+    for (const m of [...new Set(list.flatMap((u) => u.missing))]) if (!listed.has(m)) items.push({ label: m, needed: true });
+    const word = kind === "houses" ? "Houses" : "Apartments";
+    const lead = list.slice(0, 8).map((u) => [u.degem ? `Type ${u.degem}` : u.name, u.line || null, u.price || null].filter(Boolean).join(" · "));
+    if (list.length > 8) lead.push(`and ${list.length - 8} more`);
+    return { heading: list.length ? `${word} (${list.length} on file)` : `${word} (none on file yet: everything below is needed)`, lead, items };
+  };
+  const pages: Page[] = [];
+  const used = new Set<string>();
+  for (const p of projects) {
+    const mine = units.filter((u) => u.projectId === p.id);
+    mine.forEach((u) => used.add(u.id));
+    const near = textNear(allText, p.name, projects.map((x) => x.name), projects.length === 1);
+    const sections: Section[] = [projectSection(p)];
+    const apts = mine.filter((u) => u.kind === "apartments"), houses = mine.filter((u) => u.kind === "houses");
+    if (apts.length || !houses.length) sections.push(unitSection(apts, "apartments", near));
+    if (houses.length) sections.push(unitSection(houses, "houses", near));
+    pages.push({ title: p.name, subtitle: p.line || null, sections });
+  }
+  const rest = units.filter((u) => !used.has(u.id));
+  const groups = new Map<string, IntakeRow[]>();
+  for (const u of rest) { const k = `${u.kind}|${u.projectId ?? u.projectName ?? ""}`; groups.set(k, [...(groups.get(k) ?? []), u]); }
+  for (const [k, list] of groups) {
+    const kind = k.startsWith("houses") ? "houses" : "apartments";
+    const pname = list[0].projectName?.trim() || null;
+    const title = pname ?? (list.length === 1 ? list[0].name : kind === "houses" ? "Houses" : "Apartments");
+    pages.push({ title, subtitle: list.length === 1 ? list[0].line || null : [list[0].line.split(" · ").slice(-1)[0] || null].filter(Boolean).join("") || null, sections: [unitSection(list, kind, pname ? textNear(allText, pname, [...projects.map((x) => x.name), ...[...groups.values()].map((l) => l[0].projectName ?? "")], groups.size === 1 && !projects.length) : allText)] });
+  }
+  return pages;
+}
+
+/** The forwarded files, attached again (those read as bytes, up to 20 MB in all); the rest are named in the reply. */
+function filesToReattach(files: IntakeFile[]): { atts: { name: string; contentType: string; bytes: Uint8Array }[]; skipped: string[] } {
+  const atts: { name: string; contentType: string; bytes: Uint8Array }[] = [];
+  const skipped: string[] = [];
+  let total = 0;
+  for (const f of files) {
+    if (!f.bytes || /^Website /.test(f.name)) continue;
+    if (total + f.bytes.byteLength > 20 * 1024 * 1024) { skipped.push(f.name); continue; }
+    total += f.bytes.byteLength;
+    atts.push({ name: f.name, contentType: f.type ?? "application/octet-stream", bytes: f.bytes });
+  }
+  for (const f of files) if (!f.bytes && !/^Website /.test(f.name) && !skipped.includes(f.name)) skipped.push(f.name);
+  return { atts, skipped };
 }
 
 export async function processIsraelMessage(messageId: string): Promise<{ apartments: number } | { skipped: string }> {
@@ -786,10 +884,9 @@ export async function processIsraelMessage(messageId: string): Promise<{ apartme
   const linkNotes = [...cloud.notes.map((n) => n.replace(/^OneDrive folder had no/, "The OneDrive folder had no")), sites.length ? `Read ${sites.length} web page${sites.length === 1 ? "" : "s"} from the email's links.` : null].filter(Boolean).join(" ");
   const r = await intakeApartments({ channel: "EMAIL", key, subject: msg.subject, body: bodyText, files, sender: { name: msg.from?.emailAddress.name, email: from || null }, sourceLabel: `Email from ${msg.from?.emailAddress.name ?? from}`, mailbox: ISRAEL_MAILBOX() });
   // the reply always goes; when Microsoft refuses it, it is kept and sent on the next inbox pass
-  const source = sourceTextHtml(msg, bodyText, files);
-  const send = async (html: string) => {
+  const send = async (html: string, attachments: { name: string; contentType: string; bytes: Uint8Array }[] = []) => {
     try {
-      await replyOnThread(msg, html, [source]);
+      await replyOnThread(msg, html, attachments);
       await prisma.ilInbound.updateMany({ where: { messageId: key }, data: { pendingReply: null, graphId: msg.id } }).catch(() => null);
     } catch (e) {
       console.error("israel intake reply failed", e);
@@ -800,7 +897,18 @@ export async function processIsraelMessage(messageId: string): Promise<{ apartme
     if (r.skipped === "no apartments") await send(`<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p>${NO_APARTMENT_TEXT}</p>${linkNotes ? `<p style="color:#6b716e;">${linkNotes}</p>` : ""}</div>`);
     return r;
   }
-  await send(replyHtml(r.rows, appBase(), [r.note, linkNotes].filter(Boolean).join(" ") || null));
+  // the request sheet (one page per project with its apartments, on RJL Israel letterhead) and the forwarded files, attached again
+  const again = filesToReattach(files);
+  const allText = [bodyText, ...files.map((x) => x.text ?? "")].join("\n\n");
+  let sheet: { name: string; contentType: string; bytes: Uint8Array } | null = null;
+  try {
+    const { buildIsraelRequestPdf, requestFileName } = await import("@/lib/israel-request-pdf");
+    const pages = requestPages(r.rows, allText);
+    if (pages.length) sheet = { name: requestFileName((msg.subject ?? "Request").replace(/^\s*(fwd?|re|fw)\s*:\s*/i, "")), contentType: "application/pdf", bytes: await buildIsraelRequestPdf(pages, { subject: msg.subject, from: msg.from?.emailAddress.name ?? from, date: new Date(msg.receivedDateTime ?? Date.now()) }) };
+  } catch (e) {
+    console.error("israel request sheet failed", e);
+  }
+  await send(replyHtml(r.rows, appBase(), [r.note, linkNotes].filter(Boolean).join(" ") || null, again.skipped), [...(sheet ? [sheet] : []), ...again.atts]);
   return { apartments: r.rows.length };
 }
 
