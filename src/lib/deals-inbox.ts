@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { fmtMoney } from "@/lib/format";
 import { addAttachment, copyAttachment, graph, graphConfigured, listAttachments, type GraphAttachment } from "@/lib/graph";
 import { assembleDealText, attachmentToText, emailHtmlToText } from "@/lib/attachments";
 import { missingFor, itemLabel } from "@/lib/checklist";
@@ -8,7 +7,7 @@ import { intro, metricsHtml, subjectLine } from "@/lib/deal-copy";
 import { renderDealTemplate, templateForDeal } from "@/lib/deal-template";
 import { processIntake } from "@/app/intake/actions";
 import { applyForwarderInstructions } from "@/lib/forwarder-notes";
-import { detectMultipleDeals, extractDealFacts, matchExistingDeal, mergeIntoDeal, recordDealEmail, recordDealFiles, recordLinkFiles, type MergeResult } from "@/lib/deal-knowledge";
+import { detectMultipleDeals, extractDealFacts, matchExistingDeal, mergeIntoDeal, recordDealEmail, recordDealFiles, recordLinkFiles, showVal, type MergeResult } from "@/lib/deal-knowledge";
 import { fetchCloudFiles, findCloudLinks } from "@/lib/cloud-links";
 import { enrichFromCalls } from "@/lib/fireflies";
 
@@ -478,8 +477,7 @@ export async function sendDealsReply(dealId: string): Promise<boolean> {
 function followUpReplyHtml(name: string, link: string, files: number, facts: number, filled: number, still: string[], linkNotes: string[] = [], merged?: MergeResult) {
   const F = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
   const li = (s: string) => `<li style="margin:0;${F}">${s}</li>`;
-  const money = (v: unknown) => (v == null || v === "" ? "blank" : typeof v === "number" && v >= 1000 ? fmtMoney(v) : String(v));
-  const reunderwritten = merged?.model && merged.changes.length ? `<p style="margin:0 0 4pt 0;${F}"><b>Re-underwritten from ${merged.model}</b> (the model is the source of truth for numbers):</p><ul style="margin:0 0 10pt 18pt;">${merged.changes.map((c) => li(`${c.label}: ${money(c.from)} to <b>${money(c.to)}</b>`)).join("")}</ul>` : merged?.model ? `<p style="margin:0 0 10pt 0;${F}">The Excel model agrees with the ticket; nothing to re-underwrite.</p>` : "";
+  const reunderwritten = merged?.model && merged.changes.length ? `<p style="margin:0 0 4pt 0;${F}"><b>Re-underwritten from ${merged.model}</b> (the model is the source of truth for numbers):</p><ul style="margin:0 0 10pt 18pt;">${merged.changes.map((c) => li(`${c.label}: ${showVal(c.field, c.from)} to <b>${showVal(c.field, c.to)}</b>`)).join("")}</ul>` : merged?.model ? `<p style="margin:0 0 10pt 0;${F}">The Excel model agrees with the ticket; nothing to re-underwrite.</p>` : "";
   return `<div style="${F}">
 <p style="margin:0 0 10pt 0;${F}">Added to <a href="${link}">${name}</a>: ${files} file${files === 1 ? "" : "s"} to Attachments, ${facts} answer${facts === 1 ? "" : "s"} to Questions answered${filled ? `, ${filled} ticket field${filled === 1 ? "" : "s"} filled in` : ""}.</p>
 ${reunderwritten}

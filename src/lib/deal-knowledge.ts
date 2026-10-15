@@ -219,7 +219,19 @@ export async function extractDealFacts(dealId: string, text: string, source: str
 export type MergeChange = { field: string; label: string; from: unknown; to: unknown };
 export type MergeResult = { filled: number; changes: MergeChange[]; model: string | null };
 const FIELD_LABELS: Record<string, string> = { landValueCurrent: "Current land value", landValueEntitled: "Entitled land value", entitlementBudget: "Entitlement budget", entitledFor: "Entitled for", entitlementPhase: "Entitlement phase", purchasePrice: "Purchase price", totalCapitalization: "Total capitalization", totalDebt: "Total debt", requestedAmount: "Equity requested", irr: "IRR", equityMultiple: "Equity multiple", yieldOnCost: "Yield on cost", capRateT12: "T12 cap rate", capRateY1: "Year 1 cap rate", cashOnCash: "Cash on cash", units: "Units", squareFeet: "Square feet (NRSF)", occupancy: "Occupancy", interestRate: "Fixed rate", rateIndex: "Rate index", rateSpreadBps: "Spread (bps)", loanTerm: "Loan term", holdPeriod: "Hold period", expectedClose: "Expected close", unitMix: "Unit mix", yearBuilt: "Year built" };
-const showVal = (k: string, v: unknown) => (v == null || v === "" ? "blank" : ["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount"].includes(k) ? fmtMoney(Number(v)) : ["irr", "capRateT12", "capRateY1", "yieldOnCost", "cashOnCash", "occupancy", "interestRate"].includes(k) ? `${Number(v).toFixed(2)}%` : String(v));
+/** A ticket value as a person reads it: dollars only for dollar fields, a percent for rates, plain counts for square feet and units (Oct 15, 2026: "Square feet (NRSF): $109,696 to $111,039"). */
+const MONEY_FIELDS = new Set(["purchasePrice", "totalCapitalization", "totalDebt", "requestedAmount", "totalEquity", "verticalCost", "verticalDebt", "landValueCurrent", "landValueEntitled", "entitlementBudget", "projectedSellout", "selloutPerUnit", "selloutPerFoot"]);
+const PERCENT_FIELDS = new Set(["irr", "capRateT12", "capRateY1", "yieldOnCost", "cashOnCash", "occupancy", "interestRate", "ltv", "ltc", "unlevered"]);
+export const showVal = (k: string, v: unknown): string => {
+  if (v == null || v === "") return "blank";
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[$,%x\s]/g, ""));
+  if (!Number.isFinite(n) || typeof v === "boolean") return String(v);
+  if (MONEY_FIELDS.has(k)) return fmtMoney(n);
+  if (PERCENT_FIELDS.has(k)) return `${n.toFixed(2)}%`;
+  if (k === "equityMultiple") return `${n.toFixed(2)}x`;
+  if ((k === "squareFeet" || k === "units" || typeof v === "number") && k !== "yearBuilt" && Math.abs(n) >= 1000) return Math.round(n).toLocaleString("en-US");
+  return String(v);
+};
 
 /**
  * A later email about a deal we already have. Answers and blanks fill in. When the Excel model is attached

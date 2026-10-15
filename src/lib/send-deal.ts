@@ -413,7 +413,8 @@ export async function reviseDealEmail(opts: { dealId: string; subject: string; h
     try {
       const { mergeIntoDeal } = await import("@/lib/deal-knowledge");
       const r = await mergeIntoDeal(opts.dealId, text, "Instruction on the Send deal page", { modelAttached: Boolean(model), attachments: model ? [model.name] : [], overwriteNumbers: true });
-      for (const c of r.changes) changes.push(`${c.label}: ${money(c.from)} to ${money(c.to)}`);
+      const { showVal } = await import("@/lib/deal-knowledge");
+      for (const c of r.changes) changes.push(`${c.label}: ${showVal(c.field, c.from)} to ${showVal(c.field, c.to)}`);
       if (changes.length) await logActivity({ type: "NOTE", body: `Ticket updated from the Send deal page ("${instruction.slice(0, 160)}"${model ? `, read with ${model.name}` : ""}): ${changes.join("; ")}.`, dealId: opts.dealId, companyId: deal.sponsorCompanyId }).catch(() => null);
     } catch (e) {
       return { error: `Could not update the ticket: ${String(e instanceof Error ? e.message : e).slice(0, 160)}` };
