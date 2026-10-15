@@ -81,7 +81,7 @@ export function AgreedGroups({ dealId, groups, struck, confirmed, signed }: { de
       {(confirmed || sponsorStruck.length > 0) && (
         <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {confirmed ? `${confirmed.by ?? "The sponsor"} confirmed the engagement by email on ${when(confirmed.at)}. ` : ""}
-          {sponsorStruck.length > 0 ? `${sponsorStruck.length} group${sponsorStruck.length === 1 ? "" : "s"} struck in their reply are greyed out below (erased from the list, crossed out, or named). Tick one to put it back.` : ""}
+          {sponsorStruck.length > 0 ? `${sponsorStruck.length} group${sponsorStruck.length === 1 ? "" : "s"} struck in their reply are greyed out below (erased from the list, crossed out, named, or left off the list they sent back). Tick one to put it back.` : ""}
         </p>
       )}
       <div className="card">

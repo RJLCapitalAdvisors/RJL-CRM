@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { graph } from "@/lib/graph";
 import { ACTIVE_STAGES } from "@/lib/taxonomy";
 import { stripDashes } from "@/lib/style";
-import { normName, readGroupList, type StruckGroup } from "@/lib/engagement-reply";
+import { lineMatchesGroup, normName, ownListGroups, readGroupList, type StruckGroup } from "@/lib/engagement-reply";
 
 /**
  * Sponsors answer in whatever mailbox the thread lives in, not only in deals@. Every inbound email from a
@@ -21,6 +21,7 @@ const Confirmation = z.object({
   confirmsEngagement: z.boolean().describe("True only if the sponsor clearly agrees to the engagement letter / the proposed list of groups (e.g. 'we are good with the agreement', 'approved', 'let's go', 'confirmed')."),
   removeGroups: z.array(z.string()).describe("Investor groups the sponsor wants left out: they already have a relationship, they are talking to them directly, they asked to remove them, or they marked them in the list (an X, 'remove', 'no', 'skip' next to the name). Names as written."),
   addGroups: z.array(z.string()).describe("Groups the sponsor asked to add, if any."),
+  keepOnly: z.array(z.string()).describe("When the sponsor writes out the groups RJL MAY approach (a revised, approved or permitted list, 'here is the list excluding the ones we already contacted'), those names exactly as written; every other proposed group is then off. Empty when the names they write are the ones to REMOVE, or when they write no list."),
   note: z.string().describe("One line of what else the sponsor said about the raise, or empty."),
 });
 
@@ -86,12 +87,16 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
       // the list the sponsor sent back, compared with the deal's groups: erased names and crossed-out lines are struck
       const { engagementGroups, finalizeEngagement } = await import("@/lib/send-deal");
       const current = await engagementGroups(d.id);
-      const list = full?.html ? readGroupList(current, full.html) : { listSeen: false, erased: [], crossed: [], kept: current, listText: "" };
-      const spoke = /agree|good with|approved|confirm|let'?s go|let'?s get|works for|fine with|proceed|go ahead|relationship|remove|removed|take out|leave out|exclude|struck|crossed|redline|contacted/i.test(words);
-      if (!spoke && !list.listSeen) continue;
+      // a list the sponsor typed out themselves (three names or more) is read by Claude as a kept list or a remove list; the quoted
+      // letter under it is then left alone, since it is only the letter as we sent it (Citivest, Oct 15, 2026)
+      const ownList = full?.html ? ownListGroups(current, full.html) : [];
+      const list = full?.html && ownList.length < 3 ? readGroupList(current, full.html) : { listSeen: false, erased: [], crossed: [], kept: current, listText: "" };
+      const spoke = /agree|good with|approved|confirm|let'?s go|let'?s get|works for|fine with|proceed|go ahead|relationship|remove|removed|take out|leave out|exclud|struck|crossed|redline|contacted|reached out|revised|updated list|permitted/i.test(words);
+      if (!spoke && !list.listSeen && ownList.length < 3) continue;
       const groups = ((det.engagementGroups as string[] | undefined) ?? []);
       let parsed: z.infer<typeof Confirmation> | null = null;
-      try {
+      // a failed read was tried once more (Oct 15, 2026: the first read of Kyle's list came back empty)
+      for (let attempt = 0; attempt < 2 && !parsed; attempt++) try {
         const res = await client.messages.parse({
           model: "claude-sonnet-5",
           max_tokens: 500,
@@ -104,7 +109,8 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
           output_config: { format: zodOutputFormat(Confirmation) },
         });
         parsed = res.parsed_output;
-      } catch {
+      } catch (e) {
+        console.error("engagement reply read failed", d.id, String(e).slice(0, 300));
         parsed = null;
       }
       const asked = current.filter((g) => !list.erased.includes(g) && !list.crossed.includes(g)).filter((g) => (parsed?.removeGroups ?? []).some((r) => normName(g.name).includes(normName(r)) || (normName(r).includes(normName(g.name).split(" ")[0]) && normName(g.name).split(" ")[0].length > 3)));
@@ -114,6 +120,11 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
       for (const g of list.erased) struck.push({ name: g.name, companyId: g.companyId || null, how: "erased", at, by });
       for (const g of list.crossed) if (!struck.some((s) => s.name === g.name)) struck.push({ name: g.name, companyId: g.companyId || null, how: "crossed out", at, by });
       for (const g of asked) if (!struck.some((s) => s.name === g.name)) struck.push({ name: g.name, companyId: g.companyId || null, how: "asked", at, by });
+      // the sponsor wrote out the groups we may approach: every letter group not on it is left out (at least two must match, so a stray name never empties the list)
+      const keepOnly = parsed?.keepOnly ?? [];
+      const keptGroups = current.filter((g) => keepOnly.some((k) => lineMatchesGroup(k, g)));
+      const leftOut = keptGroups.length >= 2 ? current.filter((g) => !keptGroups.includes(g)) : [];
+      for (const g of leftOut) if (!struck.some((s) => s.name === g.name)) struck.push({ name: g.name, companyId: g.companyId || null, how: "left out", at, by });
       if (!struck.length && !parsed?.confirmsEngagement) continue;
       // the struck groups are unticked on the ticket's engagement card, whether or not the letter is confirmed yet
       const earlier = ((det.engagementStruck as StruckGroup[] | undefined) ?? []).filter((s) => !struck.some((n) => n.name === s.name));
@@ -121,7 +132,7 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
       const detNow = JSON.parse(fresh?.details || "{}") as Record<string, unknown>;
       await prisma.deal.update({ where: { id: d.id }, data: { details: JSON.stringify({ ...detNow, engagementStruck: [...earlier, ...struck], ...(parsed?.confirmsEngagement ? { engagementConfirmedAt: at, engagementConfirmedBy: by } : {}) }) } });
       const { logActivity } = await import("@/lib/activity");
-      const what = [list.erased.length ? `erased from the list: ${list.erased.map((g) => g.name).join(", ")}` : "", list.crossed.length ? `crossed out: ${list.crossed.map((g) => g.name).join(", ")}` : "", asked.length ? `asked to remove: ${asked.map((g) => g.name).join(", ")}` : "", parsed?.addGroups.length ? `asked to add: ${parsed.addGroups.join(", ")}` : ""].filter(Boolean).join("; ");
+      const what = [list.erased.length ? `erased from the list: ${list.erased.map((g) => g.name).join(", ")}` : "", list.crossed.length ? `crossed out: ${list.crossed.map((g) => g.name).join(", ")}` : "", asked.length ? `asked to remove: ${asked.map((g) => g.name).join(", ")}` : "", leftOut.length ? `left off the list they sent back: ${leftOut.map((g) => g.name).join(", ")}` : "", parsed?.addGroups.length ? `asked to add: ${parsed.addGroups.join(", ")}` : ""].filter(Boolean).join("; ");
       if (!parsed?.confirmsEngagement) {
         await logActivity({ type: "NOTE", body: stripDashes(`${by ?? "The sponsor"} sent the group list back (${stamp}); ${what}. Unticked on the ticket; the letter is not confirmed yet.`), dealId: d.id, companyId: d.sponsorCompanyId, occurredAt: a.occurredAt });
         continue;

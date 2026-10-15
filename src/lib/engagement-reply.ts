@@ -5,7 +5,7 @@
  * on the ticket's engagement card and the struck list is kept on the deal so Jonathan sees what the sponsor did.
  */
 
-export type StruckGroup = { name: string; companyId: string | null; how: "erased" | "crossed out" | "asked"; at: string; by: string | null };
+export type StruckGroup = { name: string; companyId: string | null; how: "erased" | "crossed out" | "asked" | "left out"; at: string; by: string | null };
 type Group = { name: string; companyId: string | null; domain?: string | null };
 
 export const normName = (s: string) => s.toLowerCase().replace(/&amp;/g, "&").replace(/[^a-z0-9]+/g, " ").trim();
@@ -52,6 +52,17 @@ export function splitReply(lines: string[]): { own: string[]; quoted: string[] }
   for (let i = b1; i >= Math.max(0, b1 - 4); i--) if (/^On [A-Z][a-z]{2},? /.test(lines[i])) start = i;
   const b2 = lines.findIndex((l, i) => i > b1 && isBoundary(l));
   return { own: lines.slice(0, start), quoted: lines.slice(b1 + 1, b2 > 0 ? b2 : undefined) };
+}
+
+/**
+ * The letter's groups the sponsor wrote out in their OWN words, above the quoted letter (Oct 15, 2026: Kyle Corrigan
+ * at Citivest typed "Here is the revised list excluding folks we've already reached out to" and 15 of the 29 names;
+ * the quoted letter below was untouched, so the erased/crossed reading saw nothing removed). Bullets are ignored.
+ */
+export function ownListGroups(groups: Group[], html: string): Group[] {
+  const { own } = splitReply(replyLines(html));
+  const bare = (l: string) => l.replace(/\[\/?struck\]/g, "").replace(/^(?:[•·▪◦*\-–]|o(?=\s)|\d+[.)])\s*/, "").trim();
+  return groups.filter((g) => own.some((l) => lineMatchesGroup(bare(l), g)));
 }
 
 export type ListReading = { listSeen: boolean; erased: Group[]; crossed: Group[]; kept: Group[]; listText: string };
