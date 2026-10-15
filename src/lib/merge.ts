@@ -237,9 +237,11 @@ export function refreshDealFields(savedHtml: string, freshHtml: string, baseline
     const base = baseline?.[m[2]];
     hits++;
     if (base != null && !sameText(current, base)) {
-      // changed by hand or by a revision since the last refresh: it stands, and becomes its own baseline
+      // changed by hand or by a revision: it stands, and keeps the baseline it was changed FROM, so every later refresh still
+      // sees it as edited. It used to become its own baseline, and the next refresh then took it for untouched and wrote the
+      // ticket over it (Oct 15, 2026: "a mom n' pop owner who was notoriously difficult to lease from" lost its clause on Hedges Greene)
       kept.push(m[2]);
-      fields[m[2]] = current;
+      fields[m[2]] = base;
       continue;
     }
     out += savedHtml.slice(at, m.index!) + fresh;
