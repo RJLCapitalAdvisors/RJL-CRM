@@ -287,9 +287,9 @@ function conditionalMissing(a: ExtractedApartment): string[] {
   if (a.sellerType?.startsWith("Yad Rishona") && !a.projectName) out.push("Project name");
   if (a.sellerType?.startsWith("Second hand") && a.renovationYear == null) out.push("Year of renovation (or never renovated)");
   if (a.levels && a.levels > 1 && a.ceilingCms.length < a.levels) out.push(`Ceiling height for each of the ${a.levels} levels`);
-  if (a.mirpasot.length > 1 && a.mirpasot.some((m) => !m.sukka)) out.push("Sukka (yes, partial or no) for each mirpeset");
+  if (a.mirpasot.length > 1 && a.mirpasot.some((m) => !m.sukka)) out.push("Sukka balcony (yes, partial or no) for each mirpeset");
   const sukkaYes = (a.sukka && a.sukka !== "No") || a.mirpasot.some((m) => m.sukka && m.sukka !== "No");
-  if (sukkaYes && a.sukkaSqm == null && !a.mirpasot.some((m) => m.sukkaSqm != null)) out.push("Sukka area (m²)");
+  if (sukkaYes && a.sukkaSqm == null && !a.mirpasot.some((m) => m.sukkaSqm != null)) out.push("Sukka balcony area (m²)");
   const poolYes = a.pool === "Yes" || a.mirpasot.some((m) => m.pool === "Yes");
   if (poolYes && a.poolSqm == null && !a.mirpasot.some((m) => m.poolSqm != null)) out.push("Pool size (m²)");
   return out;

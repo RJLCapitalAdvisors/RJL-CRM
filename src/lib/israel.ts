@@ -189,7 +189,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "neighborhood", label: "Neighborhood" },
     { key: "completionDate", label: "Year of construction or expected date of delivery (month and year)" },
     { key: "sellerType", label: "Seller type (yad rishona from the developer, or second hand)" },
-    { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
+    { key: "sukka", label: "Sukka balcony (yes, partial or no)" },
     { key: "ceilingCm", label: "Ceiling height (cm)" },
     { key: "parkingSpots", label: "Parking spots and configuration (how many; back to back or side by side; underground or open)" },
     { key: "machsan", label: "Machsan (storage room): yes or no" },
@@ -211,7 +211,7 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "internalSqm", label: "Internal size (m²)" },
     { key: "mirpesetSqm", label: "Mirpeset size (m²), each mirpeset separately if there is more than one" },
     { key: "mirpesetDirection", label: "Mirpeset direction (north, south, east or west)" },
-    { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
+    { key: "sukka", label: "Sukka balcony (yes, partial or no)" },
     { key: "pool", label: "Private pool (yes or no)" },
     { key: "migrashSqm", label: "Migrash (plot) size (m²)" },
     { key: "priceNis", label: "Asking price (NIS)" },
@@ -290,8 +290,8 @@ function commonMissing(a: Record<string, unknown>, apartment: boolean): string[]
   const cat: IlCategory = apartment ? "apartments" : "houses";
   const list = parseMirpasot(typeof a.mirpasot === "string" ? a.mirpasot : "[]");
   const garden = a.apartmentType === "Garden apartment";
-  if (listHas(cat, "sukka") && a.mirpesetSqm != null && (list.length === 0 || list.some((m) => !m.sukka))) out.push(list.length > 1 ? `Sukka (yes, partial or no) for each ${garden ? "garden" : "mirpeset"}` : "Sukka (yes, partial or no)");
-  if (list.some((m) => m.sukka && m.sukka !== "No" && m.sukkaSqm == null)) out.push("Sukka area (m²)");
+  if (listHas(cat, "sukka") && a.mirpesetSqm != null && (list.length === 0 || list.some((m) => !m.sukka))) out.push(list.length > 1 ? `Sukka balcony (yes, partial or no) for each ${garden ? "garden" : "mirpeset"}` : "Sukka balcony (yes, partial or no)");
+  if (list.some((m) => m.sukka && m.sukka !== "No" && m.sukkaSqm == null)) out.push("Sukka balcony area (m²)");
   if (a.pool === "Yes" && a.poolSqm == null) out.push("Pool size (m²)"); // the private pool is one question on the unit (the list's "pool" line covers yes or no)
   if (isSecondHand(typeof a.sellerType === "string" ? a.sellerType : null) && a.renovationYear == null) out.push("Year of renovation (or never renovated)");
   if (apartment && typeof a.sellerType === "string" && a.sellerType.startsWith("Yad Rishona") && !a.projectId && !a.projectName) out.push("Project name");
