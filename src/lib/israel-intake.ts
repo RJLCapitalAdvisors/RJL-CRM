@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { graph, graphConfigured, realmFor } from "@/lib/graph";
 import { attachmentToText, emailHtmlToText } from "@/lib/attachments";
-import { IL_MACHSAN_LOCATIONS, IL_PARKING, IL_REQUIRED, isCustomKey, nis, parseExtra, pricePerMeter, sqm, reconcileMirpasot, hasHouseNumber, IL_AMENITIES } from "@/lib/israel";
+import { IL_MACHSAN_LOCATIONS, IL_PARKING, IL_REQUIRED, isCustomKey, nis, parseExtra, pricePerMeter, sqm, reconcileMirpasot, hasHouseNumber, IL_AMENITIES, cleanNeighborhood } from "@/lib/israel";
 import { loadIlRequired } from "@/lib/required-items";
 import { stripDashes } from "@/lib/style";
 
@@ -111,7 +111,7 @@ Amenities: put what the documents say the project has in amenities and what they
 
 const SYSTEM = `You read messages and documents about apartments for sale in Israel and fill in apartment tickets for RJL Israel.
 Rules: one entry per distinct apartment or house, with kind set (a private house on its own plot is a house; anything inside a building is an apartment). A building with several units for sale is several apartments; a whole project description with no specific unit is a PROJECT only: fill project (one entry per project in projects when the documents describe several) and make no apartment entry for it. An apartment entry inside a project is made only for a unit type that has its own floor plan in the documents (give its planPage) or its own figures on a plan or price list (rooms with its size); a rooms range such as "4-6 rooms and penthouses" describes the project, not units). Only record what the documents state; leave a field null when it is not stated. Never use placeholders like TBD. Square metres: internal excludes the mirpeset (balcony); if only a total is given, put it in internalSqm and say so in the description. Prices in shekels; if a price is in dollars, convert only if the document gives the rate, else leave priceNis null and mention the dollar price in the description. Parking must be one of the allowed values. Direction is the apartment's air directions. Mamad is the safe room. The subject line is often stale; trust the body, the attachments and the photos. No dashes as punctuation in text you write.
-Hebrew: most of what arrives is in Hebrew. Read it natively. Write every field value in English: cities and neighborhoods in their usual English spelling (ירושלים Jerusalem, תל אביב Tel Aviv, רעננה Ra'anana, הרצליה Herzliya, רחביה Rehavia, קטמון Katamon, בקעה Baka, ארנונה Arnona, טלביה Talbiya), streets and project names transliterated with the Hebrew in parentheses the first time. Vocabulary: חדרים rooms (3.5 חדרים is 3.5 rooms), מ"ר or מטר square metres, מרפסת mirpeset (balcony), מרפסת שמש sun balcony, מרפסת סוכה a mirpeset that takes a sukka (sukka Yes), דירת גן garden apartment (its outdoor space is the garden, read it as the mirpeset fields), פנטהאוז penthouse, בריכה pool, גינה garden, ממ"ד mamad, מחסן machsan (storage), חניה parking (חניה כפולה two spots, בטור back to back, מקבילה side by side), קומה floor, קומת קרקע ground floor, מעלית elevator, קבלן or יזם developer, פרויקט project, יד ראשונה מקבלן yad rishona from the developer, יד שנייה second hand, לא גרו never occupied, משופצת renovated, שנת בניה year built, טופס 4 or מסירה delivery, כיווני אוויר air directions (צפון north, דרום south, מזרח east, מערב west), גובה תקרה ceiling height, מחיר or מבוקש asking price, ש"ח or ₪ shekels, מיליון million (4.2 מיליון is 4,200,000). Text pulled out of Hebrew PDFs sometimes arrives with the letters or words of a line in reverse order; read it in whichever direction makes sense. Photos of listings (Yad2, Madlan, agency flyers) carry the same fields: read the numbers off the image.`;
+Hebrew: most of what arrives is in Hebrew. Read it natively. Write every field value in English: cities and neighborhoods in their usual English spelling (ירושלים Jerusalem, תל אביב Tel Aviv, רעננה Ra'anana, הרצליה Herzliya, רחביה Rehavia, קטמון Katamon, בקעה Baka, ארנונה Arnona, טלביה Talbiya), streets and project names transliterated with the Hebrew in parentheses the first time. A neighborhood is its name alone (HaMea, Rehavia, Baka): never the city, never a direction with the city such as "south Ra'anana". Vocabulary: חדרים rooms (3.5 חדרים is 3.5 rooms), מ"ר or מטר square metres, מרפסת mirpeset (balcony), מרפסת שמש sun balcony, מרפסת סוכה a mirpeset that takes a sukka (sukka Yes), דירת גן garden apartment (its outdoor space is the garden, read it as the mirpeset fields), פנטהאוז penthouse, בריכה pool, גינה garden, ממ"ד mamad, מחסן machsan (storage), חניה parking (חניה כפולה two spots, בטור back to back, מקבילה side by side), קומה floor, קומת קרקע ground floor, מעלית elevator, קבלן or יזם developer, פרויקט project, יד ראשונה מקבלן yad rishona from the developer, יד שנייה second hand, לא גרו never occupied, משופצת renovated, שנת בניה year built, טופס 4 or מסירה delivery, כיווני אוויר air directions (צפון north, דרום south, מזרח east, מערב west), גובה תקרה ceiling height, מחיר or מבוקש asking price, ש"ח or ₪ shekels, מיליון million (4.2 מיליון is 4,200,000). Text pulled out of Hebrew PDFs sometimes arrives with the letters or words of a line in reverse order; read it in whichever direction makes sense. Photos of listings (Yad2, Madlan, agency flyers) carry the same fields: read the numbers off the image.`;
 
 /** One file that came with the message: text if we could read it, the bytes when it is an image or a candidate floorplan. */
 export type IntakeFile = { name: string; type: string | null; size: number; text?: string | null; bytes?: Uint8Array | null; pages?: number | null };
@@ -481,6 +481,8 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   await loadIlRequired(); // the Required Items Lists as Jonathan last edited them
   const extracted = await extract(input.subject, input.body, input.files);
   const senderIsInternal = input.sender?.email ? INTERNAL.test(input.sender.email) : false;
+  // the deal owner: whoever at RJL Israel or Liviem brought it in (the forwarder); a listing sent straight by an agent has none yet (Oct 16, 2026)
+  const owner = input.sender?.email && /@(rjlcapadvisors|rjlequities|rjlisrael|liviemisrael)\.com$/i.test(input.sender.email) ? input.sender.email.toLowerCase() : null;
   // the team's instructions above a forwarded email decide what lists come back; one kind named for the units forces it
   const wants = senderIsInternal ? wantedKinds(input.body) : new Set<Kind>();
   if (wants.size && !wants.has("projects") && (wants.has("apartments") !== wants.has("houses"))) for (const a of extracted.apartments) a.kind = wants.has("houses") ? "house" : "apartment";
@@ -513,7 +515,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     const devIds = await developerIdsFor(proj.developerNames ?? [], dev);
     const amen: string[] = "amenities" in proj && Array.isArray(proj.amenities) ? proj.amenities : [];
     const amenNo: string[] = ("amenitiesNo" in proj && Array.isArray(proj.amenitiesNo) ? proj.amenitiesNo : []).filter((x) => !amen.includes(x));
-    const pdata = { name: pname, developerId: dev?.id ?? null, developerIds: devIds, street: proj.street ?? null, city: proj.city ?? null, neighborhood: proj.neighborhood ?? null, totalUnits: proj.totalUnits ?? null, stories: proj.stories ?? null, parkingSpaces: proj.parkingSpaces ?? null, completionDate: proj.completionDate ?? null, amenities: amen.length ? JSON.stringify(amen) : null, amenitiesNo: amenNo.length ? JSON.stringify(amenNo) : null, pool: amen.includes("Pool") ? "Yes" : amenNo.includes("Pool") ? "No" : proj.pool ?? null, doorman: amen.includes("Doorman") ? "Yes" : amenNo.includes("Doorman") ? "No" : proj.doorman ?? null, gym: amen.includes("Gym") ? "Yes" : amenNo.includes("Gym") ? "No" : proj.gym ?? null, agentContactId: agent?.id ?? null, description: proj.description ? stripDashes(proj.description) : null };
+    const pdata = { name: pname, developerId: dev?.id ?? null, developerIds: devIds, street: proj.street ?? null, city: proj.city ?? null, neighborhood: cleanNeighborhood(proj.neighborhood, proj.city), totalUnits: proj.totalUnits ?? null, stories: proj.stories ?? null, parkingSpaces: proj.parkingSpaces ?? null, completionDate: proj.completionDate ?? null, amenities: amen.length ? JSON.stringify(amen) : null, amenitiesNo: amenNo.length ? JSON.stringify(amenNo) : null, pool: amen.includes("Pool") ? "Yes" : amenNo.includes("Pool") ? "No" : proj.pool ?? null, doorman: amen.includes("Doorman") ? "Yes" : amenNo.includes("Doorman") ? "No" : proj.doorman ?? null, gym: amen.includes("Gym") ? "Yes" : amenNo.includes("Gym") ? "No" : proj.gym ?? null, agentContactId: agent?.id ?? null, description: proj.description ? stripDashes(proj.description) : null, ownerEmail: owner };
     const made = existing ? await prisma.ilProject.update({ where: { id: existing.id }, data: fillFrom(pdata) }) : await prisma.ilProject.create({ data: { ...pdata, pendingApproval: true } });
     touchedProjects.add(made.id);
     await prisma.ilNote.create({ data: { projectId: made.id, body: existing ? origin.replace(/^Created from/, "Updated from") : origin } });
@@ -541,13 +543,14 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     const single = { sqm: a.mirpesetSqm ?? null, direction: a.mirpesetDirection, sukka: a.sukka ?? null, sukkaSqm: a.sukkaSqm ?? null, pool: null, poolSqm: null };
     return { mirpesetCount: list.length > 1 ? list.length : a.mirpesetSqm != null ? 1 : null, mirpesetSqm: a.mirpesetSqm ?? (total || null), mirpesetDirection: JSON.stringify(list.length > 1 ? [...new Set(list.flatMap((m) => m.direction))] : a.mirpesetDirection), mirpasot: JSON.stringify(list.length > 1 ? list : single.sqm != null || single.direction.length || single.sukka || single.pool ? [single] : []) };
   };
+  const noPlan: string[] = []; // apartments with no floorplan: no ticket (Jonathan, Oct 16, 2026)
   for (const a of extracted.apartments) {
     const developer = await findOrCreateCompany(a.developerName, "Sponsor (Yazam)");
     const developerIds = await developerIdsFor(a.developerNames ?? [], developer);
     if (a.kind === "house") {
       let houseProject = null as { id: string } | null;
       if (a.projectName?.trim()) {
-        houseProject = (await findProject(a.projectName.trim(), a.city)) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, completionDate: a.completionDate, pendingApproval: true } }));
+        houseProject = (await findProject(a.projectName.trim(), a.city)) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: cleanNeighborhood(a.neighborhood, a.city), completionDate: a.completionDate, pendingApproval: true, ownerEmail: owner } }));
       }
       const houseData = {
           name: stripDashes(a.name) || a.street || "House",
@@ -555,7 +558,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
           projectId: houseProject?.id ?? projectRow?.id ?? null,
           street: a.street,
           city: a.city,
-          neighborhood: a.neighborhood,
+          neighborhood: cleanNeighborhood(a.neighborhood, a.city),
           developerId: developer?.id ?? null,
           developerIds,
           agentContactId: agent?.id ?? null,
@@ -578,6 +581,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
           source: input.sourceLabel,
           sourceMessageId: input.key,
           pendingApproval: true,
+          ownerEmail: owner,
       };
       const candidates = await prisma.ilHouse.findMany({ select: { id: true, name: true, street: true, city: true, rooms: true, internalSqm: true, floorplanType: true, extra: true } });
       const found = candidates.find((h) => sameUnit({ name: houseData.name, street: a.street, city: a.city, rooms: a.rooms, internalSqm: a.internalSqm }, h));
@@ -593,18 +597,23 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     }
     let project = null as { id: string } | null;
     if (a.projectName?.trim()) {
-      project = (await findProject(a.projectName.trim(), a.city)) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, stories: a.buildingStories, totalUnits: a.buildingUnits, completionDate: a.completionDate, pendingApproval: true } }));
+      project = (await findProject(a.projectName.trim(), a.city)) ?? (await prisma.ilProject.create({ data: { name: a.projectName.trim(), developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: cleanNeighborhood(a.neighborhood, a.city), stories: a.buildingStories, totalUnits: a.buildingUnits, completionDate: a.completionDate, pendingApproval: true, ownerEmail: owner } }));
     }
     // a unit inside a project gets a ticket only with its own floor plan or its own figures (rooms and size); a "unit" that is really
     // the project described (Pardes Meshutaf, Hazon Ish on Oct 13, 2026: an empty apartment each) stays project-level, its
     // building facts on the project ticket, unless the CRM already has that unit
     const pid = project?.id ?? projectRow?.id ?? null;
     const hasOwnPlan = Boolean(planImageFor(a)) || (extracted.apartments.length === 1 && planFile);
-    const ownFigures = a.rooms != null && a.internalSqm != null;
-    if (pid && !hasOwnPlan && !ownFigures) {
+    // no floorplan, no apartment ticket (Jonathan, Oct 16, 2026: "the floorplan anchors our data"): on its own the listing is named in the
+    // reply and skipped, unless the CRM already has the unit; under a project its building facts go to the project ticket
+    if (!hasOwnPlan && !pid) {
+      const all = await prisma.ilApartment.findMany({ select: { id: true, name: true, street: true, city: true, rooms: true, internalSqm: true, degem: true } });
+      if (!all.some((x) => sameUnit({ name: stripDashes(a.name) || a.street || "Apartment", street: a.street, city: a.city, rooms: a.rooms, internalSqm: a.internalSqm, degem: a.degem }, x))) { noPlan.push(stripDashes(a.name) || a.street || "the apartment"); continue; }
+    }
+    if (pid && !hasOwnPlan) {
       const known = (await prisma.ilApartment.findMany({ where: { projectId: pid }, select: { id: true, name: true, street: true, city: true, rooms: true, internalSqm: true, degem: true } })).some((x) => sameUnit({ name: stripDashes(a.name) || a.street || "Apartment", street: a.street, city: a.city, rooms: a.rooms, internalSqm: a.internalSqm, degem: a.degem }, x));
       if (!known) {
-        await prisma.ilProject.update({ where: { id: pid }, data: fillFrom({ developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: a.neighborhood, stories: a.buildingStories, totalUnits: a.buildingUnits, completionDate: a.completionDate, description: a.description ? stripDashes(a.description) : null }) }).catch(() => null);
+        await prisma.ilProject.update({ where: { id: pid }, data: fillFrom({ developerId: developer?.id ?? null, street: a.street, city: a.city, neighborhood: cleanNeighborhood(a.neighborhood, a.city), stories: a.buildingStories, totalUnits: a.buildingUnits, completionDate: a.completionDate, description: a.description ? stripDashes(a.description) : null }) }).catch(() => null);
         touchedProjects.add(pid);
         await pushProjectRow(pid);
         continue;
@@ -616,7 +625,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         degem: a.degem ?? null,
         street: a.street,
         city: a.city,
-        neighborhood: a.neighborhood,
+        neighborhood: cleanNeighborhood(a.neighborhood, a.city),
         projectId: project?.id ?? projectRow?.id ?? null,
         projectName: a.projectName,
         developerId: developer?.id ?? null,
@@ -649,6 +658,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         source: input.sourceLabel,
         sourceMessageId: input.key,
         pendingApproval: true,
+        ownerEmail: owner,
     };
     const aptCandidates = await prisma.ilApartment.findMany({ select: { id: true, name: true, street: true, city: true, rooms: true, internalSqm: true, degem: true, floorplanType: true, extra: true } });
     const foundApt = aptCandidates.find((x) => sameUnit({ name: aptData.name, street: a.street, city: a.city, rooms: a.rooms, internalSqm: a.internalSqm, degem: a.degem }, x));
@@ -660,6 +670,10 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
     if (!ownPlan && extracted.apartments.length === 1 && !(foundApt?.floorplanType)) await attachFloorplan(input.files, created.id).catch(() => null);
     if (aptData.projectId) touchedProjects.add(aptData.projectId);
     rows.push({ id: created.id, kind: "apartments", projectId: aptData.projectId, projectName: a.projectName ?? null, name: created.name, degem: created.degem ?? a.degem ?? null, line: [a.rooms ? `${a.rooms} rooms` : null, a.internalSqm ? sqm(a.internalSqm) : null, [a.neighborhood, a.city].filter(Boolean).join(", ") || null].filter(Boolean).join(" · "), price: a.priceNis ? `${nis(a.priceNis)}${pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm) ? ` (${nis(pricePerMeter(a.priceNis, a.internalSqm, a.mirpesetSqm))} per m²)` : ""}` : "", missing: foundApt ? (await import("@/lib/israel")).apartmentMissing((await prisma.ilApartment.findUnique({ where: { id: created.id } })) as unknown as Record<string, unknown>) : missingFor(a, Boolean(developer), planFile || Boolean(planImageFor(a))) });
+  }
+  if (!rows.length && noPlan.length) {
+    await mark("skipped: no floorplan");
+    return { skipped: "no floorplan" };
   }
   // the project's building facts and developers flow to the units filed under it; the reply lists what is still missing after that
   for (const pid of touchedProjects) await syncProjectToUnits(pid).catch(() => null);
@@ -684,9 +698,10 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
   const note = agent ? `Agent on file: ${[agent.firstName, agent.lastName].filter(Boolean).join(" ") || agent.email || agent.phone}.` : null;
   // whatever the project knows (units, stories, delivery) fills blanks on the units filed under it
   if (projectRow) await (await import("@/app/israel/actions")).syncProjectToUnits(projectRow.id).catch(() => null);
+  const planNote = noPlan.length ? `No floorplan for ${noPlan.join(", ")}, so no apartment ticket was made; send the plan and it will be read.` : null;
   const asked = [...wants].filter((k) => !rows.some((r) => r.kind === k));
   const askedNote = asked.length ? `You asked for ${asked.map((k) => (k === "projects" ? "a project" : k === "houses" ? "a house" : "an apartment")).join(" and ")} list too, but the documents describe none; send the material or add it by hand.` : null;
-  return { rows, note: [note, askedNote].filter(Boolean).join(" ") || null };
+  return { rows, note: [note, planNote, askedNote].filter(Boolean).join(" ") || null };
 }
 
 export const appBase = () => (process.env.APP_URL ?? "https://rjl-crm.vercel.app").replace(/\/$/, "");
@@ -771,6 +786,7 @@ export function replyText(rows: IntakeRow[], base: string, note: string | null):
   if (note) lines.push(note);
   return lines.join("\n");
 }
+export const NO_PLAN_TEXT = "The listing has no floorplan, so no apartment ticket was made: a floorplan anchors every apartment ticket and carries most of what we need. Send the plan (a picture or PDF) and it will be read; a project described without plans gets a project ticket.";
 export const NO_APARTMENT_TEXT = "I could not find an apartment or a house in this message or its files, so no ticket was created. Send the listing with the details (address, size, price) or add it by hand under Apartments or Houses in RJL Israel.";
 
 /** Jonathan is copied on every reply the Israel deals mailbox sends, so he sees each deal as it comes in (Sep 23, 2026). ISRAEL_REPLY_CC overrides; empty turns it off. */
@@ -955,7 +971,7 @@ export async function processIsraelMessage(messageId: string): Promise<{ apartme
     }
   };
   if ("skipped" in r) {
-    if (r.skipped === "no apartments") await send(`<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p>${NO_APARTMENT_TEXT}</p>${linkNotes ? `<p style="color:#6b716e;">${linkNotes}</p>` : ""}</div>`);
+    if (r.skipped === "no apartments" || r.skipped === "no floorplan") await send(`<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;"><p>${r.skipped === "no floorplan" ? NO_PLAN_TEXT : NO_APARTMENT_TEXT}</p>${linkNotes ? `<p style="color:#6b716e;">${linkNotes}</p>` : ""}</div>`);
     return r;
   }
   // the request sheet (one page per project with its apartments, on RJL Israel letterhead) and the forwarded files, attached again

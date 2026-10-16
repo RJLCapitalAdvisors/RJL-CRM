@@ -51,6 +51,27 @@ export const usdPerSqft = (priceNis: number | null | undefined, internal: number
 };
 export const IL_CITIES = ["Jerusalem", "Tel Aviv", "Herzliya", "Ra'anana", "Netanya", "Modi'in", "Beit Shemesh", "Ramat Gan", "Givatayim", "Haifa", "Ashdod", "Ashkelon", "Petah Tikva", "Rehovot", "Efrat", "Ma'ale Adumim"] as const;
 
+/**
+ * A neighborhood is the neighborhood's name alone (Jonathan, Oct 16, 2026: "Ra'anana is a city. HaMea is a neighborhood in
+ * Ra'anana"): the city, and phrases such as "south Ra'anana", are dropped from it. "HaMea (המאה), south Ra'anana" is "HaMea (המאה)".
+ */
+export function cleanNeighborhood(nb: string | null | undefined, city?: string | null): string | null {
+  if (!nb) return null;
+  const norm = (s: string) => s.toLowerCase().replace(/['’]/g, "").trim();
+  const cities = [...IL_CITIES, ...(city ? [city] : [])].map(norm);
+  // a part is about the city when it is the city, or a compass phrase with the city ("south Ra'anana"); "Downtown Haifa" is a neighborhood and stays
+  const aboutCity = (p: string) => { const n = norm(p.replace(/\(.*?\)/g, " ")); return cities.some((c) => n === c || /^(north|south|east|west|northern|southern|eastern|western)\s/.test(n) && n.replace(/^(north|south|east|west|northern|southern|eastern|western)\s+/, "") === c); };
+  const parts = nb.split(/\s*[,;]\s*/).filter((p) => p.trim() && !aboutCity(p));
+  return parts.join(", ").trim() || null;
+}
+/** Who at RJL Israel or Liviem brought a deal in, as a name: the user's name when registered, else the address's first part. */
+export function ownerLabel(email: string | null | undefined, names?: Map<string, string | null>): string | null {
+  if (!email) return null;
+  const known = names?.get(email.toLowerCase());
+  if (known) return known;
+  const local = email.split("@")[0].split(/[._-]/)[0];
+  return local ? local[0].toUpperCase() + local.slice(1) : email;
+}
 export const SQFT_PER_SQM = 10.7639;
 export const ACRES_PER_SQM = 1 / 4046.8564; // a dunam is 1,000 m²
 export const CM_PER_FOOT = 30.48;
@@ -341,6 +362,13 @@ export function houseMissing(h: Record<string, unknown>): string[] {
   const extra = commonMissing(h, false);
   if (typeof h.sellerType === "string" && h.sellerType.startsWith("Yad Rishona") && !h.developerId && !listHas("houses", "developerId")) extra.push("Developer");
   return [...base, ...extra];
+}
+/** The missing list for a count or a chip: the per-amenity "X (yes or no)" lines fold into one "Amenities" entry (The Que, Oct 16, 2026). */
+export function compactMissing(list: string[]): string[] {
+  const isAmenity = (m: string) => /\(yes or no\)$/.test(m) && (IL_AMENITIES as readonly string[]).some((a) => m.startsWith(a));
+  const out = list.filter((m) => !isAmenity(m));
+  if (list.some(isAmenity)) out.push("Amenities");
+  return out;
 }
 export function projectMissing(p: Record<string, unknown>): string[] {
   // the Amenities line asks each amenity nobody has answered, one by one (Jonathan, Sep 23, 2026: ticking five does not mean the other two are absent)

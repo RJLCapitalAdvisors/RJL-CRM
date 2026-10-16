@@ -686,6 +686,7 @@ model IlApartment {
   priceNis       Float?
   priceCheckedAt DateTime? // pricing last confirmed with the agent or developer; the dashboard asks again after 90 days
   pendingApproval Boolean  @default(false) // came in by email with data missing; sits in The Que until approved
+  ownerEmail      String?   // who at RJL Israel or Liviem brought the deal in: the internal sender of the email (Oct 16, 2026)
   approvalRequestedAt DateTime? // someone approved it from The Que with data still missing; Jonathan decides on the dashboard
   approvalRequestedBy String?
   extra          String?   // JSON answers to Required Items List questions that have no field of their own
@@ -865,6 +866,7 @@ model IlProject {
   agent          IlContact?    @relation("IlProjectAgent", fields: [agentContactId], references: [id])
   priceCheckedAt DateTime?     // unit pricing last confirmed with the developer; asked again after 90 days
   pendingApproval Boolean      @default(false) // came in with data missing; sits in The Que until approved
+  ownerEmail      String?   // who at RJL Israel or Liviem brought the deal in: the internal sender of the email (Oct 16, 2026)
   approvalRequestedAt DateTime?
   approvalRequestedBy String?
   lat            Float?
@@ -1037,6 +1039,7 @@ model IlHouse {
   poolSqm         Float?
   priceCheckedAt  DateTime? // pricing last confirmed; asked again after 90 days
   pendingApproval Boolean   @default(false) // came in by email or WhatsApp with data missing; sits in The Que until approved
+  ownerEmail      String?   // who at RJL Israel or Liviem brought the deal in: the internal sender of the email (Oct 16, 2026)
   approvalRequestedAt DateTime? // approved from The Que with data still missing; Jonathan decides on the dashboard
   approvalRequestedBy String?
   extra           String?   // JSON answers to Required Items List questions that have no field of their own
