@@ -303,7 +303,7 @@ function blankExtracted(a: ExtractedApartment, key: string, hasDeveloper: boolea
   if (isCustomKey(key)) return !(a.extra?.[key] ?? "").trim();
   if (key === "floorplanName") return !hasPlan;
   if (key === "street") return !hasHouseNumber(a.street); // mappable or missing
-  if (a.machsan !== "Yes" && (key === "machsanSqm" || key === "machsanLocation")) return false;
+  if (a.machsan === "No" && (key === "machsanSqm" || key === "machsanLocation")) return false; // asked unless there is no machsan (Oct 16, 2026)
   if (key === "machsan" && (a.machsan || a.machsanSqm != null || a.machsanLocation)) return false;
   if (key === "developerId") return !hasDeveloper;
   if (key === "brochureName") return false;

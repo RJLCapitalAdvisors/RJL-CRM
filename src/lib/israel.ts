@@ -170,7 +170,6 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "neighborhood", label: "Neighborhood" },
     { key: "totalUnits", label: "Total units in the project" },
     { key: "stories", label: "Building stories (floors per building)" },
-    { key: "parkingSpaces", label: "Parking spaces and configuration (how many in the project; underground or open)" },
     { key: "completionDate", label: "Expected delivery (month and year)" },
     { key: "amenities", label: "Amenities (doorman, pool, gym, jacuzzi, sauna, studio, co-working)" },
     { key: "brochureName", label: "Brochure (PDF)" },
@@ -273,7 +272,7 @@ const MIRPESET_KEYS = new Set(["mirpesetSqm", "mirpesetDirection", "mirpasot", "
 function blankOn(row: Record<string, unknown>, key: string): boolean {
   if (isCustomKey(key)) return !parseExtra(row.extra)[key];
   if (row.mirpesetCount === 0 && MIRPESET_KEYS.has(key)) return false; // no mirpeset at all: nothing about one is missing (Sep 23, 2026)
-  if (row.machsan !== "Yes" && (key === "machsanSqm" || key === "machsanLocation") && !(row.machsan == null && (row.machsanSqm != null || row.machsanLocation))) return false; // size and place are asked once there is a machsan; No, or nothing said yet, asks only the yes or no
+  if (row.machsan === "No" && (key === "machsanSqm" || key === "machsanLocation")) return false; // size and place are asked unless there is no machsan (Jonathan, Oct 16, 2026: ask them on the sheet, not only once a machsan is confirmed)
   if (row.machsan == null && key === "machsan" && (row.machsanSqm != null || row.machsanLocation)) return false; // a size or place given means there is one
   if (!(key in row)) return false; // no column of that name on this kind of ticket (the rules below cover sukka and pool)
   if (key === "street" && typeof row[key] === "string" && !hasHouseNumber(row[key] as string)) return true; // an address counts only when it can be mapped: street and number (Jonathan, Sep 23, 2026)
