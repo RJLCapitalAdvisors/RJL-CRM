@@ -847,7 +847,7 @@ export function requestPages(rows: IntakeRow[], allText: string): import("@/lib/
       else if (value) items.push({ label, value, needed: false });
     }
     for (const m of p.missing) if (!listed.has(m) && !amenityLine(m)) items.push({ label: m, needed: true });
-    return { heading: "Project level information needed", items };
+    return { heading: "Project Level Information Needed", items };
   };
   // on a project's page, what the Project section already asks is not asked again under its units (Jonathan, Oct 15, 2026:
   // "if we are asking for building stories on the project level, we won't need it on the unit level")
@@ -876,7 +876,7 @@ export function requestPages(rows: IntakeRow[], allText: string): import("@/lib/
     const facts = (u: IntakeRow) => (u.degem && /rooms/i.test(u.degem) ? unitFacts(u.line).split(" · ").filter((x) => !/rooms/.test(x)).join(" · ") : unitFacts(u.line));
     const lead = list.slice(0, 8).map((u) => [u.degem ? `Type ${u.degem}` : list.length > 1 ? u.name : null, facts(u) || null, u.price || null].filter(Boolean).join(" · ")).filter(Boolean);
     if (list.length > 8) lead.push(`and ${list.length - 8} more`);
-    const heading = kind === "houses" ? "House level information needed" : "Apartment level information needed";
+    const heading = kind === "houses" ? "House Level Information Needed (Per House)" : "Apartment Level Information Needed (Per Unit Type)";
     return { heading, lead: list.length ? [`${list.length} ${list.length === 1 ? (kind === "houses" ? "house" : "unit type") : kind === "houses" ? "houses" : "unit types"} on file`, ...lead] : [`No ${word.toLowerCase()} on file yet: everything below is needed.`], items };
   };
   const pages: Page[] = [];
