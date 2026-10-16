@@ -176,14 +176,13 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "brochureName", label: "Brochure (PDF)" },
   ],
   // Oct 16, 2026 (Jonathan): the floorplan with its price is what matters, since almost everything else reads off it. Rooms,
-  // internal size, bathrooms and the floorplan are obligatory; the floor, stories, units in the building, direction, mamad,
-  // the mirpasot count and a private pool are read off the plan and never asked (stories and units are project items).
+  // internal size and the floorplan are obligatory; the floor, stories, units in the building, direction, mamad, bathrooms,
+  // the mirpasot (count, sizes, directions) and a private pool are read off the plan and never asked (stories and units are project items).
   apartments: [
-    { key: "floorplanName", label: "Floorplan (a picture or PDF of the unit's plan)" },
+    { key: "floorplanName", label: "Floorplan (per degem)" },
     { key: "priceNis", label: "Asking price (NIS)" },
     { key: "rooms", label: "Number of rooms (e.g. 3.5)" },
     { key: "internalSqm", label: "Internal size (m², without the mirpeset)" },
-    { key: "bathrooms", label: "Number of bathrooms (e.g. 2)" },
     { key: "apartmentType", label: "Apartment type (regular, garden or penthouse)" },
     { key: "developerId", label: "Developer (the yazam building or selling it)" },
     { key: "street", label: "Building address (street and house number, enough to find on Google Maps)" },
@@ -191,7 +190,6 @@ export const IL_DEFAULT_REQUIRED: Record<IlCategory, IlRequiredItem[]> = {
     { key: "neighborhood", label: "Neighborhood" },
     { key: "completionDate", label: "Year of construction or expected date of delivery (month and year)" },
     { key: "sellerType", label: "Seller type (yad rishona from the developer, or second hand)" },
-    { key: "mirpesetDirection", label: "Mirpeset direction (north, south, east or west)" },
     { key: "sukka", label: "Sukka on the mirpeset (yes, partial or no)" },
     { key: "ceilingCm", label: "Ceiling height (cm)" },
     { key: "parkingSpots", label: "Parking spots and configuration (how many; back to back or side by side; underground or open)" },

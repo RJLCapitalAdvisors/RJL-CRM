@@ -640,7 +640,7 @@ export async function intakeApartments(input: IntakeInput): Promise<IntakeResult
         direction: JSON.stringify(a.direction),
         mamad: a.mamad ?? null,
         priceNis: a.priceNis,
-        sellerType: a.sellerType,
+        sellerType: a.sellerType ?? (project?.id || projectRow?.id ? "Yad Rishona (developer)" : null), // under a project ticket: from the developer (Jonathan, Oct 16, 2026)
         renovationYear: a.sellerType?.startsWith("Second hand") ? a.renovationYear : null,
         description: a.description ? stripDashes(a.description) : null,
         pool: a.pool ?? (a.mirpasot.some((m) => m.pool === "Yes") ? "Yes" : null),
@@ -717,29 +717,37 @@ function groupedMissing(units: IntakeRow[]): { item: string; tags: string[]; all
   });
 }
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-function replyHtml(rows: IntakeRow[], base: string, note: string | null, skippedFiles: string[] = []): string {
-  // Oct 15, 2026: the email itself is short. What is needed and what was found is the attached one-page-per-project sheet,
-  // and the forwarded files ride along again, so the sheet can be held against them.
+type SheetPage = import("@/lib/israel-request-pdf").RequestPage;
+function replyHtml(rows: IntakeRow[], base: string, note: string | null, skippedFiles: string[] = [], pages: SheetPage[] = []): string {
+  // Oct 16, 2026: one block per sheet (a project with its units, or a batch of units), the ticket links, and what was received
+  // in one grey line each; the sheets carry only what is needed
   const font = "font-family:Calibri,Arial,sans-serif;font-size:11pt;";
   const grey = 'style="color:#6b716e;"';
-  const projects = rows.filter((r) => r.kind === "projects");
-  const units = rows.filter((r) => r.kind !== "projects");
+  const byId = new Map(rows.map((r) => [r.id, r]));
   const status = (r: IntakeRow) => (r.missing.length ? `<span ${grey}>${r.missing.length} needed</span>` : `<span ${grey}>complete</span>`);
   const link = (r: IntakeRow) => `<a href="${base}/israel/${r.kind}/${r.id}">${esc(r.name)}</a>`;
   const unitLine = (r: IntakeRow) => `<li>${link(r)}${r.degem ? ` <span ${grey}>type ${esc(r.degem)}</span>` : ""}${r.kind === "houses" ? ` <span ${grey}>(house)</span>` : ""}${unitFacts(r.line) ? ` <span ${grey}>${esc(unitFacts(r.line))}</span>` : ""} · ${status(r)}</li>`;
-  const used = new Set<string>();
-  const blocks = projects.map((p) => {
-    const mine = units.filter((u) => u.projectId === p.id);
-    mine.forEach((u) => used.add(u.id));
-    return `<p style="margin:8pt 0 2pt 0;"><b>${link(p)}</b>${p.line ? ` <span ${grey}>${esc(p.line)}</span>` : ""} · ${status(p)}</p>${mine.length ? `<ul style="margin:0 0 4pt 18pt;">${mine.map(unitLine).join("")}</ul>` : `<div style="margin:0 0 4pt 18pt;color:#6b716e;">no unit on file yet</div>`}`;
+  const short = (label: string) => label.replace(/\s*\(.*$/, "").replace(/:\s*$/, "");
+  const receivedLine = (pg: SheetPage) => {
+    const parts = pg.sections.map((sec) => { const got = sec.items.filter((it) => !it.needed).map((it) => `${esc(short(it.label))}${it.value ? `: ${esc(it.value)}` : ""}`); return got.length ? `<b>${sec.heading.startsWith("Project") ? "Project" : sec.heading.startsWith("House") ? "Houses" : "Apartments"}</b> ${got.join(" · ")}` : null; }).filter(Boolean);
+    return parts.length ? `<div style="margin:2pt 0 0 18pt;color:#6b716e;font-size:9.5pt;line-height:1.35;">Received: ${parts.join("<br>")}</div>` : "";
+  };
+  const placed = new Set<string>();
+  const blocks = pages.map((pg) => {
+    const here = (pg.ids ?? []).map((id) => byId.get(id)).filter((r): r is IntakeRow => Boolean(r));
+    here.forEach((r) => placed.add(r.id));
+    const project = here.find((r) => r.kind === "projects");
+    const units = here.filter((r) => r.kind !== "projects");
+    const head = project ? `<b>${link(project)}</b>${project.line ? ` <span ${grey}>${esc(project.line)}</span>` : ""} · ${status(project)}` : `<b>${esc(pg.title)}</b>`;
+    return `<p style="margin:8pt 0 2pt 0;">${head}</p>${units.length ? `<ul style="margin:0 0 2pt 18pt;">${units.map(unitLine).join("")}</ul>` : project ? `<div style="margin:0 0 2pt 18pt;color:#6b716e;">no unit on file yet</div>` : ""}${receivedLine(pg)}`;
   });
-  const rest = units.filter((u) => !used.has(u.id));
+  const rest = rows.filter((r) => !placed.has(r.id));
   if (rest.length) blocks.push(`<ul style="margin:8pt 0 4pt 18pt;">${rest.map(unitLine).join("")}</ul>`);
   return `<div style="${font}">
-<p>${rows.length === 1 ? `${kindWord(rows[0].kind)} ticket updated in` : `${rows.length} tickets updated in`} RJL Israel. The attached PDF has one page per project with its apartments: what is still needed in <b>bold</b>, what was found in regular type. The files you forwarded are attached again, to compare.</p>
+<p>${rows.length === 1 ? `${kindWord(rows[0].kind)} ticket updated in` : `${rows.length} tickets updated in`} RJL Israel. Attached: ${pages.length === 1 ? "an Items Needed sheet" : `one Items Needed sheet per project (${pages.length})`}, and the files you forwarded, to compare.</p>
 ${blocks.join("")}
 ${note ? `<p ${grey}>${esc(note)}</p>` : ""}
-<p style="color:#6b716e;font-size:9pt;">Everything waits in The Que until approved. Reply to the agent for what is needed and forward the answer here; edit anything on the ticket in the CRM.${skippedFiles.length ? ` Not attached again (too large): ${skippedFiles.map(esc).join(", ")}.` : ""}</p>
+<p style="color:#6b716e;font-size:9pt;">Everything waits in The Que until approved. Reply to the agent with the sheet and forward the answer here; edit anything on the ticket in the CRM.${skippedFiles.length ? ` Not attached again (too large): ${skippedFiles.map(esc).join(", ")}.` : ""}</p>
 </div>`;
 }
 
@@ -839,12 +847,13 @@ export function requestPages(rows: IntakeRow[], allText: string): import("@/lib/
       else if (value) items.push({ label, value, needed: false });
     }
     for (const m of p.missing) if (!listed.has(m) && !amenityLine(m)) items.push({ label: m, needed: true });
-    return { heading: "Project", items };
+    return { heading: "Project level information needed", items };
   };
   // on a project's page, what the Project section already asks is not asked again under its units (Jonathan, Oct 15, 2026:
   // "if we are asking for building stories on the project level, we won't need it on the unit level")
   const PROJECT_LEVEL: Record<string, string> = { developerId: "developerId", street: "street", city: "city", neighborhood: "neighborhood", totalFloors: "stories", buildingUnits: "totalUnits", completionDate: "completionDate" };
-  const coveredByProject = (key: string) => Boolean(PROJECT_LEVEL[key] && IL_REQUIRED.projects.some((i) => i.key === PROJECT_LEVEL[key]));
+  // a unit under a project ticket is yad rishona from the developer by definition, so the seller type is never asked there (Jonathan, Oct 16, 2026)
+  const coveredByProject = (key: string) => key === "sellerType" || Boolean(PROJECT_LEVEL[key] && IL_REQUIRED.projects.some((i) => i.key === PROJECT_LEVEL[key]));
   const unitSection = (list: IntakeRow[], kind: "apartments" | "houses", nearText: string, underProject = false): Section => {
     const items: { label: string; value?: string | null; needed: boolean }[] = [];
     const ask = kind === "apartments" ? degamimAsk(nearText, list.length) : null;
@@ -863,9 +872,12 @@ export function requestPages(rows: IntakeRow[], allText: string): import("@/lib/
     for (const m of [...new Set(list.flatMap((u) => u.missing))]) if (!listed.has(m)) items.push({ label: m, needed: true });
     const word = kind === "houses" ? "Houses" : "Apartments";
     // the unit's own facts only (type, rooms, size, price): the location is on the page already (Jonathan, Oct 15, 2026)
-    const lead = list.slice(0, 8).map((u) => [u.degem ? `Type ${u.degem}` : list.length > 1 ? u.name : null, unitFacts(u.line) || null, u.price || null].filter(Boolean).join(" · ")).filter(Boolean);
+    // a type code that is itself the rooms ("4 rooms") is not followed by "4 rooms" again
+    const facts = (u: IntakeRow) => (u.degem && /rooms/i.test(u.degem) ? unitFacts(u.line).split(" · ").filter((x) => !/rooms/.test(x)).join(" · ") : unitFacts(u.line));
+    const lead = list.slice(0, 8).map((u) => [u.degem ? `Type ${u.degem}` : list.length > 1 ? u.name : null, facts(u) || null, u.price || null].filter(Boolean).join(" · ")).filter(Boolean);
     if (list.length > 8) lead.push(`and ${list.length - 8} more`);
-    return { heading: list.length ? `${word} (${list.length} on file)` : `${word} (none on file yet: everything below is needed)`, lead, items };
+    const heading = kind === "houses" ? "House level information needed" : "Apartment level information needed";
+    return { heading, lead: list.length ? [`${list.length} ${list.length === 1 ? (kind === "houses" ? "house" : "unit type") : kind === "houses" ? "houses" : "unit types"} on file`, ...lead] : [`No ${word.toLowerCase()} on file yet: everything below is needed.`], items };
   };
   const pages: Page[] = [];
   const used = new Set<string>();
@@ -877,7 +889,7 @@ export function requestPages(rows: IntakeRow[], allText: string): import("@/lib/
     const apts = mine.filter((u) => u.kind === "apartments"), houses = mine.filter((u) => u.kind === "houses");
     if (apts.length || !houses.length) sections.push(unitSection(apts, "apartments", near, true));
     if (houses.length) sections.push(unitSection(houses, "houses", near, true));
-    pages.push({ title: p.name, subtitle: p.line || null, sections });
+    pages.push({ title: p.name, subtitle: p.line || null, sections, ids: [p.id, ...mine.map((u) => u.id)] });
   }
   const rest = units.filter((u) => !used.has(u.id));
   const groups = new Map<string, IntakeRow[]>();
@@ -886,7 +898,7 @@ export function requestPages(rows: IntakeRow[], allText: string): import("@/lib/
     const kind = k.startsWith("houses") ? "houses" : "apartments";
     const pname = list[0].projectName?.trim() || null;
     const title = pname ?? (list.length === 1 ? list[0].name : kind === "houses" ? "Houses" : "Apartments");
-    pages.push({ title, subtitle: list.length === 1 ? list[0].line || null : [list[0].line.split(" · ").slice(-1)[0] || null].filter(Boolean).join("") || null, sections: [unitSection(list, kind, pname ? textNear(allText, pname, [...projects.map((x) => x.name), ...[...groups.values()].map((l) => l[0].projectName ?? "")], groups.size === 1 && !projects.length) : allText)] });
+    pages.push({ title, subtitle: list.length === 1 ? list[0].line || null : [list[0].line.split(" · ").slice(-1)[0] || null].filter(Boolean).join("") || null, sections: [unitSection(list, kind, pname ? textNear(allText, pname, [...projects.map((x) => x.name), ...[...groups.values()].map((l) => l[0].projectName ?? "")], groups.size === 1 && !projects.length) : allText)], ids: list.map((u) => u.id) });
   }
   return pages;
 }
@@ -949,15 +961,16 @@ export async function processIsraelMessage(messageId: string): Promise<{ apartme
   // the request sheet (one page per project with its apartments, on RJL Israel letterhead) and the forwarded files, attached again
   const again = filesToReattach(files);
   const allText = [bodyText, ...files.map((x) => x.text ?? "")].join("\n\n");
-  let sheet: { name: string; contentType: string; bytes: Uint8Array } | null = null;
+  const pages = requestPages(r.rows, allText);
+  const sheets: { name: string; contentType: string; bytes: Uint8Array }[] = [];
   try {
     const { buildIsraelRequestPdf, requestFileName } = await import("@/lib/israel-request-pdf");
-    const pages = requestPages(r.rows, allText);
-    if (pages.length) sheet = { name: requestFileName((msg.subject ?? "Request").replace(/^\s*(fwd?|re|fw)\s*:\s*/i, "")), contentType: "application/pdf", bytes: await buildIsraelRequestPdf(pages, { subject: msg.subject, from: msg.from?.emailAddress.name ?? from, date: new Date(msg.receivedDateTime ?? Date.now()) }) };
+    const date = new Date(msg.receivedDateTime ?? Date.now());
+    for (const pg of pages) sheets.push({ name: requestFileName(pg.title, date), contentType: "application/pdf", bytes: await buildIsraelRequestPdf([pg], { subject: msg.subject, from: msg.from?.emailAddress.name ?? from, date }) });
   } catch (e) {
     console.error("israel request sheet failed", e);
   }
-  await send(replyHtml(r.rows, appBase(), [r.note, linkNotes].filter(Boolean).join(" ") || null, again.skipped), [...(sheet ? [sheet] : []), ...again.atts]);
+  await send(replyHtml(r.rows, appBase(), [r.note, linkNotes].filter(Boolean).join(" ") || null, again.skipped, pages), [...sheets, ...again.atts]);
   return { apartments: r.rows.length };
 }
 

@@ -15,7 +15,7 @@ import path from "path";
 
 export type RequestItem = { label: string; value?: string | null; needed: boolean };
 export type RequestSection = { heading: string; lead?: string[]; items: RequestItem[] };
-export type RequestPage = { title: string; subtitle?: string | null; sections: RequestSection[] };
+export type RequestPage = { title: string; subtitle?: string | null; sections: RequestSection[]; ids?: string[] };
 export type RequestMeta = { subject: string | null; from: string | null; date: Date };
 
 const PAGE = { w: 612, h: 792, margin: 50 };
@@ -87,8 +87,10 @@ function fit(text: string, font: PDFFont, size: number, maxWidth: number): strin
   return `${t.trimEnd()}…`;
 }
 
-export function requestFileName(stem: string) {
-  return `${stem.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 70) || "Request"} - Needed.pdf`;
+/** "Yitzhak Shamir 4 - Items Needed - Oct 16, 2026.pdf" (Jonathan, Oct 16, 2026). */
+export function requestFileName(project: string, date: Date) {
+  const stem = project.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 70) || "Project";
+  return `${stem} - Items Needed - ${date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}.pdf`;
 }
 
 export async function buildIsraelRequestPdf(pages: RequestPage[], meta: RequestMeta): Promise<Uint8Array> {
@@ -155,9 +157,8 @@ export async function buildIsraelRequestPdf(pages: RequestPage[], meta: RequestM
       push(drawable(bold, text(sec.heading)), bold, navy, 0, size + 1);
       for (const l of sec.lead ?? []) push(fit(drawable(reg, text(l)), reg, size - 0.5, width), reg, muted, 0, size - 0.5);
       if (sec.lead?.length) gap(2);
-      // Needed on top in bold, Received beneath in regular, each under its own header; the items numbered with a hanging
-      // indent, and a received item shown by its short name (the instruction in parentheses is for asking) (Jonathan, Oct 15-16, 2026)
-      const needed = sec.items.filter((it) => it.needed), received = sec.items.filter((it) => !it.needed);
+      // the needed items only, numbered with a hanging indent; what was received is said in the email instead (Jonathan, Oct 16, 2026)
+      const needed = sec.items.filter((it) => it.needed);
       const indent = bold.widthOfTextAtSize("00.  ", size);
       const numbered = (n: number, s: string, font: PDFFont, color: ReturnType<typeof rgb>, sz: number) => {
         const lines = wrap(s, font, sz, width - indent);
@@ -168,19 +169,8 @@ export async function buildIsraelRequestPdf(pages: RequestPage[], meta: RequestM
         });
       };
       let n = 0;
-      if (needed.length) {
-        push("NEEDED", bold, muted, 0, size - 2);
-        for (const it of needed) numbered(++n, drawable(bold, text(it.label)), bold, ink, size);
-        gap(4);
-      }
-      if (received.length) {
-        push("RECEIVED", bold, muted, 0, size - 2);
-        for (const it of received) {
-          const short = it.label.replace(/\s*\(.*$/, "").replace(/:\s*$/, "");
-          const value = it.value ? drawable(reg, text(it.value)) : "";
-          numbered(++n, value ? `${drawable(reg, text(short))}: ${value}` : drawable(reg, text(short)), reg, ink, size);
-        }
-      }
+      if (needed.length) for (const it of needed) numbered(++n, drawable(bold, text(it.label)), bold, ink, size);
+      else push("Nothing needed.", reg, muted, 0, size);
       gap(8);
     }
     return { ops, height: h };
