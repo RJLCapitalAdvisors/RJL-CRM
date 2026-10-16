@@ -114,7 +114,7 @@ Rules: one entry per distinct apartment or house, with kind set (a private house
 Hebrew: most of what arrives is in Hebrew. Read it natively. Write every field value in English: cities and neighborhoods in their usual English spelling (ירושלים Jerusalem, תל אביב Tel Aviv, רעננה Ra'anana, הרצליה Herzliya, רחביה Rehavia, קטמון Katamon, בקעה Baka, ארנונה Arnona, טלביה Talbiya), streets and project names transliterated with the Hebrew in parentheses the first time. Vocabulary: חדרים rooms (3.5 חדרים is 3.5 rooms), מ"ר or מטר square metres, מרפסת mirpeset (balcony), מרפסת שמש sun balcony, מרפסת סוכה a mirpeset that takes a sukka (sukka Yes), דירת גן garden apartment (its outdoor space is the garden, read it as the mirpeset fields), פנטהאוז penthouse, בריכה pool, גינה garden, ממ"ד mamad, מחסן machsan (storage), חניה parking (חניה כפולה two spots, בטור back to back, מקבילה side by side), קומה floor, קומת קרקע ground floor, מעלית elevator, קבלן or יזם developer, פרויקט project, יד ראשונה מקבלן yad rishona from the developer, יד שנייה second hand, לא גרו never occupied, משופצת renovated, שנת בניה year built, טופס 4 or מסירה delivery, כיווני אוויר air directions (צפון north, דרום south, מזרח east, מערב west), גובה תקרה ceiling height, מחיר or מבוקש asking price, ש"ח or ₪ shekels, מיליון million (4.2 מיליון is 4,200,000). Text pulled out of Hebrew PDFs sometimes arrives with the letters or words of a line in reverse order; read it in whichever direction makes sense. Photos of listings (Yad2, Madlan, agency flyers) carry the same fields: read the numbers off the image.`;
 
 /** One file that came with the message: text if we could read it, the bytes when it is an image or a candidate floorplan. */
-export type IntakeFile = { name: string; type: string | null; size: number; text?: string | null; bytes?: Uint8Array | null };
+export type IntakeFile = { name: string; type: string | null; size: number; text?: string | null; bytes?: Uint8Array | null; pages?: number | null };
 export type IntakeInput = {
   channel: "EMAIL" | "WHATSAPP";
   key: string; // idempotency key: Message-ID or WhatsApp message id
@@ -163,13 +163,22 @@ async function readAttachments(messageId: string): Promise<IntakeFile[]> {
 export async function describeFile(name: string, type: string | null, bytes: Uint8Array): Promise<IntakeFile> {
   const isImage = (type ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(name);
   const text = isImage ? null : await attachmentToText(name, type, bytes).catch(() => null);
-  return { name, type, size: bytes.byteLength, text, bytes };
+  const isPdf = /\.pdf$/i.test(name) || (type ?? "").includes("pdf");
+  const pages = isPdf ? await (await import("@/lib/pdf-images")).pdfPageCount(bytes).catch(() => null) : null;
+  return { name, type, size: bytes.byteLength, text, bytes, pages };
 }
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const MAX_PDF_BYTES = 30 * 1024 * 1024; // what one request may carry as a document
 /** A PDF that is mostly drawings (a floor plan deck, a brochure): little text per page, or a plan/floor/type in its name. It has to be looked at, not read. */
-const isVisualPdf = (f: IntakeFile) => Boolean(f.bytes && f.bytes.byteLength <= MAX_PDF_BYTES && (/\.pdf$/i.test(f.name) || (f.type ?? "").includes("pdf")) && ((f.text ?? "").length < 600 * Math.max(1, Math.round(f.bytes.byteLength / 1_500_000)) || /floor|plan|type|rooms|תכנית|קומה|מפרט|brochure|deck/i.test(f.name)));
+const isVisualPdf = (f: IntakeFile) => {
+  if (!f.bytes || f.bytes.byteLength > MAX_PDF_BYTES || !(/\.pdf$/i.test(f.name) || (f.type ?? "").includes("pdf"))) return false;
+  const text = f.text ?? "";
+  // by text per page when the page count is known (Oct 16, 2026: TID's nine-page Ra'anana deck had 570 characters a page and was
+  // read as text, so its floor plans were never looked at); a page of prose runs to thousands
+  const sparse = f.pages ? text.length / f.pages < 1000 : text.length < 600 * Math.max(1, Math.round(f.bytes.byteLength / 1_500_000));
+  return sparse || /floor|plan|type|rooms|תכנית|קומה|מפרט|brochure|deck/i.test(f.name) || /Balcony Area|Apartment Area|שטח מכר|שטח דירה|שטח מרפסת/.test(text);
+};
 
 /** Merge what several calls read: every apartment once (by name), the fullest project, the first agent. */
 function mergeExtracted(parts: Extracted[]): Extracted {
@@ -393,7 +402,8 @@ async function attachFloorplan(files: IntakeFile[], unitId: string, kind: "apart
 const projectKey = (name: string, city?: string | null) => {
   let s = name.toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9\s]/g, " ");
   if (city) s = s.replace(new RegExp("\\b" + city.toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim() + "\\b", "g"), " ");
-  return s.replace(/\b(the|project|projects|tower|towers|park|residence|residences|complex|phase)\b/g, " ").replace(/\s+/g, " ").trim();
+  // "street"/"st" and "urban renewal" words are filler too (Oct 16, 2026: "Hazon Ish Street Urban Renewal" was made again as "Hazon Ish Ra'anana urban renewal")
+  return s.replace(/\b(the|project|projects|tower|towers|park|residence|residences|complex|phase|street|st|road|rd|urban|renewal|pinui|binui)\b/g, " ").replace(/\s+/g, " ").trim();
 };
 async function findProject(name: string, city?: string | null, street?: string | null): Promise<{ id: string; name: string; brochureType: string | null } | null> {
   const sel = { id: true, name: true, brochureType: true } as const;
