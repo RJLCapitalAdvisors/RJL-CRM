@@ -15,8 +15,9 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   const sp = await searchParams;
   const dealId = str(sp.dealId);
   const mode = str(sp.mode) === "engagement" && dealId ? "engagement" : "search";
-  // AI suggestions are a nice-to-have on the engagement page: cap the wait so the page never stalls on them
-  const suggestions = mode === "engagement" && dealId ? await Promise.race([suggestInvestors(dealId, { force: str(sp.refresh) === "1" }).catch(() => []), new Promise<never[]>((r) => setTimeout(() => r([]), 40_000))]) : [];
+  // the CRM's suggested groups come from a Claude read that can take half a minute on a deal's first visit: the page renders at
+  // once and the suggestions stream into their box when ready (Jonathan, Oct 16, 2026: "it still takes a very long time")
+  const suggestions = mode === "engagement" && dealId ? Promise.race([suggestInvestors(dealId, { force: str(sp.refresh) === "1" }).catch(() => []), new Promise<never[]>((r) => setTimeout(() => r([]), 60_000))]) : Promise.resolve([]);
   // Flat queries joined in code: SQLite caps query parameters, so nested includes over ~1,300 companies fail.
   const [companies, allCriteria, deal, deals, onReportRows] = await Promise.all([
     prisma.company.findMany({ where: { roles: { contains: "Investor" } }, select: { id: true, name: true, roles: true, domain: true, city: true, state: true, lastActivityAt: true }, orderBy: { name: "asc" } }),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DraftButton } from "@/app/draft-button";
@@ -73,7 +73,35 @@ function passes(c: InvestorRow["crit"], s: Spec, where: { city: string | null; s
 
 export type Suggestion = { companyId: string; name: string; reason: string };
 
-export function InvestorSearch({ rows, preset, presetDealName, presetPlace = null, deals, mode = "search", dealId = null, suggestions = [], onReport = [] }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; presetPlace?: { city: string | null; state: string | null } | null; onReport?: string[]; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] }) {
+/** The suggested groups, read from the page's promise so the rest of the page never waits for them. */
+function SuggestedGroups({ source, picked, toggle }: { source: Suggestion[] | Promise<Suggestion[]>; picked: Set<string>; toggle: (id: string) => void }) {
+  const suggestions = Array.isArray(source) ? source : use(source);
+  return (
+    <>
+      {suggestions.length === 0 && <span className="text-xs text-muted">Nothing yet for this deal.</span>}
+      {suggestions.map((sg) => (
+        <label key={sg.companyId} className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs ${picked.has(sg.companyId) ? "border-sky-600 bg-sky text-ink" : "border-line bg-paper hover:bg-cream"}`} title={sg.reason}>
+          <input type="checkbox" className="accent-ink" checked={picked.has(sg.companyId)} onChange={() => toggle(sg.companyId)} />
+          {sg.name}
+        </label>
+      ))}
+      {suggestions.length > 0 && (
+        <details className="text-xs text-muted">
+          <summary className="cursor-pointer hover:underline">why</summary>
+          <ul className="mt-1 max-h-40 space-y-0.5 overflow-auto">
+            {suggestions.map((sg) => (
+              <li key={sg.companyId}>
+                <span className="font-medium text-ink">{sg.name}:</span> {sg.reason}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
+  );
+}
+
+export function InvestorSearch({ rows, preset, presetDealName, presetPlace = null, deals, mode = "search", dealId = null, suggestions = [], onReport = [] }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; presetPlace?: { city: string | null; state: string | null } | null; onReport?: string[]; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] | Promise<Suggestion[]> }) {
   const PAGE = 100;
   const router = useRouter();
   const engagement = mode === "engagement" && Boolean(dealId);
@@ -216,23 +244,9 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
           <div className="border-b border-line bg-cream-50 px-4 py-2">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <span className="text-xs font-semibold text-sky-600">Suggested by the CRM</span>
-              {suggestions.length === 0 && <span className="text-xs text-muted">Nothing yet for this deal.</span>}
-              {suggestions.map((sg) => (
-                <label key={sg.companyId} className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs ${picked.has(sg.companyId) ? "border-sky-600 bg-sky text-ink" : "border-line bg-paper hover:bg-cream"}`} title={sg.reason}>
-                  <input type="checkbox" className="accent-ink" checked={picked.has(sg.companyId)} onChange={() => togglePick(sg.companyId)} />
-                  {sg.name}
-                </label>
-              ))}
-              <details className="text-xs text-muted">
-                <summary className="cursor-pointer hover:underline">why</summary>
-                <ul className="mt-1 max-h-40 space-y-0.5 overflow-auto">
-                  {suggestions.map((sg) => (
-                    <li key={sg.companyId}>
-                      <span className="font-medium text-ink">{sg.name}:</span> {sg.reason}
-                    </li>
-                  ))}
-                </ul>
-              </details>
+              <Suspense fallback={<span className="text-xs text-muted">Finding groups for this deal…</span>}>
+                <SuggestedGroups source={suggestions} picked={picked} toggle={togglePick} />
+              </Suspense>
               <Link href={`/investors?dealId=${dealId}&mode=engagement&refresh=1`} className="ml-auto text-xs text-muted hover:underline" title="Re-read criteria, tracker history and emails for this deal">
                 refresh
               </Link>
