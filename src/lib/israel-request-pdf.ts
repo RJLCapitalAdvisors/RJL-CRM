@@ -155,25 +155,33 @@ export async function buildIsraelRequestPdf(pages: RequestPage[], meta: RequestM
       push(drawable(bold, text(sec.heading)), bold, navy, 0, size + 1);
       for (const l of sec.lead ?? []) push(fit(drawable(reg, text(l)), reg, size - 0.5, width), reg, muted, 0, size - 0.5);
       if (sec.lead?.length) gap(2);
-      // Needed on top in bold, Received beneath in regular, each under its own header (Jonathan, Oct 15, 2026)
+      // Needed on top in bold, Received beneath in regular, each under its own header; the items numbered with a hanging
+      // indent, and a received item shown by its short name (the instruction in parentheses is for asking) (Jonathan, Oct 15-16, 2026)
       const needed = sec.items.filter((it) => it.needed), received = sec.items.filter((it) => !it.needed);
+      const indent = bold.widthOfTextAtSize("00.  ", size);
+      const numbered = (n: number, s: string, font: PDFFont, color: ReturnType<typeof rgb>, sz: number) => {
+        const lines = wrap(s, font, sz, width - indent);
+        lines.forEach((l, i) => {
+          if (i === 0) ops.push({ kind: "text", s: `${n}.`, font, size: sz, color, x: 0, dy: 0 });
+          ops.push({ kind: "text", s: l, font, size: sz, color, x: indent, dy: sz * 1.32 });
+          h += sz * 1.32;
+        });
+      };
+      let n = 0;
       if (needed.length) {
-        push("Needed", bold, muted, 0, size - 1);
-        for (const it of needed) for (const l of wrap(`• ${drawable(bold, text(it.label))}`, bold, size, width)) push(l, bold, ink, 0);
-        gap(3);
+        push("NEEDED", bold, muted, 0, size - 2);
+        for (const it of needed) numbered(++n, drawable(bold, text(it.label)), bold, ink, size);
+        gap(4);
       }
       if (received.length) {
-        push("Received", bold, muted, 0, size - 1);
+        push("RECEIVED", bold, muted, 0, size - 2);
         for (const it of received) {
+          const short = it.label.replace(/\s*\(.*$/, "").replace(/:\s*$/, "");
           const value = it.value ? drawable(reg, text(it.value)) : "";
-          const lab = fit(`• ${drawable(reg, text(it.label))}`, reg, size, width * 0.62);
-          const w = reg.widthOfTextAtSize(`${lab}: `, size);
-          ops.push({ kind: "text", s: `${lab}${value ? ":" : ""}`, font: reg, size, color: ink, x: 0, dy: 0 });
-          if (value) ops.push({ kind: "text", s: fit(value, reg, size - 0.5, width - w), font: reg, size: size - 0.5, color: muted, x: w, dy: 0 });
-          gap(lead);
+          numbered(++n, value ? `${drawable(reg, text(short))}: ${value}` : drawable(reg, text(short)), reg, ink, size);
         }
       }
-      gap(7);
+      gap(8);
     }
     return { ops, height: h };
   };
