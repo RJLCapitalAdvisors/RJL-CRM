@@ -7,7 +7,7 @@ export function Row({ label, hint, children }: { label: string; hint?: string; c
     <div className="border-b border-line py-2.5 last:border-0">
       <div className="mb-1 text-xs text-muted">{label}</div>
       {children}
-      {hint && <div className="mt-1 text-[11px] text-muted">{hint}</div>}
+      {hint && <div data-hint="" className="mt-1 text-[11px] text-muted">{hint}</div>}
     </div>
   );
 }
@@ -19,11 +19,14 @@ export function Group({ title, children }: { title: string; children: React.Reac
     </section>
   );
 }
+/** A calculated row; data-calc lets a compact view (The Que's fill panel) leave it out. */
 export function Calc({ label, value, hint = "calculated" }: { label: string; value: string; hint?: string }) {
   return (
-    <Row label={label} hint={hint}>
-      <div className="rounded-md bg-cream px-3 py-2 text-sm font-medium tabular-nums">{value}</div>
-    </Row>
+    <div data-calc="">
+      <Row label={label} hint={hint}>
+        <div className="rounded-md bg-cream px-3 py-2 text-sm font-medium tabular-nums">{value}</div>
+      </Row>
+    </div>
   );
 }
 export function Text({ name, value, placeholder }: { name: string; value?: string | number | null; placeholder?: string }) {

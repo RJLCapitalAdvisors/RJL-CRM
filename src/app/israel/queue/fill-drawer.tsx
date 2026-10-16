@@ -111,7 +111,7 @@ export function FillDrawer({ kind, id, title, missing: initial }: { kind: QueueK
                 Set on the ticket page, not here: {data.elsewhere.join(", ")}. <Link href={`/israel/${kind}/${id}`} className="text-sky-700 hover:underline">Open it</Link>.
               </div>
             ) : null}
-            <div className="min-h-0 flex-1 overflow-auto px-5 py-3 text-sm">
+            <div className="min-h-0 flex-1 overflow-auto px-5 py-3 text-sm [&_[data-calc]]:hidden [&_[data-hint]]:hidden">{/* calculated rows and field hints left out: only what can be typed (Jonathan, Oct 16, 2026) */}
               {loading || !data ? (
                 <div className="py-8 text-center text-muted">{loading ? "Loading the ticket…" : "Could not load the ticket."}</div>
               ) : kind === "apartments" ? (
