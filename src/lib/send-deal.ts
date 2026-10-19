@@ -363,6 +363,7 @@ export async function sendPreviewToSelf(dealId: string, item: LaunchItem, mailbo
 /** The deal email with no one's name in it: the starting point every firm's email derives from. */
 export async function renderGeneralDealEmail(opts: { templateId: string; dealId: string; senderName: string; mailbox: string }) {
   const { FIRST_NAME_MARKER } = await import("@/lib/first-name-marker");
+  await (await import("@/lib/zip")).ensureZip(opts.dealId).catch(() => null); // the zip, looked up once, so the address line is complete (Oct 19, 2026)
   const deal = await withChildren(await prisma.deal.findUniqueOrThrow({ where: { id: opts.dealId } }));
   return renderDealEmail({ templateId: opts.templateId, deal: deal as unknown as Record<string, unknown>, contact: { firstName: FIRST_NAME_MARKER, lastName: "", email: "", id: "" }, company: null, openingLine: "hope you are well.", bodyOverride: null, senderName: opts.senderName, mailbox: opts.mailbox });
 }

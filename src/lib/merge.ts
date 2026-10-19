@@ -1,3 +1,4 @@
+import { fullAddress } from "@/lib/zip";
 import { US_STATES } from "@/lib/taxonomy";
 import { cleanBusinessPlan } from "@/lib/style";
 import { uniqueChecklist, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
@@ -180,6 +181,7 @@ function lookup(ctx: MergeContext, path: string): unknown {
     const exact = { pricePerFoot: pp && sf ? pp / sf : null, capPerFoot: tc && sf ? tc / sf : null }[path.slice(5) as "pricePerFoot" | "capPerFoot"];
     return exact != null ? `$${exact.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : val.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
   }
+  if (path === "deal.propertyAddress") return fullAddress(ctx.deal as never); // street, city, state and zip (Jonathan, Oct 19, 2026)
   if (path === "deal.location") return [ctx.deal?.city, ctx.deal?.state].filter(Boolean).join(", ");
   if (path === "deal.stateName") {
     const code = ctx.deal?.state as string | undefined;

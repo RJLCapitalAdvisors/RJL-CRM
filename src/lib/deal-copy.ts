@@ -1,3 +1,4 @@
+import { fullAddress } from "@/lib/zip";
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
 import { rateText } from "@/lib/rates";
 import { parseDetails } from "@/lib/checklist";
@@ -141,7 +142,7 @@ export function landMetrics(d: D): string[] {
   const out: string[] = [];
   const acres = n(parseDetails(d.details).acres);
   const addr = s(d.propertyAddress);
-  if (addr) out.push(`Address: ${[addr, location(d)].filter(Boolean).join(", ")}`);
+  if (addr) out.push(`Address: ${fullAddress(d as never)}`);
   const useWord = entitledUse(d)?.toLowerCase();
   if (acres) out.push(`Site: ${acres} acres${useWord ? `, being entitled for ${useWord === "hotel" ? "a hotel" : `${useWord} development`}` : ""}`);
   const now = n(d.landValueCurrent);
@@ -270,7 +271,7 @@ export function metrics(d: D): string[] {
   };
   const out: string[] = [];
   const addr = s(d.propertyAddress);
-  if (addr) out.push(`Address: ${[addr, location(d)].filter(Boolean).join(", ")}${/\d{5}$/.test(addr) ? "" : ""}`);
+  if (addr) out.push(`Address: ${fullAddress(d as never)}`);
   const cap = n(d.totalCapitalization);
   if (cap) out.push(`Total Capitalization: ${usd(cap)}${perBits(cap)}`);
   const price = n(d.purchasePrice);

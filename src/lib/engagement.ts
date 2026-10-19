@@ -1,3 +1,4 @@
+import { fullAddress } from "@/lib/zip";
 import { prisma } from "@/lib/db";
 import { isSponsorSide } from "@/lib/report-guard";
 import { createDraft, getMessage, graph, graphConfigured, outlookDesktopLink } from "@/lib/graph";
@@ -65,7 +66,7 @@ export async function createEngagementDraft(dealId: string, companyIds: string[]
   const groups = await prisma.company.findMany({ where: { id: { in: companyIds } }, select: { id: true, name: true } });
   const to = await sponsorRecipient(deal.id, deal.sponsorCompanyId);
   const sponsor = deal.sponsorName ?? deal.sponsorCompany?.name ?? "Sponsor";
-  const address = [deal.propertyAddress, [deal.city, deal.state].filter(Boolean).join(", ")].filter(Boolean).join(", ") || (deal.propertyName ?? deal.name);
+  const address = fullAddress(deal) || (deal.propertyName ?? deal.name);
 
   const html = engagementHtml({ firstName: to?.firstName ?? null, sponsor, address, groups: groups.map((g) => g.name).sort(), signature: await signatureFor(mailbox) });
   const draft = await createDraft(mailbox, { subject: engagementSubject(sponsor, address), toRecipients: to?.email ? [to.email] : [], bodyHtml: `<html><body>${html}</body></html>` });
