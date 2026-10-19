@@ -76,9 +76,11 @@ export function cleanBusinessPlan(s: string | null | undefined): string | null {
  */
 // the deal's own status and go-betweens; a partner named on the project is firm context and stays
 const DEAL_SPECIFIC_IN_BIO = /\b(for this (?:site|deal|property|transaction)|for the site|the subject (?:site|property)|zoning|rezon|entitlement|entitled|environmental approval|state grant|grant funding|grant award|tax credit award|broker|brokerage|capital markets team|JLL|CBRE|Cushman|Newmark|Marcus & Millichap|Eastdil|Walker & Dunlop|Berkadia|Colliers|term sheet|under contract|purchase agreement)\b/i;
+/** A principal described by family relation ("Brendan Dale's father") is not a bio fact (Jonathan, Oct 19, 2026); name the person and role, or say "the firm's founder". */
+export const FAMILY_RELATION_IN_BIO = /\b[A-Z][a-z]+(?: [A-Z][a-z]+)?['’]s (?:father|mother|son|daughter|brother|sister|wife|husband|uncle|aunt|cousin|nephew|niece|grandfather|grandmother)\b/;
 export function bioProblems(s: string | null | undefined): string[] {
   const t = houseText(s);
-  return t ? planSentences(t).filter((x) => DEAL_SPECIFIC_IN_BIO.test(x)) : [];
+  return t ? planSentences(t).filter((x) => DEAL_SPECIFIC_IN_BIO.test(x) || FAMILY_RELATION_IN_BIO.test(x)) : [];
 }
 export function cleanSponsorBio(s: string | null | undefined): string | null {
   const t = houseText(s);

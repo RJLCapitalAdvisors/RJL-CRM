@@ -329,9 +329,11 @@ export function metrics(d: D): string[] {
   const ltvShown = condo && sellout && debt ? { v: Math.round((debt / sellout) * 10000) / 100, base: " on gross sellout" } : ltv && ltv <= 100 ? { v: ltv, base: "" } : null;
   if (debt || ltc || ltvShown || rate) {
     const lev = ltc ? `${pct(ltc)} LTC${ltvShown ? ` (${pct(ltvShown.v)} LTV${ltvShown.base})` : ""}` : ltvShown ? `${pct(ltvShown.v)} LTV${ltvShown.base}` : "";
-    // commas and parentheses, never dashes (Jonathan, Oct 19, 2026): "$77,282,717 | 64.98% LTC at 225 bps over SOFR (approximately 5.67% all in, based on SOFR at the expected January 2027 closing), on a 4 year term, full term I/O (Bank Execution)"
-    const tail = [term ? `on a ${term}` : null, amort].filter(Boolean).join(", ");
-    out.push(`Total Debt and Terms: ${[debt ? usd(debt) : null, [lev, rate ? `at ${rate}` : null].filter(Boolean).join(" ")].filter(Boolean).join(" | ")}${tail ? `, ${tail}` : ""}${lender ? ` (${lender})` : ""}`);
+    // Jonathan's structure (Oct 19, 2026): "$77,282,717 | 64.98% LTC @ 225 bps over SOFR (6.14% today) - full term I/O on a 4-year term - (Bank Execution)";
+    // the rate reads as the sponsor gave it (a flat rate or a spread over an index), the term as a hyphenated compound
+    const termHy = term?.replace(/^(\d+)\s+(year|yr)\b/i, "$1-year") ?? null;
+    const structure = [amort, termHy ? `on a ${termHy}` : null].filter(Boolean).join(" ");
+    out.push(`Total Debt and Terms: ${[debt ? usd(debt) : null, [lev, rate ? `@ ${rate}` : null].filter(Boolean).join(" ")].filter(Boolean).join(" | ")}${structure ? ` - ${structure}` : ""}${lender ? ` - (${lender})` : ""}`);
   }
   const eq = n(d.totalEquity);
   if (eq) out.push(`Total Equity: ${usd(eq)}`);

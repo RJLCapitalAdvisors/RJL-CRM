@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "fs";
 import { debtTermsLine, intro, metrics, multiple, sellerSentence, shortSourcing } from "../src/lib/deal-copy";
 import { renderTemplate, type MergeContext } from "../src/lib/merge";
-import { cleanBusinessPlan, cleanSponsorBio, planSentences } from "../src/lib/style";
+import { bioProblems, cleanBusinessPlan, cleanSponsorBio, planSentences } from "../src/lib/style";
 import { closeMonthKey, parseForwardCurve, rateTextAtClose, setForwardCurve, setIndexTable } from "../src/lib/rates";
 import { leadsWithPlace } from "../src/lib/enrich-narratives";
 
@@ -66,13 +66,13 @@ test("2. a sentence cut at a decimal or an abbreviation never leaves a fragment"
   assert.equal(cleanBusinessPlan(projectBarclays.summary as string)?.includes("0 billion"), false);
 });
 
-test("3. and 6. the debt line prices SOFR at the expected closing month, in commas and parentheses", () => {
-  const line = debtTermsLine(asDeal(rockyHillNorth));
-  assert.equal(line, "$77,282,717 | 64.98% LTC at 225 bps over SOFR (approximately 5.67% all in, based on SOFR at the expected January 2027 closing), on a 4 year term, full term I/O (Bank Execution)");
-  assert.ok(!/ - /.test(line), "no dashes as separators");
-  // without a curve value for the month, today's reading and the words to say so
+test("3. and 6. the debt line: amount | LTC @ rate - amortization on a n-year term - (lender)", () => {
+  // with the closing month on the curve, the rate is that month's
+  assert.equal(debtTermsLine(asDeal(rockyHillNorth)), "$77,282,717 | 64.98% LTC @ 225 bps over SOFR (5.67% at January 2027 closing) - full term I/O on a 4-year term - (Bank Execution)");
+  // without a curve value for the month, today's reading: the line Jonathan asked for
   setForwardCurve({});
-  assert.equal(rateTextAtClose({ rateIndex: "SOFR", rateSpreadBps: 225 }, "January 2027"), "225 bps over SOFR (approximately 6.14% all in, based on SOFR today)");
+  assert.equal(debtTermsLine(asDeal(rockyHillNorth)), "$77,282,717 | 64.98% LTC @ 225 bps over SOFR (6.14% today) - full term I/O on a 4-year term - (Bank Execution)");
+  assert.equal(rateTextAtClose({ rateIndex: "SOFR", rateSpreadBps: 225 }, "January 2027"), "225 bps over SOFR (6.14% today)");
   setForwardCurve(parseForwardCurve("January 2027 3.42"));
   assert.equal(closeMonthKey("January 2027"), "2027-01");
   assert.equal(closeMonthKey("Q4 2026 (land closing)"), "2026-12");
@@ -82,8 +82,8 @@ test("3. and 6. the debt line prices SOFR at the expected closing month, in comm
 });
 
 test("3. and 6. the working deals' debt lines keep their figures, with the new punctuation", () => {
-  assert.equal(debtTermsLine(asDeal(aurea)), "$92,011,402 | 60.61% LTC at 7.15%, on a Construction to permanent, 40 year amortization (HUD)");
-  assert.equal(debtTermsLine(asDeal(projectBarclays)), "$13,991,713 | 70.00% LTC at 375 bps over SOFR (approximately 7.17% all in, based on SOFR at the expected January 2027 closing), on a 3 year term");
+  assert.equal(debtTermsLine(asDeal(aurea)), "$92,011,402 | 60.61% LTC @ 7.15% - 40 year amortization (HUD) on a Construction to permanent");
+  assert.equal(debtTermsLine(asDeal(projectBarclays)), "$13,991,713 | 70.00% LTC @ 375 bps over SOFR (7.17% at January 2027 closing) - on a 3-year term");
 });
 
 test("5. the equity multiple reads with two decimals and a lowercase x", () => {
@@ -108,6 +108,11 @@ test("7. the business plan leads with the place", () => {
   assert.equal(leadsWithPlace("Rocky Hill North sits in Amesbury, Massachusetts, on the Merrimack River north of Boston. The sponsor is building townhomes.", deal), true);
   assert.equal(leadsWithPlace(aurea.summary as string, { city: "Miami", state: "FL", propertyName: "Aurea at Highland Park", name: "" }), true);
   assert.equal(leadsWithPlace(projectBarclays.summary as string, { city: "Brooklyn", state: "NY", propertyName: "Project Barclays", name: "" }), true);
+});
+
+test("8. a principal by family relation is flagged in a bio", () => {
+  assert.equal(bioProblems("The firm was founded by Brendan Dale's father, who began his career at Toll Brothers.").length, 1);
+  assert.equal(bioProblems("The firm's founder began his career at Toll Brothers.").length, 0);
 });
 
 test("8. the sponsor bio stays firm-level", () => {

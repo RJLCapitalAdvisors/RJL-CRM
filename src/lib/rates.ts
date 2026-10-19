@@ -151,8 +151,8 @@ export function rateAtClose(d: RateFields, expectedClose: string | null | undefi
 export function rateTextAtClose(d: RateFields, expectedClose: string | null | undefined, c?: ForwardCurve, t?: IndexTable): string | null {
   if (d.rateIndex && d.rateIndex !== ASSUMPTION && d.rateSpreadBps != null) {
     const r = rateAtClose(d, expectedClose, c, t);
-    const when = r?.basis === "curve" ? `at the expected ${(expectedClose ?? "").trim()} closing` : "today";
-    return `${d.rateSpreadBps} bps over ${d.rateIndex}${r ? ` (approximately ${r.rate.toFixed(2)}% all in, based on ${d.rateIndex} ${when})` : ""}`;
+    const when = r?.basis === "curve" ? `at ${(expectedClose ?? "").trim()} closing` : "today";
+    return `${d.rateSpreadBps} bps over ${d.rateIndex}${r ? ` (${r.rate.toFixed(2)}% ${when})` : ""}`;
   }
   return rateText(d, t);
 }
