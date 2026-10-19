@@ -85,3 +85,74 @@ export function cleanInterestRate(raw: string | null | undefined): string | null
   const pct = rest.match(/(?<![+\d])(\d{1,2}(?:\.\d+)?)\s*%/);
   return pct ? `${pct[1]}%` : null;
 }
+
+/**
+ * The SOFR forward curve, one value per month ("2027-01" -> 3.42, in percent), pasted under Settings > Rate curve. A
+ * floating loan that closes in a future month is priced off that month's curve value rather than today's reading
+ * (Jonathan, Oct 19, 2026: Rocky Hill North closes January 2027 and the curve slopes up). Without a value for the
+ * month, today's index is used and the line says so.
+ */
+export type ForwardCurve = Record<string, number>;
+let curve: ForwardCurve = {};
+export function setForwardCurve(c: ForwardCurve) {
+  curve = c;
+}
+export function forwardCurve(): ForwardCurve {
+  return curve;
+}
+const MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+/** "January 2027", "Jan 2027", "Early December 2026", "Q4 2026", "12/2026", "2026-12" -> "2026-12"; null when no month can be read. A quarter is its last month. */
+export function closeMonthKey(expectedClose: string | null | undefined): string | null {
+  const t = (expectedClose ?? "").toLowerCase();
+  if (!t) return null;
+  const iso = t.match(/\b(20\d{2})-(\d{2})\b/);
+  if (iso) return `${iso[1]}-${iso[2]}`;
+  const numeric = t.match(/\b(\d{1,2})\s*\/\s*(20\d{2})\b/);
+  if (numeric) return `${numeric[2]}-${numeric[1].padStart(2, "0")}`;
+  const q = t.match(/\bq([1-4])\s*,?\s*(20\d{2})\b/);
+  if (q) return `${q[2]}-${String(Number(q[1]) * 3).padStart(2, "0")}`;
+  const named = t.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*,?\s*(?:\d{1,2},?\s*)?(20\d{2})\b/);
+  if (named) {
+    const m = MONTH_NAMES.findIndex((x) => x.startsWith(named[1].slice(0, 3)));
+    return m >= 0 ? `${named[2]}-${String(m + 1).padStart(2, "0")}` : null;
+  }
+  return null;
+}
+/** The pasted curve, one month per line: "2027-01 3.42", "Jan 2027 3.42%", "January 2027: 3.42". Other lines are ignored. */
+export function parseForwardCurve(text: string | null | undefined): ForwardCurve {
+  const out: ForwardCurve = {};
+  for (const line of (text ?? "").split(/\r?\n/)) {
+    const m = line.match(/^\s*(.+?)\s*[:\t,]?\s+(\d+(?:\.\d+)?)\s*%?\s*$/);
+    if (!m) continue;
+    const key = closeMonthKey(m[1]);
+    if (key) out[key] = Number(m[2]);
+  }
+  return out;
+}
+/** The curve's SOFR for the closing month, when both are known. */
+export function indexAtClose(index: string | null | undefined, expectedClose: string | null | undefined, c?: ForwardCurve): { value: number; month: string } | null {
+  if (index !== "SOFR") return null;
+  const month = closeMonthKey(expectedClose);
+  const value = month ? (c ?? curve)[month] : undefined;
+  return month && typeof value === "number" ? { value, month } : null;
+}
+/** Index + spread for the closing month off the curve; today's index when the curve has no value for it; null on a fixed loan. */
+export function rateAtClose(d: RateFields, expectedClose: string | null | undefined, c?: ForwardCurve, t?: IndexTable): { rate: number; basis: "curve" | "today" } | null {
+  if (!d.rateIndex || d.rateIndex === ASSUMPTION || d.rateSpreadBps == null) return null;
+  const fwd = indexAtClose(d.rateIndex, expectedClose, c);
+  if (fwd) return { rate: Math.round((fwd.value + d.rateSpreadBps / 100) * 100) / 100, basis: "curve" };
+  const now = indicativeRate(d, t);
+  return now != null ? { rate: now, basis: "today" } : null;
+}
+/**
+ * The rate for the debt line (Jonathan, Oct 19, 2026): "225 bps over SOFR (approximately 5.67% all in, based on SOFR at the
+ * expected January 2027 closing)", or "... based on SOFR today" without a curve value; a fixed loan reads "7.15%".
+ */
+export function rateTextAtClose(d: RateFields, expectedClose: string | null | undefined, c?: ForwardCurve, t?: IndexTable): string | null {
+  if (d.rateIndex && d.rateIndex !== ASSUMPTION && d.rateSpreadBps != null) {
+    const r = rateAtClose(d, expectedClose, c, t);
+    const when = r?.basis === "curve" ? `at the expected ${(expectedClose ?? "").trim()} closing` : "today";
+    return `${d.rateSpreadBps} bps over ${d.rateIndex}${r ? ` (approximately ${r.rate.toFixed(2)}% all in, based on ${d.rateIndex} ${when})` : ""}`;
+  }
+  return rateText(d, t);
+}

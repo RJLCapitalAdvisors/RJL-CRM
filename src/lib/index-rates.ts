@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
-import { RATE_INDEXES, setIndexTable, type IndexTable, type RateIndex } from "@/lib/rates";
+import { RATE_INDEXES, parseForwardCurve, setForwardCurve, setIndexTable, type IndexTable, type RateIndex } from "@/lib/rates";
+export const CURVE_SETTING_KEY = "sofrForwardCurve";
 
 /**
  * The day's SOFR, Prime and treasury yields, from FRED (public CSV, no key), kept in IndexRate rows and refreshed
@@ -37,6 +38,9 @@ export async function ensureIndexRates(): Promise<IndexTable> {
     setIndexTable(cached.table);
     return cached.table;
   }
+  // the SOFR forward curve pasted under Settings > Rate curve rides along with the day's indices (Oct 19, 2026)
+  const curveRow = await prisma.setting.findUnique({ where: { key: CURVE_SETTING_KEY } }).catch(() => null);
+  setForwardCurve(parseForwardCurve(curveRow?.value ?? ""));
   let rows = await prisma.indexRate.findMany();
   const stale = !rows.length || rows.some((r) => Date.now() - r.updatedAt.getTime() > 26 * 3_600_000);
   if (stale) {

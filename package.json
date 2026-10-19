@@ -18,7 +18,8 @@
     "users": "tsx scripts/set-users.ts",
     "migrate:postgres": "tsx scripts/migrate-to-postgres.ts",
     "enrich": "tsx scripts/enrich-companies.ts",
-    "roles:backfill": "tsx scripts/backfill-roles.ts"
+    "roles:backfill": "tsx scripts/backfill-roles.ts",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",

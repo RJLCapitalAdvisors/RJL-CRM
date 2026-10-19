@@ -41,7 +41,12 @@ export function houseText(s: string | null | undefined): string | null {
  */
 /** The sentences of a paragraph, a decimal never mistaken for a full stop (Oct 12, 2026: "a record low 2.5 percent" was cut at the "2."). */
 export function planSentences(t: string): string[] {
-  const guarded = t.replace(/(\d)\.(\d)/g, "$1\u0000$2");
+  // a decimal, an abbreviation ("Onyx Partners Ltd. is") and a web address are not sentence ends (Oct 19, 2026: a sentence cut at "$2." left "0 billion of investment" standing on its own)
+  const guarded = t
+    .replace(/(\d)\.(\d)/g, "$1\u0000$2")
+    .replace(/\b(Ltd|Inc|Co|Corp|LLC|LP|St|Ave|Rd|Blvd|Dr|Mr|Mrs|Ms|Jr|Sr|No|vs|approx|Sq|Ft|Mt|Ste|Bros)\.(?=\s)/g, "$1\u0000")
+    .replace(/\b([A-Z])\.(?=\s?[A-Z](?:\.|[a-z]))/g, "$1\u0000") // initials: "J.P. Morgan", "U.S. markets"
+    .replace(/\.(com|net|org|io|co)\b/gi, "\u0000$1");
   return (guarded.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) ?? [guarded]).map((x) => x.replace(/\u0000/g, ".").trim()).filter(Boolean);
 }
 
@@ -58,7 +63,27 @@ export function cleanBusinessPlan(s: string | null | undefined): string | null {
   if (!t) return null;
   const banned = /\$|\d(?:\.\d+)?\s?%|\b(irr|equity multiple|multiple of|cash[- ]on[- ]cash|cap rate|yield on cost|yoc|noi|ltv|ltc|loan|debt|lender|amortiz|interest rate|exit|disposition|refinanc|hold period|year hold|closing|close (?:in|by|date)|under contract|purchase price|total cap|capitalization|basis|cost|budget|seller|sourc(?:ed|ing)|off[- ]market|on[- ]market|built in|constructed in|vintage|square feet|square foot|sq\.? ?ft|\bsf\b|nrsf|rentable|units?\b|keys\b|beds\b|acres?\b|occupan)/i;
   void banned;
-  const kept = planSentences(t).filter((x) => !BANNED_IN_PLAN.test(x));
+  // a fragment left by an older cut ("0 billion of investment and was rezoned") is dropped rather than rendered (Oct 19, 2026)
+  const FRAGMENT = /^\d[\d,.]*\s*(?:billion|million|thousand|percent|%|bps|units|square feet|sf|acres)\b/i;
+  const kept = planSentences(t).filter((x) => !BANNED_IN_PLAN.test(x) && !FRAGMENT.test(x));
   const out = kept.slice(0, 6).join(" ").trim();
+  return out || null;
+}
+/**
+ * The sponsor bio is firm-level only (Jonathan, Oct 19, 2026): history, geography, focus and track record. A sentence
+ * about the deal at hand, its approvals, grants, brokers or lender relationships is cut. Applied when a bio is written
+ * and when the email renders, so older tickets comply too.
+ */
+// the deal's own status and go-betweens; a partner named on the project is firm context and stays
+const DEAL_SPECIFIC_IN_BIO = /\b(for this (?:site|deal|property|transaction)|for the site|the subject (?:site|property)|zoning|rezon|entitlement|entitled|environmental approval|state grant|grant funding|grant award|tax credit award|broker|brokerage|capital markets team|JLL|CBRE|Cushman|Newmark|Marcus & Millichap|Eastdil|Walker & Dunlop|Berkadia|Colliers|term sheet|under contract|purchase agreement)\b/i;
+export function bioProblems(s: string | null | undefined): string[] {
+  const t = houseText(s);
+  return t ? planSentences(t).filter((x) => DEAL_SPECIFIC_IN_BIO.test(x)) : [];
+}
+export function cleanSponsorBio(s: string | null | undefined): string | null {
+  const t = houseText(s);
+  if (!t) return null;
+  const kept = planSentences(t).filter((x) => !DEAL_SPECIFIC_IN_BIO.test(x));
+  const out = kept.join(" ").trim();
   return out || null;
 }

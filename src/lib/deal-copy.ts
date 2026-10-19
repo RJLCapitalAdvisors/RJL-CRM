@@ -1,6 +1,6 @@
 import { fullAddress } from "@/lib/zip";
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
-import { rateText } from "@/lib/rates";
+import { rateText, rateTextAtClose } from "@/lib/rates";
 import { parseDetails } from "@/lib/checklist";
 import { US_STATES } from "@/lib/taxonomy";
 import { isCondo, isLand, isPref, prefMetrics } from "@/lib/pref";
@@ -14,6 +14,33 @@ type D = Record<string, unknown>;
 const n = (v: unknown) => (typeof v === "number" && !isNaN(v) ? v : typeof v === "string" && v.trim() && !isNaN(Number(v.replace(/[^0-9.-]/g, ""))) ? Number(v.replace(/[^0-9.-]/g, "")) : null);
 const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 export const usd = (v: number) => `$${Math.round(v).toLocaleString("en-US")}`;
+/** The equity multiple always reads with two decimals and a lowercase x: "2.10x" (Jonathan, Oct 19, 2026). */
+export const multiple = (v: number) => `${v.toFixed(2)}x`;
+/**
+ * The sourcing field as the email may say it: "on-market", "off-market" or "already owned by the sponsor". Anything longer
+ * is the team's own commentary (the broker, the contract status, prior capital) and never renders (Oct 19, 2026:
+ * Rocky Hill North's email read "The land was purchased The opportunity is being marketed by JLL Boston...").
+ */
+export function shortSourcing(raw: unknown): string | null {
+  const t = typeof raw === "string" ? raw.trim().replace(/[.]+$/, "") : "";
+  if (!t) return null;
+  if (/^(on|off)[\s-]?market$/i.test(t)) return t.toLowerCase().replace(/\s/, "-");
+  if (/^already owned( by the sponsor)?$/i.test(t)) return "already owned by the sponsor";
+  return null;
+}
+/**
+ * "The land was purchased off-market from a mom n' pop owner." for the deal email, or nothing at all: no seller on the
+ * ticket, no sentence (never the internal sourcing notes in its place), and a site the sponsor already owns has no seller.
+ */
+export function sellerSentence(d: { details?: string | null }, kind: "land" | "asset"): string {
+  const det = parseDetails(d.details);
+  const seller = typeof det.sellerProfile === "string" ? det.sellerProfile.trim().replace(/[.]+$/, "") : "";
+  if (!seller) return "";
+  const src = shortSourcing(det.sourcing);
+  if (src && /^already owned/.test(src)) return "";
+  const from = /^(a|an|the)\b/i.test(seller) || /^[A-Z]/.test(seller) ? seller : `a ${seller}`;
+  return kind === "land" ? `The land was purchased${src ? ` ${src}` : ""} from ${from}.` : `The sponsor is buying the asset${src ? ` ${src}` : ""} from ${from}.`;
+}
 /** Rounded money for headlines: $5.6MM, $12MM, $850k. */
 export const usdShort = (v: number) => (v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1).replace(/\.0$/, "")}MM` : v >= 1_000 ? `$${Math.round(v / 1_000)}k` : usd(v));
 /** The same amount for a subject line, with no dollar sign: "4MM", "850k" (Jonathan, Oct 19, 2026: dollar signs in subjects feed spam filters). */
@@ -78,7 +105,7 @@ export function intro(d: D): string {
   const mix = s(d.unitMix);
   const avg = ratio(sf, count);
   const ask = n(d.requestedAmount);
-  const sourcing = s(parseDetails(d.details).sourcing);
+  const sourcing = shortSourcing(parseDetails(d.details).sourcing);
   const per = perCountWord(p.countLabel);
 
   const first = dev
@@ -103,7 +130,7 @@ export function intro(d: D): string {
     const bits = [mix ? `has a mix of ${mix} ${p.countLabel.toLowerCase()}` : null, avg ? `${mix ? "with " : "has "}an average ${per} size of ${Math.round(avg).toLocaleString("en-US")} SF` : null].filter(Boolean);
     third = `${!second && year ? `Built in ${year}, the` : "The"} property ${bits.join(" ")}.`;
   }
-  const fourth = sourcing && !dev ? `The sponsor is buying the asset ${/^(on|off)/i.test(sourcing) ? sourcing.charAt(0).toLowerCase() + sourcing.slice(1) : sourcing}${/[.!?]$/.test(sourcing) ? "" : "."}` : "";
+  const fourth = dev ? "" : sellerSentence(d, "asset") || (sourcing && !/^already/.test(sourcing) ? `The sponsor is buying the asset ${sourcing}.` : "");
   const fifth = ask ? `<b>They are seeking ${usdShort(ask)} of ${exec} on this opportunity.</b>` : "";
   return [first, second, third, fourth, fifth].filter(Boolean).join(" ");
 }
@@ -126,12 +153,12 @@ function landIntro(d: D): string {
   const use = s(d.entitledFor);
   const phase = s(d.entitlementPhase);
   const ask = n(d.requestedAmount);
-  const sourcing = s(parseDetails(d.details).sourcing);
+  const sourcing = shortSourcing(parseDetails(d.details).sourcing);
   const first = `RJL Capital Advisors is pleased to be representing ${sponsor} as they source ${exec} to entitle ${prop}${loc ? `, in ${loc}` : ""}.`;
   const useWord = entitledUse(d)?.toLowerCase();
   const second = [acres ? `The site spans ${acres} acres` : null, use ? `${acres ? " and" : "The land"} is being entitled for ${useWord === "hotel" ? "a hotel" : `${useWord} development`}` : null].filter(Boolean).join("") + (acres || use ? "." : "");
   const third = phase ? `Entitlements stand at: ${phase.replace(/[.]+$/, "")}.` : "";
-  const fourth = sourcing ? `The sponsor is buying the land ${/^(on|off)/i.test(sourcing) ? sourcing.charAt(0).toLowerCase() + sourcing.slice(1) : sourcing}${/[.!?]$/.test(sourcing) ? "" : "."}` : "";
+  const fourth = sellerSentence(d, "land") || (sourcing && !/^already/.test(sourcing) ? `The sponsor is buying the land ${sourcing}.` : "");
   const fifth = ask ? `<b>They are seeking ${usdShort(ask)} of ${exec} on this opportunity.</b>` : "";
   return [first, second, third, fourth, fifth].filter(Boolean).join(" ");
 }
@@ -294,7 +321,7 @@ export function metrics(d: D): string[] {
   const debt = n(d.totalDebt);
   const ltc = n(d.ltc);
   const ltv = n(d.ltv);
-  const rate = rateText(d as { interestRate?: string | null; rateIndex?: string | null; rateSpreadBps?: number | null }); // "300 bps over SOFR (6.90% today)" or "6.75%"
+  const rate = rateTextAtClose(d as { interestRate?: string | null; rateIndex?: string | null; rateSpreadBps?: number | null }, s(d.expectedClose)); // "225 bps over SOFR (approximately 5.67% all in, based on SOFR at the expected January 2027 closing)" or "7.15%"
   const term = s(d.loanTerm);
   const amort = s(d.amortization);
   const lender = s(d.lenderType)?.replace(/^\((.*)\)$/, "$1") ?? null; // the list stores "(Debt Fund)"; the line adds its own parentheses
@@ -302,8 +329,9 @@ export function metrics(d: D): string[] {
   const ltvShown = condo && sellout && debt ? { v: Math.round((debt / sellout) * 10000) / 100, base: " on gross sellout" } : ltv && ltv <= 100 ? { v: ltv, base: "" } : null;
   if (debt || ltc || ltvShown || rate) {
     const lev = ltc ? `${pct(ltc)} LTC${ltvShown ? ` (${pct(ltvShown.v)} LTV${ltvShown.base})` : ""}` : ltvShown ? `${pct(ltvShown.v)} LTV${ltvShown.base}` : "";
-    const structure = amort && term ? ` - ${amort} on a ${term}` : amort ? ` - ${amort}` : term ? ` - ${term}` : "";
-    out.push(`Total Debt and Terms: ${[debt ? usd(debt) : null, [lev, rate ? `@ ${rate}` : null].filter(Boolean).join(" ")].filter(Boolean).join(" | ")}${structure}${lender ? ` - (${lender})` : ""}`);
+    // commas and parentheses, never dashes (Jonathan, Oct 19, 2026): "$77,282,717 | 64.98% LTC at 225 bps over SOFR (approximately 5.67% all in, based on SOFR at the expected January 2027 closing), on a 4 year term, full term I/O (Bank Execution)"
+    const tail = [term ? `on a ${term}` : null, amort].filter(Boolean).join(", ");
+    out.push(`Total Debt and Terms: ${[debt ? usd(debt) : null, [lev, rate ? `at ${rate}` : null].filter(Boolean).join(" ")].filter(Boolean).join(" | ")}${tail ? `, ${tail}` : ""}${lender ? ` (${lender})` : ""}`);
   }
   const eq = n(d.totalEquity);
   if (eq) out.push(`Total Equity: ${usd(eq)}`);
@@ -330,7 +358,7 @@ export function metrics(d: D): string[] {
   const hold = s(d.holdPeriod);
   const coc = n(d.cashOnCash);
   if ((irr || em) && !isPref(d.executionType)) {
-    const ret = [irr ? `${pct(irr)} IRR` : null, em ? `${irr ? "a " : ""}${em}x EM` : null].filter(Boolean).join(" and ");
+    const ret = [irr ? `${pct(irr)} IRR` : null, em ? `${irr ? "a " : ""}${multiple(em)} EM` : null].filter(Boolean).join(" and ");
     out.push(`Expected Returns: ${ret}${hold ? ` on a ${hold.replace(/\s*hold$/i, "")} hold` : ""}.${coc && !dev && !condo ? ` Stabilized cash on cash of ${pct(coc)}` : ""}`);
   }
   const close = s(d.expectedClose);
@@ -374,7 +402,7 @@ function underlyingLandMetrics(d: D): string[] {
   const irr = n(d.irr);
   const em = n(d.equityMultiple);
   const hold = s(d.verticalHold) ?? (isPref(d.executionType) ? null : s(d.holdPeriod));
-  if (irr || em) out.push(`Expected Returns: ${[irr ? `${pct(irr)} IRR` : null, em ? `${irr ? "a " : ""}${em}x EM` : null].filter(Boolean).join(" and ")}${hold ? ` on a ${hold.replace(/\s*hold$/i, "")} hold` : ""}.`);
+  if (irr || em) out.push(`Expected Returns: ${[irr ? `${pct(irr)} IRR` : null, em ? `${irr ? "a " : ""}${multiple(em)} EM` : null].filter(Boolean).join(" and ")}${hold ? ` on a ${hold.replace(/\s*hold$/i, "")} hold` : ""}.`);
   else if (hold) out.push(`Hold: ${hold}`);
   return out;
 }
@@ -402,7 +430,7 @@ export function portfolioMetrics(d: D): string[] {
   const yoc = range(nums("yieldOnCost"), pct);
   if (yoc) out.push(`Yield on Cost at Stabilization: ${yoc}`);
   const irr = range(nums("irr"), pct);
-  const em = range(nums("equityMultiple"), (v) => `${v}x`);
+  const em = range(nums("equityMultiple"), (v) => multiple(v));
   const holds = [...new Set(kids.map((c) => s(c.holdPeriod)).filter((x): x is string => Boolean(x)))];
   const hold = s(d.holdPeriod) ?? (holds.length === 1 ? holds[0] : null);
   if (irr || em) out.push(`Expected Returns: ${[irr ? `${irr} IRR` : null, em ? `${irr ? "a " : ""}${em} EM` : null].filter(Boolean).join(" and ")}${hold ? ` on a ${hold.replace(/\s*hold$/i, "")} hold` : ""}`);
@@ -445,3 +473,9 @@ export function metricsText(d: D): string {
   return m.length ? `Deal Metrics\n${m.map((x) => `• ${x}`).join("\n")}` : "";
 }
 export { stateName };
+
+/** The debt terms as one line for a template token ({{deal.debtTerms}}), the same words the Deal Metrics list carries after "Total Debt and Terms:". */
+export function debtTermsLine(d: D): string {
+  const line = metrics(d).find((l) => l.startsWith("Total Debt and Terms: "));
+  return line ? line.slice("Total Debt and Terms: ".length) : "";
+}

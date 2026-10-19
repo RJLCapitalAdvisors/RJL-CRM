@@ -92,6 +92,14 @@ export default async function SettingsPage() {
           </div>
         )}
 
+        <div id="rates" className="card px-5 py-4 text-sm">
+          <span className="font-semibold">Rate curve.</span> The SOFR forward curve a deal email prices a floating loan off, by its expected closing month, lives under{" "}
+          <Link href="/settings/rates" className="font-medium text-sky-700 hover:underline">
+            Settings &gt; Rate curve
+          </Link>
+          .
+        </div>
+
         <h2 className="pt-2 text-base font-semibold">Email signatures</h2>
         {users.map((u) => (
           <div key={u.id} className="card">

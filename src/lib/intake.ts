@@ -3,7 +3,7 @@ import { cleanInterestRate } from "@/lib/rates";
 import { FORMAT_RULES, loadUnderwritingRules } from "@/lib/underwriting-rules";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { houseText, cleanBusinessPlan } from "@/lib/style";
+import { houseText, cleanBusinessPlan, cleanSponsorBio } from "@/lib/style";
 import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
 import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES } from "@/lib/taxonomy";
 import { ASSUMPTION, RATE_INDEXES, parseSpread } from "@/lib/rates";
@@ -31,7 +31,7 @@ export const ExtractedDealSchema = z.object({
   equityMultiple: z.number().nullable(),
   occupancy: z.number().nullable().describe("Percent"),
   onMarket: z.boolean().nullable(),
-  sponsorExperience: z.string().nullable().describe("Sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes."),
+  sponsorExperience: z.string().nullable().describe("Sponsor bio, 3-4 sentences about the firm only: founding background, focus/strategy, geography, scale/track record. Nothing about this deal: no entitlements, zoning, grants, approvals, brokers or lender relationships. No return figures, no dashes."),
   summary: z.string().nullable().describe("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), then the value-add thesis, which must never be left out (what the sponsor will do to create value: a departing tenant and who backfills it, vacancy and who leases it, a repositioning, a renovation), then notable physical attributes. No figures at all, in digits or in words: no percentages, dollars, dates, square footage, counts, returns. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
   details: z.record(z.string(), z.string().nullable()).describe("Checklist answers by Required Items List key"),
   // underwriting snapshot
@@ -162,7 +162,7 @@ const claudeOutput = (scope: ExtractScope = { assetClass: null, strategy: null }
   equityMultiple: str("Projected equity multiple as a number (1.9)."),
   occupancy: str("Occupancy percent as a number (91)."),
   onMarket: z.enum(["on", "off", ""]).describe("on if marketed/listed, off if off-market."),
-  sponsorExperience: str("Sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes."),
+  sponsorExperience: str("Sponsor bio, 3-4 sentences about the firm only: founding background, focus/strategy, geography, scale/track record. Nothing about this deal: no entitlements, zoning, grants, approvals, brokers or lender relationships. No return figures, no dashes."),
   summary: str("Business plan for the investor email, 4-6 sentences max, flowing prose, no dashes as punctuation. Lead with location and market context, then anchor/key tenants (or the tenant/resident base), then the value-add thesis, which must never be left out (what the sponsor will do to create value: a departing tenant and who backfills it, vacancy and who leases it, a repositioning, a renovation), then notable physical attributes. No figures at all, in digits or in words: no percentages, dollars, dates, square footage, counts, returns. Leave out anything that has its own field: exit strategy, return projections, dollar costs, financial metrics, seller profile, lender type, close timeline, year built, square footage, unit count."),
   details: z.object(
     Object.fromEntries(
@@ -237,7 +237,7 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     state: t(o.state)?.toUpperCase() ?? null, assetClass: t(o.assetClass), strategy: (t(o.strategy) as ExtractedDeal["strategy"]) ?? null,
     requestType: (t(o.requestType) as ExtractedDeal["requestType"]) ?? null, requestedAmount: n(o.requestedAmount), purchasePrice: n(o.purchasePrice),
     totalEquity: n(o.totalEquity), ltv: n(o.ltv), ltc: n(o.ltc), loanTerm: snapTo(LOAN_TERMS, o.loanTerm), equityMultiple: n(o.equityMultiple), occupancy: n(o.occupancy),
-    onMarket: o.onMarket === "on" ? true : o.onMarket === "off" ? false : null, sponsorExperience: t(o.sponsorExperience), summary: cleanBusinessPlan(t(o.summary)),
+    onMarket: o.onMarket === "on" ? true : o.onMarket === "off" ? false : null, sponsorExperience: cleanSponsorBio(t(o.sponsorExperience)), summary: cleanBusinessPlan(t(o.summary)),
     details, contactName: t(o.contactName), contactEmail: t(o.contactEmail), confidenceNotes: t(o.confidenceNotes),
     units: n(o.units), squareFeet: n(o.squareFeet), yearBuilt: t(o.yearBuilt), unitMix: snapTo(UNIT_MIXES, o.unitMix), totalCapitalization: n(o.totalCapitalization),
     totalDebt: n(o.totalDebt), executionType: t(o.executionType), interestRate: cleanInterestRate(t(o.interestRate)), rateIndex: t(o.rateIndex) || null, rateSpreadBps: o.rateSpreadBps == null ? null : Math.round(Number(o.rateSpreadBps)), lenderType: snapTo(LENDER_TYPES, o.lenderType), irr: n(o.irr),

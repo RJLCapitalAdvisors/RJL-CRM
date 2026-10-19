@@ -2,9 +2,9 @@ import { fullAddress } from "@/lib/zip";
 import { US_STATES } from "@/lib/taxonomy";
 import { cleanBusinessPlan } from "@/lib/style";
 import { uniqueChecklist, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
-import { amountMM, dealMetricsListHtml, entitledUse, intro, landMetricsHtml, metricsHtml, portfolioMetricsListHtml, subjectLine, usd } from "@/lib/deal-copy";
+import { amountMM, dealMetricsListHtml, debtTermsLine, entitledUse, intro, landMetricsHtml, metricsHtml, multiple, portfolioMetricsListHtml, sellerSentence, shortSourcing, subjectLine, usd } from "@/lib/deal-copy";
 import { prefMetrics } from "@/lib/pref";
-import { rateNumber, rateText } from "@/lib/rates";
+import { rateNumber, rateText, rateTextAtClose } from "@/lib/rates";
 
 // Merge fields available in templates. Syntax: {{deal.propertyName}} or with a fallback {{contact.firstName|there}}
 export const MERGE_FIELDS: { key: string; label: string }[] = [
@@ -62,6 +62,9 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.expectedClose", label: "Expected close" },
   { key: "deal.summary", label: "Deal summary / business plan" },
   { key: "deal.subjectLine", label: "House-style subject: Asset Acquisition Opportunity in City, ST | 4MM of JV Equity" },
+  { key: "deal.landSellerSentence", label: "\"The land was purchased off-market from a mom n' pop owner.\" or nothing when no seller is on the ticket" },
+  { key: "deal.assetSellerSentence", label: "\"The sponsor is buying the asset off-market from a mom n' pop owner.\" or nothing" },
+  { key: "deal.debtTerms", label: "The debt terms line: amount | LTC at the rate (all in, at the expected closing), term, amortization (lender)" },
   { key: "deal.intro", label: "House-style intro paragraph (adapts to asset class and development vs acquisition)" },
   { key: "deal.metrics", label: "Deal Metrics bullet list (per foot / per unit as the asset class calls for; a portfolio: the totals, then one block per property)" },
   { key: "deal.portfolioMetrics", label: "A portfolio's Deal Metrics as one list: the capital stack summed across the properties, yield and returns as ranges, the closing date (a single deal: the ordinary list)" },
@@ -164,10 +167,17 @@ function lookup(ctx: MergeContext, path: string): unknown {
     if (k === "basisLD") return `${usd(v)} per ${pm.basisUnit}${pm.basisPerUnitLD ? ` | ${usd(pm.basisPerUnitLD)} per unit` : ""}`;
     return `${v.toFixed(2)}%`;
   }
-  if (path === "deal.interestRate") return ctx.deal ? rateText(ctx.deal as never) ?? "" : "";
+  if (path === "deal.interestRate") return ctx.deal ? rateTextAtClose(ctx.deal as never, typeof ctx.deal.expectedClose === "string" ? ctx.deal.expectedClose : null) ?? "" : ""; // priced at the expected closing month (Oct 19, 2026)
   if (path === "deal.rateSpread") return ctx.deal?.rateSpreadBps != null ? `${ctx.deal.rateSpreadBps} bps` : "";
   if (path === "deal.indicativeRate") { const n = ctx.deal ? rateNumber(ctx.deal as never) : null; return n != null ? `${n.toFixed(2)}%` : ""; }
   if (path === "deal.subjectLine") return ctx.deal ? subjectLine(ctx.deal) : "";
+  if (path === "deal.landSellerSentence") return ctx.deal ? sellerSentence(ctx.deal, "land") : "";
+  if (path === "deal.assetSellerSentence") return ctx.deal ? sellerSentence(ctx.deal, "asset") : "";
+  if (path === "deal.debtTerms") return ctx.deal ? debtTermsLine(ctx.deal) : "";
+  if (path === "deal.equityMultiple") { const v = ctx.deal?.equityMultiple; return typeof v === "number" && v > 0 ? multiple(v) : ""; }
+  // the team's own notes never reach an investor (Jonathan, Oct 19, 2026): the sourcing commentary, the contract and lender notes, the report's themes
+  if (path === "deal.details.sourcing") return shortSourcing(parseDetails(ctx.deal?.details).sourcing) ?? "";
+  if (/^deal\.details\.(debtTerms|gcContract|sellerStory|internalNotes)$/.test(path) || /^deal\.(trackerThemes|trackerItemsNote|trackerPreparedFor|closedLostReason|closedWonReason)$/.test(path)) return "";
   if (path === "deal.requestedAmountMM") { const v = ctx.deal?.requestedAmount; return typeof v === "number" && v > 0 ? amountMM(v) : ""; }
   if (path === "deal.intro") return ctx.deal ? intro(ctx.deal) : "";
   if (path === "deal.metrics") return ctx.deal ? metricsHtml(ctx.deal) : "";

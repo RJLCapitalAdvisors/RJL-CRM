@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { houseText, cleanBusinessPlan } from "@/lib/style";
+import { houseText, cleanBusinessPlan, cleanSponsorBio } from "@/lib/style";
 import { missingFor, parseDetails, type ChecklistItem } from "@/lib/checklist";
 import { loadChecklist } from "@/lib/required-items";
 import { ACTIVE_STAGES, LENDER_TYPES, LOAN_TERMS, UNIT_MIXES } from "@/lib/taxonomy";
@@ -66,7 +66,7 @@ export async function findCalls(terms: string[], transcripts?: Transcript[], opt
 
 const Enriched = z.object({
   summary: z.string().describe("The business plan paragraph, rewritten to fold in what the calls added. Same rules: location and market first, anchors/key tenants, value-add thesis, physical attributes; 4-6 sentences; flowing prose; no dashes; nothing that has its own field. Return the existing text unchanged if the calls add nothing."),
-  sponsorExperience: z.string().describe("The sponsor bio, 3-4 sentences: founding background, focus/strategy, scale/track record. No return figures, no dashes. Fold in what the calls added; return the existing text unchanged if nothing new."),
+  sponsorExperience: z.string().describe("The sponsor bio, 3-4 sentences about the firm only: founding background, focus/strategy, geography, scale/track record. Nothing about this deal (its approvals, zoning, grants, brokers or lenders). No return figures, no dashes. Fold in what the calls added; return the existing text unchanged if nothing new."),
   facts: z.array(z.object({ question: z.string(), answer: z.string(), askedByInvestor: z.boolean().describe("True only if an investor (LP) on the call asked this and the sponsor answered it."), aboutThisDeal: z.boolean().describe("True only when the answer is about THIS property and this raise (its site, tenants, plan, numbers, timeline, capital stack). False for the sponsor's firm in general: their buy box, deals per year, hold periods, how they usually fund capex, who manages their centers, anchor preferences, other deals.") })).describe("Concrete things said on the calls that an investor would ask about and that are not already on the ticket. Empty if none."),
   changed: z.boolean().describe("True if either narrative changed."),
   // blank ticket fields the calls settle (Jonathan, Sep 24, 2026: closing date, sourcing, GC, loan terms, acreage and the rest come off calls too)
@@ -135,7 +135,7 @@ export async function enrichFromCalls(dealId: string, transcripts?: Transcript[]
   const data: Record<string, unknown> = { callsEnrichedAt: new Date() };
   const filled: string[] = [];
   if (out.changed) {
-    const s = cleanBusinessPlan(out.summary), b = houseText(out.sponsorExperience);
+    const s = cleanBusinessPlan(out.summary), b = cleanSponsorBio(out.sponsorExperience);
     if (s && s !== deal.summary) { data.summary = s; filled.push("summary"); }
     if (b && b !== deal.sponsorExperience) { data.sponsorExperience = b; filled.push("sponsorExperience"); }
   }
