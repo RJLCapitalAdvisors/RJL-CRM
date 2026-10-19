@@ -30,8 +30,24 @@ type Msg = { id: string; internetMessageId?: string; subject: string | null; sen
 export function parseParties(subject: string): { a: string | null; b: string | null } {
   const m = subject.match(INTRO_RE) ?? subject.match(INTRO_SUFFIX_RE);
   const rest = (m?.[1] ?? "").trim();
-  const parts = rest.split(/\s*[|\/]\s*|\s+x\s+|\s+&\s+|\s+and\s+/i).map((s) => s.trim()).filter(Boolean);
+  const parts = rest.split(/\s*(?:[|\/]|<>|<->)\s*|\s+x\s+|\s+&\s+|\s+and\s+/i).map((s) => s.trim()).filter(Boolean);
   return { a: parts[0] ?? null, b: parts[1] ?? null };
+}
+
+/** RJL itself as a party of an intro subject (Aviel writes "RJL Capital Advisors | SunCap - Intro"). */
+const isUs = (p: string | null | undefined) => Boolean(p && /^rjl\b/i.test(p.trim()));
+/**
+ * The card title for an intro: the two parties, or "Intro to X" when RJL itself is one of them (Jonathan, Oct 19, 2026:
+ * "why does the CRM think RJL is a sponsor?"; the card showed the subject as written).
+ */
+export function introTitle(i: { partyA: string | null; partyB: string | null; subject: string }): string {
+  // intros recorded before the <> form was understood carry both names in partyA: re-read the subject when a party is missing
+  const parsed = i.partyA && i.partyB ? { a: i.partyA, b: i.partyB } : parseParties(i.subject);
+  const parties = [parsed.a, parsed.b].filter((p): p is string => Boolean(p));
+  const others = parties.filter((p) => !isUs(p));
+  if (parties.length === 2 && others.length === 2) return `${parties[0]} | ${parties[1]}`;
+  if (others.length === 1) return `Intro to ${others[0]}`;
+  return i.subject.replace(/^\s*intro\b\s*[-:–—]?\s*/i, "").replace(/\s*[-:–—]\s*intro\s*$/i, "");
 }
 
 async function pageAll(url: string | null, max = 400): Promise<Msg[]> {

@@ -12,7 +12,7 @@ import { reportsDue, type ReportDue } from "@/lib/report-due";
 import { dismissTodoAction, approveProposal, approveProposals, dismissProposals, dismissIntro, dismissMomentum, dismissProposal, openFollowUp, openIntroDraft, openMomentumDraft , dismissFollowUps , markDealLostAction, keepDealAction , mergeDealsAction, notDuplicateAction , handleStaleDeal , openReportDraftAction, markReportSentAction , markDealLostFromLaunchAction } from "./todo-actions";
 import { DraftButton } from "./draft-button";
 import { listMomentum, momentumLines } from "@/lib/momentum";
-import { quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
+import { introTitle, quietIntros, QUIET_INTRO_DAYS } from "@/lib/intros";
 import { currentUser } from "@/lib/current-user";
 import { kickMailSync } from "@/lib/mail-sync";
 import { kickDashboardRefresh } from "@/lib/dashboard-refresh";
@@ -197,7 +197,7 @@ export default async function Dashboard() {
               <Item key={i.id} className="px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-semibold">{i.partyA && i.partyB ? `${i.partyA} | ${i.partyB}` : i.subject.replace(/^\s*intro\b\s*[-:–—]?\s*/i, "")}</div>
+                    <div className="font-semibold">{introTitle(i)}</div>
                     <div className="truncate text-xs text-muted">
                       {i.introducedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })} {i.mailbox === "hubspot" ? "from HubSpot" : `by ${i.mailbox.split("@")[0]}`} · quiet {days(i.lastActivityAt)}d · {i.replies} {i.mailbox === "hubspot" ? `email${i.replies === 1 ? "" : "s"}` : `repl${i.replies === 1 ? "y" : "ies"}`}
                       {i.handledAt && <span className="text-sky-700"> · handled {i.handledAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}, drops off when your reply is sent</span>}
