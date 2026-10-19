@@ -73,8 +73,12 @@ export function signoffName(text: string | null | undefined): { firstName: strin
 }
 
 /** Does the signed name plausibly belong to the person on record? Same first letter, a known short form, the two names swapped, or nothing on record. */
-export function plausibleSignoff(existing: { firstName: string | null; lastName: string | null }, signed: { firstName: string; lastName: string | null }): "same" | "rename" | "swap" | "no" {
+export function plausibleSignoff(existing: { firstName: string | null; lastName: string | null; email?: string | null }, signed: { firstName: string; lastName: string | null }): "same" | "rename" | "swap" | "no" {
   const ef = norm(existing.firstName ?? ""), el = norm(existing.lastName ?? ""), sf = norm(signed.firstName);
+  // a different name altogether, but the address agrees with the sign-off and not with the record (nclayberg@ signing Nathan while the
+  // record said Alex, from HubSpot): the record was wrong (Jonathan, Oct 19, 2026)
+  const local = (existing.email ?? "").split("@")[0].toLowerCase().replace(/[^a-z]/g, "");
+  const addressSays = Boolean(local && sf.length >= 3 && ef && ef !== sf && (local.startsWith(sf) || (local[0] === sf[0] && local[0] !== ef[0] && !local.startsWith(ef))));
   if (!sf) return "no";
   if (ef === sf) return "same";
   // a name written in another alphabet (Hebrew) or one that already carries the name they go by ("Ezriel “Eric”") is left alone
@@ -83,6 +87,7 @@ export function plausibleSignoff(existing: { firstName: string | null; lastName:
   if (sf === el && (!signed.lastName || norm(signed.lastName) === ef)) return "swap"; // "Brown, Tommy" became first Brown, last Tommy
   if (ef[0] === sf[0] && (ef.startsWith(sf) || sf.startsWith(ef) || (NICKNAMES[ef] ?? []).includes(sf) || (NICKNAMES[sf] ?? []).includes(ef))) return "rename";
   if ((NICKNAMES[ef] ?? []).includes(sf) || (NICKNAMES[sf] ?? []).includes(ef)) return "rename"; // Bill for William, Jack for John
+  if (addressSays) return "rename";
   return "no";
 }
 
@@ -90,7 +95,7 @@ export function plausibleSignoff(existing: { firstName: string | null; lastName:
 export async function learnNameFromSignoff(contactId: string, text: string | null | undefined): Promise<{ changed: boolean; from?: string | null; to?: string } > {
   const signed = signoffName(text);
   if (!signed) return { changed: false };
-  const c = await prisma.contact.findUnique({ where: { id: contactId }, select: { firstName: true, lastName: true, signoffName: true } });
+  const c = await prisma.contact.findUnique({ where: { id: contactId }, select: { firstName: true, lastName: true, signoffName: true, email: true } });
   if (!c) return { changed: false };
   const verdict = plausibleSignoff(c, signed);
   const now = new Date();
