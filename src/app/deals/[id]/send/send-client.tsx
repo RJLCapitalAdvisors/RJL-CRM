@@ -403,7 +403,9 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     }
     if (!armed || Date.now() - armed > 10_000) {
       setArmed(Date.now());
-      setNote(`Ready: ${items.length} individual email${items.length === 1 ? "" : "s"}, one at a time (every ${gapS} seconds or longer, set by the attachments' size), ${chosenFiles.size} attachment${chosenFiles.size === 1 ? "" : "s"} each. Click LAUNCH again to send.`);
+      const chosenMb = files.filter((f) => chosenFiles.has(f.key)).reduce((t, f) => t + (f.size || 0), 0) / 1_000_000;
+      const heavy = chosenMb >= 8 || files.some((f) => chosenFiles.has(f.key) && /\.xlsm$/i.test(f.name)) ? ` Heads up: ${chosenMb.toFixed(1)} MB of attachments${files.some((f) => chosenFiles.has(f.key) && /\.xlsm$/i.test(f.name)) ? " including a macro-enabled workbook" : ""}; recipient spam filters refuse heavy sends more often (one did on Oct 19, 2026). A refused email goes again on its own without attachments.` : "";
+      setNote(`Ready: ${items.length} individual email${items.length === 1 ? "" : "s"}, one at a time (every ${gapS} seconds or longer, set by the attachments' size), ${chosenFiles.size} attachment${chosenFiles.size === 1 ? "" : "s"} each. Click LAUNCH again to send.${heavy}`);
       return;
     }
     setArmed(null);
@@ -733,6 +735,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                           </a>
                         )}
                         <span className="shrink-0 text-[11px] text-muted">{f.size >= 1_000_000 ? `${(f.size / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1000))} KB`}</span>
+                        {/\.xlsm$/i.test(f.name) && <span className="shrink-0 text-[11px] text-amber-700" title="A macro-enabled workbook is what mail filters most often refuse as a virus (npreitcorp.com's Mimecast, Oct 19, 2026). Save the model as .xlsx, or leave it out and send it on request.">macros: filters often refuse</span>}
                       </label>
                     ))}
                   </div>

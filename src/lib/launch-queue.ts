@@ -40,6 +40,9 @@ export async function attachmentBytes(dealId: string, keys: string[] | undefined
 
 const BOUNCE_PREFIX = /^(?:(?:re|fw|fwd)\s*:\s*)?(?:undeliverable|undelivered(?: mail returned to sender)?|delivery (?:status notification|has failed|failure)|mail delivery failed|returned mail|failure notice)\s*[:(]?\s*/i;
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+/** A bounce that is the recipient's filter refusing the email as spam or a virus (Mimecast's 550 5.7.352), not a dead address. */
+const SPAM_REJECT = /suspects your message is spam|contains a virus|spam or virus detected|5\.7\.35[0-9]\b|message rejected due to content|rejected for policy reasons|blocked by .{0,40}(?:spam|content) filter/i;
+const RESENT_NOTE = `<p style="margin:0 0 10pt 0;font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#6b716e;">Resent without attachments: your mail system held back the files on my earlier email. Reply and I will send them another way.</p>`;
 /** The addresses a bounce names, minus mail systems and us. */
 const bouncedAddressesIn = (text: string) => [...new Set((text.match(EMAIL_RE) ?? []).map((e) => e.toLowerCase().replace(/[.,;:)]+$/, "")).filter((e) => !/rjlcapadvisors|rjlequities|postmaster|mailer-daemon|noreply|no-reply|microsoft\.com|outlook\.com/i.test(e)))];
 
@@ -67,6 +70,20 @@ export async function noteLaunchBounce(opts: { mailbox: string; subject: string 
     const already = new Set((r.error?.match(EMAIL_RE) ?? []).map((e) => e.toLowerCase()));
     const all = [...new Set([...already, ...hit.map((p) => p.email!.toLowerCase())])];
     if (r.status === "BOUNCED" && all.length === already.size) continue; // this bounce was seen
+    if (SPAM_REJECT.test(opts.text)) {
+      // the recipient's filter refused the email (Oct 19, 2026: npreitcorp.com's Mimecast, 9.6 MB of attachments with a macro-enabled
+      // model): nobody left, so no removal is proposed; the same email goes again once, to the refused people, without the attachments
+      const domain = addresses[0]?.split("@")[1] ?? "the recipient";
+      const resentBefore = /resent without attachments/.test(r.error ?? "");
+      await prisma.dealLaunch.update({ where: { id: r.id }, data: { status: "BOUNCED", error: `rejected by ${domain}'s spam filter: ${all.join(", ")}${resentBefore || !r.fileKeys && r.kind !== "SEND" ? "" : "; resent without attachments"}` } });
+      if (!resentBefore) {
+        await prisma.dealLaunch.create({ data: { dealId: r.dealId, rowId: r.rowId, mailbox: r.mailbox, kind: r.kind, round: r.round, replyToMessageId: r.replyToMessageId, toContactIds: JSON.stringify(hit.map((p) => p.id)), cc: r.cc, subject: r.subject, html: r.html.includes(RESENT_NOTE) ? r.html : RESENT_NOTE + r.html, fileKeys: "[]", bytes: 0, status: "QUEUED", error: null } });
+        const { logActivity } = await import("@/lib/activity");
+        for (const p of hit) await logActivity({ type: "NOTE", body: `The deal email was refused by ${domain}'s spam filter (attachments suspected); sent again without attachments.`, dealId: r.dealId, contactId: p.id }).catch(() => null);
+      }
+      n++;
+      continue;
+    }
     await prisma.dealLaunch.update({ where: { id: r.id }, data: { status: "BOUNCED", error: `bounced: ${all.join(", ")}${all.length < people.length ? " (the others got it)" : ""}` } });
     const { proposeContactRemoval } = await import("@/lib/departures");
     for (const p of hit) if (!already.has(p.email!.toLowerCase())) await proposeContactRemoval(p.id, `Bounced on the deal email "${original}": ${opts.text.slice(0, 200)}`, opts.messageId ?? null).catch(() => false);
