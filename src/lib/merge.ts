@@ -2,7 +2,7 @@ import { fullAddress } from "@/lib/zip";
 import { US_STATES } from "@/lib/taxonomy";
 import { cleanBusinessPlan } from "@/lib/style";
 import { uniqueChecklist, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
-import { dealMetricsListHtml, entitledUse, intro, landMetricsHtml, metricsHtml, portfolioMetricsListHtml, subjectLine, usd } from "@/lib/deal-copy";
+import { amountMM, dealMetricsListHtml, entitledUse, intro, landMetricsHtml, metricsHtml, portfolioMetricsListHtml, subjectLine, usd } from "@/lib/deal-copy";
 import { prefMetrics } from "@/lib/pref";
 import { rateNumber, rateText } from "@/lib/rates";
 
@@ -28,6 +28,7 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.strategy", label: "Strategy" },
   { key: "deal.requestType", label: "Equity / Debt" },
   { key: "deal.requestedAmount", label: "Requested amount ($)" },
+  { key: "deal.requestedAmountMM", label: "Requested amount for a subject line, no dollar sign (4MM)" },
   { key: "deal.totalEquity", label: "Total equity ($)" },
   { key: "deal.purchasePrice", label: "Purchase price ($)" },
   { key: "deal.ltv", label: "LTV %" },
@@ -60,7 +61,7 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.unitMix", label: "Unit mix" },
   { key: "deal.expectedClose", label: "Expected close" },
   { key: "deal.summary", label: "Deal summary / business plan" },
-  { key: "deal.subjectLine", label: "House-style subject: Asset Acquisition Opportunity in City, ST | $X of JV Equity" },
+  { key: "deal.subjectLine", label: "House-style subject: Asset Acquisition Opportunity in City, ST | 4MM of JV Equity" },
   { key: "deal.intro", label: "House-style intro paragraph (adapts to asset class and development vs acquisition)" },
   { key: "deal.metrics", label: "Deal Metrics bullet list (per foot / per unit as the asset class calls for; a portfolio: the totals, then one block per property)" },
   { key: "deal.portfolioMetrics", label: "A portfolio's Deal Metrics as one list: the capital stack summed across the properties, yield and returns as ranges, the closing date (a single deal: the ordinary list)" },
@@ -167,6 +168,7 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "deal.rateSpread") return ctx.deal?.rateSpreadBps != null ? `${ctx.deal.rateSpreadBps} bps` : "";
   if (path === "deal.indicativeRate") { const n = ctx.deal ? rateNumber(ctx.deal as never) : null; return n != null ? `${n.toFixed(2)}%` : ""; }
   if (path === "deal.subjectLine") return ctx.deal ? subjectLine(ctx.deal) : "";
+  if (path === "deal.requestedAmountMM") { const v = ctx.deal?.requestedAmount; return typeof v === "number" && v > 0 ? amountMM(v) : ""; }
   if (path === "deal.intro") return ctx.deal ? intro(ctx.deal) : "";
   if (path === "deal.metrics") return ctx.deal ? metricsHtml(ctx.deal) : "";
   if (path.startsWith("deal.details.")) return parseDetails(ctx.deal?.details)[path.slice("deal.details.".length)] ?? "";

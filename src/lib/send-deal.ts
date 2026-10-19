@@ -427,7 +427,7 @@ export async function reviseDealEmail(opts: { dealId: string; subject: string; h
         const fresh = await renderGeneralDealEmail({ templateId: opts.templateId, dealId: opts.dealId, senderName: opts.senderName ?? "RJL Capital Advisors", mailbox: opts.mailbox ?? "jonathan@rjlcapadvisors.com" });
         const { refreshDealFields } = await import("@/lib/merge");
         // a subject still carrying the old ask was the template's: it follows the ticket too
-        if (deal.requestedAmount && subject.includes(`$${Math.round(deal.requestedAmount).toLocaleString("en-US")}`)) subject = fresh.subject;
+        if (deal.requestedAmount && (subject.includes(`$${Math.round(deal.requestedAmount).toLocaleString("en-US")}`) || subject.includes((await import("@/lib/deal-copy")).amountMM(deal.requestedAmount)))) subject = fresh.subject;
         const merged = refreshDealFields(html, fresh.html, fields);
         if (merged) { html = merged.html; fields = merged.fields; }
         else { html = fresh.html; fields = (await import("@/lib/merge")).dealFieldsOf(fresh.html); } // no marks to refresh: the fresh email, edits lost

@@ -16,6 +16,8 @@ const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 export const usd = (v: number) => `$${Math.round(v).toLocaleString("en-US")}`;
 /** Rounded money for headlines: $5.6MM, $12MM, $850k. */
 export const usdShort = (v: number) => (v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1).replace(/\.0$/, "")}MM` : v >= 1_000 ? `$${Math.round(v / 1_000)}k` : usd(v));
+/** The same amount for a subject line, with no dollar sign: "4MM", "850k" (Jonathan, Oct 19, 2026: dollar signs in subjects feed spam filters). */
+export const amountMM = (v: number) => usdShort(v).replace(/^\$/, "");
 const usdCents = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (v: number) => `${Number.isInteger(v) ? v.toFixed(2) : String(v).includes(".") && String(v).split(".")[1].length === 1 ? v.toFixed(2) : v}%`;
 
@@ -55,7 +57,7 @@ export function subjectLine(d: D): string {
   const loc = kids.length ? portfolioSubjectLoc(kids) : location(d);
   const ask = n(d.requestedAmount);
   const exec = s(d.executionType) ?? (s(d.requestType) === "Debt" ? "Debt" : s(d.requestType) ? "Equity" : null);
-  return `${parts}${loc ? ` in ${loc}` : ""}${ask ? ` | ${usdShort(ask)}${exec ? ` of ${exec}` : ""}` : ""}`;
+  return `${parts}${loc ? ` in ${loc}` : ""}${ask ? ` | ${amountMM(ask)}${exec ? ` of ${exec}` : ""}` : ""}`; // no dollar sign in a subject (Oct 19, 2026)
 }
 
 /** The opening paragraph after the greeting. */
