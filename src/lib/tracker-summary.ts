@@ -53,7 +53,8 @@ export async function generateTrackerSummary(dealId: string, opts: { force?: boo
     output_config: { format: zodOutputFormat(Out) },
   });
   if (!res.parsed_output) return null;
-  const out = { themes: res.parsed_output.themes.map((x) => stripDashes(x)), items: res.parsed_output.items.map((x) => stripDashes(x)) };
+  const { absoluteDates } = await import("@/lib/dates-absolute");
+  const out = { themes: res.parsed_output.themes.map((x) => absoluteDates(stripDashes(x), new Date())), items: res.parsed_output.items.map((x) => absoluteDates(stripDashes(x), new Date())) };
   // a section Jonathan edited by hand (an emptied Items Needed included) is his until he clicks Refresh report: the automatic
   // writer leaves it as it is, and only appends requests that arrived after his edit (Oct 13, 2026: a cleared Items Needed
   // came back on the PDF eight seconds after a row was removed)

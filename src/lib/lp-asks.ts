@@ -22,7 +22,7 @@ const LOOKBACK_DAYS = 14;
 const q = (s: string) => encodeURIComponent(s);
 
 const Out = z.object({
-  asks: z.array(z.string()).describe("Each thing the investor asked for from the sponsor or RJL, as a short imperative line, e.g. '5-year model', 'Which markets BrightStar operates in'. Never name the person who wrote; say the firm or nothing. Empty if the email asks for nothing."),
+  asks: z.array(z.string()).describe("Each thing the investor asked for from the sponsor or RJL, as a short imperative line, e.g. '5-year model', 'Which markets BrightStar operates in'. Any date as a calendar date (Oct 9), never 'tomorrow', 'next week' or a weekday name. Never name the person who wrote; say the firm or nothing. Empty if the email asks for nothing."),
   stance: z.enum(["reviewing", "interested", "pass", "unclear"]).describe("Where the investor stands after this email."),
   note: z.string().describe("One line for the progress report the sponsor will read. Its value is the actual reason the investor passed, declined or hesitated (wrong mandate, timing, asset class fit, size, market, structure), so relay their real reasoning, not just the outcome. Only what the investor actually said, lightly cleaned up for grammar; no generic status language like 'awaiting response' (that is the status column). Strip pleasantries and filler (hi, hope you are well, thanks for sharing, keep us posted). Empty if there was no substantive response, an auto-reply, or only an acknowledgement. No dashes as punctuation."),
   dealIndex: z.number().int().describe("Index in the DEALS list of the deal this email is about. -1 if it is about a different deal, an intro, a general catch-up, or unclear. Never guess: an email that does not identify the deal is -1."),
@@ -159,6 +159,10 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const loopedIn = await loopInColleagues(a.companyId!, a.company?.domain ?? null, a.contactId, [...(meta.to ?? []), ...(meta.cc ?? [])]).catch(() => [] as string[]);
     // A note is written only on the deal it is about. If the LP's words name a different deal the firm is on
     // (its property or its city) and not this one, the note stays off this report; the status still moves.
+    // "tomorrow" and "Monday" become calendar dates as of the email (Oct 19, 2026: a report read "Schedule a call tomorrow or Monday (Oct 8)")
+    const { absoluteDates } = await import("@/lib/dates-absolute");
+    parsed.asks = parsed.asks.map((x) => absoluteDates(x, a.occurredAt));
+    parsed.note = absoluteDates(parsed.note ?? "", a.occurredAt);
     const noteText = stripDashes(parsed.note ?? "").trim();
     const here = candidates.find((x) => x.id === dealId);
     const names = (x: { propertyName: string | null; name: string; city: string | null }) => [x.propertyName ?? x.name, x.city].filter((w): w is string => Boolean(w && w.trim().length >= 5)).map((w) => w.toLowerCase());

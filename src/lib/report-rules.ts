@@ -21,6 +21,7 @@ export const DEFAULT_REPORT_RULES: string[] = [
   "Notable Feedback Themes: at most four, each under 15 words, ending with the firm names in parentheses; similar objections grouped into one theme.",
   "Items Needed from Sponsor: concrete deliverables the sponsor still owes, each naming the firms asking; a numbered list of questions from one firm is one item per question.",
   "Never name one investor's terms or position to another; a term sheet's contents stay off the report.",
+  "Dates on the report are calendar dates (Oct 9); never tomorrow, today, next week or a weekday name, which go stale.",
 ];
 
 export async function loadReportRules(): Promise<string[]> {

@@ -44,7 +44,8 @@ async function readThread(kind: "sponsor" | "intro", dealName: string, party: st
   return res.parsed_output;
 }
 
-async function upsert(dealId: string, kind: string, party: string, data: { companyId?: string | null; contactId?: string | null; summary: string; waitingSince: Date; lastMessageId?: string | null }) {
+async function upsert(dealId: string, kind: string, party: string, dataIn: { companyId?: string | null; contactId?: string | null; summary: string; waitingSince: Date; lastMessageId?: string | null }) {
+  const data = { ...dataIn, summary: (await import("@/lib/dates-absolute")).absoluteDates(dataIn.summary, new Date()) }; // calendar dates, never "tomorrow" (Oct 19, 2026)
   const existing = await prisma.momentum.findUnique({ where: { dealId_kind_party: { dealId, kind, party } } });
   if (existing?.status === "DISMISSED" && existing.lastMessageId === (data.lastMessageId ?? null)) return; // he dismissed this exact state
   if (existing?.status === "DONE" && existing.lastMessageId && existing.lastMessageId === (data.lastMessageId ?? null)) return; // handled and sent; nothing new since
