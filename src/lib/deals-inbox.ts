@@ -136,6 +136,33 @@ async function fileOwnOutreach(msg: Msg, ext: string, dealIds: string[], forward
   return { skipped: "own outreach" };
 }
 
+/**
+ * After a follow-up lands on a ticket, the deal email as it now stands goes to whoever sent the follow-up in (or the deal's
+ * owner when a sponsor wrote straight to deals@), so the latest numbers can be seen at once (Jonathan, Oct 20, 2026: "resend
+ * the deal email as well so I could see it anew"). The template is the one the Send page last used for the deal, else the
+ * fitting house template; no attachments, it is a look, not a send.
+ */
+export async function previewDealEmailAfterFollowup(dealId: string, to: string): Promise<boolean> {
+  try {
+    const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, name: true, propertyName: true, assetClass: true, strategy: true, executionType: true, requestType: true, details: true } });
+    if (!deal) return false;
+    const det = (() => { try { return JSON.parse(deal.details || "{}") as Record<string, unknown>; } catch { return {}; } })();
+    const saved = (det.sendState as { templateId?: string } | undefined)?.templateId ?? null;
+    const { templateForDeal } = await import("@/lib/deal-template");
+    const templateId = (saved && (await prisma.emailTemplate.findUnique({ where: { id: saved }, select: { id: true } }))?.id) || (await templateForDeal(deal))?.id || null;
+    if (!templateId) return false;
+    const user = await prisma.user.findFirst({ where: { email: { equals: to, mode: "insensitive" } }, select: { name: true } });
+    const { renderGeneralDealEmail, sendMessage } = await import("@/lib/send-deal");
+    const r = await renderGeneralDealEmail({ templateId, dealId, senderName: user?.name ?? "RJL Capital Advisors", mailbox: to });
+    const note = `<p style="margin:0 0 12pt 0;font-family:Calibri,Arial,sans-serif;font-size:10pt;color:#6b716e;">The deal email as it now stands, after the follow-up just read into <b>${(deal.propertyName ?? deal.name).replace(/</g, "&lt;")}</b>. A look, not a send: nobody else got this and the attachments are left off. Launch from the Send deal page when it reads right.</p>`;
+    await sendMessage(to, [to], `[PREVIEW] ${r.subject}`, note + r.html, null);
+    return true;
+  } catch (e) {
+    console.error("deal email preview after follow-up failed", dealId, String(e).slice(0, 200));
+    return false;
+  }
+}
+
 export async function processDealsMessage(messageId: string): Promise<{ dealId: string; replied: boolean } | { skipped: string }> {
   await loadChecklist(); // the Required Items List as Jonathan last edited it
   const msg = await graph<Msg>(`/users/${q(MAILBOX())}/messages/${q(messageId)}?$select=id,internetMessageId,subject,receivedDateTime,hasAttachments,isRead,from,body,conversationId`);
@@ -246,6 +273,12 @@ export async function processDealsMessage(messageId: string): Promise<{ dealId: 
       replied = true;
     } catch (e) {
       console.error("deals@ follow-up reply failed", e);
+    }
+    // the deal email as it now stands, to the person who sent the follow-up in (a sponsor writing straight to deals@: to the deal's owner)
+    {
+      const owner = deal.ownerId ? await prisma.user.findUnique({ where: { id: deal.ownerId }, select: { email: true } }) : null;
+      const previewTo = INTERNAL.test(fromAddr) ? fromAddr : owner?.email ?? "jonathan@rjlcapadvisors.com";
+      await previewDealEmailAfterFollowup(existingId, previewTo);
     }
     const done = { source: "WEBHOOK", fromEmail: external ? fromAddr : fwd.email, fromName: external ? msg.from?.emailAddress.name ?? null : fwd.name, toEmail: MAILBOX(), subject: msg.subject, rawText: rawText.slice(0, 200_000), attachments: JSON.stringify(names), extracted: "{}", missing: "[]", notes: `Follow-up on existing deal ${existingId}`, status: "CONVERTED" };
     await prisma.dealIntake.upsert({ where: { messageId: ext }, create: { ...done, messageId: ext }, update: done }).catch(() => null);
