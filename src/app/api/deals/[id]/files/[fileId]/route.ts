@@ -24,7 +24,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const sp = new URL(req.url).searchParams;
   const t = sp.get("t");
   if (!(t && verifyFileToken(t) === `file:${fileId}`) && !(await currentUser())) return new Response("Unauthorized", { status: 401 });
-  const f = await prisma.dealFile.findFirst({ where: { id: fileId, dealId: id } });
+  const f = await prisma.dealFile.findFirst({ where: { id: fileId, dealId: { in: await (await import("@/lib/send-deal")).fileHomes(id) } } }); // a portfolio's parts and a filesFrom sibling serve through this ticket too
   if (!f) return new Response("Not found", { status: 404 });
   let bytes: ArrayBuffer;
   if (f.url) {

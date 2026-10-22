@@ -37,7 +37,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   const files = await dealFiles(deal.id).catch(() => []);
   // a preview link per file: the DealFile row behind each key, signed like the ticket's attachment links
   const { signFileToken } = await import("@/lib/tokens");
-  const rows = await prisma.dealFile.findMany({ where: { OR: [{ dealId: deal.id }, { deal: { parentDealId: deal.id } }] }, select: { id: true, graphId: true, attachmentId: true } });
+  const rows = await (await import("@/lib/send-deal")).fileRowsFor(deal.id);
   const fileUrl = (key: string) => {
     if (key === "faq") return `/api/deals/${deal.id}/faq.pdf`;
     const r = rows.find((x) => `${x.graphId}::${x.attachmentId}` === key);

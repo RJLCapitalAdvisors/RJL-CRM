@@ -115,10 +115,25 @@ async function faqEntry(dealId: string): Promise<DealFile | null> {
   return { key: FAQ_KEY, mailbox: "", messageId: "", attachmentId: "", name: faqFileName(deal.propertyName ?? deal.name), size: 0, contentType: "application/pdf", from: "RJL CRM", receivedAt: new Date().toISOString() };
 }
 
+/** The tickets whose recorded files this ticket serves as its own: itself, a portfolio's parts, and the ticket named in details.filesFrom. */
+export async function fileHomes(dealId: string): Promise<string[]> {
+  const own = await prisma.deal.findUnique({ where: { id: dealId }, select: { details: true, children: { select: { id: true } } } });
+  const filesFrom = (() => { try { const v = (JSON.parse(own?.details || "{}") as { filesFrom?: unknown }).filesFrom; return typeof v === "string" && v ? v : null; } catch { return null; } })();
+  return [dealId, ...(own?.children.map((c) => c.id) ?? []), ...(filesFrom ? [filesFrom] : [])];
+}
+/** The DealFile rows behind a ticket's attachment keys (its own, its parts', its filesFrom sibling's), for preview links. */
+export async function fileRowsFor(dealId: string): Promise<{ id: string; graphId: string; attachmentId: string }[]> {
+  return prisma.dealFile.findMany({ where: { dealId: { in: await fileHomes(dealId) } }, select: { id: true, graphId: true, attachmentId: true } });
+}
+
 export async function dealFiles(dealId: string): Promise<DealFile[]> {
   const faq = await faqEntry(dealId);
-  // a portfolio serves its components' files as its own
-  const recorded = await prisma.dealFile.findMany({ where: { OR: [{ dealId }, { deal: { parentDealId: dealId } }] }, orderBy: { receivedAt: "desc" } });
+  // a portfolio serves its components' files as its own; a second ticket on the same property (a pref raise beside the JV
+  // raise, Hedges Greene, Oct 22, 2026) reads the first ticket's files through details.filesFrom, since a mailbox attachment
+  // can be recorded on one ticket only
+  const own = await prisma.deal.findUnique({ where: { id: dealId }, select: { details: true } });
+  const filesFrom = (() => { try { const v = (JSON.parse(own?.details || "{}") as { filesFrom?: unknown }).filesFrom; return typeof v === "string" && v ? v : null; } catch { return null; } })();
+  const recorded = await prisma.dealFile.findMany({ where: { OR: [{ dealId }, { deal: { parentDealId: dealId } }, ...(filesFrom ? [{ dealId: filesFrom }] : [])] }, orderBy: { receivedAt: "desc" } });
   if (recorded.length) {
     const seen = new Set<string>();
     return [...(faq ? [faq] : []), ...recorded
