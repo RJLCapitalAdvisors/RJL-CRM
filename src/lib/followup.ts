@@ -39,7 +39,36 @@ export function deriveSignature(html: string, displayName: string): string | nul
   return sig.length > 20 && sig.length < 20000 ? sig : null;
 }
 
+/**
+ * A signature as Outlook or Word wrote it (Aviel's, Oct 22, 2026): paragraphs with the Word "Normal" style, which read with
+ * a blank line between every line once the CRM sends them. Tidied here, at render: every paragraph and div in the block gets
+ * margin 0 and a normal line height, the Word-only markup (mso-* declarations, <o:p>, the MsoNormal class, the bookmark
+ * anchor) goes, and a trailing non-breaking space on a line goes with it.
+ */
+export function tidySignature(html: string): string {
+  if (!html) return html;
+  let s = html
+    .replace(/<o:p>[\s\S]*?<\/o:p>/gi, "")
+    .replace(/<a\s+name="[^"]*"\s*>|<\/a>(?=\s*<\/?(?:b|span)\b)/gi, (m) => (m.startsWith("<a") ? "" : m)) // the bookmark anchor's open tag; its close tag stays matched below
+    .replace(/<a name="_MailAutoSig">([\s\S]*?)<\/a>/gi, "$1")
+    .replace(/\sclass="Mso[^"]*"/gi, "")
+    .replace(/(&nbsp;| )+(?=\s*(?:<\/span>|<\/b>|<\/p>|<\/div>))/gi, "");
+  // every block in the signature sits tight: margin 0, no Word pagination hints
+  s = s.replace(/<(p|div)(\s[^>]*)?>/gi, (_m, tag: string, attrs = "") => {
+    const sm = (attrs as string).match(/\sstyle="([^"]*)"/i);
+    const own = sm ? sm[1].replace(/\s*\n\s*/g, " ").split(";").map((d) => d.trim()).filter((d) => d && !/^(margin|mso-|line-height|text-indent)/i.test(d)).join(";") : "";
+    const style = `margin:0;line-height:normal;${own ? own + ";" : ""}`;
+    const rest = sm ? (attrs as string).replace(sm[0], "") : (attrs as string);
+    return `<${tag}${rest} style="${style}">`;
+  });
+  return s.replace(/\s*\n\s*/g, " ").replace(/mso-[a-z-]+\s*:\s*[^;"]*;?/gi, "");
+}
+
 export async function signatureFor(mailbox: string): Promise<string> {
+  return tidySignature(await signatureRaw(mailbox));
+}
+
+async function signatureRaw(mailbox: string): Promise<string> {
   const user = await prisma.user.findFirst({ where: { email: mailbox } });
   if (user?.signatureHtml) return user.signatureHtml;
   const name = user?.name ?? mailbox;
