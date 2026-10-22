@@ -6,6 +6,7 @@ import { renderTemplate, type MergeContext } from "../src/lib/merge";
 import { bioProblems, cleanBusinessPlan, cleanSponsorBio, planSentences } from "../src/lib/style";
 import { closeMonthKey, parseForwardCurve, rateTextAtClose, setForwardCurve, setIndexTable } from "../src/lib/rates";
 import { leadsWithPlace } from "../src/lib/enrich-narratives";
+import { tidyWordBlocks } from "../src/lib/followup";
 
 /**
  * Regression tests for the deal email (Jonathan, Oct 19, 2026), run against the three deals as they stood that day:
@@ -93,6 +94,15 @@ test("an empty bullet, an unknown acreage and a missing cash-on-cash leave no fr
   assert.ok(/IRR:/.test(out), out);
   assert.equal(plain(renderTemplate("{{deal.acresClause}}", ctx({ ...rockyHillNorth, details: JSON.stringify({ acres: 2.3 }) }))), ", and will sit on 2.3 acres of land");
   assert.equal(sellerSentence({ details: JSON.stringify({ sellerProfile: "from a very distressed seller", sourcing: "off-market through a broker relationship" }) }, "asset"), "The sponsor is buying the asset off-market through a broker relationship from a very distressed seller.");
+});
+
+test("a Word-style signature in an email body sends tight", () => {
+  const word = `<p style="margin:0 0 10pt 0;">Body line.</p><p class="MsoNormal" style="margin-bottom:0in;line-height:normal;mso-pagination:\nwidow-orphan lines-together"><a name="_MailAutoSig"><b><span style="font-size:9.0pt">Aviel Livian</span></b></a><span>&nbsp;<o:p></o:p></span></p><p class="MsoNormal" style="margin-bottom:0in;line-height:normal;mso-pagination:widow-orphan"><span style="font-size:9.0pt;mso-fareast-font-family:Calibri">RJL Capital Advisors&nbsp;<o:p></o:p></span></p>`;
+  const out = tidyWordBlocks(word);
+  assert.ok(!/MsoNormal|<o:p>|mso-|_MailAutoSig|&nbsp;/.test(out), out);
+  assert.ok(out.includes('<p style="margin:0 0 10pt 0;">Body line.</p>'), "a body paragraph is left alone");
+  assert.equal((out.match(/<p style="margin:0;line-height:normal;">/g) ?? []).length, 2, out);
+  assert.equal(tidyWordBlocks("<p>plain</p>"), "<p>plain</p>");
 });
 
 test("5. the equity multiple reads with two decimals and a lowercase x", () => {

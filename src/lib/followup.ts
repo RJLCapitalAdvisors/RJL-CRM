@@ -68,6 +68,26 @@ export async function signatureFor(mailbox: string): Promise<string> {
   return tidySignature(await signatureRaw(mailbox));
 }
 
+/**
+ * The same tidy, at send time, on a whole email: only the Word-style paragraphs (class Mso...) are touched, which in an
+ * email the CRM wrote can only be a signature pasted into it earlier (Oct 22, 2026: Aviel's deal went out from a Send page
+ * draft saved before the signature fix, with the old spaced signature inside it).
+ */
+export function tidyWordBlocks(html: string): string {
+  if (!html || !/class="Mso|<o:p>|mso-/i.test(html)) return html;
+  const out = html
+    .replace(/<o:p>[\s\S]*?<\/o:p>/gi, "")
+    .replace(/<a name="_MailAutoSig">([\s\S]*?)<\/a>/gi, "$1")
+    .replace(/<(p|div)(\s[^>]*class="Mso[^"]*"[^>]*)>/gi, (_m, tag: string, attrs: string) => {
+      const sm = attrs.match(/\sstyle="([^"]*)"/i);
+      const own = sm ? sm[1].replace(/\s*\n\s*/g, " ").split(";").map((d) => d.trim()).filter((d) => d && !/^(margin|mso-|line-height|text-indent)/i.test(d)).join(";") : "";
+      const rest = (sm ? attrs.replace(sm[0], "") : attrs).replace(/\sclass="Mso[^"]*"/i, "");
+      return `<${tag}${rest} style="margin:0;line-height:normal;${own ? own + ";" : ""}">`;
+    })
+    .replace(/(&nbsp;| )+(?=\s*(?:<\/span>|<\/b>|<\/p>|<\/div>))/gi, "");
+  return out.replace(/mso-[a-z-]+\s*:\s*[^;"]*;?/gi, "");
+}
+
 async function signatureRaw(mailbox: string): Promise<string> {
   const user = await prisma.user.findFirst({ where: { email: mailbox } });
   if (user?.signatureHtml) return user.signatureHtml;
