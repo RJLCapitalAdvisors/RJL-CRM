@@ -313,6 +313,8 @@ export const SELLER_PROFILES = [
   "an institutional owner that is having problems in other parts of their portfolio and is looking to source liquidity",
   "the buyer has a massive portfolio in the market, giving them market data other buyers don't have",
   "from a very distressed seller",
+  "a lender selling the asset as REO after foreclosure",
+  "a lender selling the asset as REO after foreclosure, with seller financing",
   "from a seller who has grossly mismanaged the property",
   "a large family office that has taken exceptional care of the properties",
 ] as const;

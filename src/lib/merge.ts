@@ -2,7 +2,7 @@ import { fullAddress } from "@/lib/zip";
 import { US_STATES } from "@/lib/taxonomy";
 import { cleanBusinessPlan } from "@/lib/style";
 import { uniqueChecklist, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
-import { amountMM, dealMetricsListHtml, debtTermsLine, entitledUse, intro, landMetricsHtml, metricsHtml, multiple, portfolioMetricsListHtml, sellerSentence, shortSourcing, subjectLine, usd } from "@/lib/deal-copy";
+import { acresClause, amountMM, cashOnCashSentence, dealMetricsListHtml, debtTermsLine, entitledUse, intro, landMetricsHtml, metricsHtml, multiple, portfolioMetricsListHtml, sellerSentence, shortSourcing, subjectLine, usd } from "@/lib/deal-copy";
 import { prefMetrics } from "@/lib/pref";
 import { rateNumber, rateText, rateTextAtClose } from "@/lib/rates";
 
@@ -65,6 +65,8 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.landSellerSentence", label: "\"The land was purchased off-market from a mom n' pop owner.\" or nothing when no seller is on the ticket" },
   { key: "deal.assetSellerSentence", label: "\"The sponsor is buying the asset off-market from a mom n' pop owner.\" or nothing" },
   { key: "deal.debtTerms", label: "The debt terms line: amount | LTC at the rate (all in, at the expected closing), term, amortization (lender)" },
+  { key: "deal.acresClause", label: "\", and sits on 2.3 acres of land\" or nothing when the acreage is unknown" },
+  { key: "deal.cashOnCashSentence", label: "\"Stabilized cash on cash of 7.20%.\" or nothing" },
   { key: "deal.intro", label: "House-style intro paragraph (adapts to asset class and development vs acquisition)" },
   { key: "deal.metrics", label: "Deal Metrics bullet list (per foot / per unit as the asset class calls for; a portfolio: the totals, then one block per property)" },
   { key: "deal.portfolioMetrics", label: "A portfolio's Deal Metrics as one list: the capital stack summed across the properties, yield and returns as ranges, the closing date (a single deal: the ordinary list)" },
@@ -174,6 +176,8 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "deal.landSellerSentence") return ctx.deal ? sellerSentence(ctx.deal, "land") : "";
   if (path === "deal.assetSellerSentence") return ctx.deal ? sellerSentence(ctx.deal, "asset") : "";
   if (path === "deal.debtTerms") return ctx.deal ? debtTermsLine(ctx.deal) : "";
+  if (path === "deal.acresClause") return ctx.deal ? acresClause(ctx.deal) : "";
+  if (path === "deal.cashOnCashSentence") return ctx.deal ? cashOnCashSentence(ctx.deal) : "";
   if (path === "deal.equityMultiple") { const v = ctx.deal?.equityMultiple; return typeof v === "number" && v > 0 ? multiple(v) : ""; }
   // the team's own notes never reach an investor (Jonathan, Oct 19, 2026): the sourcing commentary, the contract and lender notes, the report's themes
   if (path === "deal.details.sourcing") return shortSourcing(parseDetails(ctx.deal?.details).sourcing) ?? "";
@@ -212,12 +216,14 @@ function lookup(ctx: MergeContext, path: string): unknown {
  */
 export function renderTemplate(text: string, ctx: MergeContext, opts?: { mark?: boolean }): string {
   const mark = Boolean(opts?.mark) && /<[a-z][\s\S]*>/i.test(text);
-  return text.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*(?:\|\s*([^}]*?)\s*)?\}\}/g, (_, path: string, fallback?: string) => {
+  const out = text.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*(?:\|\s*([^}]*?)\s*)?\}\}/g, (_, path: string, fallback?: string) => {
     const v = fmt(path, lookup(ctx, path)) || fallback || "";
     if (!mark || !path.startsWith("deal.")) return v;
     const tag = /^\s*<(ul|ol|p|div|table)/i.test(v) ? "div" : "span";
     return `<${tag} data-deal="${path}">${v}</${tag}>`;
   });
+  // a bullet whose value came back empty ("Year 1 Cap Rate:") is dropped rather than shown bare (Oct 22, 2026)
+  return out.replace(/<li\b[^>]*>(?:(?!<\/li>)[\s\S])*?<\/li>/gi, (li) => (/^[^:]{0,80}:\s*$/.test(li.replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#8203;/g, " ").replace(/\s+/g, " ").trim()) ? "" : li));
 }
 
 const MARK_RE = /<(span|div)\b[^>]*\bdata-deal="([^"]+)"[^>]*>/g;

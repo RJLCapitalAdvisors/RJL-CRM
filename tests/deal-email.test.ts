@@ -86,6 +86,15 @@ test("3. and 6. the working deals' debt lines keep their figures, with the new p
   assert.equal(debtTermsLine(asDeal(projectBarclays)), "$13,991,713 | 70.00% LTC @ 375 bps over SOFR (7.17% at January 2027 closing) - on a 3-year term");
 });
 
+test("an empty bullet, an unknown acreage and a missing cash-on-cash leave no fragment", () => {
+  const noAcres = { ...rockyHillNorth, details: JSON.stringify({ ...JSON.parse(rockyHillNorth.details ?? "{}"), acres: undefined }), cashOnCash: null, capRateY1: null };
+  const out = renderTemplate("<p>spans 1,000 square feet{{deal.acresClause}}. {{deal.cashOnCashSentence}}</p><ul><li><b>Year 1 Cap Rate:</b> {{deal.capRateY1}}</li><li><b>IRR:</b> {{deal.irr}}</li></ul>", ctx(noAcres));
+  assert.ok(!/acres of land|cash on cash|Year 1 Cap Rate/.test(out), out);
+  assert.ok(/IRR:/.test(out), out);
+  assert.equal(plain(renderTemplate("{{deal.acresClause}}", ctx({ ...rockyHillNorth, details: JSON.stringify({ acres: 2.3 }) }))), ", and will sit on 2.3 acres of land");
+  assert.equal(sellerSentence({ details: JSON.stringify({ sellerProfile: "from a very distressed seller", sourcing: "off-market through a broker relationship" }) }, "asset"), "The sponsor is buying the asset off-market through a broker relationship from a very distressed seller.");
+});
+
 test("5. the equity multiple reads with two decimals and a lowercase x", () => {
   assert.equal(multiple(2.1), "2.10x");
   assert.equal(multiple(1.84), "1.84x");

@@ -1,6 +1,7 @@
 import { fullAddress } from "@/lib/zip";
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
 import { rateText, rateTextAtClose } from "@/lib/rates";
+import { SOURCING_OPTIONS } from "@/lib/taxonomy";
 import { parseDetails } from "@/lib/checklist";
 import { US_STATES } from "@/lib/taxonomy";
 import { isCondo, isLand, isPref, prefMetrics } from "@/lib/pref";
@@ -24,8 +25,11 @@ export const multiple = (v: number) => `${v.toFixed(2)}x`;
 export function shortSourcing(raw: unknown): string | null {
   const t = typeof raw === "string" ? raw.trim().replace(/[.]+$/, "") : "";
   if (!t) return null;
+  const house = (SOURCING_OPTIONS as readonly string[]).find((o) => o.toLowerCase() === t.toLowerCase());
+  if (house) return house; // one of Jonathan's own phrasings on the ticket's dropdown
   if (/^(on|off)[\s-]?market$/i.test(t)) return t.toLowerCase().replace(/\s/, "-");
   if (/^already owned( by the sponsor)?$/i.test(t)) return "already owned by the sponsor";
+  if (/^(on|off)[\s-]?market\b/i.test(t) && t.split(/\s+/).length <= 8 && !/[,;:]/.test(t)) return t.replace(/^(on|off)\s?market/i, (m) => m.toLowerCase().replace(/\s/, "-"));
   return null;
 }
 /**
@@ -34,7 +38,7 @@ export function shortSourcing(raw: unknown): string | null {
  */
 export function sellerSentence(d: { details?: string | null }, kind: "land" | "asset"): string {
   const det = parseDetails(d.details);
-  const seller = typeof det.sellerProfile === "string" ? det.sellerProfile.trim().replace(/[.]+$/, "") : "";
+  const seller = typeof det.sellerProfile === "string" ? det.sellerProfile.trim().replace(/[.]+$/, "").replace(/^from\s+/i, "") : ""; // the dropdown has "from a very distressed seller"
   if (!seller) return "";
   const src = shortSourcing(det.sourcing);
   if (src && /^already owned/.test(src)) return "";
@@ -480,4 +484,16 @@ export { stateName };
 export function debtTermsLine(d: D): string {
   const line = metrics(d).find((l) => l.startsWith("Total Debt and Terms: "));
   return line ? line.slice("Total Debt and Terms: ".length) : "";
+}
+
+/** ", and sits on 2.3 acres of land" (or "will sit on" for a development), nothing when the acreage is not on the ticket (Oct 22, 2026: "sits on acres of land"). */
+export function acresClause(d: D): string {
+  const acres = n(parseDetails(d.details).acres);
+  if (!acres) return "";
+  return `, and ${d.strategy === "Development" ? "will sit" : "sits"} on ${acres} acres of land`;
+}
+/** "Stabilized cash on cash of 7.20%." or nothing. */
+export function cashOnCashSentence(d: D): string {
+  const coc = n(d.cashOnCash);
+  return coc ? `Stabilized cash on cash of ${pct(coc)}.` : "";
 }
