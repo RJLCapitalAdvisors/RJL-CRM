@@ -29,6 +29,7 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.requestType", label: "Equity / Debt" },
   { key: "deal.requestedAmount", label: "Requested amount ($)" },
   { key: "deal.requestedAmountMM", label: "Requested amount for a subject line, no dollar sign (4MM)" },
+  { key: "deal.askClause", label: "The subject tail \" | 4MM of JV Equity\", or nothing when the ask is not set yet" },
   { key: "deal.totalEquity", label: "Total equity ($)" },
   { key: "deal.purchasePrice", label: "Purchase price ($)" },
   { key: "deal.ltv", label: "LTV %" },
@@ -183,6 +184,8 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "deal.details.sourcing") return shortSourcing(parseDetails(ctx.deal?.details).sourcing) ?? "";
   if (/^deal\.details\.(debtTerms|gcContract|sellerStory|internalNotes)$/.test(path) || /^deal\.(trackerThemes|trackerItemsNote|trackerPreparedFor|closedLostReason|closedWonReason)$/.test(path)) return "";
   if (path === "deal.requestedAmountMM") { const v = ctx.deal?.requestedAmount; return typeof v === "number" && v > 0 ? amountMM(v) : ""; }
+  // the subject's ask tail, " | 13MM of JV Equity", whole or not at all (Oct 22, 2026: a ticket with no ask yet read "| of Preferred Equity")
+  if (path === "deal.askClause") { const v = ctx.deal?.requestedAmount; const exec = typeof ctx.deal?.executionType === "string" ? ctx.deal.executionType : ""; return typeof v === "number" && v > 0 ? ` | ${amountMM(v)}${exec ? ` of ${exec}` : ""}` : ""; }
   if (path === "deal.intro") return ctx.deal ? intro(ctx.deal) : "";
   if (path === "deal.metrics") return ctx.deal ? metricsHtml(ctx.deal) : "";
   if (path.startsWith("deal.details.")) return parseDetails(ctx.deal?.details)[path.slice("deal.details.".length)] ?? "";
