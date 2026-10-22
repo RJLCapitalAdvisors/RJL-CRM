@@ -43,8 +43,23 @@ const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 /** A bounce that is the recipient's filter refusing the email as spam or a virus (Mimecast's 550 5.7.352), not a dead address. */
 const SPAM_REJECT = /suspects your message is spam|contains a virus|spam or virus detected|5\.7\.35[0-9]\b|message rejected due to content|rejected for policy reasons|blocked by .{0,40}(?:spam|content) filter/i;
 const RESENT_NOTE = `<p style="margin:0 0 10pt 0;font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#6b716e;">Resent without attachments: your mail system held back the files on my earlier email. Reply and I will send them another way.</p>`;
-/** The addresses a bounce names, minus mail systems and us. */
-const bouncedAddressesIn = (text: string) => [...new Set((text.match(EMAIL_RE) ?? []).map((e) => e.toLowerCase().replace(/[.,;:)]+$/, "")).filter((e) => !/rjlcapadvisors|rjlequities|postmaster|mailer-daemon|noreply|no-reply|microsoft\.com|outlook\.com/i.test(e)))];
+/**
+ * The addresses a bounce names as undeliverable, minus mail systems and us. Only the recipients section counts ("Delivery has
+ * failed to these recipients or groups: ..."), never the quoted original below it, whose To line names everyone the email went
+ * to (Oct 22, 2026: Royce Hadden was flagged for Kenneth Quach's bounce).
+ */
+const ours = (e: string) => /rjlcapadvisors|rjlequities|postmaster|mailer-daemon|noreply|no-reply|microsoft\.com|outlook\.com/i.test(e);
+const addressesIn = (t: string) => [...new Set((t.match(EMAIL_RE) ?? []).map((e) => e.toLowerCase().replace(/[.,;:)]+$/, "")).filter((e) => !ours(e)))];
+const bouncedAddressesIn = (text: string) => {
+  const m = text.match(/(?:couldn'?t be delivered to|couldn'?t deliver the message to|delivery has failed to these recipients|failed to deliver to|undeliverable to|the following recipients?|rejected your message to|was not delivered to)[^\n]*/i);
+  if (m && m.index != null) {
+    const window = text.slice(m.index, m.index + 1500).split(/\n\s*(?:your message|the original message|diagnostic|-{3,}|from:|subject:|sent:)/i)[0];
+    const found = addressesIn(window);
+    if (found.length) return found;
+  }
+  // no recipients section: whatever sits above the quoted original
+  return addressesIn(text.split(/\n\s*(?:from:|-{3,}\s*original message|sent:)/i)[0]);
+};
 
 /**
  * A bounce ("Undeliverable: <subject>") in the sending mailbox names the addresses that did not get the email. Matched to
@@ -85,8 +100,10 @@ export async function noteLaunchBounce(opts: { mailbox: string; subject: string 
       continue;
     }
     await prisma.dealLaunch.update({ where: { id: r.id }, data: { status: "BOUNCED", error: `bounced: ${all.join(", ")}${all.length < people.length ? " (the others got it)" : ""}` } });
-    const { proposeContactRemoval } = await import("@/lib/departures");
-    for (const p of hit) if (!already.has(p.email!.toLowerCase())) await proposeContactRemoval(p.id, `Bounced on the deal email "${original}": ${opts.text.slice(0, 200)}`, opts.messageId ?? null).catch(() => false);
+    // a bounce is not a departure (Jonathan, Oct 22, 2026: "Royce Hadden definitely has not left"): the row shows the bounce, the
+    // contact gets a note, and nobody is proposed for removal; a person who left is read from what people write, not from a mail system
+    const { logActivity } = await import("@/lib/activity");
+    for (const p of hit) if (!already.has(p.email!.toLowerCase())) await logActivity({ type: "NOTE", body: `Bounced on the deal email "${original}": ${opts.text.replace(/\s+/g, " ").slice(0, 160)}. Check the address before the next send.`, contactId: p.id, dealId: r.dealId }).catch(() => null);
     n++;
   }
   return n;
