@@ -116,7 +116,7 @@ export async function addReplacementContacts(text: string, departedContactId: st
     // the firm: the departed person's, else any company on the email's domain
     // the firm: the one on the address's domain when the CRM has it (a parent company's domain), else the departed person's, else the sender's
     const domain = email.split("@")[1];
-    const companyId = (await prisma.company.findFirst({ where: { domain: { equals: domain, mode: "insensitive" } }, select: { id: true } }))?.id ?? departed?.companyId ?? fallbackCompanyId;
+    const companyId = (await (await import("@/lib/domains")).companyByDomain(domain))?.id ?? departed?.companyId ?? fallbackCompanyId;
     const phone = text.slice(m.index, m.index + m.len + 60).match(/\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/)?.[0] ?? null;
     await prisma.contact.create({ data: { firstName: parts[0] ?? null, lastName: parts.slice(1).join(" ") || null, email, companyId, phone } }).catch(() => null);
     out.push(parts.length ? name : email);
@@ -159,7 +159,7 @@ export async function noteDepartureIfAny(opts: { subject: string | null; text: s
       const pick = cands.find((c) => senderDomain && c.email?.toLowerCase().endsWith(`@${senderDomain}`)) ?? (cands.length === 1 ? cands[0] : null) ?? (atFirmLast.length === 1 ? atFirmLast[0] : null) ?? (atFirmFirst.length === 1 ? atFirmFirst[0] : null);
       if (pick) ids.add(pick.id);
       // the person named is not in the CRM: nothing to remove, but the replacement the notice points to still joins (Jonathan, Oct 13, 2026)
-      else if (replacements.size && senderDomain) { const firm = await prisma.company.findFirst({ where: { domain: { equals: senderDomain, mode: "insensitive" } }, select: { id: true } }); await addReplacementContacts(text, null, firm?.id ?? null).catch(() => []); }
+      else if (replacements.size && senderDomain) { const firm = await (await import("@/lib/domains")).companyByDomain(senderDomain); await addReplacementContacts(text, null, firm?.id ?? null).catch(() => []); }
     } else if (opts.contactId && /\bI(?:'m| am) no longer|\bI (?:have )?(?:left|moved on)/i.test(text)) {
       // the sender says it about themselves ("I am no longer with X")
       ids.add(opts.contactId);

@@ -24,18 +24,42 @@ export function nameFromDomain(domain: string): string {
     .join(" ");
 }
 
+/** The company on an email domain: its own domain, or one of its alternate domains (a firm that merged two pages, Oct 23, 2026). */
+export async function companyByDomain(domain: string | null | undefined): Promise<{ id: string } | null> {
+  const d = domain?.trim().toLowerCase();
+  if (!d) return null;
+  return (
+    (await prisma.company.findFirst({ where: { domain: { equals: d, mode: "insensitive" } }, select: { id: true } })) ??
+    (await prisma.company.findFirst({ where: { altDomains: { contains: `"${d}"`, mode: "insensitive" } }, select: { id: true } }))
+  );
+}
+
+/** The companies on a list of email domains, alternate domains included: domain -> company id. */
+export async function companiesByDomain(domains: string[]): Promise<Map<string, string>> {
+  const ds = [...new Set(domains.map((d) => d.trim().toLowerCase()).filter(Boolean))];
+  if (!ds.length) return new Map();
+  const out = new Map<string, string>();
+  for (const c of await prisma.company.findMany({ where: { domain: { in: ds, mode: "insensitive" } }, select: { id: true, domain: true } })) out.set(c.domain!.toLowerCase(), c.id);
+  const missing = ds.filter((d) => !out.has(d));
+  if (missing.length) {
+    for (const c of await prisma.company.findMany({ where: { OR: missing.map((d) => ({ altDomains: { contains: `"${d}"`, mode: "insensitive" as const } })) }, select: { id: true, altDomains: true } })) {
+      for (const d of parseList(c.altDomains)) if (missing.includes(d.toLowerCase()) && !out.has(d.toLowerCase())) out.set(d.toLowerCase(), c.id);
+    }
+  }
+  return out;
+}
+
 /**
- * The company a contact with this email belongs to: match on domain, then on website,
+ * The company a contact with this email belongs to: match on domain (alternate domains too), then on website,
  * otherwise create one named after the domain. Returns null for free-mail addresses.
  */
 export async function companyForEmail(email: string | null | undefined, nameHint?: string | null, ownerId?: string | null) {
   const domain = domainOf(email);
   if (!domain) return null;
-  const existing =
-    (await prisma.company.findFirst({ where: { domain } })) ??
-    (await prisma.company.findFirst({ where: { website: { contains: domain } } }));
+  const byDomain = await companyByDomain(domain);
+  const existing = byDomain ? await prisma.company.findUnique({ where: { id: byDomain.id } }) : await prisma.company.findFirst({ where: { website: { contains: domain } } });
   if (existing) {
-    if (!existing.domain) await prisma.company.update({ where: { id: existing.id }, data: { domain } });
+    if (!existing.domain && !parseList(existing.altDomains).includes(domain)) await prisma.company.update({ where: { id: existing.id }, data: { domain } });
     return existing;
   }
   const created = await prisma.company.create({ data: { name: nameHint?.trim() || nameFromDomain(domain), domain, website: `https://${domain}`, ownerId: ownerId ?? null } });

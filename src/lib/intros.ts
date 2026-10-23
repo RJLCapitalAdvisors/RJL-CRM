@@ -138,9 +138,8 @@ export async function quietIntros(since = new Date(Date.now() - INTRO_WINDOW_DAY
   // Three queries for the whole list instead of three per intro (the page renders this on every load).
   // 1) traction: the two sides of an intro now share a live deal (one side sponsors it, the other is on its report at Taking a look or better)
   const allDomains = [...new Set(rows.flatMap((r) => outside(recipsOf(r))))];
-  const companies = allDomains.length ? await prisma.company.findMany({ where: { domain: { in: allDomains } }, select: { id: true, domain: true } }) : [];
-  const idByDomain = new Map(companies.map((c) => [c.domain!, c.id]));
-  const ids = companies.map((c) => c.id);
+  const idByDomain = await (await import("@/lib/domains")).companiesByDomain(allDomains);
+  const ids = [...new Set(idByDomain.values())];
   const pairs = ids.length >= 2 ? await prisma.dealInvestor.findMany({ where: { status: { gte: 4 }, deal: { stage: { notIn: ["Deal Lost", "Deal Closed"] }, sponsorCompanyId: { in: ids } }, contact: { companyId: { in: ids } } }, select: { deal: { select: { sponsorCompanyId: true } }, contact: { select: { companyId: true } } } }) : [];
   const pairSet = new Set(pairs.filter((x) => x.deal.sponsorCompanyId && x.contact.companyId && x.deal.sponsorCompanyId !== x.contact.companyId).map((x) => `${x.deal.sponsorCompanyId}|${x.contact.companyId}`));
   const hasTraction = (recips: string[]) => {

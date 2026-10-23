@@ -39,6 +39,7 @@ model Company {
   name          String
   roles         String   @default("[]") // JSON: Sponsor | Investor | Retail Investor | Lender | Broker
   domain        String?  // email domain (citivestinc.com); contacts with this domain belong here
+  altDomains    String?  // JSON list of other email domains the firm uses (torchlightinvestors.com beside torchlight.com), Oct 23, 2026
   website       String?
   description   String?  // one or two sentences pulled from their website
   phone         String?

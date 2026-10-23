@@ -460,7 +460,7 @@ export async function runImport(ws: Workspace, p: Proposal): Promise<ImportResul
   // RJL Capital Advisors
   for (const c of p.companies ?? []) {
     const domain = domainOfUrl(c.website);
-    const found = (await prisma.company.findFirst({ where: { name: { equals: c.name, mode: ci } } })) ?? (domain ? await prisma.company.findFirst({ where: { domain: { equals: domain, mode: ci } } }) : null);
+    const found = (await prisma.company.findFirst({ where: { name: { equals: c.name, mode: ci } } })) ?? (domain ? await (async () => { const hit = await (await import("@/lib/domains")).companyByDomain(domain); return hit ? prisma.company.findUnique({ where: { id: hit.id } }) : null; })() : null);
     if (found) {
       await prisma.company.update({ where: { id: found.id }, data: { roles: c.roles?.length ? toJsonList([...parseJsonList(found.roles), ...c.roles]) : undefined, website: found.website ?? c.website, domain: found.domain ?? domain, phone: found.phone ?? c.phone, city: found.city ?? c.city, state: found.state ?? c.state, notes: found.notes ?? c.notes } });
       companyIds.set(norm(c.name), found.id);

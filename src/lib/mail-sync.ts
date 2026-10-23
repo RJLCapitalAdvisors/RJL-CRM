@@ -120,7 +120,7 @@ export async function resolveParticipants(subject: string | null | undefined, ou
     for (const p of ordered) {
       const d = domainOf(p.address);
       if (!d) continue;
-      const co = await prisma.company.findFirst({ where: { domain: d }, select: { id: true } });
+      const co = await (await import("@/lib/domains")).companyByDomain(d);
       if (co) {
         companyId = co.id;
         break;
