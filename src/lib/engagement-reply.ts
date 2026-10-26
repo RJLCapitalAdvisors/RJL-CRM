@@ -12,6 +12,8 @@ export const normName = (s: string) => s.toLowerCase().replace(/&amp;/g, "&").re
 
 /** A group's name matches a line of the list when it is the same, one starts with the other (four letters or more), or the line is the group's domain. */
 export function lineMatchesGroup(line: string, g: Group): boolean {
+  // "Aureon/Quilvest" names one group two ways (Zamir Kazi, Oct 26, 2026): either half may match
+  if (line.includes("/") && !/https?:|www\./i.test(line)) return line.split("/").some((part) => part.trim().length >= 3 && lineMatchesGroup(part, g)) || lineMatchesGroup(line.replace(/\//g, " "), g);
   const l = normName(line), n = normName(g.name);
   if (!l || !n) return false;
   if (l === n) return true;
@@ -36,7 +38,8 @@ export function replyLines(html: string): string[] {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;|&rsquo;|&lsquo;/g, "'")
-    .split(/\n/)
+    // a list written on one line ("Abod Capital · Aureon/Quilvest · Calibogue · ...", Zamir Kazi, Oct 26, 2026) is one name per separator
+    .split(/\n|\s*[·•]\s*|\s\|\s/)
     .map((l) => l.trim())
     .filter(Boolean);
 }
@@ -59,7 +62,7 @@ export function splitReply(lines: string[]): { own: string[]; quoted: string[] }
  * at Citivest typed "Here is the revised list excluding folks we've already reached out to" and 15 of the 29 names;
  * the quoted letter below was untouched, so the erased/crossed reading saw nothing removed). Bullets are ignored.
  */
-export function ownListGroups(groups: Group[], html: string): Group[] {
+export function ownListGroups<G extends Group>(groups: G[], html: string): G[] {
   const { own } = splitReply(replyLines(html));
   const bare = (l: string) => l.replace(/\[\/?struck\]/g, "").replace(/^(?:[•·▪◦*\-–]|o(?=\s)|\d+[.)])\s*/, "").trim();
   return groups.filter((g) => own.some((l) => lineMatchesGroup(bare(l), g)));
