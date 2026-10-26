@@ -152,6 +152,18 @@ export async function reviseGeneralEmailAction(dealId: string, subject: string, 
   }
 }
 
+/** "Refresh from latest info": the newest model on the deal is read into the ticket; the page then re-flows the email around the edits. */
+export async function refreshFromLatestAction(dealId: string) {
+  const me = await currentUser();
+  try {
+    const r = await (await import("@/lib/send-deal")).refreshTicketFromLatest(dealId, me?.name ?? undefined);
+    if (r.changes.length) { revalidatePath(`/deals/${dealId}`); revalidatePath(`/deals/${dealId}/send`); }
+    return r;
+  } catch (e) {
+    return { error: `Could not read the latest model: ${String(e instanceof Error ? e.message : e).slice(0, 160)}` };
+  }
+}
+
 /** Autosave for the Send deal page: the General email, per-firm edits, who gets what, files, template. Kept on the deal. */
 export async function saveSendStateAction(dealId: string, state: Record<string, unknown>, mode: Mode = "send", round = 1) {
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { details: true } });

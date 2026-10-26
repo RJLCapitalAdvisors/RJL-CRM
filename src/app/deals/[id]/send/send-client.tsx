@@ -7,8 +7,8 @@ import { CompanyLogo } from "@/components/company-logo";
 import { hasMarker, withFirstName, withoutName } from "@/lib/first-name-marker";
 import { applyEdits, diffBlocks, greetingName, splitBlocks, type FirmDraft } from "@/lib/firm-draft";
 import { Send, Star } from "lucide-react";
-import { dealFieldsOf, refreshDealFields } from "@/lib/merge";
-import { addFirmAction, cancelLaunchAction, launchAction, learnFirstNameAction, previewFollowupEmail, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction, searchInvestorCompanies } from "./actions";
+import { dealFieldsOf, MERGE_FIELDS, refreshDealFields } from "@/lib/merge";
+import { refreshFromLatestAction, addFirmAction, cancelLaunchAction, launchAction, learnFirstNameAction, previewFollowupEmail, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction, searchInvestorCompanies } from "./actions";
 import { Eye } from "lucide-react";
 import { EmailRow, type EmailRowData } from "@/components/email-row";
 import { statusOf } from "@/lib/tracker";
@@ -19,6 +19,10 @@ export type Firm = { rowId: string; status: number; company: string; domain: str
 export type DealFileLite = { key: string; name: string; size: number; url?: string | null };
 /** fields: each marked ticket field as it was last refreshed, so a later refresh can tell an edited paragraph (kept) from an untouched one (replaced). */
 type Draft = { subject: string; html: string; touched: boolean; fields?: Record<string, string> };
+/** A marked field's visible text, for telling whether the ticket moved under an edit. */
+const plain = (h: string) => h.replace(/<[^>]+>/g, "").replace(/&nbsp;|&#8203;|​/g, "").replace(/\s+/g, " ").trim();
+/** A field's name as the person knows it: the merge list's label up to its first parenthesis or colon. */
+const fieldLabel = (k: string) => (MERGE_FIELDS.find((f) => f.key === k)?.label ?? k.replace(/^deal\.(details\.)?/, "")).split(/[(:]/)[0].trim();
 /** Everything on this page that is worth keeping if you leave and come back (kept on the deal, per deal). A firm's draft is its block edits over the General email (an older save may carry a full html copy, converted on load). */
 export type SendState = { templateId?: string; general?: Draft | null; drafts?: Record<string, FirmDraft | Draft>; include?: string[]; to?: Record<string, string[]>; primary?: Record<string, string[]>; chosenFiles?: string[]; cc?: string; savedAt?: string };
 
@@ -90,6 +94,8 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   const [rendering, setRendering] = useState(false);
   const [reload, setReload] = useState(0); // bump to re-render General from the template
   const [refresh, setRefresh] = useState(0); // bump to pull the ticket's latest numbers into the saved emails (every open, and when the tab comes back)
+  const lastReload = useRef(0); // the reload value the render effect last saw: a change means "reset to template" was clicked
+  const pendingNote = useRef<string | null>(null); // what "refresh from latest info" changed on the ticket, shown with the refresh's own note
   const [version, setVersion] = useState(0); // bump to push html into the editor (never on keystrokes, so the caret stays put)
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved">("idle");
   const editor = useRef<HTMLDivElement>(null);
@@ -175,9 +181,13 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   // autosaves and the email must follow). "reset to template" renders it afresh.
   useEffect(() => {
     let cancelled = false;
+    // only the run that a "reset to template" click started renders afresh; every later refresh keeps the edits made since (Oct 26, 2026:
+    // this read `reload === 0`, so once a reset had been clicked, coming back to the tab rebuilt the email and dropped the edits made after it)
+    const resetNow = reload !== lastReload.current;
+    lastReload.current = reload;
     // edited in this session or saved as edited earlier: kept (Oct 8, 2026: a tab switch rebuilt Jonathan's follow-up note from the default
     // because only the state saved before the page opened was consulted, and the autosave then wrote the default over his work)
-    const keepEdits = reload === 0 && (Boolean(general?.touched) || Boolean(saved?.general?.touched)) && (followup || saved?.templateId === templateId || general?.touched);
+    const keepEdits = !resetNow && (Boolean(general?.touched) || Boolean(saved?.general?.touched)) && (followup || saved?.templateId === templateId || general?.touched);
     const t = setTimeout(() => !cancelled && setRendering(true), 0);
     (followup ? previewFollowupEmail(dealId, round) : previewGeneralEmail(dealId, templateId))
       .then((r) => {
@@ -185,6 +195,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
         if (keepEdits) {
           let unmarked = false;
           let keptFields: string[] = [];
+          let staleFields: string[] = [];
           setGeneral((g) => {
             if (!g) return { subject: r.subject, html: r.html, touched: false, fields: dealFieldsOf(r.html) };
             // the ticket's numbers go in where nothing was changed; a paragraph edited here or by a revision stands (Oct 8, 2026)
@@ -194,6 +205,9 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
               return g;
             }
             keptFields = merged.kept;
+            // an edited paragraph whose ticket figures moved since it was edited: kept as written, but named so it can be checked
+            const fresh = dealFieldsOf(r.html);
+            staleFields = merged.kept.filter((k) => g.fields?.[k] != null && fresh[k] != null && plain(g.fields[k]) !== plain(fresh[k]));
             return merged.html === g.html && g.fields ? { ...g, fields: merged.fields } : { ...g, html: merged.html, fields: merged.fields };
           });
           setDrafts((s) => {
@@ -208,9 +222,16 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
             }
             return changed ? n : s;
           });
-          if (unmarked) setNote("Your edited email was kept as it is. The ticket's numbers in it are not refreshed automatically any more, because the edited text no longer carries the field marks; check them before launching, or reset to template.");
-          else if (keptFields.length) setNote(`Your edits were kept (${keptFields.length} paragraph${keptFields.length === 1 ? "" : "s"} you changed); the rest took the ticket's current numbers.`);
-        } else setGeneral({ subject: r.subject, html: r.html, touched: false, fields: dealFieldsOf(r.html) });
+          const lead = pendingNote.current ? `${pendingNote.current} ` : "";
+          pendingNote.current = null;
+          const stale = staleFields.length ? ` The ticket's figures changed under ${staleFields.length === 1 ? "a part" : "parts"} you edited, which kept your wording: ${staleFields.map(fieldLabel).join("; ")}. Check ${staleFields.length === 1 ? "it" : "them"} before launching.` : "";
+          if (unmarked) setNote(`${lead}Your edited email was kept as it is. The ticket's numbers in it are not refreshed automatically any more, because the edited text no longer carries the field marks; check them before launching, or reset to template.`);
+          else if (keptFields.length) setNote(`${lead}Your edits were kept (${keptFields.length} paragraph${keptFields.length === 1 ? "" : "s"} you changed); the rest took the ticket's current numbers.${stale}`);
+          else if (lead) setNote(`${lead}The email took the ticket's current numbers.`);
+        } else {
+          setGeneral({ subject: r.subject, html: r.html, touched: false, fields: dealFieldsOf(r.html) });
+          if (pendingNote.current) { setNote(`${pendingNote.current} The email took the ticket's current numbers.`); pendingNote.current = null; }
+        }
         setVersion((v) => v + 1);
       })
       .catch(() => null)
@@ -541,6 +562,24 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     } else setGeneral((g) => ({ subject: value, html: g?.html ?? "", touched: true, fields: g?.fields }));
   };
 
+  // the newest model goes into the ticket, then the emails re-flow from it around the edits (Jonathan, Oct 26, 2026)
+  const refreshLatest = () => {
+    commitEdit();
+    start(async () => {
+      setNote("Reading the latest model into the ticket. A large workbook takes a minute or two...");
+      const r = await refreshFromLatestAction(dealId);
+      if ("error" in r) return setNote(r.error ?? "Could not refresh.");
+      pendingNote.current = !r.model ? "No spreadsheet is on this deal, so nothing was re-read." : r.already ? `The ticket already took in ${r.model} (the latest model).` : r.changes.length ? `Ticket updated from ${r.model}: ${r.changes.join("; ")}.` : `Read ${r.model}: the ticket already had its figures.`;
+      // a subject carrying the old ask takes the new one (the rest of the subject, edited or not, stays)
+      if (r.askFrom && r.askTo && r.askFrom !== r.askTo) {
+        const swap = (s: string) => s.split(r.askFrom!).join(r.askTo!);
+        setGeneral((g) => (g && g.subject.includes(r.askFrom!) ? { ...g, subject: swap(g.subject) } : g));
+        setDrafts((s) => Object.fromEntries(Object.entries(s).map(([k, d]) => [k, d.subject?.includes(r.askFrom!) ? { ...d, subject: swap(d.subject) } : d])));
+      }
+      setRefresh((n) => n + 1);
+    });
+  };
+
   const resetShown = () => {
     if (cur) {
       setDrafts((s) => {
@@ -838,11 +877,18 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                 <span className="text-xs text-muted">no name in the greeting; each firm gets this with its starred people&apos;s first names, and every edit here reaches every firm</span>
               )}
             </div>
-            {shown?.touched && (
-              <button type="button" className="text-xs text-muted hover:underline" onClick={resetShown}>
-                {cur ? "back to the General email" : "reset to template"}
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {!cur && (
+                <button type="button" className="text-xs text-sky-700 hover:underline disabled:opacity-50" onClick={refreshLatest} disabled={pending || rendering} title="Read the newest model on the deal into the ticket, then update the figures in this email. Paragraphs you edited keep your wording; any whose figures changed are named so you can check them.">
+                  refresh from latest info
+                </button>
+              )}
+              {shown?.touched && (
+                <button type="button" className="text-xs text-muted hover:underline" onClick={resetShown}>
+                  {cur ? "back to the General email" : "reset to template"}
+                </button>
+              )}
+            </div>
           </div>
           <div className="px-4 py-3">
             <div className="mb-2 flex items-center gap-2 text-sm">

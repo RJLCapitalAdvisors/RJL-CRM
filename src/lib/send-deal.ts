@@ -424,6 +424,32 @@ async function latestSpreadsheet(dealId: string): Promise<{ name: string; receiv
 const money = (v: unknown) => (typeof v === "number" && v >= 1000 ? `$${Math.round(v).toLocaleString("en-US")}` : v == null || v === "" ? "blank" : String(v));
 
 /**
+ * "Refresh from the latest information" on the Send deal page (Jonathan, Oct 26, 2026: Zamir's team sent a model with lower debt and
+ * the write-up still showed the old figures). The newest spreadsheet on the deal is read into the ticket, underwriting figures replacing
+ * what is there and the narrative untouched, exactly as "use the latest model" typed into the change box does. The page then re-flows the
+ * email from the ticket, keeping every paragraph edited by hand. The ask before and after come back so a subject carrying it can follow.
+ */
+export async function refreshTicketFromLatest(dealId: string, by?: string): Promise<{ model: string | null; changes: string[]; askFrom: string | null; askTo: string | null; already?: boolean }> {
+  const { amountMM } = await import("@/lib/deal-copy");
+  const before = await prisma.deal.findUniqueOrThrow({ where: { id: dealId }, select: { requestedAmount: true, sponsorCompanyId: true } });
+  const model = await latestSpreadsheet(dealId);
+  const changes: string[] = [];
+  // a model the ticket already took in (a refresh or a re-underwrite since it arrived) is not read again: a 14 MB workbook takes two minutes
+  const readAlready = model ? await prisma.activity.findFirst({ where: { dealId, type: "NOTE", occurredAt: { gte: model.receivedAt }, body: { contains: model.name }, OR: [{ body: { startsWith: "Ticket refreshed from" } }, { body: { startsWith: "Re-underwritten from" } }] }, select: { id: true } }) : null;
+  if (model && readAlready) return { model: model.name, changes, askFrom: null, askTo: null, already: true };
+  if (model) {
+    const { mergeIntoDeal, showVal } = await import("@/lib/deal-knowledge");
+    const text = `=== ${model.name} (the latest model, received ${model.receivedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}; its figures replace older ones) ===\n${model.text}`;
+    const r = await mergeIntoDeal(dealId, text, `Refresh from ${model.name}`, { modelAttached: true, attachments: [model.name], overwriteNumbers: true });
+    for (const c of r.changes) changes.push(`${c.label}: ${showVal(c.field, c.from)} to ${showVal(c.field, c.to)}`);
+    if (changes.length) await logActivity({ type: "NOTE", body: `Ticket refreshed from ${model.name} on the Send deal page${by ? ` by ${by}` : ""}: ${changes.join("; ")}.`, dealId, companyId: before.sponsorCompanyId });
+  }
+  const after = await prisma.deal.findUniqueOrThrow({ where: { id: dealId }, select: { requestedAmount: true } });
+  const ask = (v: number | null) => (v ? amountMM(v) : null);
+  return { model: model?.name ?? null, changes, askFrom: ask(before.requestedAmount), askTo: ask(after.requestedAmount) };
+}
+
+/**
  * "Ask the CRM to change this email" (Jonathan, Oct 13, 2026: "update all the metrics based on the most recent model they
  * sent us" did nothing, because this only ever saw the email's text). Three steps now. When the request is about the
  * deal's figures, the ticket is updated first: the instruction's own figures and, when it refers to the model or the
