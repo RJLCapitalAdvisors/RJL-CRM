@@ -90,3 +90,40 @@ export function readGroupList(groups: Group[], html: string): ListReading {
     .join("\n");
   return listSeen ? { listSeen, erased, crossed, kept, listText } : { listSeen: false, erased: [], crossed: [], kept: groups, listText: "" };
 }
+
+export type ListSection<G extends Group = Group> = { heading: string; groups: G[] };
+
+/**
+ * The sections of the list RJL wrote to the sponsor, when it had headings ("Tier 1 - Already approached", "Tier 2 - New
+ * groups for pref"): a heading is a line that names no group and sits right above a run of group lines. Kyle Corrigan
+ * (Citivest, Oct 24, 2026) sent back "Revised list for Tier 2" with sixteen names; the Tier 1 groups were not on it and
+ * were never meant to come off, so a revised list is read against the section it names, not the whole proposal.
+ */
+export function listSections<G extends Group>(text: string, groups: G[]): ListSection<G>[] {
+  const bare = (l: string) => l.replace(/^(?:[•·▪◦*\-–]|o(?=\s)|\d+[.)])\s*/, "").replace(/\s[–-]\s.*$/, "").trim();
+  const lines = text.replace(/\r/g, "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const out: ListSection<G>[] = [];
+  let heading: string | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const g = groups.find((x) => lineMatchesGroup(bare(lines[i]), x));
+    if (g) {
+      if (!heading) heading = "";
+      const sec = out.find((s) => s.heading === heading) ?? (out.push({ heading, groups: [] }), out[out.length - 1]);
+      if (!sec.groups.includes(g)) sec.groups.push(g);
+      continue;
+    }
+    if (/^(?:[•·▪◦*\-–]|o(?=\s)|\d+[.)])\s/.test(lines[i])) continue; // a bullet naming no ticket group (Stonehill, with no contact in the CRM) is still a list line, never a heading
+    const nextIsGroup = lines[i + 1] && groups.some((x) => lineMatchesGroup(bare(lines[i + 1]), x));
+    if (nextIsGroup && lines[i].length <= 90) heading = lines[i];
+  }
+  return out.filter((s) => s.heading && s.groups.length);
+}
+
+/** The sections the sponsor's own words name ("Revised list for Tier 2 below"): matched on the heading's first words, before any dash or colon. */
+export function sectionsNamed<G extends Group>(ownWords: string, sections: ListSection<G>[]): ListSection<G>[] {
+  const w = ` ${normName(ownWords)} `;
+  return sections.filter((s) => {
+    const key = normName(s.heading.split(/\s[–-]\s|:/)[0]);
+    return key.length >= 4 && w.includes(` ${key} `);
+  });
+}

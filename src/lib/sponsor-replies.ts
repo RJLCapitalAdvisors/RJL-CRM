@@ -83,13 +83,15 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
       const det = JSON.parse(d.details || "{}") as Record<string, unknown>;
       const letterOut = Boolean(det.engagementSentAt || det.engagementDraftedAt);
       const alreadySigned = ["Engagement Letter Signed", "Deal Taken To Market", "Intro To Capital Made", "Term Sheet Issued", "Term Sheet Signed"].includes(d.stage);
-      if (!letterOut || alreadySigned) continue;
       // the list the sponsor sent back, compared with the deal's groups: erased names and crossed-out lines are struck
       const { engagementGroups, finalizeEngagement } = await import("@/lib/send-deal");
       const current = await engagementGroups(d.id);
       // a list the sponsor typed out themselves (three names or more) is read by Claude as a kept list or a remove list; the quoted
       // letter under it is then left alone, since it is only the letter as we sent it (Citivest, Oct 15, 2026)
       const ownList = full?.html ? ownListGroups(current, full.html) : [];
+      // a sponsor who writes out three or more of the ticket's groups is read whatever the stage and whether or not the CRM sent the letter:
+      // Jonathan proposed the Hedges Greene pref list by hand on a signed ticket and Kyle's revised list was skipped (Oct 24, 2026)
+      if (ownList.length < 3 && (!letterOut || alreadySigned)) continue;
       const list = full?.html && ownList.length < 3 ? readGroupList(current, full.html) : { listSeen: false, erased: [], crossed: [], kept: current, listText: "" };
       const spoke = /agree|good with|approved|confirm|let'?s go|let'?s get|works for|fine with|proceed|go ahead|relationship|remove|removed|take out|leave out|exclud|struck|crossed|redline|contacted|reached out|revised|updated list|permitted/i.test(words);
       if (!spoke && !list.listSeen && ownList.length < 3) continue;
@@ -123,7 +125,9 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
       // the sponsor wrote out the groups we may approach: every letter group not on it is left out (at least two must match, so a stray name never empties the list)
       const keepOnly = parsed?.keepOnly ?? [];
       const keptGroups = current.filter((g) => keepOnly.some((k) => lineMatchesGroup(k, g)));
-      const leftOut = keptGroups.length >= 2 ? current.filter((g) => !keptGroups.includes(g)) : [];
+      // a revised list that names a section of RJL's proposal ("Revised list for Tier 2") only speaks for that section: the other tiers stay
+      const scope = keptGroups.length >= 2 ? await listScope(d.id, a.occurredAt, meta.mailbox ?? null, words, current) : current;
+      const leftOut = keptGroups.length >= 2 ? scope.filter((g) => !keptGroups.includes(g)) : [];
       for (const g of leftOut) if (!struck.some((s) => s.name === g.name)) struck.push({ name: g.name, companyId: g.companyId || null, how: "left out", at, by });
       if (!struck.length && !parsed?.confirmsEngagement) continue;
       // the struck groups are unticked on the ticket's engagement card, whether or not the letter is confirmed yet
@@ -133,15 +137,43 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
       await prisma.deal.update({ where: { id: d.id }, data: { details: JSON.stringify({ ...detNow, engagementStruck: [...earlier, ...struck], ...(parsed?.confirmsEngagement ? { engagementConfirmedAt: at, engagementConfirmedBy: by } : {}) }) } });
       const { logActivity } = await import("@/lib/activity");
       const what = [list.erased.length ? `erased from the list: ${list.erased.map((g) => g.name).join(", ")}` : "", list.crossed.length ? `crossed out: ${list.crossed.map((g) => g.name).join(", ")}` : "", asked.length ? `asked to remove: ${asked.map((g) => g.name).join(", ")}` : "", leftOut.length ? `left off the list they sent back: ${leftOut.map((g) => g.name).join(", ")}` : "", parsed?.addGroups.length ? `asked to add: ${parsed.addGroups.join(", ")}` : ""].filter(Boolean).join("; ");
+      const keep = current.filter((g) => g.companyId && !struck.some((s) => s.companyId === g.companyId)).map((g) => g.companyId);
+      if (alreadySigned || !letterOut) {
+        // a list on a signed ticket (going wider for pref) or on a thread with no CRM letter: the agreed groups change, the stage does not
+        if (struck.length) await finalizeEngagement(d.id, keep, [], { markSigned: false });
+        await logActivity({ type: "NOTE", body: stripDashes(`${by ?? "The sponsor"} sent the group list back (${stamp}); ${what || "no changes"}.${parsed?.note ? ` ${parsed.note}` : ""}`), dealId: d.id, companyId: d.sponsorCompanyId, occurredAt: a.occurredAt });
+        continue;
+      }
       if (!parsed?.confirmsEngagement) {
         await logActivity({ type: "NOTE", body: stripDashes(`${by ?? "The sponsor"} sent the group list back (${stamp}); ${what}. Unticked on the ticket; the letter is not confirmed yet.`), dealId: d.id, companyId: d.sponsorCompanyId, occurredAt: a.occurredAt });
         continue;
       }
-      const keep = current.filter((g) => g.companyId && !struck.some((s) => s.companyId === g.companyId)).map((g) => g.companyId);
       await finalizeEngagement(d.id, keep, []);
       await logActivity({ type: "NOTE", body: stripDashes(`${by ?? "The sponsor"} confirmed the engagement by email (${stamp})${what ? `; ${what}` : ""}${parsed.note ? `. ${parsed.note}` : ""}`), dealId: d.id, companyId: d.sponsorCompanyId, occurredAt: a.occurredAt });
       confirmed++;
     }
   }
   return { read, confirmed, facts };
+}
+
+/**
+ * The groups a sponsor's revised list speaks for: when RJL's own email that proposed the list had sections ("Tier 1 - Already
+ * approached", "Tier 2 - New groups for pref") and the reply names one of them, only that section's groups; otherwise the whole ticket.
+ * RJL's proposal is the latest outbound email on the ticket before the reply that names three or more of the groups.
+ */
+async function listScope(dealId: string, before: Date, mailbox: string | null, ownWords: string, current: Awaited<ReturnType<typeof import("@/lib/send-deal").engagementGroups>>) {
+  const { listSections, sectionsNamed } = await import("@/lib/engagement-reply");
+  const outs = await prisma.activity.findMany({ where: { dealId, type: "EMAIL", direction: "OUTBOUND", occurredAt: { lt: before }, externalId: { not: null } }, orderBy: { occurredAt: "desc" }, take: 6, select: { externalId: true, meta: true } });
+  for (const o of outs) {
+    const box = (o.meta ? (JSON.parse(o.meta) as { mailbox?: string }).mailbox : null) ?? mailbox;
+    if (!box) continue;
+    const full = await fullBody(box, o.externalId!);
+    if (!full) continue;
+    const text = full.html.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<\/(p|div|li|tr)>|<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").split(/\nFrom: |\n_{10,}/)[0];
+    const sections = listSections(text, current);
+    if (sections.reduce((n, s) => n + s.groups.length, 0) < 3) continue;
+    const named = sectionsNamed(ownWords, sections);
+    return named.length ? [...new Set(named.flatMap((s) => s.groups))] : current;
+  }
+  return current;
 }
