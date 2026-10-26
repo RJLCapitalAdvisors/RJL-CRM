@@ -244,7 +244,7 @@ export async function kickPump(): Promise<boolean> {
 
 /** When the mailbox last started or finished sending (0 when never). The gap is measured from here: Microsoft counts the upload, which starts at the claim. */
 async function lastSendMark(mailbox: string): Promise<number> {
-  const last = await prisma.dealLaunch.findFirst({ where: { mailbox, status: { in: ["SENT", "SENDING"] } }, orderBy: [{ claimedAt: "desc" }], select: { claimedAt: true, sentAt: true } });
+  const last = await prisma.dealLaunch.findFirst({ where: { mailbox, OR: [{ status: { in: ["SENT", "SENDING"] } }, { status: "QUEUED", claimedAt: { not: null } }] }, orderBy: [{ claimedAt: "desc" }], select: { claimedAt: true, sentAt: true } });
   return Math.max(last?.claimedAt?.getTime() ?? 0, last?.sentAt?.getTime() ?? 0);
 }
 /** Milliseconds until the mailbox may send again (0 when it may send now); the gap grows with the attachments the next email carries. */
@@ -262,7 +262,7 @@ const ready = (mailbox: string) => ({ mailbox, status: "QUEUED", OR: [{ notBefor
 async function claim(id: string, mailbox: string, gapMs: number): Promise<boolean> {
   const n = await prisma.$executeRaw`UPDATE "DealLaunch" SET status = 'SENDING', "claimedAt" = (now() at time zone 'utc')
     WHERE id = ${id} AND status = 'QUEUED'
-    AND NOT EXISTS (SELECT 1 FROM "DealLaunch" l WHERE l.mailbox = ${mailbox} AND l.status IN ('SENT', 'SENDING')
+    AND NOT EXISTS (SELECT 1 FROM "DealLaunch" l WHERE l.mailbox = ${mailbox} AND (l.status IN ('SENT', 'SENDING') OR (l.status = 'QUEUED' AND l."claimedAt" IS NOT NULL))
       AND GREATEST(COALESCE(l."claimedAt", 'epoch'::timestamp), COALESCE(l."sentAt", 'epoch'::timestamp)) > (now() at time zone 'utc') - (${gapMs} * interval '1 millisecond'))`;
   return n > 0;
 }
@@ -325,7 +325,8 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
         // Microsoft said slow down (or hiccuped): back in the queue with a wait; a throttle also stops this pump hammering
         const attempt = next.attempts + 1;
         const hold = new Date(Date.now() + (isThrottle(msg) ? backoffMs(attempt) : 60_000 * attempt));
-        await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "QUEUED", attempts: attempt, notBefore: hold, error: msg, claimedAt: null } });
+        // claimedAt stays: a failed attempt that uploaded files counts for pacing like a send (27 rows uploaded a workbook each inside a minute on Oct 26, 2026, each then failing on the next file)
+        await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "QUEUED", attempts: attempt, notBefore: hold, error: msg } });
         if (isThrottle(msg)) {
           // the limit is on the mailbox's uploads as a whole, so every queued email on it waits: otherwise the next pump (the page's,
           // the cron's, the kick's) takes another row and uploads into the same wall (Millerville, Oct 26, 2026: all 46 emails burned

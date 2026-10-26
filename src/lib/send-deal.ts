@@ -275,7 +275,7 @@ export async function chosenFiles(dealId: string, keys: string[] | undefined): P
   if (!keys) return dealAttachments(dealId).catch(() => null); // no choice made: everything the sponsor sent
   const files = (await dealFiles(dealId)).filter((f) => keys.includes(f.key));
   if (!files.length) return null;
-  const atts: (GraphAttachment & { _msg?: string; _bytes?: Uint8Array })[] = [];
+  const atts: (GraphAttachment & { _msg?: string; _box?: string; _bytes?: Uint8Array })[] = [];
   for (const f of files) {
     if (f.key === FAQ_KEY) {
       const { buildFaqPdf } = await import("@/lib/faq-pdf");
@@ -289,7 +289,8 @@ export async function chosenFiles(dealId: string, keys: string[] | undefined): P
       if (bytes) atts.push({ "@odata.type": "#microsoft.graph.fileAttachment", id: f.attachmentId, name: f.name, contentType: f.contentType, size: bytes.byteLength, isInline: false, _bytes: bytes });
       continue;
     }
-    atts.push({ "@odata.type": "#microsoft.graph.fileAttachment", id: f.attachmentId, name: f.name, contentType: f.contentType, size: f.size, isInline: false, _msg: f.messageId });
+    // each file remembers its own mailbox: the workbook came to deals@ and the market overview to Aviel, and reading the second from the first's mailbox was a 404 (Millerville, Oct 26, 2026)
+    atts.push({ "@odata.type": "#microsoft.graph.fileAttachment", id: f.attachmentId, name: f.name, contentType: f.contentType, size: f.size, isInline: false, _msg: f.messageId, _box: f.mailbox || undefined });
   }
   const anchor = files.find((f) => f.key !== FAQ_KEY && !f.url) ?? files.find((f) => f.key !== FAQ_KEY) ?? files[0];
   return { mailbox: anchor.mailbox || DEALS_MAILBOX(), messageId: anchor.messageId, atts };
@@ -300,7 +301,7 @@ export type LaunchResult = { rowId: string; firm: string; to: string[]; ok: bool
 export async function sendMessage(mailbox: string, to: string[], subject: string, html: string, src: Src, cc: string[] = []) {
   const draft = await createDraft(mailbox, { subject, toRecipients: to, ccRecipients: cc.filter((c) => c && !to.some((t) => t.toLowerCase() === c.toLowerCase())), bodyHtml: `<html><body>${outlookSpacing(tidyWordBlocks(html))}</body></html>` });
   try {
-    if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
+    if (src) for (const a of src.atts) await copyAcross(homeOf(src, a), a, mailbox, draft.id);
   } catch (e) {
     await discardDraft(mailbox, draft.id);
     throw e;
@@ -308,6 +309,11 @@ export async function sendMessage(mailbox: string, to: string[], subject: string
   const fresh = await getMessage(mailbox, draft.id, "id,internetMessageId");
   await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(draft.id)}/send`, { method: "POST" });
   return fresh.internetMessageId ?? null;
+}
+
+/** Where an attachment is read from: its own mailbox and message when it remembers them, else the chosen set's anchor. */
+function homeOf(src: NonNullable<Src>, a: GraphAttachment & { _msg?: string; _box?: string }) {
+  return { mailbox: a._box ?? src.mailbox, messageId: a._msg ?? src.messageId };
 }
 
 /** A send that failed while attaching leaves its half-built draft in the mailbox's Drafts folder otherwise (Millerville, Oct 26, 2026: dozens, after a throttle). */
@@ -332,7 +338,7 @@ export async function sendReplyAll(mailbox: string, replyToMessageId: string, to
   const at = body.search(/<body[^>]*>/i);
   try {
     await updateDraftBody(mailbox, draft.id, at >= 0 ? body.replace(/(<body[^>]*>)/i, `$1${block}<br>`) : `${block}<br>${body}`);
-    if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
+    if (src) for (const a of src.atts) await copyAcross(homeOf(src, a), a, mailbox, draft.id);
   } catch (e) {
     await discardDraft(mailbox, draft.id);
     throw e;
