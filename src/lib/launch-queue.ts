@@ -26,7 +26,8 @@ export const gapForBytes = (bytes: number) => Math.max(LAUNCH_GAP_MS, Math.ceil(
 const isThrottle = (msg: string) => /\b429\b|throttl|IncomingBytes|TooManyRequests|MailboxConcurrency/i.test(msg);
 // Exchange sometimes loses the draft between creating it and uploading a file ("ErrorItemNotFound", Leste on Mila + Alma, Sep 28, 2026): worth another go
 const isPassing = (msg: string) => /ErrorItemNotFound|\b50[234]\b|ECONNRESET|ETIMEDOUT|fetch failed|socket hang up|ServiceUnavailable|InternalServerError/i.test(msg);
-const backoffMs = (attempt: number) => Math.min(30, 5 * attempt) * 60_000;
+// Oct 26, 2026 (Millerville, 9.3 MB per email): five minutes was not enough for the upload allowance to come back; ten per attempt, half an hour at most
+const backoffMs = (attempt: number) => Math.min(30, 10 * attempt) * 60_000;
 const bytesOf = (src: Awaited<ReturnType<typeof chosenFiles>>) => (src ? src.atts.reduce((t, a) => t + ((a as { size?: number }).size ?? (a as { _bytes?: Uint8Array })._bytes?.byteLength ?? 0), 0) : 0);
 
 export type LaunchStatus = { total: number; sent: number; failed: number; bounced: number; queued: number; nextInMs: number; nextAt: string | null; serverNow: string; gapMs: number; heldUntil: string | null; rows: { rowId: string; status: string; error: string | null; bounced?: string[] }[] };
@@ -323,8 +324,15 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
       if ((isThrottle(msg) || isPassing(msg)) && next.attempts + 1 < MAX_ATTEMPTS) {
         // Microsoft said slow down (or hiccuped): back in the queue with a wait; a throttle also stops this pump hammering
         const attempt = next.attempts + 1;
-        await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "QUEUED", attempts: attempt, notBefore: new Date(Date.now() + (isThrottle(msg) ? backoffMs(attempt) : 60_000 * attempt)), error: msg, claimedAt: null } });
-        if (isThrottle(msg)) break;
+        const hold = new Date(Date.now() + (isThrottle(msg) ? backoffMs(attempt) : 60_000 * attempt));
+        await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "QUEUED", attempts: attempt, notBefore: hold, error: msg, claimedAt: null } });
+        if (isThrottle(msg)) {
+          // the limit is on the mailbox's uploads as a whole, so every queued email on it waits: otherwise the next pump (the page's,
+          // the cron's, the kick's) takes another row and uploads into the same wall (Millerville, Oct 26, 2026: all 46 emails burned
+          // an attempt inside seven minutes, each one re-uploading 9 MB that Microsoft then counted against the next)
+          await prisma.dealLaunch.updateMany({ where: { mailbox, status: "QUEUED", OR: [{ notBefore: null }, { notBefore: { lt: hold } }] }, data: { notBefore: hold } });
+          break;
+        }
         continue;
       }
       await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "FAILED", attempts: next.attempts + 1, error: msg } });

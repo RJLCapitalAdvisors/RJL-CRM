@@ -299,10 +299,20 @@ export type LaunchResult = { rowId: string; firm: string; to: string[]; ok: bool
 /** Build a message in the sender's mailbox with the deal's attachments and send it. */
 export async function sendMessage(mailbox: string, to: string[], subject: string, html: string, src: Src, cc: string[] = []) {
   const draft = await createDraft(mailbox, { subject, toRecipients: to, ccRecipients: cc.filter((c) => c && !to.some((t) => t.toLowerCase() === c.toLowerCase())), bodyHtml: `<html><body>${outlookSpacing(tidyWordBlocks(html))}</body></html>` });
-  if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
+  try {
+    if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
+  } catch (e) {
+    await discardDraft(mailbox, draft.id);
+    throw e;
+  }
   const fresh = await getMessage(mailbox, draft.id, "id,internetMessageId");
   await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(draft.id)}/send`, { method: "POST" });
   return fresh.internetMessageId ?? null;
+}
+
+/** A send that failed while attaching leaves its half-built draft in the mailbox's Drafts folder otherwise (Millerville, Oct 26, 2026: dozens, after a throttle). */
+async function discardDraft(mailbox: string, draftId: string) {
+  await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(draftId)}`, { method: "DELETE" }).catch(() => null);
 }
 
 /**
@@ -320,8 +330,13 @@ export async function sendReplyAll(mailbox: string, replyToMessageId: string, to
   const body = draft.body?.content ?? "";
   const block = `${outlookSpacing(tidyWordBlocks(html))}${/data-signature=/.test(html) ? "" : await signatureFor(mailbox)}`; // the General follow-up carries the signature already (marked); older saved ones get it here
   const at = body.search(/<body[^>]*>/i);
-  await updateDraftBody(mailbox, draft.id, at >= 0 ? body.replace(/(<body[^>]*>)/i, `$1${block}<br>`) : `${block}<br>${body}`);
-  if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
+  try {
+    await updateDraftBody(mailbox, draft.id, at >= 0 ? body.replace(/(<body[^>]*>)/i, `$1${block}<br>`) : `${block}<br>${body}`);
+    if (src) for (const a of src.atts) await copyAcross({ mailbox: src.mailbox, messageId: (a as GraphAttachment & { _msg?: string })._msg ?? src.messageId }, a, mailbox, draft.id);
+  } catch (e) {
+    await discardDraft(mailbox, draft.id);
+    throw e;
+  }
   const fresh = await getMessage(mailbox, draft.id, "id,internetMessageId");
   await graph(`/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(draft.id)}/send`, { method: "POST" });
   return fresh.internetMessageId ?? null;
