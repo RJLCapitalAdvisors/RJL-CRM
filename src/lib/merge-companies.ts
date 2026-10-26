@@ -50,6 +50,8 @@ export async function mergeCompanies(fromId: string, intoId: string, log: (s: st
   const alt = new Set(parseList(into.altDomains));
   for (const d of [from.domain, ...parseList(from.altDomains)]) if (d && d !== into.domain) alt.add(d);
   const notes = [into.notes?.trim(), from.notes?.trim()].filter(Boolean).join("\n\n") || null;
+  // the folded company gives up its unique fields first (one company per domain and per HubSpot id)
+  await prisma.company.update({ where: { id: fromId }, data: { domain: null, hubspotId: null } });
   await prisma.company.update({
     where: { id: intoId },
     data: {
@@ -70,8 +72,6 @@ export async function mergeCompanies(fromId: string, intoId: string, log: (s: st
       lastActivityAt: [into.lastActivityAt, from.lastActivityAt].filter((x): x is Date => Boolean(x)).sort((a, b) => b.getTime() - a.getTime())[0] ?? null,
     },
   });
-  // the folded company's domain must leave before the kept one's alternate list is trusted (one company per domain)
-  await prisma.company.update({ where: { id: fromId }, data: { domain: null, hubspotId: null } });
   await prisma.company.delete({ where: { id: fromId } });
   log(`deleted ${from.name} (${fromId}); ${into.name} now also answers to ${[...alt].join(", ") || "no other domain"}`);
   return { moved, mergedPeople, ...counts };
@@ -135,6 +135,8 @@ export async function mergeContacts(fromId: string, intoId: string, log: (s: str
     removals: (await prisma.trackerRemoval.updateMany(re)).count,
   };
 
+  // the folded row gives up its unique fields first, so the kept row can take them over
+  await prisma.contact.update({ where: { id: fromId }, data: { email: null, hubspotId: null } });
   await prisma.contact.update({
     where: { id: intoId },
     data: {
