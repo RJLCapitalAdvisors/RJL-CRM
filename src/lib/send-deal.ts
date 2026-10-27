@@ -172,24 +172,73 @@ export async function dealFiles(dealId: string): Promise<DealFile[]> {
     .sort((a, b) => Number(isModel(b.name) || isOM(b.name)) - Number(isModel(a.name) || isOM(a.name)));
 }
 
-/** Who we usually write to at a firm: anyone on 40%+ of our outbound emails there in the last year (at least the most frequent). */
+/** The most people ever ticked automatically at one firm (Jonathan, Oct 27, 2026). */
+export const MAX_AUTO_RECIPIENTS = 3;
+
+/**
+ * Who to tick at a firm by default, never more than three (Jonathan, Oct 27, 2026: "based on people who've responded to us and that
+ * we often talk to (if available)"). The company page's "on deal emails" picks come first. Otherwise the people who have written back
+ * to us or been on a call or meeting with us in the last two years lead, ranked by how much we talk with them, and the outbound log
+ * only decides when nobody there has ever answered. Before this, the pick counted our outbound emails alone, deal blasts included, so
+ * everyone a blast had gone to was ticked (eight people at Sixth Street).
+ */
 export async function usualRecipients(companyId: string, candidates: { id: string; email: string | null }[]): Promise<string[]> {
-  // the company page's picks come first (Jonathan, Oct 8, 2026): anyone ticked "on deal emails" there is the list
-  const picked = await prisma.contact.findMany({ where: { companyId, dealSend: true, email: { not: null }, departedAt: null }, select: { id: true } });
-  if (picked.length) {
-    const ids = picked.map((p) => p.id).filter((id) => candidates.some((c) => c.id === id));
-    if (ids.length) return ids;
+  return (await usualRecipientsMany(new Map([[companyId, candidates]]))).get(companyId) ?? [];
+}
+
+/** usualRecipients for every firm on a deal at once: five queries in all, whatever the number of firms (one each per firm took 30 seconds on a 63-firm deal). */
+export async function usualRecipientsMany(firms: Map<string, { id: string; email: string | null }[]>): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  const pools = new Map([...firms].map(([cid, cands]) => [cid, cands.filter((c) => c.email)] as const).filter(([, pool]) => pool.length));
+  if (!pools.size) return out;
+  const companyIds = [...pools.keys()];
+  const ids = [...pools.values()].flat().map((c) => c.id);
+  const since2y = new Date(Date.now() - 730 * 86_400_000);
+  const since1y = new Date(Date.now() - 365 * 86_400_000);
+  const [picked, replies, talksOwn, talksParty, outbound] = await Promise.all([
+    // the company page's picks come first (Jonathan, Oct 8, 2026): anyone ticked "on deal emails" there is the list
+    prisma.contact.findMany({ where: { companyId: { in: companyIds }, dealSend: true, email: { not: null }, departedAt: null }, select: { id: true, companyId: true }, orderBy: { lastActivityAt: { sort: "desc", nulls: "last" } } }),
+    // emails they sent us: the sender is the activity's own contact on an inbound email
+    prisma.activity.groupBy({ by: ["contactId"], where: { contactId: { in: ids }, type: "EMAIL", direction: "INBOUND", occurredAt: { gte: since2y } }, _count: true }),
+    prisma.activity.groupBy({ by: ["contactId"], where: { contactId: { in: ids }, type: { in: ["CALL", "MEETING"] }, occurredAt: { gte: since2y } }, _count: true }),
+    prisma.activityParty.groupBy({ by: ["contactId"], where: { contactId: { in: ids }, activity: { type: { in: ["CALL", "MEETING"] }, occurredAt: { gte: since2y } } }, _count: true }),
+    prisma.activity.findMany({ where: { companyId: { in: companyIds }, type: "EMAIL", direction: "OUTBOUND", occurredAt: { gte: since1y } }, select: { meta: true } }),
+  ]);
+  const count = (rows: { contactId: string | null; _count: number }[]) => new Map(rows.filter((r) => r.contactId).map((r) => [r.contactId!, r._count]));
+  const replied = count(replies);
+  const talked = count(talksOwn);
+  for (const [k, n] of count(talksParty)) talked.set(k, (talked.get(k) ?? 0) + n);
+  const written = new Map<string, number>();
+  for (const a of outbound) {
+    let meta: { to?: { address: string }[]; cc?: { address: string }[] } = {};
+    try {
+      meta = a.meta ? JSON.parse(a.meta) : {};
+    } catch {}
+    for (const p of [...(meta.to ?? []), ...(meta.cc ?? [])]) if (p?.address) written.set(p.address.toLowerCase(), (written.get(p.address.toLowerCase()) ?? 0) + 1);
   }
-  const acts = await prisma.activity.findMany({ where: { companyId, type: "EMAIL", direction: "OUTBOUND", occurredAt: { gte: new Date(Date.now() - 365 * 86_400_000) } }, select: { meta: true }, take: 500 });
-  const tally = new Map<string, number>();
-  for (const a of acts) {
-    const meta = a.meta ? (JSON.parse(a.meta) as { to?: { address: string }[]; cc?: { address: string }[] }) : {};
-    for (const p of [...(meta.to ?? []), ...(meta.cc ?? [])]) tally.set(p.address.toLowerCase(), (tally.get(p.address.toLowerCase()) ?? 0) + 1);
+  for (const [cid, pool] of pools) {
+    const ticked = picked.filter((p) => p.companyId === cid && pool.some((c) => c.id === p.id)).map((p) => p.id);
+    if (ticked.length) {
+      out.set(cid, ticked.slice(0, MAX_AUTO_RECIPIENTS));
+      continue;
+    }
+    const scored = pool.map((c) => {
+      const r = replied.get(c.id) ?? 0;
+      const t = talked.get(c.id) ?? 0;
+      const w = written.get(c.email!.toLowerCase()) ?? 0;
+      return { id: c.id, answered: r + t > 0, score: 3 * r + 3 * t + w };
+    });
+    // people who have answered us, when anyone there has; else whoever we write to most
+    const answered = scored.filter((x) => x.answered);
+    const ranked = (answered.length ? answered : scored.filter((x) => x.score > 0)).sort((x, y) => y.score - x.score);
+    if (!ranked.length) {
+      out.set(cid, []);
+      continue;
+    }
+    const top = ranked[0].score;
+    out.set(cid, ranked.filter((x) => x.score >= Math.max(1, top * 0.4)).slice(0, MAX_AUTO_RECIPIENTS).map((x) => x.id));
   }
-  const scored = candidates.filter((c) => c.email).map((c) => ({ id: c.id, n: tally.get(c.email!.toLowerCase()) ?? 0 })).filter((c) => c.n > 0).sort((a, b) => b.n - a.n);
-  if (!scored.length) return [];
-  const top = scored[0].n;
-  return scored.filter((c) => c.n >= Math.max(1, top * 0.4)).map((c) => c.id);
+  return out;
 }
 
 /** The deal's own files: whatever came attached to the forwarded email in deals@. */

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { templateForDeal } from "@/lib/deal-template";
 import { currentUser } from "@/lib/current-user";
 import { PageHeader } from "@/components/ui";
-import { dealFiles, syncSendDrafts, usualRecipients } from "@/lib/send-deal";
+import { dealFiles, syncSendDrafts, usualRecipientsMany } from "@/lib/send-deal";
 import { SendClient, type Firm, type SendState } from "./send-client";
 import { SendToOne } from "../send-to-one";
 import { after } from "next/server";
@@ -57,10 +57,8 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
       return null;
     }
   })();
-  const defaults = new Map<string, string[]>();
-  for (const r of deal.investors) {
-    if (r.contact.companyId && !defaults.has(r.contact.companyId)) defaults.set(r.contact.companyId, await usualRecipients(r.contact.companyId, r.contact.company?.contacts ?? []));
-  }
+  // who to tick at each firm: every firm in one pass (replies, calls and the outbound log)
+  const defaults = await usualRecipientsMany(new Map(deal.investors.filter((r) => r.contact.companyId).map((r) => [r.contact.companyId!, r.contact.company?.contacts ?? []]))).catch(() => new Map<string, string[]>());
   const firms: Firm[] = deal.investors.map((r) => ({
     rowId: r.id,
     status: r.status,

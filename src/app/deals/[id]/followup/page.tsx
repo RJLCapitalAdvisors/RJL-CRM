@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { templateForDeal } from "@/lib/deal-template";
 import { currentUser } from "@/lib/current-user";
 import { PageHeader } from "@/components/ui";
-import { dealFiles, syncSendDrafts, usualRecipients } from "@/lib/send-deal";
+import { dealFiles, syncSendDrafts } from "@/lib/send-deal";
 import { SendClient, type Firm, type SendState } from "../send/send-client";
 import { SendToOne } from "../send-to-one";
 import { after } from "next/server";
@@ -61,10 +61,6 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
       return null;
     }
   })();
-  const defaults = new Map<string, string[]>();
-  for (const r of deal.investors) {
-    if (r.contact.companyId && !defaults.has(r.contact.companyId)) defaults.set(r.contact.companyId, await usualRecipients(r.contact.companyId, r.contact.company?.contacts ?? []));
-  }
   const sentOn = await firstSentMessageIds(deal.id).catch(() => new Map<string, { messageId: string; sentAt: Date }>());
   const { lastFollowups } = await import("@/lib/launch-queue");
   const followups = await lastFollowups(deal.id).catch(() => new Map<string, { round: number; messageId: string | null; sentAt: Date }>());

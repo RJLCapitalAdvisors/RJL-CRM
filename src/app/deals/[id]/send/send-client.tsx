@@ -26,6 +26,42 @@ const fieldLabel = (k: string) => (MERGE_FIELDS.find((f) => f.key === k)?.label 
 /** Everything on this page that is worth keeping if you leave and come back (kept on the deal, per deal). A firm's draft is its block edits over the General email (an older save may carry a full html copy, converted on load). */
 export type SendState = { templateId?: string; general?: Draft | null; drafts?: Record<string, FirmDraft | Draft>; include?: string[]; to?: Record<string, string[]>; primary?: Record<string, string[]>; chosenFiles?: string[]; cc?: string; savedAt?: string };
 
+/** Where the caret sits in an editor, as a count of text characters before it (survives the editor's html being put back). */
+function caretOffset(root: HTMLElement): number | null {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount || !root.contains(sel.anchorNode)) return null;
+  const r = sel.getRangeAt(0).cloneRange();
+  r.selectNodeContents(root);
+  r.setEnd(sel.anchorNode!, sel.anchorOffset);
+  return r.toString().length;
+}
+function placeCaret(root: HTMLElement, offset: number) {
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let left = offset;
+  let last: Text | null = null;
+  for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+    last = n;
+    if (left <= n.length) {
+      const r = document.createRange();
+      r.setStart(n, left);
+      r.collapse(true);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(r);
+      return;
+    }
+    left -= n.length;
+  }
+  if (last) {
+    const r = document.createRange();
+    r.setStart(last, last.length);
+    r.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(r);
+  }
+}
+
+const MAX_AUTO_TO = 3; // same as MAX_AUTO_RECIPIENTS in send-deal.ts
 const GENERAL = "general";
 
 /** The icon a file gets in the attachments row: Excel green, PDF red, Word blue, PowerPoint orange, pictures, anything else grey. */
@@ -77,7 +113,12 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   const [pickOpen, setPickOpen] = useState(!saved?.templateId); // the template list is open until one has been chosen for this deal
   const savedInclude = saved?.include?.filter((id) => firms.some((f) => f.rowId === id)) ?? [];
   const [include, setInclude] = useState<Set<string>>(new Set(savedInclude.length ? savedInclude : firms.filter((f) => (followup ? !shaded(f) : f.status <= 1)).map((f) => f.rowId)));
-  const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set(((followup ? null : saved?.to?.[f.rowId]) ?? (f.extraContactIds.length ? [f.primaryContactId, ...f.extraContactIds] : f.defaultContactIds)).filter((id) => f.people.some((p) => p.id === id)))]))); // Follow ups: the people the deal email went to, every time
+  /** The people ticked at a firm before anyone touches it: never more than three on a deal email (Jonathan, Oct 27, 2026); a follow-up goes to everyone the deal email went to. */
+  const autoTo = (f: Firm) => {
+    const ids = (f.extraContactIds.length ? [f.primaryContactId, ...f.extraContactIds] : f.defaultContactIds).filter((id, i, all) => all.indexOf(id) === i && f.people.some((p) => p.id === id));
+    return followup ? ids : ids.slice(0, MAX_AUTO_TO);
+  };
+  const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((followup ? null : saved?.to?.[f.rowId])?.filter((id) => f.people.some((p) => p.id === id)) ?? autoTo(f))]))); // Follow ups: the people the deal email went to, every time
   const [general, setGeneral] = useState<Draft | null>(saved?.general ?? null);
   const [cc, setCc] = useState<string>(saved?.cc ?? ""); // copied on every firm's email (teammates, usually)
   const ccList = () => cc.split(/[,;\s]+/).map((x) => x.trim()).filter((x) => x.includes("@"));
@@ -154,7 +195,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     setTo((s) => {
       const n = { ...s };
       let changed = false;
-      for (const f of firms) if (!n[f.rowId]) { n[f.rowId] = new Set(f.defaultContactIds.filter((id) => f.people.some((p) => p.id === id))); changed = true; }
+      for (const f of firms) if (!n[f.rowId]) { n[f.rowId] = new Set(autoTo(f)); changed = true; }
       return changed ? n : s;
     });
     setPrimary((s) => {
@@ -244,9 +285,13 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   }, [dealId, templateId, reload, refresh]);
 
   // back from the ticket (another tab, or the browser's back button): the numbers are read again
+  // (at most once every 20 seconds: a click back into the window fires both events, and each refresh re-reads the ticket)
+  const lastShow = useRef(0);
   useEffect(() => {
     const onShow = () => {
-      if (document.visibilityState === "visible") setRefresh((n) => n + 1);
+      if (document.visibilityState !== "visible" || Date.now() - lastShow.current < 20_000) return;
+      lastShow.current = Date.now();
+      setRefresh((n) => n + 1);
     };
     document.addEventListener("visibilitychange", onShow);
     window.addEventListener("focus", onShow);
@@ -256,9 +301,19 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     };
   }, []);
 
-  // put the html into the editor when the token changes or a fresh version arrives
+  // put the html into the editor when the token changes or a fresh version arrives. Oct 27, 2026: Jonathan clicked into the email to type
+  // and the caret jumped to the start. Clicking back into the window fired the refresh below, and its result rewrote the editor even when
+  // nothing had changed. Now the editor is left alone when it already shows that html, and when it does change while he is typing, the
+  // caret goes back to the same place in the text.
   useEffect(() => {
-    if (editor.current) editor.current.innerHTML = shown?.html ?? "";
+    const el = editor.current;
+    if (!el) return;
+    const html = shown?.html ?? "";
+    if (el.innerHTML === html) return;
+    const typing = document.activeElement === el;
+    const at = typing ? caretOffset(el) : null;
+    el.innerHTML = html;
+    if (typing && at != null) placeCaret(el, at);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, version]);
 
