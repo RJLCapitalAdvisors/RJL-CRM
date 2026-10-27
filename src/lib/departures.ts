@@ -24,7 +24,7 @@ export const HUMAN_DEPARTURE = /\b(?:I|I'm|he|she|they|[A-Z][a-z'’.-]+(?: [A-Z
 // "That time no longer works for Matt" is not one either (Oct 13, 2026: it almost removed Matt): the thing that is "no longer" has to be a person.
 
 /** Queue "remove this contact" for approval (once per contact while pending). */
-export async function proposeContactRemoval(contactId: string, evidence: string, sourceRef?: string | null, replacements: string[] = []): Promise<boolean> {
+export async function proposeContactRemoval(contactId: string, evidence: string, sourceRef?: string | null, replacements: string[] = [], replacementIds: string[] = []): Promise<boolean> {
   const c = await prisma.contact.findUnique({ where: { id: contactId }, include: { company: { select: { id: true, name: true } } } });
   if (!c || c.departedAt) return false;
   const pending = await prisma.criteriaProposal.findFirst({ where: { contactId, status: "PENDING", changes: { contains: "removeContact" } } });
@@ -38,7 +38,7 @@ export async function proposeContactRemoval(contactId: string, evidence: string,
       companyId: c.company?.id ?? null,
       contactId,
       summary: `${who} appears to have left ${firm}${replacements.length ? `. New contact there: ${replacements.join(", ")} (added under ${firm})` : ""}`,
-      changes: JSON.stringify([{ field: "removeContact", from: `${who} at ${firm}`, to: `Marked as departed: no more emails, off the pickers${replacements.length ? `. ${replacements.join(", ")} added at ${firm}` : ""}`, evidence: evidence.replace(/\s+/g, " ").trim().slice(0, 240) }]),
+      changes: JSON.stringify([{ field: "removeContact", from: `${who} at ${firm}`, to: `Marked as departed: no more emails, off the pickers${replacements.length ? `. ${replacements.join(", ")} added at ${firm}` : ""}`, evidence: evidence.replace(/\s+/g, " ").trim().slice(0, 240), ...(replacementIds.length ? { replacementIds } : {}) }]),
     },
   });
   return true;
@@ -75,7 +75,7 @@ function bouncedAddressIn(text: string): string | null {
  * "Please contact Mike McFadden mmcfadden@brixtoncapital.com": the person the notice points to joins the CRM
  * under the departed person's company, so the next deal reaches them. Returns the names added or found.
  */
-export async function addReplacementContacts(text: string, departedContactId: string | null, fallbackCompanyId: string | null = null): Promise<string[]> {
+export async function addReplacementContacts(text: string, departedContactId: string | null, fallbackCompanyId: string | null = null, ids: string[] = []): Promise<string[]> {
   const departed = departedContactId ? await prisma.contact.findUnique({ where: { id: departedContactId }, select: { companyId: true, email: true } }) : null;
   const out: string[] = [];
   // "contact Mike McFadden mmcfadden@...", "reach out to Jason Braidwood at jbraidwood@...", "please email Casey Layton at clayton@..."
@@ -111,6 +111,7 @@ export async function addReplacementContacts(text: string, departedContactId: st
       if (!existing.firstName && parts.length) { data.firstName = parts[0]; data.lastName = parts.slice(1).join(" ") || undefined; }
       if (Object.keys(data).length) await prisma.contact.update({ where: { id: existing.id }, data }).catch(() => null);
       out.push(`${[existing.firstName ?? parts[0], existing.lastName ?? parts.slice(1).join(" ")].filter(Boolean).join(" ")} (already in the CRM)`);
+      ids.push(existing.id);
       continue;
     }
     // the firm: the departed person's, else any company on the email's domain
@@ -118,7 +119,8 @@ export async function addReplacementContacts(text: string, departedContactId: st
     const domain = email.split("@")[1];
     const companyId = (await (await import("@/lib/domains")).companyByDomain(domain))?.id ?? departed?.companyId ?? fallbackCompanyId;
     const phone = text.slice(m.index, m.index + m.len + 60).match(/\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/)?.[0] ?? null;
-    await prisma.contact.create({ data: { firstName: parts[0] ?? null, lastName: parts.slice(1).join(" ") || null, email, companyId, phone } }).catch(() => null);
+    const made = await prisma.contact.create({ data: { firstName: parts[0] ?? null, lastName: parts.slice(1).join(" ") || null, email, companyId, phone } }).catch(() => null);
+    if (made) ids.push(made.id);
     out.push(parts.length ? name : email);
   }
   return out;
@@ -184,8 +186,10 @@ export async function noteDepartureIfAny(opts: { subject: string | null; text: s
   }
   let n = 0;
   for (const id of ids) {
-    const added = BOUNCE_SUBJECT.test(opts.subject ?? "") ? [] : await addReplacementContacts(text, id).catch(() => [] as string[]);
-    if (await proposeContactRemoval(id, text, opts.messageId, added)) n++;
+    // the replacement's id rides on the proposal, so the Send deal page ticks them at the firm right away (Jonathan, Oct 27, 2026, CBRE)
+    const addedIds: string[] = [];
+    const added = BOUNCE_SUBJECT.test(opts.subject ?? "") ? [] : await addReplacementContacts(text, id, null, addedIds).catch(() => [] as string[]);
+    if (await proposeContactRemoval(id, text, opts.messageId, added, addedIds)) n++;
   }
   return n;
 }
@@ -201,4 +205,37 @@ export async function scanForDepartures(days = 30): Promise<number> {
     n += await noteDepartureIfAny({ subject: a.subject, text: a.body, fromAddress: from, contactId: a.contactId, messageId: a.externalId });
   }
   return n;
+}
+
+export type FirmDeparture = { contactId: string; name: string; email: string | null; replacements: string[]; approved: boolean };
+
+/**
+ * People who left the given firms in the last 30 days (a pending or approved "remove this contact"), each with the colleagues the
+ * notice pointed to. The Send deal page unticks the person who left and ticks the replacement, so the deal can go to them at once
+ * (Jonathan, Oct 27, 2026: Parker Woods left CBRE and Colin Rosenbaum was added, but the deal page still pointed at Parker).
+ */
+export async function recentDepartures(companyIds: string[]): Promise<Map<string, FirmDeparture[]>> {
+  const out = new Map<string, FirmDeparture[]>();
+  if (!companyIds.length) return out;
+  const props = await prisma.criteriaProposal.findMany({ where: { companyId: { in: companyIds }, status: { in: ["PENDING", "APPROVED"] }, changes: { contains: "removeContact" }, contactId: { not: null }, createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) } }, select: { contactId: true, companyId: true, summary: true, changes: true, status: true }, orderBy: { createdAt: "asc" } });
+  if (!props.length) return out;
+  const people = await prisma.contact.findMany({ where: { OR: [{ id: { in: props.map((p) => p.contactId!) } }, { companyId: { in: props.map((p) => p.companyId!).filter(Boolean) }, departedAt: null }] }, select: { id: true, firstName: true, lastName: true, email: true, companyId: true } });
+  const nameOf = (c: { firstName: string | null; lastName: string | null; email: string | null }) => [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "";
+  for (const p of props) {
+    const gone = people.find((c) => c.id === p.contactId);
+    if (!gone || !p.companyId) continue;
+    let ids: string[] = [];
+    try {
+      ids = ((JSON.parse(p.changes) as { replacementIds?: string[] }[])[0]?.replacementIds ?? []).filter((x) => typeof x === "string");
+    } catch {}
+    if (!ids.length) {
+      // proposals made before the ids were kept: the names in "New contact there: Colin Rosenbaum, Jenna Gerstenlauer (added under ...)"
+      const names = (p.summary.match(/New contact there: (.+?) \(added under/)?.[1] ?? "").split(/,\s*/).map((n) => n.replace(/\(already in the CRM\)/, "").trim().toLowerCase()).filter(Boolean);
+      ids = people.filter((c) => c.companyId === p.companyId && c.id !== gone.id && names.some((n) => n === nameOf(c).toLowerCase() || n === c.email?.toLowerCase())).map((c) => c.id);
+    }
+    const list = out.get(p.companyId) ?? [];
+    if (!list.some((d) => d.contactId === gone.id)) list.push({ contactId: gone.id, name: nameOf(gone), email: gone.email, replacements: ids.filter((id) => id !== gone.id), approved: p.status === "APPROVED" });
+    out.set(p.companyId, list);
+  }
+  return out;
 }

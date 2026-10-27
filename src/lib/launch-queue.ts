@@ -30,7 +30,13 @@ const isPassing = (msg: string) => /ErrorItemNotFound|\b50[234]\b|ECONNRESET|ETI
 const backoffMs = (attempt: number) => Math.min(30, 10 * attempt) * 60_000;
 const bytesOf = (src: Awaited<ReturnType<typeof chosenFiles>>) => (src ? src.atts.reduce((t, a) => t + ((a as { size?: number }).size ?? (a as { _bytes?: Uint8Array })._bytes?.byteLength ?? 0), 0) : 0);
 
-export type LaunchStatus = { total: number; sent: number; failed: number; bounced: number; queued: number; nextInMs: number; nextAt: string | null; serverNow: string; gapMs: number; heldUntil: string | null; rows: { rowId: string; status: string; error: string | null; bounced?: string[] }[] };
+export type LaunchStatus = { total: number; sent: number; failed: number; bounced: number; queued: number; nextInMs: number; nextAt: string | null; serverNow: string; gapMs: number; heldUntil: string | null; rows: LaunchRowStatus[] };
+/**
+ * One firm's launch: the latest attempt's status, and across this week's sends to it who it went to and who it bounced for
+ * (Jonathan, Oct 27, 2026: "it only bounced to one of the people. Could we specify in the list of recipients which one bounced?").
+ * received: the people it reached (sent to, not bounced); empty when it bounced for everyone.
+ */
+export type LaunchRowStatus = { rowId: string; status: string; error: string | null; bounced?: string[]; to?: { id: string; name: string; email: string }[]; received?: string[] };
 
 /** The attachment bytes an email will carry, from the files' recorded sizes (no download): the pacing gap is set from this when the email is queued. */
 export async function attachmentBytes(dealId: string, keys: string[] | undefined): Promise<number> {
@@ -360,9 +366,30 @@ export async function pumpAllLaunches(budgetMs = 45_000): Promise<number> {
 export async function launchStatus(dealId: string, kind: "SEND" | "FOLLOWUP" = "SEND"): Promise<LaunchStatus> {
   await sweepStale();
   const since = new Date(Date.now() - 7 * 86_400_000); // a bounce can arrive a day later; the firm still has to show as bounced
-  const rows = await prisma.dealLaunch.findMany({ where: { dealId, kind, createdAt: { gte: since }, NOT: { status: "CANCELLED" } }, orderBy: { createdAt: "asc" }, select: { rowId: true, status: true, error: true, mailbox: true, notBefore: true, bytes: true } });
+  const rows = await prisma.dealLaunch.findMany({ where: { dealId, kind, createdAt: { gte: since }, NOT: { status: "CANCELLED" } }, orderBy: { createdAt: "asc" }, select: { rowId: true, status: true, error: true, mailbox: true, notBefore: true, bytes: true, toContactIds: true } });
   const latest = new Map<string, (typeof rows)[number]>();
   for (const r of rows) latest.set(r.rowId, r);
+  // who each firm's email went to, and who it bounced for, across every send to it this week (a send to the replacement after a bounce adds to it)
+  const delivered = rows.filter((r) => r.status === "SENT" || r.status === "BOUNCED");
+  const ids = [...new Set(delivered.flatMap((r) => { try { return JSON.parse(r.toContactIds) as string[]; } catch { return []; } }))];
+  const people = new Map((ids.length ? await prisma.contact.findMany({ where: { id: { in: ids } }, select: { id: true, firstName: true, lastName: true, email: true } }) : []).map((c) => [c.id, c]));
+  const reach = new Map<string, { to: Map<string, { id: string; name: string; email: string }>; bounced: Set<string> }>();
+  for (const r of delivered) {
+    const e = reach.get(r.rowId) ?? { to: new Map(), bounced: new Set<string>() };
+    for (const id of (() => { try { return JSON.parse(r.toContactIds) as string[]; } catch { return []; } })()) {
+      const c = people.get(id);
+      if (c?.email) e.to.set(id, { id, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email, email: c.email.toLowerCase() });
+    }
+    if (r.status === "BOUNCED") for (const b of r.error?.match(EMAIL_RE) ?? []) e.bounced.add(b.toLowerCase());
+    reach.set(r.rowId, e);
+  }
+  const reachOf = (rowId: string) => {
+    const e = reach.get(rowId);
+    if (!e) return {};
+    const to = [...e.to.values()];
+    const bounced = [...e.bounced];
+    return { to, received: to.filter((p) => !e.bounced.has(p.email)).map((p) => p.id), ...(bounced.length ? { bounced } : {}) };
+  };
   const list = [...latest.values()];
   const n = (s: string[]) => list.filter((r) => s.includes(r.status)).length;
   const mailbox = list[0]?.mailbox;
@@ -376,5 +403,5 @@ export async function launchStatus(dealId: string, kind: "SEND" | "FOLLOWUP" = "
   const mark = mailbox ? await lastSendMark(mailbox) : 0;
   const due = Math.max(mark + gapMs, heldUntil ? Math.min(...holds) : 0, now);
   const sendingNow = list.some((r) => r.status === "SENDING");
-  return { total: list.length, sent: n(["SENT"]), failed: n(["FAILED"]), bounced: n(["BOUNCED"]), queued: n(["QUEUED", "SENDING"]), nextInMs: due - now, nextAt: n(["QUEUED", "SENDING"]) > 0 ? new Date(sendingNow ? now : due).toISOString() : null, serverNow: new Date(now).toISOString(), gapMs, heldUntil, rows: list.map((r) => ({ rowId: r.rowId, status: r.status, error: r.error, ...(r.status === "BOUNCED" ? { bounced: (r.error?.match(EMAIL_RE) ?? []).map((e) => e.toLowerCase()) } : {}) })) };
+  return { total: list.length, sent: n(["SENT"]), failed: n(["FAILED"]), bounced: n(["BOUNCED"]), queued: n(["QUEUED", "SENDING"]), nextInMs: due - now, nextAt: n(["QUEUED", "SENDING"]) > 0 ? new Date(sendingNow ? now : due).toISOString() : null, serverNow: new Date(now).toISOString(), gapMs, heldUntil, rows: list.map((r) => ({ rowId: r.rowId, status: r.status, error: r.error, ...reachOf(r.rowId) })) };
 }

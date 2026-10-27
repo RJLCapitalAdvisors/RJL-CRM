@@ -209,9 +209,12 @@ export function snapTo(options: readonly string[], raw: string | null | undefine
   if (!t) return null;
   const exact = options.find((o) => o.toLowerCase() === t);
   if (exact) return exact;
-  const words = (x: string) => x.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/s+/).filter(Boolean);
+  // Oct 27, 2026: these two read /s+/ and /d+(?:.d+)?/ (the backslashes were lost when the function was written), so words split on
+  // the letter s and the number was never found; the closest option was close to a guess (Smart Living's 24 months of I/O came out
+  // as full term I/O)
+  const words = (x: string) => x.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean);
   const tw = new Set(words(t));
-  const num = t.match(/d+(?:.d+)?/)?.[0];
+  const num = t.match(/\d+(?:\.\d+)?/)?.[0];
   let best: string | null = null, bestScore = 0;
   for (const o of options) {
     const ow = words(o);
@@ -221,6 +224,33 @@ export function snapTo(options: readonly string[], raw: string | null | undefine
     if (score > bestScore) { bestScore = score; best = o; }
   }
   return bestScore > 0 ? best : null;
+}
+
+/**
+ * Interest-only period and amortization, snapped to the ticket's list (Jonathan, Oct 27, 2026: "in the model, the I/O period is only
+ * 24 months. for some reason, you wrote it as full term"). Months become years ("24 months" is "2 years"), and "full term I/O" is
+ * only ever the answer when the loan is interest only for its whole term: a stated I/O period, or any amortization after it, rules it out.
+ */
+export function snapAmortization(raw: string | null | undefined): string | null {
+  let t = (raw ?? "").trim();
+  if (!t) return null;
+  // a model's input labels: "I/O (in months): 24", "Amortization (after I/O): 30 years"
+  t = t.replace(/\b(I\/?O|interest[\s-]+only)\s*(?:period\s*)?\((?:in\s+)?months?\)\s*:?\s*(\d+)/gi, "$2 months $1").replace(/\b(amorti[sz]\w*)\s*\([^)]*\)\s*:?\s*/gi, "$1 ");
+  t = t.replace(/(\d+)\s*-?\s*(?:months?|mos?\.?)\b/gi, (m, n) => (Number(n) % 12 === 0 ? `${Number(n) / 12} year${Number(n) === 12 ? "" : "s"}` : m));
+  const fullTerm = /\b(?:full|entire|whole)[\s-]+(?:loan\s+)?term\b|\bI\/?O\s+(?:for|through)\s+(?:the\s+)?(?:full|entire|whole|life)|\binterest[\s-]+only\s+(?:for|through)\s+(?:the\s+)?(?:full|entire|whole|life)/i.test(t);
+  const period = /\b\d+(?:\.\d+)?\s*years?\b[^.]{0,20}?\b(?:of\s+)?(?:I\/?O|interest[\s-]+only)/i.test(t) || /\b(?:I\/?O|interest[\s-]+only)\b[^.]{0,20}?\b\d+(?:\.\d+)?\s*years?\b/i.test(t);
+  const amortizes = /\bamorti[sz]/i.test(t) && !/\bno\s+amorti[sz]|\bnon[\s-]?amorti[sz]/i.test(t);
+  if (fullTerm && !period) return AMORTIZATIONS.find((o) => /^full term/i.test(o)) ?? null;
+  const pool = period || amortizes ? AMORTIZATIONS.filter((o) => !/^full term/i.test(o)) : AMORTIZATIONS;
+  // the I/O years decide first: "2 years ... 30 year amortization" is the 2-year option with the 30-year amortization, never the 3-year
+  const io = t.match(/\b(\d+(?:\.\d+)?)\s*years?\b[^.]{0,20}?\b(?:of\s+)?(?:I\/?O|interest[\s-]+only)/i)?.[1] ?? t.match(/\b(?:I\/?O|interest[\s-]+only)\b[^.]{0,20}?\b(\d+(?:\.\d+)?)\s*years?\b/i)?.[1];
+  const amort = t.match(/\b(\d+)\s*-?\s*years?\s+amorti[sz]/i)?.[1] ?? t.match(/\bamorti[sz]\w*\s+(?:of\s+|over\s+)?(\d+)\s*-?\s*years?/i)?.[1];
+  if (io) {
+    const same = pool.filter((o) => o.startsWith(`${Number(io)} year`));
+    const pick = (amort ? same.find((o) => new RegExp(`\\b${amort} year amortization`).test(o)) : null) ?? same[0];
+    if (pick) return pick;
+  }
+  return snapTo(pool, t);
 }
 
 function fromClaude(o: ClaudeOutput): ExtractedDeal {
@@ -242,7 +272,7 @@ function fromClaude(o: ClaudeOutput): ExtractedDeal {
     units: n(o.units), squareFeet: n(o.squareFeet), yearBuilt: t(o.yearBuilt), unitMix: snapTo(UNIT_MIXES, o.unitMix), totalCapitalization: n(o.totalCapitalization),
     totalDebt: n(o.totalDebt), executionType: t(o.executionType), interestRate: cleanInterestRate(t(o.interestRate)), rateIndex: t(o.rateIndex) || null, rateSpreadBps: o.rateSpreadBps == null ? null : Math.round(Number(o.rateSpreadBps)), lenderType: snapTo(LENDER_TYPES, o.lenderType), irr: n(o.irr),
     capRateT12: n(o.capRateT12), capRateY1: n(o.capRateY1), yieldOnCost: n(o.yieldOnCost), cashOnCash: n(o.cashOnCash), projectedSellout: n(o.projectedSellout), selloutPerUnit: n(o.selloutPerUnit), selloutPerFoot: n(o.selloutPerFoot), holdPeriod: snapTo(DEAL_HOLD_PERIODS, o.holdPeriod),
-    expectedClose: t(o.expectedClose), amortization: snapTo(AMORTIZATIONS, o.amortization),
+    expectedClose: t(o.expectedClose), amortization: snapAmortization(o.amortization),
     entitledFor: assetClassNamed(o.entitledFor ?? ""), entitlementPhase: t(o.entitlementPhase ?? ""), entitlementOutstanding: t(o.entitlementOutstanding ?? ""), entitlementRisks: t(o.entitlementRisks ?? ""),
     landValueCurrent: n(o.landValueCurrent ?? ""), landValueEntitled: n(o.landValueEntitled ?? ""), entitlementBudget: n(o.entitlementBudget ?? ""), breakGroundDate: t(o.breakGroundDate ?? ""), verticalCost: n(o.verticalCost ?? ""), verticalDebt: n(o.verticalDebt ?? ""), verticalDebtTerms: t(o.verticalDebtTerms ?? ""), verticalHold: snapTo(DEAL_HOLD_PERIODS, o.verticalHold ?? ""), deliveryDate: t(o.deliveryDate ?? ""), unlevered: /^y/i.test(o.unlevered.trim()) ? true : null,
   };

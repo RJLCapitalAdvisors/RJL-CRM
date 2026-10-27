@@ -59,6 +59,9 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   })();
   // who to tick at each firm: every firm in one pass (replies, calls and the outbound log)
   const defaults = await usualRecipientsMany(new Map(deal.investors.filter((r) => r.contact.companyId).map((r) => [r.contact.companyId!, r.contact.company?.contacts ?? []]))).catch(() => new Map<string, string[]>());
+  // people who left these firms lately, with the colleague their notice named: the replacement is ticked in their place (Oct 27, 2026)
+  const { recentDepartures } = await import("@/lib/departures");
+  const departures = await recentDepartures([...new Set(deal.investors.map((r) => r.contact.companyId).filter((x): x is string => Boolean(x)))]).catch(() => new Map());
   const firms: Firm[] = deal.investors.map((r) => ({
     rowId: r.id,
     status: r.status,
@@ -74,6 +77,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
     openingLine: r.openingLine,
     bodyOverride: r.bodyOverride,
     draftOpen: Boolean(r.sendDraftId),
+    departures: (r.contact.companyId ? departures.get(r.contact.companyId) ?? [] : []).map((d: { contactId: string; name: string; replacements: string[] }) => ({ contactId: d.contactId, name: d.name, replacements: d.replacements })),
   }));
 
   return (

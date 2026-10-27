@@ -15,7 +15,7 @@ import { statusOf } from "@/lib/tracker";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
 export type Person = { id: string; name: string; firstName?: string; email: string; title: string | null; bounced?: boolean };
-export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; addressTo?: string[]; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null; followups?: number };
+export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; addressTo?: string[]; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null; followups?: number; departures?: { contactId: string; name: string; replacements: string[] }[] };
 export type DealFileLite = { key: string; name: string; size: number; url?: string | null };
 /** fields: each marked ticket field as it was last refreshed, so a later refresh can tell an edited paragraph (kept) from an untouched one (replaced). */
 type Draft = { subject: string; html: string; touched: boolean; fields?: Record<string, string> };
@@ -24,7 +24,7 @@ const plain = (h: string) => h.replace(/<[^>]+>/g, "").replace(/&nbsp;|&#8203;|�
 /** A field's name as the person knows it: the merge list's label up to its first parenthesis or colon. */
 const fieldLabel = (k: string) => (MERGE_FIELDS.find((f) => f.key === k)?.label ?? k.replace(/^deal\.(details\.)?/, "")).split(/[(:]/)[0].trim();
 /** Everything on this page that is worth keeping if you leave and come back (kept on the deal, per deal). A firm's draft is its block edits over the General email (an older save may carry a full html copy, converted on load). */
-export type SendState = { templateId?: string; general?: Draft | null; drafts?: Record<string, FirmDraft | Draft>; include?: string[]; to?: Record<string, string[]>; primary?: Record<string, string[]>; chosenFiles?: string[]; cc?: string; savedAt?: string };
+export type SendState = { templateId?: string; general?: Draft | null; drafts?: Record<string, FirmDraft | Draft>; include?: string[]; to?: Record<string, string[]>; primary?: Record<string, string[]>; chosenFiles?: string[]; cc?: string; savedAt?: string; autoTicked?: string[] };
 
 /** Where the caret sits in an editor, as a count of text characters before it (survives the editor's html being put back). */
 function caretOffset(root: HTMLElement): number | null {
@@ -90,7 +90,8 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   const wantStatus = round > 1 ? 3 : 2;
   /** Follow ups: a firm that answered, passed, was already followed up, or has no sent email on record is shaded out and left out by default. */
   // what each firm's launch did this session; declared before the helpers below read it (the Follow ups page crashed on first render when it came after them, Oct 1, 2026)
-  const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean; bounced?: string[] }>>({});
+  // per firm: the launch's result, who it went to and who it bounced for (to/received span this week's sends to the firm)
+  const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean; bounced?: string[]; to?: { id: string; name: string; email: string }[]; received?: string[] }>>({});
   /** The stage as it stands now: a follow-up sent in this session reads Followed Up at once (yellow, at the bottom), before the page refreshes (Jonathan, Oct 1, 2026). */
   const statusNow = (f: Firm) => (followup && results[f.rowId]?.ok && f.status === 2 ? 3 : f.status);
   /** This round's firms: at the stage the round is for, with the earlier rounds behind them, a thread to reply on, and not sent in this session. A firm turned on with + gets whatever round it is due. */
@@ -118,7 +119,25 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     const ids = (f.extraContactIds.length ? [f.primaryContactId, ...f.extraContactIds] : f.defaultContactIds).filter((id, i, all) => all.indexOf(id) === i && f.people.some((p) => p.id === id));
     return followup ? ids : ids.slice(0, MAX_AUTO_TO);
   };
-  const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((followup ? null : saved?.to?.[f.rowId])?.filter((id) => f.people.some((p) => p.id === id)) ?? autoTo(f))]))); // Follow ups: the people the deal email went to, every time
+  /**
+   * Someone at the firm left and their notice named a colleague (Jonathan, Oct 27, 2026: "when someone leaves a firm (like CBRE) the
+   * suggested new contact is added ... immediately so I could resend to them"): when the person who left was picked, was the report's
+   * contact or got this deal's email, they come off the picks and the colleague goes on. Each replacement is ticked once (autoTicked),
+   * so unticking them sticks.
+   */
+  const initialTicked = new Set(saved?.autoTicked ?? []);
+  const swapDeparted = (f: Firm, ids: Set<string>, ticked: Set<string>) => {
+    if (followup) return ids;
+    const sentTo = new Set((initialLaunch?.rows.find((x) => x.rowId === f.rowId)?.to ?? []).map((p) => p.id));
+    for (const d of f.departures ?? []) {
+      if (!ids.has(d.contactId) && !sentTo.has(d.contactId) && f.primaryContactId !== d.contactId) continue;
+      ids.delete(d.contactId);
+      for (const r of d.replacements) if (!ticked.has(r) && f.people.some((p) => p.id === r)) { ids.add(r); ticked.add(r); }
+    }
+    return ids;
+  };
+  const [to, setTo] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, swapDeparted(f, new Set((followup ? null : saved?.to?.[f.rowId])?.filter((id) => f.people.some((p) => p.id === id)) ?? autoTo(f)), initialTicked)]))); // Follow ups: the people the deal email went to, every time
+  const [autoTicked] = useState<Set<string>>(initialTicked);
   const [general, setGeneral] = useState<Draft | null>(saved?.general ?? null);
   const [cc, setCc] = useState<string>(saved?.cc ?? ""); // copied on every firm's email (teammates, usually)
   const ccList = () => cc.split(/[,;\s]+/).map((x) => x.trim()).filter((x) => x.includes("@"));
@@ -195,7 +214,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     setTo((s) => {
       const n = { ...s };
       let changed = false;
-      for (const f of firms) if (!n[f.rowId]) { n[f.rowId] = new Set(autoTo(f)); changed = true; }
+      for (const f of firms) if (!n[f.rowId]) { n[f.rowId] = swapDeparted(f, new Set(autoTo(f)), autoTicked); changed = true; }
       return changed ? n : s;
     });
     setPrimary((s) => {
@@ -326,7 +345,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     const t0 = setTimeout(() => setSaveState("dirty"), 0);
     const t = setTimeout(() => {
       setSaveState("saving");
-      const state: SendState = { templateId, general, drafts, include: [...include], to: Object.fromEntries(Object.entries(to).map(([k, v]) => [k, [...v]])), primary: Object.fromEntries(Object.entries(primary).map(([k, v]) => [k, [...v]])), chosenFiles: [...chosenFiles], cc, savedAt: new Date().toISOString() };
+      const state: SendState = { templateId, general, drafts, include: [...include], to: Object.fromEntries(Object.entries(to).map(([k, v]) => [k, [...v]])), primary: Object.fromEntries(Object.entries(primary).map(([k, v]) => [k, [...v]])), chosenFiles: [...chosenFiles], cc, savedAt: new Date().toISOString(), autoTicked: [...autoTicked] };
       saveSendStateAction(dealId, state, mode, round)
         .then(() => setSaveState("saved"))
         .catch(() => setSaveState("dirty"));
@@ -445,6 +464,19 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     });
   };
 
+  /** The email reached someone at the firm (sent, or bounced for only some of the people). */
+  const delivered = (rowId: string) => Boolean(results[rowId]?.ok || results[rowId]?.received?.length);
+  const bouncedFor = (f: Firm, pid: string) => {
+    const p = f.people.find((x) => x.id === pid) ?? results[f.rowId]?.to?.find((x) => x.id === pid);
+    return Boolean(p && ((p as Person).bounced || (results[f.rowId]?.bounced ?? []).includes(p.email.toLowerCase())));
+  };
+  const departedIds = (f: Firm) => new Set((f.departures ?? []).map((d) => d.contactId));
+  /** The people picked who have not had this email yet: who "send to" reaches after a bounce or a departure, so nobody gets it twice. */
+  const freshFor = (f: Firm) => {
+    const got = new Set(results[f.rowId]?.received ?? []);
+    const gone = departedIds(f);
+    return [...(to[f.rowId] ?? [])].filter((id) => !got.has(id) && !gone.has(id) && !bouncedFor(f, id));
+  };
   const togglePerson = (rowId: string, pid: string) =>
     setTo((s) => {
       const n = new Set(s[rowId] ?? []);
@@ -455,7 +487,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
 
   const itemsToSend = () =>
     firms
-      .filter((f) => include.has(f.rowId) && !results[f.rowId]?.ok && !results[f.rowId]?.pending) // sent or queued already in this session: never twice (Royce, Oct 1, 2026)
+      .filter((f) => include.has(f.rowId) && !delivered(f.rowId) && !results[f.rowId]?.pending) // sent or queued already in this session: never twice (Royce, Oct 1, 2026); one that bounced for only some of its people was delivered too
       .map((f) => {
         const d = draftFor(f);
         return { rowId: f.rowId, toContactIds: [...(to[f.rowId] ?? [])], subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() };
@@ -502,14 +534,18 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
 
   /** The launch as it stands: which firms are sent, queued or failed, and when the next one goes. */
   const applyStatus = (st: LaunchStatus) => {
-    setResults(Object.fromEntries(st.rows.map((x) => [x.rowId, { ok: x.status === "SENT", error: x.status === "FAILED" || x.status === "BOUNCED" ? x.error ?? "failed" : undefined, pending: x.status === "QUEUED" || x.status === "SENDING", bounced: x.bounced }])));
-    // a firm that went out (or is queued) is unticked, so a later LAUNCH never sends it again
-    const done = st.rows.filter((x) => x.status === "SENT" || x.status === "QUEUED" || x.status === "SENDING").map((x) => x.rowId);
+    setResults(Object.fromEntries(st.rows.map((x) => [x.rowId, { ok: x.status === "SENT", error: x.status === "FAILED" || x.status === "BOUNCED" ? x.error ?? "failed" : undefined, pending: x.status === "QUEUED" || x.status === "SENDING", bounced: x.bounced, to: x.to, received: x.received }])));
+    // a firm that went out (or is queued, or bounced for only some of its people) is unticked, so a later LAUNCH never sends it again
+    const done = st.rows.filter((x) => x.status === "SENT" || x.status === "QUEUED" || x.status === "SENDING" || (x.status === "BOUNCED" && (x.received?.length ?? 0) > 0)).map((x) => x.rowId);
     if (done.length) setInclude((s) => { const n = new Set(s); for (const id of done) n.delete(id); return n.size === s.size ? s : n; });
     // people whose address bounced come off the firm's picks, so "send again" goes to someone else there
     const bouncedIds = new Set(firms.flatMap((f) => f.people.filter((p) => p.bounced || (st.rows.find((x) => x.rowId === f.rowId)?.bounced ?? []).includes(p.email.toLowerCase())).map((p) => p.id)));
     if (bouncedIds.size) setTo((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, new Set([...v].filter((id) => !bouncedIds.has(id)))])));
-    const trouble = st.rows.filter((x) => x.status === "FAILED" || x.status === "BOUNCED").map((x) => `${firms.find((f) => f.rowId === x.rowId)?.company ?? "a firm"} (${x.error ?? x.status.toLowerCase()})`);
+    const firmName = (rowId: string) => firms.find((f) => f.rowId === rowId)?.company ?? "a firm";
+    // bounced for everyone (or failed): needs another go; bounced for some: the others have it, so it is only named
+    const trouble = st.rows.filter((x) => x.status === "FAILED" || (x.status === "BOUNCED" && !(x.received?.length ?? 0))).map((x) => `${firmName(x.rowId)} (${x.status === "BOUNCED" ? `bounced: ${(x.bounced ?? []).join(", ")}` : x.error ?? "failed"})`);
+    const partly = st.rows.filter((x) => x.status === "BOUNCED" && (x.received?.length ?? 0) > 0).map((x) => `${firmName(x.rowId)} (bounced for ${(x.bounced ?? []).join(", ")}; ${(x.to ?? []).filter((p) => x.received?.includes(p.id)).map((p) => p.name).join(", ")} got it)`);
+    const left = firms.filter((f) => (f.departures ?? []).some((d) => d.replacements.length && (st.rows.find((x) => x.rowId === f.rowId)?.to ?? []).some((p) => p.id === d.contactId))).map((f) => `${f.company} (${(f.departures ?? []).filter((d) => d.replacements.length && (st.rows.find((x) => x.rowId === f.rowId)?.to ?? []).some((p) => p.id === d.contactId)).map((d) => `${d.name} left; ${d.replacements.map((r) => f.people.find((p) => p.id === r)?.name).filter(Boolean).join(", ")} ticked`).join("; ")})`);
     const held = st.heldUntil ? new Date(st.heldUntil) : null;
     // the server says when the next email goes (its clock); shown on this clock by the difference between the two
     const skew = Date.now() - new Date(st.serverNow).getTime();
@@ -520,7 +556,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
         ? held
           ? `${st.sent} of ${st.total} sent · ${st.queued} waiting. Microsoft paused attachment uploads from your mailbox for a few minutes (too many megabytes in a short time); sending resumes on its own at ${held.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}. Nothing is lost; the server keeps going whether or not this page is open.`
           : `${st.sent} of ${st.total} sent · ${st.queued} to go. One email every ${Math.round(st.gapMs / 1000)} seconds (set by the attachments' size: Microsoft limits the megabytes a mailbox may upload per minute), so each lands as an individually sent email. The server keeps going if you leave or your laptop sleeps.`
-        : `${st.sent} of ${st.total} sent.${trouble.length ? ` Needs another go: ${trouble.join("; ")}. Use the ▾ on the firm to pick who gets it (the same people or others there), then "send again" on that firm.` : ""}`,
+        : `${st.sent} of ${st.total} sent.${trouble.length ? ` Needs another go: ${trouble.join("; ")}. Use the ▾ on the firm to pick who gets it (the same people or others there), then "send again" on that firm.` : ""}${partly.length ? ` Partial bounce, the others got it: ${partly.join("; ")}.` : ""}${left.length ? ` Left the firm, colleague ticked in their place: ${left.join("; ")}. Click "send to" on the firm to send it to them.` : ""}`,
     );
   };
   const [nextAt, setNextAt] = useState<number | null>(null);
@@ -543,10 +579,11 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   const sendAgain = (f: Firm) => {
     commitEdit();
     const d = draftFor(f);
-    const ids = [...(to[f.rowId] ?? [])].filter((id) => !f.people.find((p) => p.id === id)?.bounced);
+    // only the people picked who have not had it: the colleague of someone who left, or someone else after a bounce (never twice to the rest)
+    const ids = freshFor(f);
     if (!ids.length) {
       setPicker(f.rowId);
-      return setNote(`Pick who at ${f.company} gets it first (▾), then click send again.`);
+      return setNote(`Pick who at ${f.company} gets it first (▾), then click send again. Everyone ticked there already has it, bounced or left.`);
     }
     start(async () => {
       const r = await launchAction(dealId, [{ rowId: f.rowId, toContactIds: ids, subject: d?.subject ?? "", html: d?.html ?? "", cc: ccList() }], [...chosenFiles], mode, round);
@@ -733,11 +770,26 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                   <button type="button" className="flex items-center gap-1.5" onClick={() => setCurrent(f.rowId)} title={f.status >= 2 ? "Sent earlier; the + sends it again with the current email" : "Show this firm's email"}>
                     <CompanyLogo domain={f.domain} name={f.company} size={18} />
                     <span className="font-medium">{f.company}</span>
-                    <span className={`text-xs ${chosen.length || !on ? "text-muted" : "text-red-700"}`}>{chosen.length ? chosen.map((p) => p.name.split(" ")[0]).join(", ") : "nobody picked"}</span>
+                    {res?.to?.length && !res.pending ? (
+                      // who the email went to, the ones it bounced for struck through, and anyone picked since who has not had it (+ Colin)
+                      <span className="text-xs text-muted">
+                        {res.to.map((p, i) => (
+                          <span key={p.id}>
+                            {i ? ", " : ""}
+                            {bouncedFor(f, p.id) ? <span className="text-red-700 line-through" title={`Bounced: ${p.email}`}>{p.name.split(" ")[0]}</span> : departedIds(f).has(p.id) ? <span className="text-amber-700 line-through" title={`${p.name} has left ${f.company}`}>{p.name.split(" ")[0]}</span> : <span title={`Got it: ${p.email}`}>{p.name.split(" ")[0]}</span>}
+                          </span>
+                        ))}
+                        {freshFor(f).map((id) => <span key={id} className="text-sky-700" title="Picked since; has not had this email">{` + ${f.people.find((x) => x.id === id)?.name.split(" ")[0] ?? ""}`}</span>)}
+                      </span>
+                    ) : (
+                      <span className={`text-xs ${chosen.length || !on ? "text-muted" : "text-red-700"}`}>{chosen.length ? chosen.map((p) => p.name.split(" ")[0]).join(", ") : "nobody picked"}</span>
+                    )}
                     {draftFor(f)?.touched && !res && <span className="text-xs text-sky-700" title="This firm's email has its own edits on top of the General email">edited</span>}
                     {res?.ok && <span className="text-xs text-emerald-700">sent</span>}
                     {res?.pending && <span className="text-xs text-sky-700">queued</span>}
-                    {res && !res.ok && !res.pending && <span className="text-xs text-red-700" title={res.error}>{res.bounced?.length ? "bounced" : "failed"}</span>}
+                    {res && !res.ok && !res.pending && !delivered(f.rowId) && <span className="text-xs text-red-700" title={res.error}>{res.bounced?.length ? "bounced" : "failed"}</span>}
+                    {res && !res.ok && !res.pending && delivered(f.rowId) && <span className="text-xs text-amber-700" title={`Partial bounce: ${res.bounced?.length ?? 0} of ${res.to?.length ?? 0} bounced (${(res.bounced ?? []).join(", ")}); the others got it`}>partial bounce</span>}
+                    {!followup && (f.departures ?? []).filter((d) => (res?.to ?? []).some((p) => p.id === d.contactId) || (to[f.rowId] ?? new Set()).has(d.contactId) || f.primaryContactId === d.contactId).map((d) => <span key={d.contactId} className="text-xs text-amber-700" title={`${d.name} left ${f.company}${d.replacements.length ? `; ${d.replacements.map((r) => f.people.find((p) => p.id === r)?.name).filter(Boolean).join(", ")} ticked in their place` : ""}`}>{`${d.name.split(" ")[0]} left`}</span>)}
                     {!followup && f.status >= 2 && !res && <span className="text-xs text-muted">{on ? "sending again" : "sent earlier"}</span>}
                     {followup && !res && <span className="text-xs text-muted">{!f.followupTo ? "no sent email on record" : f.status === 2 ? `sent ${f.sentOn ? new Date(f.sentOn).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "earlier"}, quiet` : f.status === 3 ? `followed up${(f.followups ?? 0) > 1 ? ` ${f.followups}x` : ""}, quiet` : f.status >= 7 ? "passed" : "answered"}</span>}
                     {followup && res?.ok && <span className="text-xs text-muted">{round > 1 ? `follow-up ${round} sent` : "followed up"}</span>}
@@ -750,12 +802,17 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                       <button type="button" className="rounded-full px-1 text-xs text-muted hover:bg-cream" onClick={() => setInclude((s) => { const n = new Set(s); if (n.has(f.rowId)) n.delete(f.rowId); else n.add(f.rowId); return n; })} title={on ? "Leave this firm out" : "Include this firm"}>
                         {on ? "×" : "+"}
                       </button>
-                      {res && !res.ok && !res.pending && !launching && (
+                      {res && !res.ok && !res.pending && !launching && !delivered(f.rowId) && (
                         <button type="button" className="rounded-full px-1.5 text-xs text-red-700 hover:bg-cream" disabled={pending} onClick={() => sendAgain(f)} title={res.bounced?.length ? `Bounced for ${res.bounced.join(", ")}: pick other people at ${f.company} (▾) and send the email again` : `Failed: ${res.error}. Send it again to the people picked`}>
                           send again
                         </button>
                       )}
-                      {!launching && !(res && !res.ok && !res.pending) && (
+                      {res && !res.pending && !launching && delivered(f.rowId) && freshFor(f).length > 0 && (
+                        <button type="button" className="rounded-full px-1.5 text-xs text-sky-700 hover:bg-cream" disabled={pending} onClick={() => sendAgain(f)} title={`Send this email to ${freshFor(f).map((id) => f.people.find((x) => x.id === id)?.name).join(", ")} only; the people who got it are not sent it again`}>
+                          {`send to ${freshFor(f).map((id) => f.people.find((x) => x.id === id)?.name.split(" ")[0]).join(", ")}`}
+                        </button>
+                      )}
+                      {!launching && !(res && !res.ok && !res.pending) && !(res && delivered(f.rowId) && freshFor(f).length > 0) && (
                         <button type="button" className={`rounded-full px-1 text-xs hover:bg-cream ${armedOne?.rowId === f.rowId ? "text-red-700" : "text-muted"}`} disabled={pending} onClick={() => sendOne(f)} title={`Send ${f.company} its email now, on its own (two clicks)`}>
                           <Send className="h-3.5 w-3.5" />
                         </button>
@@ -775,6 +832,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                         <span className="min-w-0 flex-1 truncate">
                           {p.name} <span className="text-xs text-muted">{p.title ?? p.email}</span>
                           {(p.bounced || (results[f.rowId]?.bounced ?? []).includes(p.email.toLowerCase())) && <span className="ml-1 text-xs text-red-700" title="The deal email to this address bounced; they have probably left">bounced</span>}
+                          {departedIds(f).has(p.id) && <span className="ml-1 text-xs text-amber-700" title="Their firm wrote that they have left">left</span>}
                         </span>
                       </label>
                     ))}
