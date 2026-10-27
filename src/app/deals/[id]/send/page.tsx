@@ -49,7 +49,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   // the minute scheduler keeps a launch going; the page's own poll sends what is due while it is open (a long pump here was one of three that woke together, Oct 7, 2026)
   if (launch && launch.queued > 0 && me && !process.env.CRON_SECRET) after(() => pumpLaunches(me.email, 270_000).catch(() => null));
   const team = (await prisma.user.findMany({ where: { active: true, ...CA_TEAM, email: { not: null } }, select: { name: true, email: true }, orderBy: { name: "asc" } })).filter((u) => u.email && u.email.toLowerCase() !== me?.email?.toLowerCase()).map((u) => ({ name: u.name, email: u.email! }));
-  const sendState = ((): SendState | null => {
+  const sendStateSaved = ((): SendState | null => {
     try {
       const st = (JSON.parse(deal.details || "{}") as { sendState?: SendState }).sendState;
       return st && typeof st === "object" ? st : null;
@@ -57,6 +57,8 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
       return null;
     }
   })();
+  // the person opening the page gets their own signature on the saved email and their own CC list (sender.ts, Oct 27, 2026)
+  const sendState = me?.email ? await (await import("@/lib/sender")).adoptSendState(sendStateSaved, me.email) : sendStateSaved;
   // who to tick at each firm: every firm in one pass (replies, calls and the outbound log)
   const defaults = await usualRecipientsMany(new Map(deal.investors.filter((r) => r.contact.companyId).map((r) => [r.contact.companyId!, r.contact.company?.contacts ?? []]))).catch(() => new Map<string, string[]>());
   // people who left these firms lately, with the colleague their notice named: the replacement is ticked in their place (Oct 27, 2026)

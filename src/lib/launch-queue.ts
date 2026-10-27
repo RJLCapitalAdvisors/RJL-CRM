@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { ccFor, withSenderSignature } from "@/lib/sender";
 import { graph, graphConfigured } from "@/lib/graph";
 import { logActivity } from "@/lib/activity";
 import { toJson } from "@/lib/taxonomy";
@@ -225,7 +226,8 @@ export async function queueDealEmails(dealId: string, items: LaunchItem[], mailb
     const recent = had && Date.now() - had.sentAt.getTime() < 2 * 86_400_000 ? had : null;
     const error = !people.length ? "nobody with an email picked" : opts.followup && recent ? `followed up ${recent.sentAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}; a firm gets at most one follow-up every two days` : opts.followup && !replyTo ? "no sent deal email on record to reply to" : null;
     await prisma.dealLaunch.create({
-      data: { dealId, rowId: row.id, mailbox, kind, round, replyToMessageId: replyTo?.messageId ?? null, toContactIds: toJson(people.map((p) => p.id)), cc: toJson(item.cc ?? []), subject: item.subject, html: item.html, fileKeys: fileKeys ? toJson(fileKeys) : null, bytes, status: error ? "FAILED" : "QUEUED", error },
+      // the sender's own signature and CC list, whoever rendered the email (Oct 27, 2026: Aviel sent Jonathan's signature and copied himself)
+      data: { dealId, rowId: row.id, mailbox, kind, round, replyToMessageId: replyTo?.messageId ?? null, toContactIds: toJson(people.map((p) => p.id)), cc: toJson(ccFor(mailbox, item.cc ?? [])), subject: item.subject, html: await withSenderSignature(item.html, mailbox), fileKeys: fileKeys ? toJson(fileKeys) : null, bytes, status: error ? "FAILED" : "QUEUED", error },
     });
   }
 }

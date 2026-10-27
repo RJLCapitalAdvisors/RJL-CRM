@@ -93,7 +93,8 @@ export async function renderDealEmail(opts: { templateId: string; deal: Record<s
   const ctx: MergeContext = { contact: opts.contact, company: opts.company, deal: opts.deal, sender: { name: opts.senderName }, unsubscribeUrl: unsubscribeUrl(opts.contact.id), openingLine: opts.openingLine };
   const subject = renderTemplate(tpl.subject, ctx);
   const body = renderTemplate(stripTemplateSignoff(opts.bodyOverride ?? tpl.bodyHtml), ctx, { mark: true });
-  const html = `<div style="${FONT}">${outlookHtml(toHtml(body))}${await signatureFor(opts.mailbox)}</div>`;
+  // marked, so the launch swaps it for the sender's own when someone else sends from this saved email (sender.ts, Oct 27, 2026)
+  const html = `<div style="${FONT}">${outlookHtml(toHtml(body))}<div data-signature="1">${await signatureFor(opts.mailbox)}</div></div>`;
   return { subject, html, text: body };
 }
 
