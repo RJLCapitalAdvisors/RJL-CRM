@@ -477,6 +477,31 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     const gone = departedIds(f);
     return [...(to[f.rowId] ?? [])].filter((id) => !got.has(id) && !gone.has(id) && !bouncedFor(f, id));
   };
+  /**
+   * After a launch every firm is one of two things (Jonathan, Oct 27, 2026: "partial bounce" and "Parker left" were confusing):
+   * "sent" when someone still at the firm has the email, "needs resend" when nobody does (it bounced for everyone, everyone it
+   * reached has left, or it failed). Why sits in the hover text and in the struck-through names.
+   */
+  type RowResult = { ok: boolean; error?: string; pending?: boolean; bounced?: string[]; to?: { id: string; name: string; email: string }[]; received?: string[] };
+  const stillHasRow = (f: Firm, r: RowResult | undefined) => {
+    if (!r || r.pending) return false;
+    if (r.ok && !r.to?.length) return true;
+    const gone = departedIds(f);
+    return (r.received ?? []).some((id) => !gone.has(id));
+  };
+  const needsResendRow = (f: Firm, r: RowResult | undefined) => Boolean(r && !r.pending && !stillHasRow(f, r));
+  const resendWhy = (f: Firm, r: RowResult) => {
+    const gone = new Map((f.departures ?? []).map((d) => [d.contactId, d]));
+    const bits: string[] = [];
+    if (r.bounced?.length) bits.push(`bounced for ${r.bounced.join(", ")}`);
+    for (const p of r.to ?? []) {
+      const d = gone.get(p.id);
+      if (d && r.received?.includes(p.id)) bits.push(`${p.name} has left ${f.company}${d.replacements.length ? ` (${d.replacements.map((x) => f.people.find((q) => q.id === x)?.name).filter(Boolean).join(", ")} named in their place)` : ""}`);
+    }
+    if (!bits.length && r.error) bits.push(r.error);
+    return bits.join("; ");
+  };
+  const needsResend = (f: Firm) => needsResendRow(f, results[f.rowId]);
   const togglePerson = (rowId: string, pid: string) =>
     setTo((s) => {
       const n = new Set(s[rowId] ?? []);
@@ -542,10 +567,8 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     const bouncedIds = new Set(firms.flatMap((f) => f.people.filter((p) => p.bounced || (st.rows.find((x) => x.rowId === f.rowId)?.bounced ?? []).includes(p.email.toLowerCase())).map((p) => p.id)));
     if (bouncedIds.size) setTo((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, new Set([...v].filter((id) => !bouncedIds.has(id)))])));
     const firmName = (rowId: string) => firms.find((f) => f.rowId === rowId)?.company ?? "a firm";
-    // bounced for everyone (or failed): needs another go; bounced for some: the others have it, so it is only named
-    const trouble = st.rows.filter((x) => x.status === "FAILED" || (x.status === "BOUNCED" && !(x.received?.length ?? 0))).map((x) => `${firmName(x.rowId)} (${x.status === "BOUNCED" ? `bounced: ${(x.bounced ?? []).join(", ")}` : x.error ?? "failed"})`);
-    const partly = st.rows.filter((x) => x.status === "BOUNCED" && (x.received?.length ?? 0) > 0).map((x) => `${firmName(x.rowId)} (bounced for ${(x.bounced ?? []).join(", ")}; ${(x.to ?? []).filter((p) => x.received?.includes(p.id)).map((p) => p.name).join(", ")} got it)`);
-    const left = firms.filter((f) => (f.departures ?? []).some((d) => d.replacements.length && (st.rows.find((x) => x.rowId === f.rowId)?.to ?? []).some((p) => p.id === d.contactId))).map((f) => `${f.company} (${(f.departures ?? []).filter((d) => d.replacements.length && (st.rows.find((x) => x.rowId === f.rowId)?.to ?? []).some((p) => p.id === d.contactId)).map((d) => `${d.name} left; ${d.replacements.map((r) => f.people.find((p) => p.id === r)?.name).filter(Boolean).join(", ")} ticked`).join("; ")})`);
+    // the firms nobody still there has the email at: bounced for everyone, everyone it reached has left, or failed
+    const trouble = firms.filter((f) => { const r = st.rows.find((x) => x.rowId === f.rowId); return r && r.status !== "QUEUED" && r.status !== "SENDING" && needsResendRow(f, { ok: r.status === "SENT", error: r.error ?? undefined, bounced: r.bounced, to: r.to, received: r.received }); }).map((f) => { const r = st.rows.find((x) => x.rowId === f.rowId)!; return `${f.company} (${resendWhy(f, { ok: r.status === "SENT", error: r.error ?? undefined, bounced: r.bounced, to: r.to, received: r.received }) || r.status.toLowerCase()})`; });
     const held = st.heldUntil ? new Date(st.heldUntil) : null;
     // the server says when the next email goes (its clock); shown on this clock by the difference between the two
     const skew = Date.now() - new Date(st.serverNow).getTime();
@@ -556,7 +579,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
         ? held
           ? `${st.sent} of ${st.total} sent · ${st.queued} waiting. Microsoft paused attachment uploads from your mailbox for a few minutes (too many megabytes in a short time); sending resumes on its own at ${held.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}. Nothing is lost; the server keeps going whether or not this page is open.`
           : `${st.sent} of ${st.total} sent · ${st.queued} to go. One email every ${Math.round(st.gapMs / 1000)} seconds (set by the attachments' size: Microsoft limits the megabytes a mailbox may upload per minute), so each lands as an individually sent email. The server keeps going if you leave or your laptop sleeps.`
-        : `${st.sent} of ${st.total} sent.${trouble.length ? ` Needs another go: ${trouble.join("; ")}. Use the ▾ on the firm to pick who gets it (the same people or others there), then "send again" on that firm.` : ""}${partly.length ? ` Partial bounce, the others got it: ${partly.join("; ")}.` : ""}${left.length ? ` Left the firm, colleague ticked in their place: ${left.join("; ")}. Click "send to" on the firm to send it to them.` : ""}`,
+        : `${st.sent} of ${st.total} sent.${trouble.length ? ` Needs resend, nobody still at the firm has it: ${trouble.join("; ")}. Click the red button on the firm (pick someone there with ▾ first if nobody is ticked).` : " Every firm has it."}`,
     );
   };
   const [nextAt, setNextAt] = useState<number | null>(null);
@@ -776,20 +799,18 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                         {res.to.map((p, i) => (
                           <span key={p.id}>
                             {i ? ", " : ""}
-                            {bouncedFor(f, p.id) ? <span className="text-red-700 line-through" title={`Bounced: ${p.email}`}>{p.name.split(" ")[0]}</span> : departedIds(f).has(p.id) ? <span className="text-amber-700 line-through" title={`${p.name} has left ${f.company}`}>{p.name.split(" ")[0]}</span> : <span title={`Got it: ${p.email}`}>{p.name.split(" ")[0]}</span>}
+                            {bouncedFor(f, p.id) ? <span className="text-red-700 line-through" title={`Bounced: ${p.email} did not get it`}>{p.name.split(" ")[0]}</span> : departedIds(f).has(p.id) ? <span className="text-red-700 line-through" title={`${p.name} got it, but has left ${f.company} (their firm wrote back saying so)`}>{p.name.split(" ")[0]}</span> : <span title={`Got it: ${p.email}`}>{p.name.split(" ")[0]}</span>}
                           </span>
                         ))}
-                        {freshFor(f).map((id) => <span key={id} className="text-sky-700" title="Picked since; has not had this email">{` + ${f.people.find((x) => x.id === id)?.name.split(" ")[0] ?? ""}`}</span>)}
+                        {freshFor(f).map((id) => <span key={id} className="text-sky-700" title="Ticked; has not had this email yet">{` + ${f.people.find((x) => x.id === id)?.name.split(" ")[0] ?? ""}`}</span>)}
                       </span>
                     ) : (
                       <span className={`text-xs ${chosen.length || !on ? "text-muted" : "text-red-700"}`}>{chosen.length ? chosen.map((p) => p.name.split(" ")[0]).join(", ") : "nobody picked"}</span>
                     )}
                     {draftFor(f)?.touched && !res && <span className="text-xs text-sky-700" title="This firm's email has its own edits on top of the General email">edited</span>}
-                    {res?.ok && <span className="text-xs text-emerald-700">sent</span>}
+                    {res && !res.pending && !needsResend(f) && <span className="text-xs text-emerald-700" title={res.bounced?.length || (res.to ?? []).some((p) => departedIds(f).has(p.id)) ? `Sent; someone still at ${f.company} has it. Struck through: ${resendWhy(f, res)}` : "Sent"}>sent</span>}
                     {res?.pending && <span className="text-xs text-sky-700">queued</span>}
-                    {res && !res.ok && !res.pending && !delivered(f.rowId) && <span className="text-xs text-red-700" title={res.error}>{res.bounced?.length ? "bounced" : "failed"}</span>}
-                    {res && !res.ok && !res.pending && delivered(f.rowId) && <span className="text-xs text-amber-700" title={`Partial bounce: ${res.bounced?.length ?? 0} of ${res.to?.length ?? 0} bounced (${(res.bounced ?? []).join(", ")}); the others got it`}>partial bounce</span>}
-                    {!followup && (f.departures ?? []).filter((d) => (res?.to ?? []).some((p) => p.id === d.contactId) || (to[f.rowId] ?? new Set()).has(d.contactId) || f.primaryContactId === d.contactId).map((d) => <span key={d.contactId} className="text-xs text-amber-700" title={`${d.name} left ${f.company}${d.replacements.length ? `; ${d.replacements.map((r) => f.people.find((p) => p.id === r)?.name).filter(Boolean).join(", ")} ticked in their place` : ""}`}>{`${d.name.split(" ")[0]} left`}</span>)}
+                    {needsResend(f) && <span className="text-xs font-medium text-red-700" title={`Nobody still at ${f.company} has this email: ${resendWhy(f, res!)}`}>needs resend</span>}
                     {!followup && f.status >= 2 && !res && <span className="text-xs text-muted">{on ? "sending again" : "sent earlier"}</span>}
                     {followup && !res && <span className="text-xs text-muted">{!f.followupTo ? "no sent email on record" : f.status === 2 ? `sent ${f.sentOn ? new Date(f.sentOn).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "earlier"}, quiet` : f.status === 3 ? `followed up${(f.followups ?? 0) > 1 ? ` ${f.followups}x` : ""}, quiet` : f.status >= 7 ? "passed" : "answered"}</span>}
                     {followup && res?.ok && <span className="text-xs text-muted">{round > 1 ? `follow-up ${round} sent` : "followed up"}</span>}
@@ -802,17 +823,17 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                       <button type="button" className="rounded-full px-1 text-xs text-muted hover:bg-cream" onClick={() => setInclude((s) => { const n = new Set(s); if (n.has(f.rowId)) n.delete(f.rowId); else n.add(f.rowId); return n; })} title={on ? "Leave this firm out" : "Include this firm"}>
                         {on ? "×" : "+"}
                       </button>
-                      {res && !res.ok && !res.pending && !launching && !delivered(f.rowId) && (
-                        <button type="button" className="rounded-full px-1.5 text-xs text-red-700 hover:bg-cream" disabled={pending} onClick={() => sendAgain(f)} title={res.bounced?.length ? `Bounced for ${res.bounced.join(", ")}: pick other people at ${f.company} (▾) and send the email again` : `Failed: ${res.error}. Send it again to the people picked`}>
-                          send again
+                      {needsResend(f) && !launching && (
+                        <button type="button" className="rounded-full px-1.5 text-xs font-medium text-red-700 hover:bg-cream" disabled={pending} onClick={() => sendAgain(f)} title={freshFor(f).length ? `Send this email to ${freshFor(f).map((id) => f.people.find((x) => x.id === id)?.name).join(", ")}` : `Pick someone at ${f.company} with ▾, then click here`}>
+                          {freshFor(f).length ? `send to ${freshFor(f).map((id) => f.people.find((x) => x.id === id)?.name.split(" ")[0]).join(", ")}` : "send again"}
                         </button>
                       )}
-                      {res && !res.pending && !launching && delivered(f.rowId) && freshFor(f).length > 0 && (
+                      {res && !res.pending && !launching && !needsResend(f) && freshFor(f).length > 0 && (
                         <button type="button" className="rounded-full px-1.5 text-xs text-sky-700 hover:bg-cream" disabled={pending} onClick={() => sendAgain(f)} title={`Send this email to ${freshFor(f).map((id) => f.people.find((x) => x.id === id)?.name).join(", ")} only; the people who got it are not sent it again`}>
                           {`send to ${freshFor(f).map((id) => f.people.find((x) => x.id === id)?.name.split(" ")[0]).join(", ")}`}
                         </button>
                       )}
-                      {!launching && !(res && !res.ok && !res.pending) && !(res && delivered(f.rowId) && freshFor(f).length > 0) && (
+                      {!launching && !(res && !res.pending && (needsResend(f) || freshFor(f).length > 0 || !res.ok && !delivered(f.rowId))) && (
                         <button type="button" className={`rounded-full px-1 text-xs hover:bg-cream ${armedOne?.rowId === f.rowId ? "text-red-700" : "text-muted"}`} disabled={pending} onClick={() => sendOne(f)} title={`Send ${f.company} its email now, on its own (two clicks)`}>
                           <Send className="h-3.5 w-3.5" />
                         </button>
