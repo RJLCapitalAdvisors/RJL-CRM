@@ -1,6 +1,7 @@
 "use client";
 
-import { FileSpreadsheet, FileText, File as FileIcon, Presentation, FileImage, BookOpen } from "lucide-react";
+import { useState, useTransition } from "react";
+import { FileSpreadsheet, FileText, File as FileIcon, Presentation, FileImage, BookOpen, Trash2 } from "lucide-react";
 
 export type AttachmentRow = { id: string; name: string; size: number; date: string; url: string; kind?: "faq" };
 
@@ -22,15 +23,18 @@ const size = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB`
 /**
  * Deal attachments with a type icon each. Every row is a download link and can be dragged straight out of
  * the browser into an Outlook email (Chrome/Edge hand the file over via the DownloadURL drag type).
+ * With onDelete, each file (not the FAQ, which is built from Questions answered) gets a delete button that asks first (Oct 27, 2026).
  */
-export function AttachmentList({ files }: { files: AttachmentRow[] }) {
+export function AttachmentList({ files, onDelete }: { files: AttachmentRow[]; onDelete?: (fileId: string) => Promise<void> }) {
+  const [pending, start] = useTransition();
+  const [gone, setGone] = useState<Set<string>>(new Set());
   return (
     <>
-      {files.map((f) => {
+      {files.filter((f) => !gone.has(f.id)).map((f) => {
         const abs = typeof window !== "undefined" ? new URL(f.url, window.location.origin).toString() : f.url;
         return (
+          <div key={f.id} className="group flex items-center hover:bg-cream">
           <a
-            key={f.id}
             href={f.url}
             draggable
             onDragStart={(e) => {
@@ -38,7 +42,7 @@ export function AttachmentList({ files }: { files: AttachmentRow[] }) {
               e.dataTransfer.setData("text/uri-list", abs);
               e.dataTransfer.effectAllowed = "copy";
             }}
-            className="flex cursor-grab items-center gap-2 px-4 py-2 text-sm hover:bg-cream active:cursor-grabbing"
+            className="flex min-w-0 flex-1 cursor-grab items-center gap-2 py-2 pl-4 pr-2 text-sm active:cursor-grabbing"
             title="Click to download, or drag into an Outlook email"
           >
             {iconFor(f.name, f.kind)}
@@ -48,6 +52,34 @@ export function AttachmentList({ files }: { files: AttachmentRow[] }) {
               {f.date ? ` · ${f.date}` : ""}
             </span>
           </a>
+          {onDelete && f.kind !== "faq" ? (
+            <button
+              type="button"
+              disabled={pending}
+              className="mr-2 shrink-0 rounded p-1 text-muted opacity-0 hover:bg-paper hover:text-red-700 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+              title="Delete this file from the ticket (the email it came on stays in the mailbox)"
+              aria-label={`Delete ${f.name}`}
+              onClick={() => {
+                if (!window.confirm(`Delete ${f.name} from this ticket?
+
+It also leaves the Send page's files. The email it came on stays in the mailbox.`)) return;
+                setGone((g) => new Set(g).add(f.id));
+                start(async () => {
+                  try {
+                    await onDelete(f.id);
+                  } catch {
+                    setGone((g) => { const n = new Set(g); n.delete(f.id); return n; });
+                    window.alert(`${f.name} could not be deleted. Try again.`);
+                  }
+                });
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <span className="w-2 shrink-0" />
+          )}
+          </div>
         );
       })}
     </>

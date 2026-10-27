@@ -170,6 +170,25 @@ export async function deleteFact(dealId: string, factId: string) {
   revalidatePath(`/deals/${dealId}`);
 }
 
+/** Delete a file from the ticket's Attachments (Jonathan, Oct 27, 2026). The email in the mailbox is untouched; the file is remembered as
+ * deleted so reading that email again does not bring it back, and it leaves the Send page's file list with it. */
+export async function deleteDealFileAction(dealId: string, fileId: string) {
+  const f = await prisma.dealFile.findFirst({ where: { id: fileId, dealId } });
+  if (!f) return;
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { details: true, sponsorCompanyId: true } });
+  let details: Record<string, unknown> = {};
+  try {
+    details = JSON.parse(deal?.details || "{}");
+  } catch {}
+  const key = `${f.graphId}::${f.attachmentId}`;
+  const prior = Array.isArray(details.deletedFiles) ? (details.deletedFiles as string[]) : [];
+  await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify({ ...details, deletedFiles: [...new Set([...prior, key])] }) } });
+  await prisma.dealFile.delete({ where: { id: f.id } });
+  const me = await currentUser();
+  await logActivity({ type: "NOTE", body: `File deleted from the ticket by ${me?.name ?? "someone"}: ${f.name} (received ${f.receivedAt.toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}${f.fromEmail ? ` from ${f.fromEmail}` : ""}).`, dealId, companyId: deal?.sponsorCompanyId ?? null });
+  revalidatePath(`/deals/${dealId}`);
+}
+
 /** Put a Questions-answered item on the Investor FAQ, or take it off. Only questions somebody asked belong there. */
 export async function toggleFactFaq(dealId: string, factId: string) {
   const f = await prisma.dealFact.findFirst({ where: { id: factId, dealId } });

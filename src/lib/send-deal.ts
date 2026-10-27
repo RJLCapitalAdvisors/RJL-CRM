@@ -164,9 +164,12 @@ export async function dealFiles(dealId: string): Promise<DealFile[]> {
       out.push({ key: `${m.id}::${a.id}`, mailbox: mb, messageId: m.id, attachmentId: a.id, name: a.name, size: a.size, contentType: a.contentType, from: m.from?.emailAddress.address ?? "", receivedAt: m.receivedDateTime ?? "" });
     }
   }
-  // newest copy of a same-named file wins; models and OMs first
+  // newest copy of a same-named file wins; models and OMs first; a file deleted from the ticket stays out
+  const { deletedFileKeys } = await import("@/lib/deal-knowledge");
+  const deleted = deletedFileKeys(own?.details);
   const seen = new Set<string>();
   return out
+    .filter((f) => !deleted.has(f.key))
     .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
     .filter((f) => (seen.has(f.name.toLowerCase()) ? false : (seen.add(f.name.toLowerCase()), true)))
     .sort((a, b) => Number(isModel(b.name) || isOM(b.name)) - Number(isModel(a.name) || isOM(a.name)));

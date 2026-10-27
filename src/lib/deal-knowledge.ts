@@ -82,6 +82,20 @@ export async function recordDealEmail(dealId: string, m: { messageId: string; gr
   return prisma.dealEmail.upsert({ where: { messageId: m.messageId }, create: { dealId, ...m, receivedAt: m.receivedAt ?? new Date() }, update: { dealId, graphId: m.graphId ?? undefined, conversationId: m.conversationId ?? undefined } });
 }
 
+/** Files deleted from a ticket by hand (details.deletedFiles, "graphId::attachmentId"): reading the same email again never brings them back (Oct 27, 2026). */
+export function deletedFileKeys(details: string | null | undefined): Set<string> {
+  try {
+    const v = (JSON.parse(details || "{}") as { deletedFiles?: unknown }).deletedFiles;
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+async function deletedKeysOf(dealId: string) {
+  const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { details: true } });
+  return deletedFileKeys(d?.details);
+}
+
 /** Register the files on a deals@ message as the deal's attachments (images and signature logos skipped). */
 /**
  * Attachments on a deals@ message become the ticket's files. One file per name per deal (Jonathan, Sep 16: forwarding
@@ -91,8 +105,10 @@ export async function recordDealEmail(dealId: string, m: { messageId: string; gr
 export async function recordDealFiles(dealId: string, mailbox: string, graphId: string, fromEmail: string | null, receivedAt: Date, atts?: GraphAttachment[]) {
   const list = atts ?? (await graph<{ value: GraphAttachment[] }>(`/users/${q(mailbox)}/messages/${q(graphId)}/attachments?$select=id,name,contentType,size,isInline`)).value;
   let n = 0;
+  const deleted = await deletedKeysOf(dealId);
   for (const a of list) {
     if (a.isInline || a["@odata.type"] !== "#microsoft.graph.fileAttachment" || IMAGE.test(a.name)) continue;
+    if (deleted.has(`${graphId}::${a.id}`)) continue; // deleted from the ticket by hand
     const sameNamed = await prisma.dealFile.findFirst({ where: { dealId, name: { equals: a.name, mode: "insensitive" } }, orderBy: { receivedAt: "desc" } });
     if (sameNamed) {
       if (sameNamed.graphId !== graphId || sameNamed.attachmentId !== a.id) {
@@ -109,8 +125,10 @@ export async function recordDealFiles(dealId: string, mailbox: string, graphId: 
 /** Files pulled from a Drive / Dropbox / OneDrive link in the email join the ticket like attachments (bytes re-fetched from the link when needed). */
 export async function recordLinkFiles(dealId: string, messageKey: string, files: { name: string; contentType: string | null; size: number; url: string; source: string }[], fromEmail: string | null, receivedAt: Date) {
   let n = 0;
+  const deleted = await deletedKeysOf(dealId);
   for (const f of files) {
     const attachmentId = `link:${f.url}`.slice(0, 900);
+    if (deleted.has(`${messageKey}::${attachmentId}`)) continue;
     await prisma.dealFile.upsert({ where: { graphId_attachmentId: { graphId: messageKey, attachmentId } }, create: { dealId, name: f.name, size: f.size, contentType: f.contentType, mailbox: "link", graphId: messageKey, attachmentId, url: f.url, fromEmail, receivedAt }, update: { dealId, url: f.url } });
     n++;
   }

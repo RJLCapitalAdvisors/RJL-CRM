@@ -5,9 +5,9 @@ import { prisma } from "@/lib/db";
 import { DealForm } from "@/components/deal-form";
 import { AboutCard, AssocCard, RecordHeader, RecordLayout } from "@/components/record-layout";
 import { CompanyLogo } from "@/components/company-logo";
-import { fmtDate, fmtMoney, fullName } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtMoney, fullName } from "@/lib/format";
 import { TRACKER_STATUSES_BY_RANK, investorLabel, statusOf } from "@/lib/tracker";
-import { addDealNote, deleteFact, updateDeal , toggleFactFaq } from "../actions";
+import { addDealNote, deleteFact, deleteDealFileAction, updateDeal , toggleFactFaq } from "../actions";
 import { StageSelect } from "./stage-select";
 import { AttachmentList } from "@/components/attachment-list";
 import { signFileToken } from "@/lib/tokens";
@@ -211,8 +211,9 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             <AttachmentList
               files={[
                 ...(deal.facts.some((f) => f.inFaq) ? [{ id: "faq", kind: "faq" as const, name: faqFileName(name), size: 0, date: "built from Questions answered", url: `/api/deals/${deal.id}/faq.pdf?t=${signFileToken(`faq:${deal.id}`)}` }] : []),
-                ...deal.files.map((f) => ({ id: f.id, name: f.name, size: f.size, date: fmtDate(f.receivedAt), url: `/api/deals/${deal.id}/files/${f.id}?t=${signFileToken(`file:${f.id}`)}` })),
+                ...deal.files.map((f) => ({ id: f.id, name: f.name, size: f.size, date: fmtDateTime(f.receivedAt), url: `/api/deals/${deal.id}/files/${f.id}?t=${signFileToken(`file:${f.id}`)}` })),
               ]}
+              onDelete={deleteDealFileAction.bind(null, deal.id)}
             />
           </AssocCard>
           <AssocCard title="Questions answered" count={deal.facts.length} empty="What the sponsor tells us in follow-up emails is filed here and used to answer investor questions. Items marked FAQ go out with the deal; only questions somebody actually asked belong there.">
