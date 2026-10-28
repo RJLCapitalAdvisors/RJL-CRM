@@ -14,7 +14,7 @@ import { EmailRow, type EmailRowData } from "@/components/email-row";
 import { statusOf } from "@/lib/tracker";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
-export type Person = { id: string; name: string; firstName?: string; email: string; title: string | null; bounced?: boolean };
+export type Person = { id: string; name: string; firstName?: string; lastName?: string | null; email: string; title: string | null; bounced?: boolean; phone?: string | null; linkedin?: string | null; lastActivityAt?: string | null };
 export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; addressTo?: string[]; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null; followups?: number; departures?: { contactId: string; name: string; replacements: string[] }[]; unreached?: boolean };
 export type DealFileLite = { key: string; name: string; size: number; url?: string | null };
 /** fields: each marked ticket field as it was last refreshed, so a later refresh can tell an edited paragraph (kept) from an untouched one (replaced). */
@@ -145,6 +145,18 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   // who the greeting addresses at each firm: the row's person, or whoever Jonathan stars (several: "Hi Dave/Jon")
   const [primary, setPrimary] = useState<Record<string, Set<string>>>(() => Object.fromEntries(firms.map((f) => [f.rowId, new Set((saved?.primary?.[f.rowId] ?? (f.addressTo?.length ? f.addressTo : [f.primaryContactId])).filter((id) => f.people.some((p) => p.id === id)))]))); // starred on the company page first (Oct 8, 2026)
   const [learned, setLearned] = useState<Record<string, string>>({}); // first names typed into a greeting this session, by contact id
+  // "Who is receiving this?" (Jonathan, Oct 28, 2026): the people ticked across the firms, with what we hold on them, and a first-name box that saves to the contact
+  const [whoOpen, setWhoOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState<Record<string, string>>({});
+  const [nameSaved, setNameSaved] = useState<Record<string, boolean>>({});
+  const saveFirstName = (p: Person, typed: string) => {
+    const v = typed.trim();
+    if (!v || v === (learned[p.id] ?? (p.firstName ?? "").trim())) return;
+    setLearned((s) => ({ ...s, [p.id]: v }));
+    setNameSaved((s) => ({ ...s, [p.id]: true }));
+    setVersion((x) => x + 1); // the greeting follows the name at once
+    learnFirstNameAction(p.id, v).catch(() => null);
+  };
   const [current, setCurrent] = useState<string>(GENERAL);
   const [picker, setPicker] = useState<string | null>(null);
   const [launching, setLaunching] = useState(Boolean(initialLaunch && initialLaunch.queued > 0)); // a launch still running resumes when the page opens
@@ -867,6 +879,9 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
             );
           })}
           {firms.length === 0 && <span className="text-sm text-muted">No groups on this deal yet. Finalize the engagement letter first.</span>}
+          <button type="button" className={`btn-secondary px-2.5 py-1 text-xs ${whoOpen ? "ring-1 ring-sky-600" : ""}`} onClick={() => setWhoOpen((o) => !o)} title="The people ticked across every firm, with what we hold on them; type a first name to save it on the contact">
+            {whoOpen ? "Hide the recipients" : "Who is receiving this?"}
+          </button>
           <div className="relative">
             <input value={addQ} onChange={(e) => searchAdd(e.target.value)} placeholder="Add a group…" className="input w-44 py-1 text-sm" title="Add a firm to this deal: it joins the progress report and gets a token here" />
             {addOpts.length > 0 && (
@@ -881,6 +896,51 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
               </ul>
             )}
           </div>
+          {whoOpen && (
+            <div className="basis-full rounded-md border border-line bg-cream-50 px-3 py-2 text-sm">
+              {(() => {
+                const list = firms.filter((f) => include.has(f.rowId)).map((f) => ({ f, people: f.people.filter((p) => (to[f.rowId] ?? new Set<string>()).has(p.id)) })).filter((x) => x.people.length);
+                const people = list.reduce((n, x) => n + x.people.length, 0);
+                const noFirst = list.flatMap((x) => x.people).filter((p) => !firstNameOf(p)).length;
+                const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null);
+                return (
+                  <>
+                    <div className="mb-1.5 flex flex-wrap items-baseline gap-x-3 text-xs text-muted">
+                      <span className="font-semibold text-ink">{people} {people === 1 ? "person" : "people"} at {list.length} {list.length === 1 ? "firm" : "firms"}</span>
+                      {noFirst > 0 && <span className="text-amber-700">{noFirst} with no first name on file: look them up and type it in, it is saved on the contact for every send after this</span>}
+                    </div>
+                    {list.length === 0 && <span className="text-xs text-muted">Nobody ticked yet.</span>}
+                    <div className="grid gap-x-6 gap-y-1 md:grid-cols-2">
+                      {list.map(({ f, people }) =>
+                        people.map((p) => {
+                          const first = firstNameOf(p);
+                          const q = encodeURIComponent(`${p.name !== p.email ? p.name : p.email.split("@")[0]} ${f.company}`);
+                          return (
+                            <div key={p.id} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-line/60 py-1 leading-tight">
+                              <span className="w-36 shrink-0 truncate text-xs text-muted" title={f.company}>{f.company}</span>
+                              <input value={nameDraft[p.id] ?? first} onChange={(e) => { setNameDraft((s) => ({ ...s, [p.id]: e.target.value })); setNameSaved((s) => ({ ...s, [p.id]: false })); }} onBlur={(e) => saveFirstName(p, e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }} placeholder="first name" className={`input w-28 py-0.5 text-sm ${first ? "" : "border-amber-400"}`} title="The first name the greeting uses; saved on the contact when you leave the box" />
+                              <span className="font-medium">{p.lastName ?? (p.name !== p.email ? p.name : "")}</span>
+                              {nameSaved[p.id] && <span className="text-[11px] text-emerald-700">saved</span>}
+                              {p.title && <span className="text-xs text-muted">{p.title}</span>}
+                              <a href={`mailto:${p.email}`} className="text-xs text-sky-700 hover:underline">{p.email}</a>
+                              {p.phone && <span className="text-xs text-muted">{p.phone}</span>}
+                              {p.linkedin ? (
+                                <a href={p.linkedin} target="_blank" rel="noreferrer" className="text-xs text-sky-700 hover:underline">LinkedIn</a>
+                              ) : (
+                                <a href={`https://www.linkedin.com/search/results/people/?keywords=${q}`} target="_blank" rel="noreferrer" className="text-xs text-sky-700 hover:underline" title="Search LinkedIn for this person">look up</a>
+                              )}
+                              {when(p.lastActivityAt) && <span className="text-[11px] text-muted">last touch {when(p.lastActivityAt)}</span>}
+                              {(p.bounced || (results[f.rowId]?.bounced ?? []).includes(p.email.toLowerCase())) && <span className="text-xs text-red-700">bounced</span>}
+                            </div>
+                          );
+                        }),
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
         </div>
       </div>
 
