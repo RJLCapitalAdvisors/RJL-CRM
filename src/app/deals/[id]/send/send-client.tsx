@@ -98,9 +98,8 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   const shaded = (f: Firm) => followup && (statusNow(f) !== wantStatus || (round > 1 ? (f.followups ?? 0) < round - 1 : (f.followups ?? 0) !== 0) || !f.followupTo || Boolean(f.unreached) || Boolean(results[f.rowId]?.ok));
   /** Follow ups: this round's firms first, then the other followed up or quiet ones, then the ones that answered, then passes, then firms with no sent email on record. */
   const bucket = (f: Firm) => (!f.followupTo ? 5 : !shaded(f) ? 0 : statusNow(f) === 2 || statusNow(f) === 3 ? 1 : statusNow(f) === 7 || statusNow(f) === 8 ? 4 : statusNow(f) === 1 ? 2 : 3);
-  /** Follow ups: each token wears its stage colour, see-through; a pass is a light red. */
+  /** Each token wears its stage colour, see-through; a pass is a light red (Follow ups since Oct 2026; Send deal too, Jonathan, Oct 28, 2026). */
   const tone = (f: Firm, selected = false): React.CSSProperties | undefined => {
-    if (!followup) return undefined;
     const st = statusOf(statusNow(f));
     const hex = statusNow(f) === 7 || statusNow(f) === 8 ? "#ffcfc9" : st.bg;
     const n = parseInt(hex.slice(1), 16);
