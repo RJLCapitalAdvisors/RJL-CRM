@@ -18,3 +18,16 @@ export async function createEngagementLetter(dealId: string, companyIds: string[
     return { ok: false as const, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
   }
 }
+
+/** Make list: a blank email in the signed-in person's Outlook that lists the ticked firms, nothing else (Jonathan, Oct 28, 2026). */
+export async function createInvestorListDraft(companyIds: string[]) {
+  const me = await currentUser();
+  if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the email is drafted in your own mailbox." };
+  if (!companyIds.length) return { ok: false as const, reason: "Tick at least one group." };
+  try {
+    const { createInvestorList } = await import("@/lib/investor-list");
+    return await createInvestorList(companyIds, me.email);
+  } catch (e) {
+    return { ok: false as const, reason: String(e instanceof Error ? e.message : e).slice(0, 200) };
+  }
+}

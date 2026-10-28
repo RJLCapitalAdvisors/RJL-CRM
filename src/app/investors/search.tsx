@@ -4,7 +4,7 @@ import { Suspense, use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DraftButton } from "@/app/draft-button";
-import { createEngagementLetter } from "./actions";
+import { createEngagementLetter, createInvestorListDraft } from "./actions";
 import { ASSET_CLASSES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, VINTAGES } from "@/lib/taxonomy";
 import { CHECK_MAX, CHECK_STOPS, labelFor, rangeLabel } from "@/lib/ranges";
 import { CompanyLogo } from "@/components/company-logo";
@@ -107,9 +107,12 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
   const engagement = mode === "engagement" && Boolean(dealId);
   // the ticks survive leaving the page (Jonathan, Sep 24, 2026): kept in the browser per deal until Done; groups already on
   // the report start ticked, so a second pass only adds
-  const storeKey = dealId ? `engagement-picks:${dealId}` : null;
+  const storeKey = engagement && dealId ? `engagement-picks:${dealId}` : null;
+  // Make list (search mode): tick firms, open them as a list in a blank email; the ticks are this visit's only (Jonathan, Oct 28, 2026)
+  const [listMode, setListMode] = useState(false);
+  const picking = engagement || listMode;
   const [picked, setPicked] = useState<Set<string>>(() => {
-    const base = new Set(onReport);
+    const base = new Set(engagement ? onReport : []);
     if (storeKey && typeof window !== "undefined") {
       try {
         for (const id of JSON.parse(window.localStorage.getItem(storeKey) ?? "[]") as string[]) base.add(id);
@@ -177,6 +180,11 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
         </div>
       )}
       <aside className="card self-start p-4">
+        {!engagement && (
+          <button type="button" className={`mb-3 w-full ${listMode ? "btn-primary" : "btn-secondary"}`} title="Tick firms in the list on the right, then open them as a list in a blank email" onClick={() => { if (listMode) setPicked(new Set()); setListMode((v) => !v); }}>
+            {listMode ? "Stop making the list" : "Make list"}
+          </button>
+        )}
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold">Deal specs</span>
           {active > 0 && (
@@ -253,6 +261,23 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
             </div>
           </div>
         )}
+        {listMode && (
+          <div className="flex flex-wrap items-center gap-3 border-b border-line bg-cream-50 px-4 py-2">
+            <span className="text-xs font-semibold text-sky-600">Making a list</span>
+            <span className="text-sm text-muted">{picked.size} firm{picked.size === 1 ? "" : "s"} ticked</span>
+            <button type="button" className="text-xs text-muted hover:underline" title="Tick every firm the specs match" onClick={() => setPicked((s) => { const n = new Set(s); for (const r of out) n.add(r.id); return n; })}>
+              tick all {out.length.toLocaleString()} matching
+            </button>
+            {picked.size > 0 && (
+              <button type="button" className="text-xs text-muted hover:underline" onClick={() => setPicked(new Set())}>
+                untick all
+              </button>
+            )}
+            <div className="ml-auto">
+              <DraftButton label="Open list in a blank email" readyLabel="Open in Outlook" action={async () => createInvestorListDraft([...picked])} title="Drafts a blank email in your Outlook with the ticked firms listed in the body" />
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between border-b border-line px-4 py-2 text-sm">
           <div>
             <span className="font-semibold">{out.length.toLocaleString()}</span> investor firms
@@ -271,7 +296,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
           <table className="table dense w-full table-fixed min-w-[1400px]">
             <thead>
               <tr>
-                {engagement && <th className="w-8"></th>}
+                {picking && <th className="w-8"></th>}
                 <th className="w-[240px]">Company name</th>
                 <th className="w-[130px]">Based in</th>
                 <th className="w-[260px]">Deal locations</th>
@@ -285,8 +310,8 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
             </thead>
             <tbody>
               {pageRows.map((r) => (
-                <tr key={r.id} className={engagement && picked.has(r.id) ? "bg-cream" : ""}>
-                  {engagement && (
+                <tr key={r.id} className={picking && picked.has(r.id) ? "bg-cream" : ""}>
+                  {picking && (
                     <td>
                       <input type="checkbox" className="accent-ink" checked={picked.has(r.id)} onChange={() => togglePick(r.id)} aria-label={`Pick ${r.name}`} />
                     </td>
