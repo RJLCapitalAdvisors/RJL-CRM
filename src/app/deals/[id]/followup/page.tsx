@@ -138,8 +138,8 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
             <Link href={`/deals/${deal.id}/send`} className="btn-secondary">
               Send deal
             </Link>
-            <Link href={outreach ? "/investors" : `/deals/${deal.id}`} className="btn-secondary">
-              {outreach ? "Back to Investor search" : "Back to deal"}
+            <Link href={outreach ? `/investors/reach/${deal.id}/send` : `/deals/${deal.id}`} className="btn-secondary">
+              {outreach ? "Send outreach" : "Back to deal"}
             </Link>
           </>
         }

@@ -81,7 +81,8 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
     addressTo: (r.contact.company?.contacts ?? []).filter((c) => c.dealAddress).map((c) => c.id),
     extraContactIds: r.extraContactIds ? (JSON.parse(r.extraContactIds) as string[]) : [],
     // who we usually write to at this firm (from the email log); falls back to the report's contact
-    defaultContactIds: (r.contact.companyId && defaults.get(r.contact.companyId)?.length ? defaults.get(r.contact.companyId)! : [r.contactId]),
+    // a reach out goes to one person per firm by default (Jonathan, Oct 28, 2026): the best-ranked of the usual recipients
+    defaultContactIds: (r.contact.companyId && defaults.get(r.contact.companyId)?.length ? defaults.get(r.contact.companyId)! : [r.contactId]).slice(0, outreach ? 1 : undefined),
     openingLine: r.openingLine,
     bodyOverride: r.bodyOverride,
     draftOpen: Boolean(r.sendDraftId),
@@ -97,7 +98,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
           <>
             <SendToOne dealId={deal.id} />
             {outreach && (
-              <Link href={`/deals/${deal.id}/followup`} className="btn-secondary">
+              <Link href={`/investors/reach/${deal.id}/followup`} className="btn-secondary">
                 Follow ups
               </Link>
             )}

@@ -170,9 +170,8 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     const picked = to[f.rowId] ?? new Set<string>();
     const starred = [...(primary[f.rowId] ?? new Set<string>())].filter((id) => picked.has(id));
     if (starred.length) return f.people.filter((p) => starred.includes(p.id)).map((p) => p.id);
-    if (picked.has(f.primaryContactId)) return [f.primaryContactId];
-    const first = f.people.find((p) => picked.has(p.id));
-    return first ? [first.id] : [];
+    // nobody starred: everyone ticked, in the firm's order (Jonathan, Oct 28, 2026: a person ticked beside or instead of the row's one is greeted too)
+    return f.people.filter((p) => picked.has(p.id)).map((p) => p.id);
   };
   const firstNameOf = (p: Person) => learned[p.id] ?? (p.firstName ?? "").trim();
   /** "Dave", "Dave/Jon", or blank when no first name is known (never an email address). */
@@ -413,13 +412,15 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     }
   };
 
-  const togglePrimary = (rowId: string, pid: string) =>
+  const togglePrimary = (rowId: string, pid: string) => {
     setPrimary((s) => {
       const n = new Set(s[rowId] ?? []);
       if (n.has(pid)) n.delete(pid);
       else n.add(pid);
       return { ...s, [rowId]: n };
     });
+    setVersion((v) => v + 1); // a star changes the greeting: the editor is told
+  };
 
   // a group added right here: its usual person joins the report and a token appears
   const [addQ, setAddQ] = useState("");
@@ -502,13 +503,15 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     return bits.join("; ");
   };
   const needsResend = (f: Firm) => needsResendRow(f, results[f.rowId]);
-  const togglePerson = (rowId: string, pid: string) =>
+  const togglePerson = (rowId: string, pid: string) => {
     setTo((s) => {
       const n = new Set(s[rowId] ?? []);
       if (n.has(pid)) n.delete(pid);
       else n.add(pid);
       return { ...s, [rowId]: n };
     });
+    setVersion((v) => v + 1); // the greeting follows the picks, so the editor is told (Oct 28, 2026: Joshua ticked, CFA still greeted)
+  };
 
   const itemsToSend = () =>
     firms

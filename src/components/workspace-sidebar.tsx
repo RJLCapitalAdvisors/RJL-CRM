@@ -140,7 +140,12 @@ function Nav({ items, dealSteps = false, apartmentSteps = false, propertySteps =
           {dealSteps && n.href === "/settings" && <SettingsSubnav />}
           {dealSteps && n.href === "/deals" && (
             <Suspense fallback={null}>
-              <DealContextNav />
+              <DealContextNav section="deals" />
+            </Suspense>
+          )}
+          {dealSteps && n.href === "/investors" && (
+            <Suspense fallback={null}>
+              <DealContextNav section="investors" />
             </Suspense>
           )}
           {apartmentSteps && n.href === "/israel/templates" && <IlTemplatesSubnav />}

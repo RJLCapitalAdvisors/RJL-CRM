@@ -206,7 +206,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
             {outreaches.length > 0 && (
               <div className="text-[11px] text-muted">
                 {outreaches.map((o) => (
-                  <Link key={o.id} href={`/deals/${o.id}/send`} className="block truncate hover:underline" title={`${o.firms} firms, ${o.sent} sent: open the Send page`}>
+                  <Link key={o.id} href={`/investors/reach/${o.id}/send`} className="block truncate hover:underline" title={`${o.firms} firms, ${o.sent} sent: open the Send page`}>
                     {o.name.replace(/^Reach out · /, "")} · {o.sent}/{o.firms} sent
                   </Link>
                 ))}
@@ -309,7 +309,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
             )}
             <span className="text-xs text-muted">Next comes the Send page: write the email, add the brochure, launch; one email at a time, as a deal goes out.</span>
             <div className="ml-auto flex flex-col items-end gap-1">
-              <button type="button" className="btn-primary" disabled={!picked.size || starting} onClick={() => { setReachError(null); startNow(async () => { const r = await startOutreach([...picked]); if (r.ok) router.push(`/deals/${r.id}/send`); else setReachError(r.reason); }); }}>
+              <button type="button" className="btn-primary" disabled={!picked.size || starting} onClick={() => { setReachError(null); startNow(async () => { const r = await startOutreach([...picked]); if (r.ok) router.push(`/investors/reach/${r.id}/send`); else setReachError(r.reason); }); }}>
                 {starting ? "Setting up…" : "Next: write the email"}
               </button>
               {reachError && <span className="max-w-[320px] text-right text-xs text-red-700">{reachError}</span>}

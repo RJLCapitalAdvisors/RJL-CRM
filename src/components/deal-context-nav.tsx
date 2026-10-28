@@ -11,10 +11,10 @@ import { dealNavInfo } from "@/app/deal-nav-actions";
  * the sidebar shows that deal under "Deals" with its steps, so you can move between them without
  * losing your place. Reads the deal from the URL: /deals/<id>/... or ?dealId=<id>.
  */
-export function DealContextNav() {
+export function DealContextNav({ section = "deals" }: { section?: "deals" | "investors" } = {}) {
   const pathname = usePathname();
   const params = useSearchParams();
-  const fromPath = pathname.match(/^\/deals\/([^/]+)(?:\/(tracker|send|groups|followup|faq))?/);
+  const fromPath = pathname.match(/^\/deals\/([^/]+)(?:\/(tracker|send|groups|followup|faq))?/) ?? pathname.match(/^\/investors\/reach\/([^/]+)/);
   const dealId = fromPath && !["new", "list"].includes(fromPath[1]) ? fromPath[1] : params.get("dealId");
   const [info, setInfo] = useState<{ id: string; name: string; stage: string } | null>(null);
 
@@ -32,8 +32,14 @@ export function DealContextNav() {
   }, [dealId]);
 
   if (!dealId || !info || info.id !== dealId) return null;
+  // a reach out (Investor search > Reach out) lives under Investor search, not Deals (Jonathan, Oct 28, 2026): send and follow ups only
+  const outreach = info.stage === "Outreach";
+  if (outreach !== (section === "investors")) return null;
   // the order of the work: ticket, engagement letter (which includes finding the investors), send, then the progress report
-  const steps = [
+  const steps = outreach ? [
+    { href: `/investors/reach/${dealId}/send`, label: "Send outreach", icon: Mail, on: pathname.endsWith(`/${dealId}/send`) },
+    { href: `/investors/reach/${dealId}/followup`, label: "Follow ups", icon: Reply, on: pathname.endsWith(`/${dealId}/followup`) },
+  ] : [
     { href: `/deals/${dealId}`, label: "Ticket", icon: ClipboardList, on: pathname === `/deals/${dealId}` },
     { href: `/investors?dealId=${dealId}&mode=engagement`, label: "Engagement letter", icon: ScrollText, on: pathname === "/investors" },
     { href: `/deals/${dealId}/groups`, label: "Agreed groups", icon: ListChecks, on: pathname === `/deals/${dealId}/groups` },
@@ -46,7 +52,7 @@ export function DealContextNav() {
       <div className="truncate px-1 pb-1 text-xs font-semibold" title={info.name}>
         {info.name}
       </div>
-      <div className="px-1 pb-1 text-[10px] uppercase tracking-wide text-muted">{info.stage}</div>
+      <div className="px-1 pb-1 text-[10px] uppercase tracking-wide text-muted">{outreach ? "Reach out" : info.stage}</div>
       {steps.map((s) => (
         <Link key={s.label} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${s.on ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
           <s.icon className="h-3.5 w-3.5" />
