@@ -38,7 +38,7 @@ export async function sponsorThreadFor(mailbox: string, deal: DealLike, sponsor:
   if (!convs.length) return null;
 
   // every other live deal, anyone's: a thread that talks about one of them is that deal's thread, not a general conversation
-  const otherDeals = await prisma.deal.findMany({ where: { id: { not: deal.id }, stage: { notIn: ["Deal Lost", "Deal Closed"] } }, select: { name: true, propertyName: true, city: true, state: true, requestedAmount: true } });
+  const otherDeals = await prisma.deal.findMany({ where: { id: { not: deal.id }, stage: { notIn: ["Deal Lost", "Deal Closed", "Outreach"] } }, select: { name: true, propertyName: true, city: true, state: true, requestedAmount: true } });
   const others = otherDeals.map((d) => d.propertyName ?? d.name);
   const dealName = deal.propertyName ?? deal.name;
 

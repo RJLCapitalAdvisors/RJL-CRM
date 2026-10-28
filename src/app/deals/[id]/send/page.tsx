@@ -10,6 +10,8 @@ import { SendClient, type Firm, type SendState } from "./send-client";
 import { SendToOne } from "../send-to-one";
 import { after } from "next/server";
 import { launchStatus, pumpLaunches } from "@/lib/launch-queue";
+import { brochureInfo, BROCHURE_KEY, ensureOutreachTemplate, isOutreach } from "@/lib/outreach";
+import { BrochureCard } from "@/components/brochure-card";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,13 +26,14 @@ export const maxDuration = 300; // a launch paces itself: one email at a time, a
 export default async function SendDealPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await syncSendDrafts().catch(() => 0);
-  const [deal, templates] = await Promise.all([
-    prisma.deal.findUnique({ where: { id }, include: { investors: { include: { contact: { include: { company: { include: { contacts: { where: { email: { not: null }, departedAt: null }, orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }] } } } } } }, orderBy: { createdAt: "asc" } } } }),
-    prisma.emailTemplate.findMany({ where: { kind: "DEAL", workspace: "CA", NOT: { OR: [{ name: { contains: "Engagement" } }, { name: { startsWith: "(archived)" } }] } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-  ]);
+  const deal = await prisma.deal.findUnique({ where: { id }, include: { investors: { include: { contact: { include: { company: { include: { contacts: { where: { email: { not: null }, departedAt: null }, orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }] } } } } } }, orderBy: { createdAt: "asc" } } } });
   if (!deal) notFound();
+  // a reach out (Investor search > Reach out, Oct 28, 2026): the same page, its own template kind, the brochure as the file
+  const outreach = isOutreach(deal);
+  const templates = outreach ? await ensureOutreachTemplate() : await prisma.emailTemplate.findMany({ where: { kind: "DEAL", workspace: "CA", NOT: { OR: [{ name: { contains: "Engagement" } }, { name: { startsWith: "(archived)" } }] } }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+  const brochure = outreach ? await brochureInfo().catch(() => null) : null;
   const name = deal.propertyName ?? deal.name;
-  const fitting = deal ? await templateForDeal(deal).catch(() => null) : null;
+  const fitting = deal && !outreach ? await templateForDeal(deal).catch(() => null) : null;
   const house = (fitting && templates.find((t) => t.id === fitting.id)) ?? templates.find((t) => t.name.startsWith("Deal email (house")) ?? templates[0];
 
   const me = await currentUser();
@@ -40,6 +43,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   const rows = await (await import("@/lib/send-deal")).fileRowsFor(deal.id);
   const fileUrl = (key: string) => {
     if (key === "faq") return `/api/deals/${deal.id}/faq.pdf`;
+    if (key === BROCHURE_KEY) return "/api/outreach/brochure";
     const r = rows.find((x) => `${x.graphId}::${x.attachmentId}` === key);
     return r ? `/api/deals/${deal.id}/files/${r.id}?t=${signFileToken(`file:${r.id}`)}&preview=1` : null;
   };
@@ -58,7 +62,9 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
     }
   })();
   // the person opening the page gets their own signature on the saved email and their own CC list (sender.ts, Oct 27, 2026)
-  const sendState = me?.email ? await (await import("@/lib/sender")).adoptSendState(sendStateSaved, me.email) : sendStateSaved;
+  const sendStateAdopted = me?.email ? await (await import("@/lib/sender")).adoptSendState(sendStateSaved, me.email) : sendStateSaved;
+  // a reach out always carries the brochure: a page opened (and autosaved) before the brochure was on file ticks it on the next open
+  const sendState = outreach && brochure && sendStateAdopted ? { ...sendStateAdopted, chosenFiles: [...new Set([...(sendStateAdopted.chosenFiles ?? []), BROCHURE_KEY])] } : sendStateAdopted;
   // who to tick at each firm: every firm in one pass (replies, calls and the outbound log)
   const defaults = await usualRecipientsMany(new Map(deal.investors.filter((r) => r.contact.companyId).map((r) => [r.contact.companyId!, r.contact.company?.contacts ?? []]))).catch(() => new Map<string, string[]>());
   // people who left these firms lately, with the colleague their notice named: the replacement is ticked in their place (Oct 27, 2026)
@@ -85,18 +91,28 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   return (
     <>
       <PageHeader
-        title={`Send ${name}`}
-        subtitle={`${firms.filter((f) => f.status <= 1).length} firms not yet sent · ${firms.filter((f) => f.status >= 2).length} sent earlier (turn one on with + to send it the current email again)`}
+        title={outreach ? name : `Send ${name}`}
+        subtitle={`${firms.filter((f) => f.status <= 1).length} firms not yet sent · ${firms.filter((f) => f.status >= 2).length} sent earlier (turn one on with + to send it the current email again)${outreach ? " · the brochure goes on every email; the launch paces itself like a deal send" : ""}`}
         actions={
           <>
             <SendToOne dealId={deal.id} />
-            <Link href={`/deals/${deal.id}`} className="btn-secondary">
-              Back to deal
+            {outreach && (
+              <Link href={`/deals/${deal.id}/followup`} className="btn-secondary">
+                Follow ups
+              </Link>
+            )}
+            <Link href={outreach ? "/investors" : `/deals/${deal.id}`} className="btn-secondary">
+              {outreach ? "Back to Investor search" : "Back to deal"}
             </Link>
           </>
         }
       />
-      <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size, url: fileUrl(f.key) }))} saved={sendState} team={team} initialLaunch={launch && (launch.queued > 0 || launch.failed > 0 || launch.bounced > 0) ? launch : null} />
+      {outreach && (
+        <div className="px-8 pt-4">
+          <BrochureCard brochure={brochure ? { name: brochure.name, size: brochure.size, uploadedAt: brochure.uploadedAt, by: brochure.by } : null} />
+        </div>
+      )}
+      <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size, url: fileUrl(f.key) }))} saved={sendState} team={team} initialLaunch={launch && (launch.queued > 0 || launch.failed > 0 || launch.bounced > 0) ? launch : null} filesEmptyNote={outreach ? "Attachments: no brochure on file yet. Add it above and it is ticked here for every email." : undefined} />
     </>
   );
 }

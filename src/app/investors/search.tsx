@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, use, useEffect, useMemo, useState } from "react";
+import { Suspense, use, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DraftButton } from "@/app/draft-button";
-import { createEngagementLetter, createInvestorListDraft } from "./actions";
+import { createEngagementLetter, createInvestorListDraft, startOutreach } from "./actions";
 import { ASSET_CLASSES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, VINTAGES } from "@/lib/taxonomy";
 import { CHECK_MAX, CHECK_STOPS, labelFor, rangeLabel } from "@/lib/ranges";
 import { CompanyLogo } from "@/components/company-logo";
@@ -48,6 +48,7 @@ export type Spec = {
   city: string; // the firm's own location: city, contains
 };
 
+const MAX_REACH = 30; // the most firms in one reach out (Jonathan, Oct 28, 2026); outreach.ts MAX_OUTREACH enforces it on the server
 const EMPTY: Spec = { assetClass: [], checkMM: null, investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [], state: [], city: "" };
 const any = (have: string[], want: string[]) => want.some((w) => have.includes(w));
 
@@ -101,7 +102,7 @@ function SuggestedGroups({ source, picked, toggle }: { source: Suggestion[] | Pr
   );
 }
 
-export function InvestorSearch({ rows, preset, presetDealName, presetPlace = null, deals, mode = "search", dealId = null, suggestions = [], onReport = [] }: { rows: InvestorRow[]; preset: Partial<Spec> | null; presetDealName: string | null; presetPlace?: { city: string | null; state: string | null } | null; onReport?: string[]; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] | Promise<Suggestion[]> }) {
+export function InvestorSearch({ rows, preset, presetDealName, presetPlace = null, deals, mode = "search", dealId = null, suggestions = [], onReport = [], outreaches = [] }: { rows: InvestorRow[]; outreaches?: { id: string; name: string; firms: number; sent: number }[]; preset: Partial<Spec> | null; presetDealName: string | null; presetPlace?: { city: string | null; state: string | null } | null; onReport?: string[]; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] | Promise<Suggestion[]> }) {
   const PAGE = 100;
   const router = useRouter();
   const engagement = mode === "engagement" && Boolean(dealId);
@@ -109,8 +110,11 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
   // the report start ticked, so a second pass only adds
   const storeKey = engagement && dealId ? `engagement-picks:${dealId}` : null;
   // Make list (search mode): tick firms, open them as a list in a blank email; the ticks are this visit's only (Jonathan, Oct 28, 2026)
-  const [listMode, setListMode] = useState(false);
-  const picking = engagement || listMode;
+  // Reach out: tick up to MAX_REACH firms, and the Send page sends them the brochure at the deal pace (same day)
+  const [pick, setPick] = useState<"" | "list" | "reach">("");
+  const picking = engagement || pick !== "";
+  const [starting, startNow] = useTransition();
+  const [reachError, setReachError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(() => {
     const base = new Set(engagement ? onReport : []);
     if (storeKey && typeof window !== "undefined") {
@@ -181,9 +185,23 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
       )}
       <aside className="card self-start p-4">
         {!engagement && (
-          <button type="button" className={`mb-3 w-full ${listMode ? "btn-primary" : "btn-secondary"}`} title="Tick firms in the list on the right, then open them as a list in a blank email" onClick={() => { if (listMode) setPicked(new Set()); setListMode((v) => !v); }}>
-            {listMode ? "Stop making the list" : "Make list"}
-          </button>
+          <div className="mb-3 space-y-1.5">
+            <button type="button" className={`w-full ${pick === "list" ? "btn-primary" : "btn-secondary"}`} title="Tick firms in the list on the right, then open them as a list in a blank email" onClick={() => { setPicked(new Set()); setPick(pick === "list" ? "" : "list"); }}>
+              {pick === "list" ? "Stop making the list" : "Make list"}
+            </button>
+            <button type="button" className={`w-full ${pick === "reach" ? "btn-primary" : "btn-secondary"}`} title={`Tick up to ${MAX_REACH} firms, then write one email and send them the brochure one at a time, like a deal send`} onClick={() => { setPicked(new Set()); setReachError(null); setPick(pick === "reach" ? "" : "reach"); }}>
+              {pick === "reach" ? "Stop the reach out" : "Reach out"}
+            </button>
+            {outreaches.length > 0 && (
+              <div className="text-[11px] text-muted">
+                {outreaches.map((o) => (
+                  <Link key={o.id} href={`/deals/${o.id}/send`} className="block truncate hover:underline" title={`${o.firms} firms, ${o.sent} sent: open the Send page`}>
+                    {o.name.replace(/^Reach out · /, "")} · {o.sent}/{o.firms} sent
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold">Deal specs</span>
@@ -261,7 +279,29 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
             </div>
           </div>
         )}
-        {listMode && (
+        {pick === "reach" && (
+          <div className="flex flex-wrap items-center gap-3 border-b border-line bg-cream-50 px-4 py-2">
+            <span className="text-xs font-semibold text-sky-600">Reach out</span>
+            <span className="text-sm text-muted">{picked.size} of {MAX_REACH} firms ticked</span>
+            {picked.size >= MAX_REACH && <span className="text-xs text-amber-700">{MAX_REACH} is the most for one reach out</span>}
+            <button type="button" className="text-xs text-muted hover:underline" title={`Tick the first ${MAX_REACH} firms the specs match`} onClick={() => setPicked((s) => { const n = new Set(s); for (const r of out) { if (n.size >= MAX_REACH) break; n.add(r.id); } return n; })}>
+              tick the first {Math.min(MAX_REACH, out.length)} matching
+            </button>
+            {picked.size > 0 && (
+              <button type="button" className="text-xs text-muted hover:underline" onClick={() => setPicked(new Set())}>
+                untick all
+              </button>
+            )}
+            <span className="text-xs text-muted">Next comes the Send page: write the email, add the brochure, launch; one email at a time, as a deal goes out.</span>
+            <div className="ml-auto flex flex-col items-end gap-1">
+              <button type="button" className="btn-primary" disabled={!picked.size || starting} onClick={() => { setReachError(null); startNow(async () => { const r = await startOutreach([...picked]); if (r.ok) router.push(`/deals/${r.id}/send`); else setReachError(r.reason); }); }}>
+                {starting ? "Setting up…" : "Next: write the email"}
+              </button>
+              {reachError && <span className="max-w-[320px] text-right text-xs text-red-700">{reachError}</span>}
+            </div>
+          </div>
+        )}
+        {pick === "list" && (
           <div className="flex flex-wrap items-center gap-3 border-b border-line bg-cream-50 px-4 py-2">
             <span className="text-xs font-semibold text-sky-600">Making a list</span>
             <span className="text-sm text-muted">{picked.size} firm{picked.size === 1 ? "" : "s"} ticked</span>
@@ -313,7 +353,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
                 <tr key={r.id} className={picking && picked.has(r.id) ? "bg-cream" : ""}>
                   {picking && (
                     <td>
-                      <input type="checkbox" className="accent-ink" checked={picked.has(r.id)} onChange={() => togglePick(r.id)} aria-label={`Pick ${r.name}`} />
+                      <input type="checkbox" className="accent-ink" checked={picked.has(r.id)} disabled={pick === "reach" && !picked.has(r.id) && picked.size >= MAX_REACH} onChange={() => togglePick(r.id)} aria-label={`Pick ${r.name}`} />
                     </td>
                   )}
                   <td>

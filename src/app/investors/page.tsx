@@ -23,11 +23,12 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
     prisma.company.findMany({ where: { roles: { contains: "Investor" } }, select: { id: true, name: true, roles: true, domain: true, city: true, state: true, lastActivityAt: true }, orderBy: { name: "asc" } }),
     prisma.investorCriteria.findMany({ where: { companyId: { not: null } } }),
     dealId ? prisma.deal.findUnique({ where: { id: dealId } }) : null,
-    prisma.deal.findMany({ where: { stage: { notIn: ["Deal Lost", "Deal Closed"] } }, orderBy: { updatedAt: "desc" }, select: { id: true, propertyName: true, name: true }, take: 60 }),
+    prisma.deal.findMany({ where: { stage: { notIn: ["Deal Lost", "Deal Closed", "Outreach"] } }, orderBy: { updatedAt: "desc" }, select: { id: true, propertyName: true, name: true }, take: 60 }),
     dealId ? prisma.dealInvestor.findMany({ where: { dealId }, select: { contact: { select: { companyId: true } } } }) : [],
   ]);
   // groups already on this deal's report start ticked; the letter only adds (Jonathan, Sep 24, 2026: the second Certes list)
   const onReport = [...new Set(onReportRows.map((r) => r.contact.companyId).filter((x): x is string => Boolean(x)))];
+  const outreaches = mode === "search" ? await (await import("@/lib/outreach")).recentOutreaches().catch(() => []) : [];
 
   const critByCompany = new Map(allCriteria.map((c) => [c.companyId!, c]));
   const rows: InvestorRow[] = companies.map((c) => {
@@ -71,7 +72,7 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <PageHeader title="Investor search" compact={mode === "engagement"} subtitle={mode === "engagement" ? `${rows.length.toLocaleString()} investors` : `${rows.length.toLocaleString()} companies marked Investor. Type your deal specs on the left; the list updates as you go.`} />
-      <InvestorSearch rows={rows} preset={preset} presetDealName={deal ? deal.propertyName ?? deal.name : null} presetPlace={deal ? { city: deal.city, state: deal.state } : null} deals={deals.map((d) => ({ id: d.id, name: d.propertyName ?? d.name }))}  mode={mode} dealId={dealId || null} suggestions={suggestions} onReport={onReport} />
+      <InvestorSearch rows={rows} preset={preset} presetDealName={deal ? deal.propertyName ?? deal.name : null} presetPlace={deal ? { city: deal.city, state: deal.state } : null} deals={deals.map((d) => ({ id: d.id, name: d.propertyName ?? d.name }))}  mode={mode} dealId={dealId || null} suggestions={suggestions} onReport={onReport} outreaches={outreaches.map((o) => ({ id: o.id, name: o.name, firms: o.firms, sent: o.sent }))} />
     </>
   );
 }

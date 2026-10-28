@@ -122,7 +122,7 @@ export async function detectMentionedDeals(): Promise<{ threads: number; created
     // LP on it, never the sponsor of a new one. JDI writing about Everett is JDI the investor, not "JDI | Everett".
     const theirDeals = await prisma.deal.findMany({ where: { investors: { some: { contact: { companyId: company.id } } } }, select: { name: true, propertyName: true, city: true, state: true } });
     // and any live deal by that name, whoever sponsors it: one deal, one ticket
-    const live = await prisma.deal.findMany({ where: { stage: { notIn: ["Deal Lost", "Deal Closed"] }, parentDealId: null }, select: { name: true, propertyName: true, city: true, state: true } });
+    const live = await prisma.deal.findMany({ where: { stage: { notIn: ["Deal Lost", "Deal Closed", "Outreach"] }, parentDealId: null }, select: { name: true, propertyName: true, city: true, state: true } });
     for (const d of out.deals) {
       if (!d.name.trim()) continue;
       if (existing.some((e) => fuzzyMatch(d.name, e.propertyName ?? e.name))) continue;

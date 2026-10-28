@@ -10,6 +10,7 @@ import { SendClient, type Firm, type SendState } from "../send/send-client";
 import { SendToOne } from "../send-to-one";
 import { after } from "next/server";
 import { firstSentMessageIds, launchStatus, pumpLaunches } from "@/lib/launch-queue";
+import { BROCHURE_KEY, ensureOutreachTemplate, isOutreach } from "@/lib/outreach";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -28,13 +29,17 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
   // round 1: firms sent and quiet; round 2 (the final follow-up): firms still quiet after follow-up 1 (Jonathan, Oct 8, 2026)
   const round = Math.max(1, Math.min(3, Number(Array.isArray(sp.round) ? sp.round[0] : sp.round) || 1));
   await syncSendDrafts().catch(() => 0);
-  const [deal, templates] = await Promise.all([
+  let templates: { id: string; name: string }[];
+  const [deal, templatesDeal] = await Promise.all([
     prisma.deal.findUnique({ where: { id }, include: { investors: { include: { contact: { include: { company: { include: { contacts: { where: { email: { not: null }, departedAt: null }, orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }] } } } } } }, orderBy: { createdAt: "asc" } } } }),
     prisma.emailTemplate.findMany({ where: { kind: "DEAL", workspace: "CA", NOT: { OR: [{ name: { contains: "Engagement" } }, { name: { startsWith: "(archived)" } }] } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
+  templates = templatesDeal;
   if (!deal) notFound();
+  const outreach = isOutreach(deal);
+  if (outreach) templates = await ensureOutreachTemplate();
   const name = deal.propertyName ?? deal.name;
-  const fitting = deal ? await templateForDeal(deal).catch(() => null) : null;
+  const fitting = deal && !outreach ? await templateForDeal(deal).catch(() => null) : null;
   const house = (fitting && templates.find((t) => t.id === fitting.id)) ?? templates.find((t) => t.name.startsWith("Deal email (house")) ?? templates[0];
 
   const me = await currentUser();
@@ -44,6 +49,7 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
   const rows = await (await import("@/lib/send-deal")).fileRowsFor(deal.id);
   const fileUrl = (key: string) => {
     if (key === "faq") return `/api/deals/${deal.id}/faq.pdf`;
+    if (key === BROCHURE_KEY) return "/api/outreach/brochure";
     const r = rows.find((x) => `${x.graphId}::${x.attachmentId}` === key);
     return r ? `/api/deals/${deal.id}/files/${r.id}?t=${signFileToken(`file:${r.id}`)}&preview=1` : null;
   };
@@ -132,8 +138,8 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
             <Link href={`/deals/${deal.id}/send`} className="btn-secondary">
               Send deal
             </Link>
-            <Link href={`/deals/${deal.id}`} className="btn-secondary">
-              Back to deal
+            <Link href={outreach ? "/investors" : `/deals/${deal.id}`} className="btn-secondary">
+              {outreach ? "Back to Investor search" : "Back to deal"}
             </Link>
           </>
         }

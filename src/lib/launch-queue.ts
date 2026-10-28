@@ -344,7 +344,8 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
         for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: `Follow-up ${next.round} sent (Follow ups): reply-all on the ${next.round > 1 ? "thread" : "deal email"}`, externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now, meta }).catch(() => {});
       } else {
         await prisma.dealInvestor.update({ where: { id: row.id }, data: { status: Math.max(row.status, 2), bodyOverride: next.html, extraContactIds: toJson(people.map((p) => p.id).filter((id) => id !== row.contactId)), sendDraftId: null, sendMailbox: null, sendDraftAt: null, updatedAt: now } });
-        for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: "Deal email sent (Send deal)", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now, meta }).catch(() => {});
+        const outreach = (await prisma.deal.findUnique({ where: { id: next.dealId }, select: { stage: true } }))?.stage === "Outreach";
+        for (const p of people) await logActivity({ type: "EMAIL", direction: "OUTBOUND", subject: next.subject, body: outreach ? "Reach-out email sent with the brochure (Reach out)" : "Deal email sent (Send deal)", externalId: p.id === people[0].id ? messageId : null, contactId: p.id, companyId: row.contact.companyId, dealId: next.dealId, occurredAt: now, meta }).catch(() => {});
       }
       await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "SENT", sentAt: now, sentMessageId: messageId } });
       if (!followup) await advance(next.dealId, "Deal Taken To Market").catch(() => {});

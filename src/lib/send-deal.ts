@@ -26,7 +26,7 @@ const DEALS_MAILBOX = () => process.env.DEALS_MAILBOX ?? "deals@rjlcapadvisors.c
 
 export async function advance(dealId: string, to: string) {
   const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { stage: true } });
-  if (d && STAGE_ORDER.indexOf(d.stage) < STAGE_ORDER.indexOf(to)) await prisma.deal.update({ where: { id: dealId }, data: { stage: to } });
+  if (d && d.stage !== "Outreach" && STAGE_ORDER.indexOf(d.stage) < STAGE_ORDER.indexOf(to)) await prisma.deal.update({ where: { id: dealId }, data: { stage: to } });
 }
 
 /** The groups currently on the report, one line per firm. */
@@ -128,6 +128,12 @@ export async function fileRowsFor(dealId: string): Promise<{ id: string; graphId
 }
 
 export async function dealFiles(dealId: string): Promise<DealFile[]> {
+  // a reach out (outreach.ts) has one file: the brochure on file, read from deals@ like any attachment
+  const rec = await prisma.deal.findUnique({ where: { id: dealId }, select: { stage: true } });
+  if (rec?.stage === "Outreach") {
+    const b = await (await import("@/lib/outreach")).brochureFile();
+    return b ? [b] : [];
+  }
   const faq = await faqEntry(dealId);
   // a portfolio serves its components' files as its own; a second ticket on the same property (a pref raise beside the JV
   // raise, Hedges Greene, Oct 22, 2026) reads the first ticket's files through details.filesFrom, since a mailbox attachment

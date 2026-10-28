@@ -84,7 +84,7 @@ function FileIcon({ name }: { name: string }) {
  * Everything you do here saves itself to the deal a second after you do it, so you can leave and come back.
  * Bottom: "Send preview email to me" (the General one goes with a blank greeting) and LAUNCH (each firm gets its own email).
  */
-export function SendClient({ mode = "send", round = 1, dealId, firms, templates, defaultTemplateId, files, saved, team = [], initialLaunch = null }: { mode?: "send" | "followup"; round?: number; dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[]; initialLaunch?: LaunchStatus | null }) {
+export function SendClient({ mode = "send", round = 1, dealId, firms, templates, defaultTemplateId, files, saved, team = [], initialLaunch = null, filesEmptyNote }: { mode?: "send" | "followup"; round?: number; dealId: string; firms: Firm[]; templates: { id: string; name: string }[]; defaultTemplateId: string; files: DealFileLite[]; saved: SendState | null; team?: { name: string; email: string }[]; initialLaunch?: LaunchStatus | null; filesEmptyNote?: string }) {
   const followup = mode === "followup";
   // Follow ups come in rounds (Jonathan, Oct 8, 2026): round 1 goes to firms sent and quiet; the final round (2) to firms still quiet after follow-up 1
   const wantStatus = round > 1 ? 3 : 2;
@@ -884,7 +884,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
       {/* attachments: only what the sponsor sent us on this deal, in three columns (PDFs, Excel, other; Jonathan, Oct 13, 2026),
           each column scrolling past five files so the window stays the same height */}
       <div className="card px-4 py-2 text-sm">
-        {files.length === 0 && <span className="text-xs text-muted">Attachments: no files from the sponsor on this deal yet (they arrive through deals@).</span>}
+        {files.length === 0 && <span className="text-xs text-muted">{filesEmptyNote ?? "Attachments: no files from the sponsor on this deal yet (they arrive through deals@)."}</span>}
         {files.length > 0 && (
           <div className="grid grid-cols-3 gap-x-5">
             {([["PDFs", (n: string) => /\.pdf$/i.test(n)], ["Excel", (n: string) => /\.(xlsx|xlsm|xls|csv)$/i.test(n)], ["Other", (n: string) => !/\.(pdf|xlsx|xlsm|xls|csv)$/i.test(n)]] as [string, (n: string) => boolean][]).map(([title, test]) => {

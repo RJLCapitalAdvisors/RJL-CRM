@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  * itself is there to edit, with tokens as light blue chips. New template opens a blank one.
  */
 export default async function TemplatesPage() {
-  const templates = await prisma.emailTemplate.findMany({ where: { workspace: "CA", kind: "DEAL", NOT: { name: { startsWith: "(archived)" } } }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, createdAt: true, updatedAt: true, _count: { select: { campaigns: true } } } });
+  const templates = await prisma.emailTemplate.findMany({ where: { workspace: "CA", kind: { in: ["DEAL", "OUTREACH"] }, NOT: { name: { startsWith: "(archived)" } } }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, createdAt: true, updatedAt: true, _count: { select: { campaigns: true } } } });
   return (
     <>
       <PageHeader
@@ -48,6 +48,7 @@ export default async function TemplatesPage() {
                       <Link href={`/templates/${t.id}`} className="font-medium text-sky-800 hover:underline">
                         {t.name}
                       </Link>
+                      {t.kind === "OUTREACH" && <span className="ml-2 text-xs text-muted">Reach out (Investor search)</span>}
                     </td>
                     <td className="text-right text-muted">{t._count.campaigns || ""}</td>
                     <td className="whitespace-nowrap text-muted">{fmtDate(t.createdAt)}</td>
