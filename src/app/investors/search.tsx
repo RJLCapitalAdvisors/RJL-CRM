@@ -36,6 +36,7 @@ export type InvestorRow = {
 export type Spec = {
   assetClass: string[];
   checkMM: number | null; // the exact check being requested, in $MM
+  checkMissing: boolean; // only firms with no check size on file (Jonathan, Oct 28, 2026), to go fill them in
   investmentType: string[];
   strategy: string[];
   returnProfile: string[];
@@ -49,7 +50,7 @@ export type Spec = {
 };
 
 const MAX_REACH = 30; // the most firms in one reach out (Jonathan, Oct 28, 2026); outreach.ts MAX_OUTREACH enforces it on the server
-const EMPTY: Spec = { assetClass: [], checkMM: null, investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [], state: [], city: "" };
+const EMPTY: Spec = { assetClass: [], checkMM: null, checkMissing: false, investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [], state: [], city: "" };
 const any = (have: string[], want: string[]) => want.some((w) => have.includes(w));
 
 
@@ -60,6 +61,7 @@ function passes(c: InvestorRow["crit"], s: Spec, where: { city: string | null; s
   if (s.city.trim() && !(where.city && where.city.toLowerCase().includes(s.city.trim().toLowerCase()))) return false;
   if (s.assetClass.length && !(c && any(c.assetClasses, s.assetClass))) return false;
   // exact check: the firm's range must cover it (an open top end, $100MM+, covers anything above)
+  if (s.checkMissing && c && c.checkMin != null) return false;
   if (s.checkMM != null && !(c && c.checkMin != null && c.checkMax != null && s.checkMM >= c.checkMin && (c.checkMax >= CHECK_MAX || s.checkMM <= c.checkMax))) return false;
   if (s.investmentType.length && !(c && any(c.investmentTypes, s.investmentType))) return false;
   if (s.strategy.length && !(c && c.strategy && (s.strategy.includes(c.strategy) || c.strategy === "Both"))) return false;
@@ -141,7 +143,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
   const forget = () => { try { if (storeKey) window.localStorage.removeItem(storeKey); } catch { /* nothing to forget */ } };
   const [spec, setSpec] = useState<Spec>({ ...EMPTY, ...(preset ?? {}) });
   const [page, setPage] = useState(1);
-  const set = (k: Exclude<keyof Spec, "checkMM" | "city">, v: string[]) => {
+  const set = (k: Exclude<keyof Spec, "checkMM" | "city" | "checkMissing">, v: string[]) => {
     setSpec((s) => ({ ...s, [k]: v }));
     setPage(1);
   };
@@ -149,13 +151,22 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
     setSpec((s) => ({ ...s, checkMM: v }));
     setPage(1);
   };
-  const active = Object.values(spec).filter((v) => (Array.isArray(v) ? v.length > 0 : typeof v === "string" ? v.trim() !== "" : v != null)).length;
-  const out = useMemo(() => rows.filter((r) => passes(r.crit, spec, { city: r.city, state: r.state })), [rows, spec]);
+  const active = Object.values(spec).filter((v) => (Array.isArray(v) ? v.length > 0 : typeof v === "string" ? v.trim() !== "" : typeof v === "boolean" ? v : v != null)).length;
+  // the Check size column sorts: firms with no check size first (to fill them in), or the biggest checks first
+  const [sort, setSort] = useState<"" | "missing" | "check">("");
+  const out = useMemo(() => {
+    const list = rows.filter((r) => passes(r.crit, spec, { city: r.city, state: r.state }));
+    const lo = (r: InvestorRow) => r.crit?.checkMin ?? null, hi = (r: InvestorRow) => r.crit?.checkMax ?? null;
+    if (sort === "missing") return [...list].sort((a, b) => Number(lo(a) != null) - Number(lo(b) != null) || a.name.localeCompare(b.name));
+    if (sort === "check") return [...list].sort((a, b) => (hi(b) ?? -1) - (hi(a) ?? -1) || (lo(b) ?? -1) - (lo(a) ?? -1) || a.name.localeCompare(b.name));
+    return list;
+  }, [rows, spec, sort]);
+  const missingCount = useMemo(() => rows.filter((r) => r.crit?.checkMin == null).length, [rows]);
   const stateOptions = useMemo(() => [...new Set(rows.map((r) => r.state).filter((x): x is string => Boolean(x)))].sort(), [rows]);
   const pages = Math.max(1, Math.ceil(out.length / PAGE));
   const pageRows = out.slice((page - 1) * PAGE, page * PAGE);
 
-  const sel = (k: Exclude<keyof Spec, "checkMM" | "city">, label: string, options: readonly string[]) => (
+  const sel = (k: Exclude<keyof Spec, "checkMM" | "city" | "checkMissing">, label: string, options: readonly string[]) => (
     <div key={k} className="mb-2.5 text-xs text-muted">
       {label}
       <div className="mt-1">
@@ -242,6 +253,10 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
         <div className="mb-2.5 text-xs text-muted">
           <div className="flex items-center justify-between">
             <span>Check size</span>
+            <label className="flex cursor-pointer items-center gap-1" title="Firms whose criteria have no check size yet, so you can fill them in">
+              <input type="checkbox" className="accent-ink" checked={spec.checkMissing} onChange={(e) => { setSpec((s) => ({ ...s, checkMissing: e.target.checked, checkMM: e.target.checked ? null : s.checkMM })); setPage(1); }} />
+              none on file ({missingCount.toLocaleString()})
+            </label>
             {spec.checkMM != null && (
               <button type="button" className="text-sky-600 hover:underline" onClick={() => setCheck(null)}>
                 Clear
@@ -340,7 +355,11 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
                 <th className="w-[240px]">Company name</th>
                 <th className="w-[130px]">Based in</th>
                 <th className="w-[260px]">Deal locations</th>
-                <th className="w-[170px]">Check size</th>
+                <th className="w-[170px]">
+                  <button type="button" className="hover:underline" title="Sort: firms with no check size first, then biggest checks first, then as before" onClick={() => { setSort((x) => (x === "" ? "missing" : x === "missing" ? "check" : "")); setPage(1); }}>
+                    Check size{sort === "missing" ? " · none first" : sort === "check" ? " · biggest first" : ""}
+                  </button>
+                </th>
                 <th className="w-[230px]">Asset classes</th>
                 <th className="w-[180px]">Position in the capital stack</th>
                 <th className="w-[110px]">Acq / Dev</th>
