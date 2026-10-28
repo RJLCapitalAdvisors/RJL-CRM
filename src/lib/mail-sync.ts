@@ -152,15 +152,18 @@ export async function dealResolver() {
   // Dallas) and made twenty Deal Sent rows from it. An email dated before the ticket existed (45 days' grace; a ticket imported
   // from HubSpot carries its import date, so it gets 400) is filed on it only when the subject carries the ticket's full name.
   const fresh = (d: { createdAt: Date; hubspotId: string | null }, when?: Date) => !when || when.getTime() >= d.createdAt.getTime() - (d.hubspotId ? 400 : 45) * 86_400_000;
+  // every firm's name: a deal named for a firm (a HubSpot intro record) never catches that firm's mail (Oct 28, 2026)
+  const { firmNamesFrom } = await import("@/lib/deal-match");
+  const firms = firmNamesFrom((await prisma.company.findMany({ select: { name: true } })).map((c) => c.name));
   const dealFor = (subject: string, contactId: string | null = null, companyId: string | null = null, when?: Date) => {
-    const named = (d: (typeof activeDeals)[number]) => subjectHasDealPhrase(subject, d);
-    const fuzzy = (d: (typeof activeDeals)[number]) => fresh(d, when) && subjectMatchesDeal(subject, d);
+    const named = (d: (typeof activeDeals)[number]) => subjectHasDealPhrase(subject, d, firms);
+    const fuzzy = (d: (typeof activeDeals)[number]) => fresh(d, when) && subjectMatchesDeal(subject, d, firms);
     const house = (d: (typeof activeDeals)[number]) => fresh(d, when) && houseSubjectMatches(subject, d);
     return up(
       activeDeals.find((d) => tied(d, contactId, companyId) && (named(d) || fuzzy(d) || house(d)))?.id ??
         activeDeals.find((d) => named(d) || fuzzy(d))?.id ??
         activeDeals.find((d) => house(d))?.id ??
-        activeDeals.find((d) => tied(d, contactId, companyId) && fresh(d, when) && subjectLooselyMatchesDeal(subject, d))?.id,
+        activeDeals.find((d) => tied(d, contactId, companyId) && fresh(d, when) && subjectLooselyMatchesDeal(subject, d, firms))?.id,
     );
   };
   return dealFor;

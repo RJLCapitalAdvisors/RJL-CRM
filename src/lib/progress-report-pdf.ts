@@ -44,8 +44,7 @@ export async function buildProgressReportPdf(dealId: string): Promise<{ name: st
   const report = await loadReport(dealId);
   if (!report) return null;
   const { deal, name, rows } = report;
-  const cityState = [deal.city, deal.state].filter(Boolean).join(", ");
-  const address = deal.propertyAddress && deal.city && deal.propertyAddress.toLowerCase().includes(deal.city.toLowerCase()) ? deal.propertyAddress : [deal.propertyAddress, cityState].filter(Boolean).join(", ");
+  const addressLines = report.addressLines;
   const themes = (deal.trackerThemes ?? "").split(/\n+/).map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
   const items = (deal.trackerItemsNote ?? "").split(/\n+/).map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
 
@@ -77,13 +76,19 @@ export async function buildProgressReportPdf(dealId: string): Promise<{ name: st
     page.drawText(text, { x: (PAGE.w - font.widthOfTextAtSize(text, size)) / 2, y: y - size, size, font, color });
     y -= size + 4;
   };
-  const labelValueCentered = (label: string, value: string, size = 10.5) => {
+  // a header line wraps to the page (a portfolio's addresses, a long sponsor name): the label on the first line, every line centered
+  const labelValueCentered = (label: string, value: string | string[], size = 10.5) => {
     const lw = bold.widthOfTextAtSize(label + " ", size);
-    const vw = reg.widthOfTextAtSize(value, size);
-    const x = (PAGE.w - lw - vw) / 2;
-    page.drawText(label + " ", { x, y: y - size, size, font: bold, color: BLACK });
-    page.drawText(value, { x: x + lw, y: y - size, size, font: reg, color: BLACK });
-    y -= size + 5;
+    const values = (Array.isArray(value) ? value : [value]).flatMap((v, i) => wrap(v, reg, size, width - (i === 0 ? lw : 0)));
+    values.forEach((v, i) => {
+      const vw = reg.widthOfTextAtSize(v, size);
+      if (i === 0) {
+        const x = (PAGE.w - lw - vw) / 2;
+        page.drawText(label + " ", { x, y: y - size, size, font: bold, color: BLACK });
+        page.drawText(v, { x: x + lw, y: y - size, size, font: reg, color: BLACK });
+      } else page.drawText(v, { x: (PAGE.w - vw) / 2, y: y - size, size, font: reg, color: BLACK });
+      y -= size + (i === values.length - 1 ? 5 : 3);
+    });
   };
   const rule = () => {
     page.drawLine({ start: { x: PAGE.left + 40, y: y - 6 }, end: { x: PAGE.w - PAGE.right - 40, y: y - 6 }, thickness: 0.6, color: LIGHT });
@@ -116,7 +121,7 @@ export async function buildProgressReportPdf(dealId: string): Promise<{ name: st
   page.drawLine({ start: { x: PAGE.w / 2 - bold.widthOfTextAtSize("Progress Report", 16) / 2, y: y + 1 }, end: { x: PAGE.w / 2 + bold.widthOfTextAtSize("Progress Report", 16) / 2, y: y + 1 }, thickness: 0.8, color: BLACK });
   y -= 8;
   labelValueCentered("Deal Name:", name);
-  labelValueCentered("Deal Address:", address || "NA");
+  labelValueCentered("Deal Address:", addressLines.length ? addressLines : "NA");
   labelValueCentered("Prepared For:", deal.trackerPreparedFor || deal.sponsorName || "—");
   y -= 8;
   const contact = "Please email jonathan@rjlcapadvisors.com or aviel@rjlcapadvisors.com with any questions";

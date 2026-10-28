@@ -8,12 +8,23 @@ export const STOP = new Set(["opportunity", "opportunities", "acquisition", "acq
 export const words = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3 && !STOP.has(w));
 
 export type DealNames = { name: string; propertyName: string | null; sponsorName?: string | null };
+/** Firm names in the CRM, normalized: a deal phrase that is one of them (or the first words of one) names a firm, not a property. */
+export type FirmNames = { has: (phrase: string) => boolean };
+const firmKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter((x) => x && !STOP.has(x));
+export const firmNamesFrom = (names: string[]): FirmNames => {
+  const set = new Set<string>();
+  for (const n of names) {
+    const w = firmKey(n);
+    for (let i = 1; i <= w.length; i++) set.add(w.slice(0, i).join(" ")); // "marble", "marble capital"
+  }
+  return { has: (p) => set.has(firmKey(p).join(" ")) };
+};
 
 const norm = (s: string) => ` ${s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
 const STATE_SUFFIX = /,\s*[A-Z]{2}\.?$/;
 
 /** The names an email subject could carry for this deal. */
-export function dealPhrases(d: DealNames): string[] {
+export function dealPhrases(d: DealNames, firms?: FirmNames): string[] {
   const out: string[] = [];
   const sponsor = d.sponsorName?.trim().toLowerCase();
   const add = (raw: string | null | undefined) => {
@@ -21,6 +32,9 @@ export function dealPhrases(d: DealNames): string[] {
     if (p.length < 5) return;
     if (sponsor && p.toLowerCase() === sponsor) return;
     if (!p.toLowerCase().split(/[^a-z0-9]+/).some((w) => w.length > 3 && !STOP.has(w))) return; // all generic
+    // a HubSpot intro record is named for two firms ("W Companies | Marble, TX" is Marble Capital, an LP): a firm's name is not a
+    // property, and as a phrase it filed every "Intro - Marble | Insignis" email, and the rows they made, on that record (Oct 28, 2026)
+    if (firms?.has(p)) return;
     if (!out.some((x) => x.toLowerCase() === p.toLowerCase())) out.push(p);
   };
   add(d.propertyName);
@@ -29,20 +43,20 @@ export function dealPhrases(d: DealNames): string[] {
 }
 
 /** The subject carries one of the deal's names in full ("Infinity on the Oaks", "Kansas City, KS"): the one match that holds on any date. */
-export function subjectHasDealPhrase(subject: string | null | undefined, d: DealNames): boolean {
+export function subjectHasDealPhrase(subject: string | null | undefined, d: DealNames, firms?: FirmNames): boolean {
   if (!subject) return false;
   const subj = norm(subject.replace(/^\s*((re|fw|fwd|aw|wg)\s*:\s*)+/i, ""));
   if (subj.trim().length < 4) return false;
-  for (const p of dealPhrases(d)) if (subj.includes(norm(p))) return true;
+  for (const p of dealPhrases(d, firms)) if (subj.includes(norm(p))) return true;
   return false;
 }
 
 /** True when the subject names this deal: one of its phrases in full, or most of the property name's words. */
-export function subjectMatchesDeal(subject: string | null | undefined, d: DealNames): boolean {
+export function subjectMatchesDeal(subject: string | null | undefined, d: DealNames, firms?: FirmNames): boolean {
   if (!subject) return false;
   const subj = norm(subject.replace(/^\s*((re|fw|fwd|aw|wg)\s*:\s*)+/i, ""));
   if (subj.trim().length < 4) return false;
-  if (subjectHasDealPhrase(subject, d)) return true;
+  if (subjectHasDealPhrase(subject, d, firms)) return true;
   const ws = words(d.propertyName ?? d.name);
   // a name that boils down to one word ("High 5" is just "high") only matches as the whole phrase above: on Oct 9, 2026 the
   // mail backfill filed 67 "high" emails on SLX Capital's High 5 and made 23 report rows from them
@@ -56,8 +70,8 @@ export function subjectMatchesDeal(subject: string | null | undefined, d: DealNa
  * Looser test for people already tied to the deal (on its progress report, or at the sponsor): the subject
  * carries the deal's city or one distinctive word of the property name ("Everett, WA | $10MM of JV Equity").
  */
-export function subjectLooselyMatchesDeal(subject: string | null | undefined, d: DealNames & { city?: string | null }): boolean {
-  if (subjectMatchesDeal(subject, d)) return true;
+export function subjectLooselyMatchesDeal(subject: string | null | undefined, d: DealNames & { city?: string | null }, firms?: FirmNames): boolean {
+  if (subjectMatchesDeal(subject, d, firms)) return true;
   if (!subject) return false;
   const subj = norm(subject);
   const city = d.city?.trim();

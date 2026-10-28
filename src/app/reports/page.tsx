@@ -19,12 +19,12 @@ const DAY = 86_400_000;
 async function loadRows() {
   const deals = await prisma.deal.findMany({
     where: { stage: { in: [...REPORT_STAGES] }, investors: { some: {} } },
-    include: { sponsorCompany: { select: { domain: true, name: true } }, investors: { select: { status: true, updatedAt: true } } },
+    include: { sponsorCompany: { select: { domain: true, name: true, roles: true } }, investors: { select: { status: true, updatedAt: true } }, _count: { select: { files: true, facts: true } } },
   });
 
   const now = Date.now();
   const rows = deals
-    .filter((d) => reportQualifies(d.name, d.investors) && reportActive(d.reportInactiveAt, d.investors))
+    .filter((d) => reportQualifies({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, fileCount: d._count.files, factCount: d._count.facts }, d.investors) && reportActive(d.reportInactiveAt, d.investors))
     .map((d) => {
       const counts = new Map<number, number>();
       for (const r of d.investors) counts.set(r.status, (counts.get(r.status) ?? 0) + 1);

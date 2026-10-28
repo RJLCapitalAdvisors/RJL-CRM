@@ -23,12 +23,16 @@ export async function noteDealSent(opts: { dealId: string; contactId: string | n
   if (!contact) return false;
   const roles = contact.company?.roles ?? "";
   if (!/Investor|Lender/i.test(roles)) return false; // only capital sources go on the report
+  // never a row on a HubSpot intro record (Oct 28, 2026: mis-filed intro emails were building reports on them)
+  const { isLegacyIntroTicket, isBlindIntro } = await import("@/lib/taxonomy");
+  if (isLegacyIntroTicket({ ...deal, sponsorRoles: null, investorCount: 1 }) || isBlindIntro({ ...deal, fileCount: deal._count.files })) return false;
 
   // the row: this person, Deal Sent, with the others at the firm who were on the To line
   const others = opts.toEmails.filter((e) => e.toLowerCase() !== contact.email?.toLowerCase());
   const extra = others.length ? await prisma.contact.findMany({ where: { email: { in: others.map((e) => e.toLowerCase()) }, companyId: contact.companyId ?? undefined }, select: { id: true } }) : [];
   const existing = await prisma.dealInvestor.findUnique({ where: { dealId_contactId: { dealId: deal.id, contactId: contact.id } } });
-  const firmRow = existing ?? (contact.companyId ? await prisma.dealInvestor.findFirst({ where: { dealId: deal.id, contact: { companyId: contact.companyId } }, orderBy: { createdAt: "asc" } }) : null);
+  // the firm's row: under a colleague at the same firm, or the one this person already sits on as an extra recipient (Oct 28, 2026)
+  const firmRow = existing ?? (await prisma.dealInvestor.findFirst({ where: { dealId: deal.id, OR: [...(contact.companyId ? [{ contact: { companyId: contact.companyId } }] : []), { extraContactIds: { contains: `"${contact.id}"` } }] }, orderBy: { createdAt: "asc" } }));
   if (!existing && firmRow) {
     // the firm is already on the report under a colleague: this person joins that row
     const ids = new Set<string>(firmRow.extraContactIds ? (JSON.parse(firmRow.extraContactIds) as string[]) : []);

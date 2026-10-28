@@ -42,8 +42,7 @@ const RULE = "_".repeat(50);
 
 export function ReportView({ report, slots = {} }: { report: Report; slots?: ReportSlots }) {
   const { deal, name, rows } = report;
-  const cityState = [deal.city, deal.state].filter(Boolean).join(", ");
-  const address = deal.propertyAddress && deal.city && deal.propertyAddress.toLowerCase().includes(deal.city.toLowerCase()) ? deal.propertyAddress : [deal.propertyAddress, cityState].filter(Boolean).join(", ");
+  const addressLines = report.addressLines;
   const themes = (deal.trackerThemes ?? "").split(/\n+/).map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
   const items = (deal.trackerItemsNote ?? "").split(/\n+/).map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
   const showSections = themes.length > 0 || items.length > 0;
@@ -57,7 +56,15 @@ export function ReportView({ report, slots = {} }: { report: Report; slots?: Rep
         <b>Deal Name:</b> {name}
       </p>
       <p style={S.center}>
-        <b>Deal Address:</b> {address || "NA"}
+        <b>Deal Address:</b>{" "}
+        {addressLines.length
+          ? addressLines.map((l, i) => (
+              <span key={i}>
+                {i > 0 && <br />}
+                {l}
+              </span>
+            ))
+          : "NA"}
       </p>
       <p style={S.center}>
         <b>Prepared For:</b> {deal.trackerPreparedFor || deal.sponsorName || "—"}

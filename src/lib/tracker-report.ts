@@ -16,9 +16,11 @@ export async function loadReport(dealId: string, opts: { refresh?: boolean } = {
     include: {
       investors: { include: { contact: { include: { company: true } } } },
       actions: { orderBy: { createdAt: "asc" } },
+      children: { select: { name: true, propertyName: true, propertyAddress: true, city: true, state: true }, orderBy: { name: "asc" } },
     },
   });
   if (!deal) return null;
+  const addressLines = reportAddressLines(deal, deal.children);
   const name = deal.propertyName ?? deal.name;
   // report order: Intro Made at the top down to Not A Fit and Pass at the bottom (rank), then by firm
   const rows = [...deal.investors].sort((a, b) => rankOf(b.status) - rankOf(a.status) || investorLabel(a.contact).localeCompare(investorLabel(b.contact)));
@@ -34,6 +36,24 @@ export async function loadReport(dealId: string, opts: { refresh?: boolean } = {
     deal.purchasePrice ? { label: "Purchase price", value: [fmtMoney(deal.purchasePrice), deal.capRateT12 ? `${deal.capRateT12}% T12 cap` : null].filter(Boolean).join(" · ") } : null,
     deal.expectedClose ? { label: "Target close", value: deal.expectedClose } : null,
   ].filter(Boolean) as { label: string; value: string }[];
-  return { deal, name, rows, lastUpdated, itemsNeeded, chips, fmt: fmtReportDate };
+  return { deal, name, rows, lastUpdated, itemsNeeded, chips, fmt: fmtReportDate, addressLines };
 }
 export type Report = NonNullable<Awaited<ReturnType<typeof loadReport>>>;
+
+type AddrLike = { propertyAddress?: string | null; city?: string | null; state?: string | null };
+const oneAddress = (d: AddrLike) => {
+  const cityState = [d.city, d.state].filter(Boolean).join(", ");
+  return d.propertyAddress && d.city && d.propertyAddress.toLowerCase().includes(d.city.toLowerCase()) ? d.propertyAddress : [d.propertyAddress, cityState].filter(Boolean).join(", ");
+};
+
+/**
+ * The report's "Deal Address", one line per property: a portfolio lists each property on its own line ("Insight Bay: Emmett &
+ * Insight, Chandler, AZ"); a single property is its address with the city and state. Oct 28, 2026: the Shallow Bay portfolio's
+ * combined address ran off both edges of the PDF page, since the header drew it as one unwrapped line.
+ */
+export function reportAddressLines(deal: AddrLike, children: ({ name: string; propertyName: string | null } & AddrLike)[] = []): string[] {
+  const parts = children.filter((c) => c.propertyAddress || c.city).map((c) => `${c.propertyName ?? c.name.split("|").pop()?.trim() ?? c.name}: ${oneAddress(c)}`);
+  if (parts.length) return parts;
+  const one = oneAddress(deal);
+  return one ? [one] : [];
+}

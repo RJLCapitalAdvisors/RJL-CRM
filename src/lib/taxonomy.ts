@@ -380,8 +380,12 @@ export const introParties = (name: string): [string, string] => {
   return [parts[0] ?? "", parts[1] ?? ""];
 };
 
-export const isLegacyIntroTicket = (d: { hubspotId?: string | null; stage: string; sponsorRoles?: string | null; investorCount?: number }) => {
-  if (!d.hubspotId || d.stage !== "Intro To Capital Made") return false;
+export const isLegacyIntroTicket = (d: { hubspotId?: string | null; stage: string; sponsorRoles?: string | null; investorCount?: number; name?: string | null }) => {
+  if (!d.hubspotId) return false;
+  // named "INTRO | sponsor | firm" by HubSpot: an intro, whatever stage or rows it has since grown (Oct 28, 2026: INTRO | Wright | Marble
+  // had 36 rows made from mis-filed emails, which made it a "real" ticket that then caught every intro email)
+  if (d.name && /^\s*intro\s*\|/i.test(d.name)) return true;
+  if (d.stage !== "Intro To Capital Made") return false;
   // the tell: the "sponsor" is a capital source (Nelnet, Clairmont), not a sponsor; failing that, no report at all
   if (d.sponsorRoles) return /Investor|Lender/i.test(d.sponsorRoles) && !/Sponsor/i.test(d.sponsorRoles);
   return (d.investorCount ?? 0) === 0;

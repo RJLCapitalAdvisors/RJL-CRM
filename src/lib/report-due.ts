@@ -33,13 +33,13 @@ export type ReportDue = { id: string; name: string; sponsorName: string | null; 
 export async function reportsDue(): Promise<ReportDue[]> {
   const now = new Date();
   const thursday = lastThursdaySlot(now);
-  const deals = await prisma.deal.findMany({ where: { stage: { in: LIVE_STAGES }, parentDealId: null, investors: { some: {} } }, select: { id: true, name: true, propertyName: true, sponsorName: true, reportSentAt: true, reportDraftAt: true, reportInactiveAt: true, investors: { select: { status: true, updatedAt: true } }, _count: { select: { investors: true } } } });
+  const deals = await prisma.deal.findMany({ where: { stage: { in: LIVE_STAGES }, parentDealId: null, investors: { some: {} } }, select: { id: true, name: true, propertyName: true, propertyAddress: true, hubspotId: true, stage: true, sponsorName: true, reportSentAt: true, reportDraftAt: true, reportInactiveAt: true, sponsorCompany: { select: { roles: true } }, investors: { select: { status: true, updatedAt: true } }, _count: { select: { investors: true, files: true, facts: true } } } });
   if (!deals.length) return [];
   const changes = await prisma.dealInvestor.groupBy({ by: ["dealId"], where: { dealId: { in: deals.map((d) => d.id) } }, _max: { updatedAt: true } });
   const lastChange = new Map(changes.map((c) => [c.dealId, c._max.updatedAt]));
   const out: ReportDue[] = [];
   for (const d of deals) {
-    if (!reportQualifies(d.name, d.investors) || !reportActive(d.reportInactiveAt, d.investors)) continue; // intros and Not active reports are nobody's business here
+    if (!reportQualifies({ ...d, sponsorRoles: d.sponsorCompany?.roles ?? null, fileCount: d._count.files, factCount: d._count.facts }, d.investors) || !reportActive(d.reportInactiveAt, d.investors)) continue; // intros and Not active reports are nobody's business here
     // a report draft is open in Outlook: the row stays, with Open instead of Handle, until the draft goes (Sep 16: hiding it left
     // Jonathan with a draft he could not find; the row vanished the moment Handle finished)
     const draftOpen = Boolean(d.reportDraftAt && now.getTime() - d.reportDraftAt.getTime() < 2 * DAY);

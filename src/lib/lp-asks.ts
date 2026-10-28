@@ -55,7 +55,7 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     const rows = await prisma.dealInvestor.findMany({ where: { contact: { companyId: a.companyId! }, deal: { stage: { in: [...ACTIVE_STAGES] } }, status: { gte: 2 } }, include: { deal: { select: { id: true, propertyName: true, name: true, city: true, state: true, requestedAmount: true, sponsorName: true } } }, orderBy: { updatedAt: "desc" } });
     const legacyIntro = (x: { id: string }) => legacy.has(x.id);
     const candidatesAll = rows.map((r) => r.deal).filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
-    const legacy = new Set((await prisma.deal.findMany({ where: { id: { in: candidatesAll.map((x) => x.id) }, stage: "Intro To Capital Made", hubspotId: { not: null } }, select: { id: true, hubspotId: true, stage: true, sponsorCompany: { select: { roles: true } }, _count: { select: { investors: true } } } })).filter((x) => isLegacyIntroTicket({ ...x, sponsorRoles: x.sponsorCompany?.roles ?? null, investorCount: x._count.investors })).map((x) => x.id));
+    const legacy = new Set((await prisma.deal.findMany({ where: { id: { in: candidatesAll.map((x) => x.id) }, stage: "Intro To Capital Made", hubspotId: { not: null } }, select: { id: true, name: true, hubspotId: true, stage: true, sponsorCompany: { select: { roles: true } }, _count: { select: { investors: true } } } })).filter((x) => isLegacyIntroTicket({ ...x, sponsorRoles: x.sponsorCompany?.roles ?? null, investorCount: x._count.investors })).map((x) => x.id));
     const blind = new Set((await prisma.deal.findMany({ where: { id: { in: candidatesAll.map((x) => x.id) }, hubspotId: { not: null } }, select: { id: true, name: true, propertyName: true, propertyAddress: true, hubspotId: true, _count: { select: { files: true, facts: true } } } })).filter((x) => isBlindIntro({ ...x, fileCount: x._count.files, factCount: x._count.facts })).map((x) => x.id));
     const candidates = candidatesAll.filter((x) => !legacyIntro(x) && !blind.has(x.id));
     if (a.dealId && !candidates.some((x) => x.id === a.dealId)) {
@@ -134,7 +134,9 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     if (!parsed) continue;
     // progress report: note + status
     const dateTag = a.occurredAt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    let reportRows = await prisma.dealInvestor.findMany({ where: { dealId, contact: { companyId: a.companyId! } } });
+    // the firm's rows: by firm, by the sender, and by the sender sitting on a colleague's row as an extra recipient (Oct 28, 2026: MLG's
+    // Terry Wallen was on Nathan Clayberg's row as an extra; his pass made a second MLG row on St Rose Parkway instead of landing on it)
+    let reportRows = await prisma.dealInvestor.findMany({ where: { dealId, OR: [{ contact: { companyId: a.companyId! } }, ...(a.contactId ? [{ contactId: a.contactId }, { extraContactIds: { contains: `"${a.contactId}"` } }] : [])] } });
     if (!reportRows.length && a.contactId) {
       // the firm answered a deal email but was never put on the report (sent by hand): add it as Deal Sent first, but only a
       // capital source, only from a recent email, and never a firm someone took off this report or the sponsor struck from the
