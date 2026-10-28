@@ -137,11 +137,32 @@ export async function scanLaunchBounces(mailbox: string): Promise<number> {
   return n;
 }
 
-/** Every row's first sent deal email at once (the Follow ups page asked one row at a time: seven seconds for seventy firms). */
-export async function firstSentMessageIds(dealId: string): Promise<Map<string, { messageId: string; sentAt: Date }>> {
-  const out = new Map<string, { messageId: string; sentAt: Date }>();
-  const sends = await prisma.dealLaunch.findMany({ where: { dealId, kind: "SEND", status: { in: ["SENT", "BOUNCED"] }, sentMessageId: { not: null } }, orderBy: { sentAt: "asc" }, select: { rowId: true, sentMessageId: true, sentAt: true } });
-  for (const s of sends) if (!out.has(s.rowId)) out.set(s.rowId, { messageId: s.sentMessageId!, sentAt: s.sentAt ?? new Date() });
+export type SentEmail = { messageId: string; sentAt: Date; reached: string[] };
+
+/**
+ * Per row, the deal email a follow-up replies on and who got it: the latest send that reached someone still at the firm (not
+ * bounced for them, not since departed), with those people as `reached`; else the first send on record with nobody reached
+ * (Jonathan, Oct 28, 2026: the Follow ups page said "nobody picked" for CBRE, whose first send went to Parker Woods, since
+ * departed, while a second send had reached Colin Rosenbaum; and for Macquarie, where every send bounced).
+ */
+async function reachedSends(dealId: string, rowId?: string): Promise<Map<string, SentEmail>> {
+  const sends = await prisma.dealLaunch.findMany({ where: { dealId, ...(rowId ? { rowId } : {}), kind: "SEND", status: { in: ["SENT", "BOUNCED"] }, sentMessageId: { not: null } }, orderBy: { sentAt: "asc" }, select: { rowId: true, sentMessageId: true, sentAt: true, toContactIds: true, error: true, status: true } });
+  const ids = [...new Set(sends.flatMap((s) => { try { return JSON.parse(s.toContactIds) as string[]; } catch { return []; } }))];
+  const people = new Map((ids.length ? await prisma.contact.findMany({ where: { id: { in: ids } }, select: { id: true, email: true, departedAt: true } }) : []).map((p) => [p.id, p]));
+  const out = new Map<string, SentEmail>();
+  for (const s of sends) {
+    const bounced = new Set((s.status === "BOUNCED" ? s.error?.match(EMAIL_RE) ?? [] : []).map((e) => e.toLowerCase()));
+    const to = (() => { try { return JSON.parse(s.toContactIds) as string[]; } catch { return []; } })();
+    const reached = to.filter((id) => { const p = people.get(id); return p && !p.departedAt && !(p.email && bounced.has(p.email.toLowerCase())); });
+    const had = out.get(s.rowId);
+    if (!had || (reached.length && (!had.reached.length || (s.sentAt ?? new Date()) >= had.sentAt))) out.set(s.rowId, { messageId: s.sentMessageId!, sentAt: s.sentAt ?? new Date(), reached });
+  }
+  return out;
+}
+
+/** Every row's sent deal email at once (the Follow ups page asked one row at a time: seven seconds for seventy firms). */
+export async function firstSentMessageIds(dealId: string): Promise<Map<string, SentEmail>> {
+  const out = await reachedSends(dealId);
   const rows = await prisma.dealInvestor.findMany({ where: { dealId }, select: { id: true, contactId: true, extraContactIds: true } });
   const missing = rows.filter((r) => !out.has(r.id));
   if (!missing.length) return out;
@@ -150,7 +171,7 @@ export async function firstSentMessageIds(dealId: string): Promise<Map<string, {
   for (const r of missing) {
     const mine = new Set([r.contactId, ...(r.extraContactIds ? (JSON.parse(r.extraContactIds) as string[]) : [])]);
     const a = acts.find((x) => x.contactId && mine.has(x.contactId));
-    if (a?.externalId) out.set(r.id, { messageId: a.externalId, sentAt: a.occurredAt });
+    if (a?.externalId) out.set(r.id, { messageId: a.externalId, sentAt: a.occurredAt, reached: [] });
   }
   return out;
 }
@@ -194,8 +215,9 @@ export async function retryFailed(dealId: string, kind: "SEND" | "FOLLOWUP" = "S
  * Null when nothing on record: a follow-up then never goes out, because a reply on the wrong thread would be worse than none.
  */
 export async function firstSentMessageId(dealId: string, rowId: string): Promise<{ messageId: string; sentAt: Date } | null> {
-  const sent = await prisma.dealLaunch.findFirst({ where: { dealId, rowId, kind: "SEND", status: { in: ["SENT", "BOUNCED"] }, sentMessageId: { not: null } }, orderBy: { sentAt: "asc" }, select: { sentMessageId: true, sentAt: true } });
-  if (sent?.sentMessageId) return { messageId: sent.sentMessageId, sentAt: sent.sentAt ?? new Date() };
+  // the send that reached someone still there, else the first send (reachedSends)
+  const sent = (await reachedSends(dealId, rowId)).get(rowId);
+  if (sent?.messageId) return { messageId: sent.messageId, sentAt: sent.sentAt };
   const row = await prisma.dealInvestor.findUnique({ where: { id: rowId }, select: { contactId: true, extraContactIds: true } });
   if (!row) return null;
   const ids = [row.contactId, ...(row.extraContactIds ? (JSON.parse(row.extraContactIds) as string[]) : [])];

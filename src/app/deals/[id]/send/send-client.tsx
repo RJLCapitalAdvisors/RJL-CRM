@@ -15,7 +15,7 @@ import { statusOf } from "@/lib/tracker";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
 export type Person = { id: string; name: string; firstName?: string; email: string; title: string | null; bounced?: boolean };
-export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; addressTo?: string[]; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null; followups?: number; departures?: { contactId: string; name: string; replacements: string[] }[] };
+export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; addressTo?: string[]; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null; followups?: number; departures?: { contactId: string; name: string; replacements: string[] }[]; unreached?: boolean };
 export type DealFileLite = { key: string; name: string; size: number; url?: string | null };
 /** fields: each marked ticket field as it was last refreshed, so a later refresh can tell an edited paragraph (kept) from an untouched one (replaced). */
 type Draft = { subject: string; html: string; touched: boolean; fields?: Record<string, string> };
@@ -95,7 +95,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   /** The stage as it stands now: a follow-up sent in this session reads Followed Up at once (yellow, at the bottom), before the page refreshes (Jonathan, Oct 1, 2026). */
   const statusNow = (f: Firm) => (followup && results[f.rowId]?.ok && f.status === 2 ? 3 : f.status);
   /** This round's firms: at the stage the round is for, with the earlier rounds behind them, a thread to reply on, and not sent in this session. A firm turned on with + gets whatever round it is due. */
-  const shaded = (f: Firm) => followup && (statusNow(f) !== wantStatus || (round > 1 ? (f.followups ?? 0) < round - 1 : (f.followups ?? 0) !== 0) || !f.followupTo || Boolean(results[f.rowId]?.ok));
+  const shaded = (f: Firm) => followup && (statusNow(f) !== wantStatus || (round > 1 ? (f.followups ?? 0) < round - 1 : (f.followups ?? 0) !== 0) || !f.followupTo || Boolean(f.unreached) || Boolean(results[f.rowId]?.ok));
   /** Follow ups: this round's firms first, then the other followed up or quiet ones, then the ones that answered, then passes, then firms with no sent email on record. */
   const bucket = (f: Firm) => (!f.followupTo ? 5 : !shaded(f) ? 0 : statusNow(f) === 2 || statusNow(f) === 3 ? 1 : statusNow(f) === 7 || statusNow(f) === 8 ? 4 : statusNow(f) === 1 ? 2 : 3);
   /** Follow ups: each token wears its stage colour, see-through; a pass is a light red. */
@@ -805,14 +805,14 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                         {freshFor(f).map((id) => <span key={id} className="text-sky-700" title="Ticked; has not had this email yet">{` + ${f.people.find((x) => x.id === id)?.name.split(" ")[0] ?? ""}`}</span>)}
                       </span>
                     ) : (
-                      <span className={`text-xs ${chosen.length || !on ? "text-muted" : "text-red-700"}`}>{chosen.length ? chosen.map((p) => p.name.split(" ")[0]).join(", ") : "nobody picked"}</span>
+                      <span className={`text-xs ${chosen.length || !on ? "text-muted" : "text-red-700"}`}>{chosen.length ? chosen.map((p) => p.name.split(" ")[0]).join(", ") : f.unreached ? "" : "nobody picked"}</span>
                     )}
                     {draftFor(f)?.touched && !res && <span className="text-xs text-sky-700" title="This firm's email has its own edits on top of the General email">edited</span>}
                     {res && !res.pending && !needsResend(f) && <span className="text-xs text-emerald-700" title={res.bounced?.length || (res.to ?? []).some((p) => departedIds(f).has(p.id)) ? `Sent; someone still at ${f.company} has it. Struck through: ${resendWhy(f, res)}` : "Sent"}>sent</span>}
                     {res?.pending && <span className="text-xs text-sky-700">queued</span>}
                     {needsResend(f) && <span className="text-xs font-medium text-red-700" title={`Nobody still at ${f.company} has this email: ${resendWhy(f, res!)}`}>needs resend</span>}
                     {!followup && f.status >= 2 && !res && <span className="text-xs text-muted">{on ? "sending again" : "sent earlier"}</span>}
-                    {followup && !res && <span className="text-xs text-muted">{!f.followupTo ? "no sent email on record" : f.status === 2 ? `sent ${f.sentOn ? new Date(f.sentOn).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "earlier"}, quiet` : f.status === 3 ? `followed up${(f.followups ?? 0) > 1 ? ` ${f.followups}x` : ""}, quiet` : f.status >= 7 ? "passed" : "answered"}</span>}
+                    {followup && !res && <span className="text-xs text-muted">{f.unreached ? "nobody there has it (bounced or left): send it again from Send deal" : !f.followupTo ? "no sent email on record" : f.status === 2 ? `sent ${f.sentOn ? new Date(f.sentOn).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "earlier"}, quiet` : f.status === 3 ? `followed up${(f.followups ?? 0) > 1 ? ` ${f.followups}x` : ""}, quiet` : f.status >= 7 ? "passed" : "answered"}</span>}
                     {followup && res?.ok && <span className="text-xs text-muted">{round > 1 ? `follow-up ${round} sent` : "followed up"}</span>}
                   </button>
                   {(

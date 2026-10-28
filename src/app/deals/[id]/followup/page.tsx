@@ -63,7 +63,7 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
   })();
   // the person opening the page gets their own signature on the saved email and their own CC list (sender.ts, Oct 27, 2026)
   const sendState = me?.email ? await (await import("@/lib/sender")).adoptSendState(sendStateSaved, me.email) : sendStateSaved;
-  const sentOn = await firstSentMessageIds(deal.id).catch(() => new Map<string, { messageId: string; sentAt: Date }>());
+  const sentOn = await firstSentMessageIds(deal.id).catch(() => new Map<string, import("@/lib/launch-queue").SentEmail>());
   const { lastFollowups } = await import("@/lib/launch-queue");
   const followups = await lastFollowups(deal.id).catch(() => new Map<string, { round: number; messageId: string | null; sentAt: Date }>());
   // a later round replies on the latest follow-up the firm got (else the deal email), so the whole thread is quoted
@@ -71,7 +71,7 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
   // the email a follow-up replies to, shown on the firm's token so there is no doubt which thread it joins (Jonathan, Oct 1, 2026)
   const sentIds = [...new Set([...sentOn.values()].map((x) => x?.messageId).filter((x): x is string => Boolean(x)))];
   const sentActs = sentIds.length ? await prisma.activity.findMany({ where: { externalId: { in: sentIds }, type: "EMAIL" }, orderBy: { occurredAt: "asc" } }) : [];
-  const sentLaunches = sentIds.length ? await prisma.dealLaunch.findMany({ where: { sentMessageId: { in: sentIds } }, select: { sentMessageId: true, toContactIds: true, cc: true, mailbox: true, fileKeys: true } }) : [];
+  const sentLaunches = sentIds.length ? await prisma.dealLaunch.findMany({ where: { sentMessageId: { in: sentIds } }, select: { rowId: true, sentMessageId: true, toContactIds: true, cc: true, mailbox: true, fileKeys: true } }) : [];
   const peopleIds = [...new Set(sentLaunches.flatMap((l) => JSON.parse(l.toContactIds) as string[]))];
   const peopleById = new Map((peopleIds.length ? await prisma.contact.findMany({ where: { id: { in: peopleIds } }, select: { id: true, firstName: true, lastName: true, email: true } }) : []).map((p) => [p.id, p]));
   const when = (d: Date) => d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -100,13 +100,18 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
     // who we usually write to at this firm (from the email log); falls back to the report's contact
     // exactly the people the deal email went to (from the launch row, else the email log), never the firm's usual recipients
     defaultContactIds: (() => {
-      const mid = sentOn.get(r.id)?.messageId;
+      const on = sentOn.get(r.id);
+      // the people the latest send reached who are still at the firm (Oct 28, 2026: CBRE's first send went to Parker Woods, since departed)
+      if (on?.reached.length) return on.reached;
+      const mid = on?.messageId;
       const launch = mid ? sentLaunches.find((l) => l.sentMessageId === mid) : null;
       const fromLaunch = launch ? (JSON.parse(launch.toContactIds) as string[]) : [];
       const fromLog = mid ? sentActs.filter((a) => a.externalId === mid && a.contactId).map((a) => a.contactId!) : [];
       const sent = fromLaunch.length ? fromLaunch : fromLog;
       return sent.length ? sent : [r.contactId];
     })(),
+    // every send to this firm bounced or went to someone who has since left: nobody there has the deal email, so there is nothing to follow up
+    unreached: Boolean(sentLaunches.some((l) => l.rowId === r.id) && !sentOn.get(r.id)?.reached.length),
     extraContactIds: [],
     openingLine: r.openingLine,
     bodyOverride: r.bodyOverride,
