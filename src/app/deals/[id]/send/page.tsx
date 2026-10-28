@@ -10,7 +10,7 @@ import { SendClient, type Firm, type SendState } from "./send-client";
 import { SendToOne } from "../send-to-one";
 import { after } from "next/server";
 import { launchStatus, pumpLaunches } from "@/lib/launch-queue";
-import { brochureInfo, BROCHURE_KEY, ensureOutreachTemplate, isOutreach } from "@/lib/outreach";
+import { brochureInfo, BROCHURE_KEY, ensureOutreachTemplate, isOutreach, outreachAudience, reachBase } from "@/lib/outreach";
 import { BrochureCard } from "@/components/brochure-card";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -30,7 +30,9 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
   if (!deal) notFound();
   // a reach out (Investor search > Reach out, Oct 28, 2026): the same page, its own template kind, the brochure as the file
   const outreach = isOutreach(deal);
-  const templates = outreach ? await ensureOutreachTemplate() : await prisma.emailTemplate.findMany({ where: { kind: "DEAL", workspace: "CA", NOT: { OR: [{ name: { contains: "Engagement" } }, { name: { startsWith: "(archived)" } }] } }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+  const audience = outreachAudience(deal.details);
+  const base = reachBase(audience);
+  const templates = outreach ? await ensureOutreachTemplate(audience) : await prisma.emailTemplate.findMany({ where: { kind: "DEAL", workspace: "CA", NOT: { OR: [{ name: { contains: "Engagement" } }, { name: { startsWith: "(archived)" } }] } }, select: { id: true, name: true }, orderBy: { name: "asc" } });
   const brochure = outreach ? await brochureInfo().catch(() => null) : null;
   const name = deal.propertyName ?? deal.name;
   const fitting = deal && !outreach ? await templateForDeal(deal).catch(() => null) : null;
@@ -98,12 +100,12 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
           <>
             <SendToOne dealId={deal.id} />
             {outreach && (
-              <Link href={`/investors/reach/${deal.id}/followup`} className="btn-secondary">
+              <Link href={`${base}/reach/${deal.id}/followup`} className="btn-secondary">
                 Follow ups
               </Link>
             )}
-            <Link href={outreach ? "/investors" : `/deals/${deal.id}`} className="btn-secondary">
-              {outreach ? "Back to Investor search" : "Back to deal"}
+            <Link href={outreach ? base : `/deals/${deal.id}`} className="btn-secondary">
+              {outreach ? (audience === "sponsor" ? "Back to Sponsor search" : "Back to Investor search") : "Back to deal"}
             </Link>
           </>
         }

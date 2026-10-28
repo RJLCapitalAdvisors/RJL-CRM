@@ -10,7 +10,7 @@ import { SendClient, type Firm, type SendState } from "../send/send-client";
 import { SendToOne } from "../send-to-one";
 import { after } from "next/server";
 import { firstSentMessageIds, launchStatus, pumpLaunches } from "@/lib/launch-queue";
-import { BROCHURE_KEY, ensureOutreachTemplate, isOutreach } from "@/lib/outreach";
+import { BROCHURE_KEY, ensureOutreachTemplate, isOutreach, outreachAudience, reachBase } from "@/lib/outreach";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -37,7 +37,8 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
   templates = templatesDeal;
   if (!deal) notFound();
   const outreach = isOutreach(deal);
-  if (outreach) templates = await ensureOutreachTemplate();
+  const base = reachBase(outreachAudience(deal.details));
+  if (outreach) templates = await ensureOutreachTemplate(outreachAudience(deal.details));
   const name = deal.propertyName ?? deal.name;
   const fitting = deal && !outreach ? await templateForDeal(deal).catch(() => null) : null;
   const house = (fitting && templates.find((t) => t.id === fitting.id)) ?? templates.find((t) => t.name.startsWith("Deal email (house")) ?? templates[0];
@@ -138,7 +139,7 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
             <Link href={`/deals/${deal.id}/send`} className="btn-secondary">
               Send deal
             </Link>
-            <Link href={outreach ? `/investors/reach/${deal.id}/send` : `/deals/${deal.id}`} className="btn-secondary">
+            <Link href={outreach ? `${base}/reach/${deal.id}/send` : `/deals/${deal.id}`} className="btn-secondary">
               {outreach ? "Send outreach" : "Back to deal"}
             </Link>
           </>

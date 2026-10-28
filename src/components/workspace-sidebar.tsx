@@ -17,6 +17,7 @@ const CA_NAV = [
   { href: "/companies", label: "Companies", icon: Building2 },
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/investors", label: "Investor search", icon: Search },
+  { href: "/sponsors", label: "Sponsor search", icon: Building2 },
   { href: "/reports", label: "Active progress reports", icon: ClipboardList },
   { href: "/campaigns", label: "Email blasts", icon: Mail },
   { href: "/templates", label: "Templates", icon: FileText },
@@ -146,6 +147,11 @@ function Nav({ items, dealSteps = false, apartmentSteps = false, propertySteps =
           {dealSteps && n.href === "/investors" && (
             <Suspense fallback={null}>
               <DealContextNav section="investors" />
+            </Suspense>
+          )}
+          {dealSteps && n.href === "/sponsors" && (
+            <Suspense fallback={null}>
+              <DealContextNav section="sponsors" />
             </Suspense>
           )}
           {apartmentSteps && n.href === "/israel/templates" && <IlTemplatesSubnav />}

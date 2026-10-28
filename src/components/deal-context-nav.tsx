@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { ClipboardList, FileText, ListChecks, Mail, Reply, ScrollText } from "lucide-react";
 import { dealNavInfo, latestOutreachNavInfo } from "@/app/deal-nav-actions";
 
-type Info = { id: string; name: string; stage: string };
+type Info = { id: string; name: string; stage: string; audience?: "investor" | "sponsor" };
 
 /**
  * When you are inside a deal (its ticket, progress report, send page, investor search or engagement letter),
@@ -17,10 +17,10 @@ type Info = { id: string; name: string; stage: string };
  * one, which stays there until a newer reach out starts (Jonathan, Oct 28, 2026: "I currently have no access to the
  * campaign I just sent out, and need to be able to at least go on it so that I could do follow ups").
  */
-export function DealContextNav({ section = "deals" }: { section?: "deals" | "investors" } = {}) {
+export function DealContextNav({ section = "deals" }: { section?: "deals" | "investors" | "sponsors" } = {}) {
   const pathname = usePathname();
   const params = useSearchParams();
-  const fromPath = pathname.match(/^\/deals\/([^/]+)(?:\/(tracker|send|groups|followup|faq))?/) ?? pathname.match(/^\/investors\/reach\/([^/]+)/);
+  const fromPath = pathname.match(/^\/deals\/([^/]+)(?:\/(tracker|send|groups|followup|faq))?/) ?? pathname.match(/^\/(?:investors|sponsors)\/reach\/([^/]+)/);
   const dealId = fromPath && !["new", "list"].includes(fromPath[1]) ? fromPath[1] : params.get("dealId");
   const [info, setInfo] = useState<Info | null>(null);
   const [latest, setLatest] = useState<Info | null>(null);
@@ -40,9 +40,9 @@ export function DealContextNav({ section = "deals" }: { section?: "deals" | "inv
 
   // the latest reach out, read once per page under Investor search (and again when the path changes, so a new one shows at once)
   useEffect(() => {
-    if (section !== "investors") return;
+    if (section === "deals") return;
     let cancelled = false;
-    latestOutreachNavInfo().then((r) => {
+    latestOutreachNavInfo(section === "sponsors" ? "sponsor" : "investor").then((r) => {
       if (!cancelled) setLatest(r);
     });
     return () => {
@@ -51,17 +51,18 @@ export function DealContextNav({ section = "deals" }: { section?: "deals" | "inv
   }, [section, pathname]);
 
   const current = dealId && info?.id === dealId ? info : null;
-  const outreachOpen = current?.stage === "Outreach";
-  // Deals: the deal open (never a reach out). Investor search: the reach out open, else the latest reach out.
-  const shown: Info | null = section === "deals" ? (current && !outreachOpen ? current : null) : outreachOpen ? current : latest;
+  const audience = section === "sponsors" ? "sponsor" : "investor";
+  const outreachOpen = current?.stage === "Outreach" && (current.audience ?? "investor") === audience;
+  // Deals: the deal open (never a reach out). Investor search / Sponsor search: the reach out open there, else the latest one for that audience.
+  const shown: Info | null = section === "deals" ? (current && current.stage !== "Outreach" ? current : null) : outreachOpen ? current : latest;
   if (!shown) return null;
   const id = shown.id;
   const outreach = shown.stage === "Outreach";
   // the order of the work: ticket, engagement letter (which includes finding the investors), send, then the progress report
   const steps = outreach
     ? [
-        { href: `/investors/reach/${id}/send`, label: "Send outreach", icon: Mail, on: pathname.endsWith(`/${id}/send`) },
-        { href: `/investors/reach/${id}/followup`, label: "Follow ups", icon: Reply, on: pathname.endsWith(`/${id}/followup`) },
+        { href: `/${section}/reach/${id}/send`, label: "Send outreach", icon: Mail, on: pathname.endsWith(`/${id}/send`) },
+        { href: `/${section}/reach/${id}/followup`, label: "Follow ups", icon: Reply, on: pathname.endsWith(`/${id}/followup`) },
       ]
     : [
         { href: `/deals/${id}`, label: "Ticket", icon: ClipboardList, on: pathname === `/deals/${id}` },

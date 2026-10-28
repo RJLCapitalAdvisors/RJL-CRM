@@ -16,6 +16,8 @@ export type InvestorRow = {
   domain: string | null;
   city: string | null; // where the firm sits (the company card), for "investors near this deal" (Jonathan, Sep 24, 2026)
   state: string | null;
+  deals?: number; // Sponsor search: deals the firm has sent us
+  lastActivityAt?: string | null;
   crit: {
     assetClasses: string[];
     checkSizes: string[];
@@ -37,6 +39,7 @@ export type Spec = {
   assetClass: string[];
   checkMM: number | null; // the exact check being requested, in $MM
   checkMissing: boolean; // only firms with no check size on file (Jonathan, Oct 28, 2026), to go fill them in
+  withDeals: boolean; // Sponsor search: only sponsors that have sent us a deal
   investmentType: string[];
   strategy: string[];
   returnProfile: string[];
@@ -50,12 +53,13 @@ export type Spec = {
 };
 
 const MAX_REACH = 30; // the most firms in one reach out (Jonathan, Oct 28, 2026); outreach.ts MAX_OUTREACH enforces it on the server
-const EMPTY: Spec = { assetClass: [], checkMM: null, checkMissing: false, investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [], state: [], city: "" };
+const EMPTY: Spec = { assetClass: [], checkMM: null, checkMissing: false, withDeals: false, investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [], state: [], city: "" };
 const any = (have: string[], want: string[]) => want.some((w) => have.includes(w));
 
 
 /** A firm passes when, for every spec with something checked, its criteria contain at least one of the checked values. Empty specs are ignored. */
-function passes(c: InvestorRow["crit"], s: Spec, where: { city: string | null; state: string | null } = { city: null, state: null }): boolean {
+function passes(c: InvestorRow["crit"], s: Spec, where: { city: string | null; state: string | null; deals?: number } = { city: null, state: null }): boolean {
+  if (s.withDeals && !(where.deals ?? 0)) return false;
   // the firm's own location (its company card), so a deal's neighbourhood can be worked: state codes, a city by name
   if (s.state.length && !(where.state && s.state.includes(where.state))) return false;
   if (s.city.trim() && !(where.city && where.city.toLowerCase().includes(s.city.trim().toLowerCase()))) return false;
@@ -104,10 +108,14 @@ function SuggestedGroups({ source, picked, toggle }: { source: Suggestion[] | Pr
   );
 }
 
-export function InvestorSearch({ rows, preset, presetDealName, presetPlace = null, deals, mode = "search", dealId = null, suggestions = [], onReport = [], outreaches = [] }: { rows: InvestorRow[]; outreaches?: { id: string; name: string; firms: number; sent: number }[]; preset: Partial<Spec> | null; presetDealName: string | null; presetPlace?: { city: string | null; state: string | null } | null; onReport?: string[]; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] | Promise<Suggestion[]> }) {
+export function InvestorSearch({ rows, preset, presetDealName, presetPlace = null, deals, mode = "search", dealId = null, suggestions = [], onReport = [], outreaches = [], audience = "investor" }: { rows: InvestorRow[]; outreaches?: { id: string; name: string; firms: number; sent: number }[]; audience?: "investor" | "sponsor"; preset: Partial<Spec> | null; presetDealName: string | null; presetPlace?: { city: string | null; state: string | null } | null; onReport?: string[]; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] | Promise<Suggestion[]> }) {
   const PAGE = 100;
   const router = useRouter();
   const engagement = mode === "engagement" && Boolean(dealId);
+  // Sponsor search (Jonathan, Oct 28, 2026): the same page for sponsors, fewer filters, no Make list, the reach out as on Investor search
+  const sponsor = audience === "sponsor";
+  const base = sponsor ? "/sponsors" : "/investors";
+  const noun = sponsor ? "sponsors" : "investor firms";
   // the ticks survive leaving the page (Jonathan, Sep 24, 2026): kept in the browser per deal until Done; groups already on
   // the report start ticked, so a second pass only adds
   const storeKey = engagement && dealId ? `engagement-picks:${dealId}` : null;
@@ -143,7 +151,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
   const forget = () => { try { if (storeKey) window.localStorage.removeItem(storeKey); } catch { /* nothing to forget */ } };
   const [spec, setSpec] = useState<Spec>({ ...EMPTY, ...(preset ?? {}) });
   const [page, setPage] = useState(1);
-  const set = (k: Exclude<keyof Spec, "checkMM" | "city" | "checkMissing">, v: string[]) => {
+  const set = (k: Exclude<keyof Spec, "checkMM" | "city" | "checkMissing" | "withDeals">, v: string[]) => {
     setSpec((s) => ({ ...s, [k]: v }));
     setPage(1);
   };
@@ -155,7 +163,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
   // the Check size column sorts: firms with no check size first (to fill them in), or the biggest checks first
   const [sort, setSort] = useState<"" | "missing" | "check">("");
   const out = useMemo(() => {
-    const list = rows.filter((r) => passes(r.crit, spec, { city: r.city, state: r.state }));
+    const list = rows.filter((r) => passes(r.crit, spec, { city: r.city, state: r.state, deals: r.deals }));
     const lo = (r: InvestorRow) => r.crit?.checkMin ?? null, hi = (r: InvestorRow) => r.crit?.checkMax ?? null;
     if (sort === "missing") return [...list].sort((a, b) => Number(lo(a) != null) - Number(lo(b) != null) || a.name.localeCompare(b.name));
     if (sort === "check") return [...list].sort((a, b) => (hi(b) ?? -1) - (hi(a) ?? -1) || (lo(b) ?? -1) - (lo(a) ?? -1) || a.name.localeCompare(b.name));
@@ -166,7 +174,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
   const pages = Math.max(1, Math.ceil(out.length / PAGE));
   const pageRows = out.slice((page - 1) * PAGE, page * PAGE);
 
-  const sel = (k: Exclude<keyof Spec, "checkMM" | "city" | "checkMissing">, label: string, options: readonly string[]) => (
+  const sel = (k: Exclude<keyof Spec, "checkMM" | "city" | "checkMissing" | "withDeals">, label: string, options: readonly string[]) => (
     <div key={k} className="mb-2.5 text-xs text-muted">
       {label}
       <div className="mt-1">
@@ -197,17 +205,19 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
       <aside className="card self-start p-4">
         {!engagement && (
           <div className="mb-3 space-y-1.5">
-            <button type="button" className={`w-full ${pick === "list" ? "btn-primary" : "btn-secondary"}`} title="Tick firms in the list on the right, then open them as a list in a blank email" onClick={() => { setPicked(new Set()); setPick(pick === "list" ? "" : "list"); }}>
-              {pick === "list" ? "Stop making the list" : "Make list"}
-            </button>
+            {!sponsor && (
+              <button type="button" className={`w-full ${pick === "list" ? "btn-primary" : "btn-secondary"}`} title="Tick firms in the list on the right, then open them as a list in a blank email" onClick={() => { setPicked(new Set()); setPick(pick === "list" ? "" : "list"); }}>
+                {pick === "list" ? "Stop making the list" : "Make list"}
+              </button>
+            )}
             <button type="button" className={`w-full ${pick === "reach" ? "btn-primary" : "btn-secondary"}`} title={`Tick up to ${MAX_REACH} firms, then write one email and send them the brochure one at a time, like a deal send`} onClick={() => { setPicked(new Set()); setReachError(null); setPick(pick === "reach" ? "" : "reach"); }}>
               {pick === "reach" ? "Stop the reach out" : "Reach out"}
             </button>
             {outreaches.length > 0 && (
               <div className="text-[11px] text-muted">
                 {outreaches.map((o) => (
-                  <Link key={o.id} href={`/investors/reach/${o.id}/send`} className="block truncate hover:underline" title={`${o.firms} firms, ${o.sent} sent: open the Send page`}>
-                    {o.name.replace(/^Reach out · /, "")} · {o.sent}/{o.firms} sent
+                  <Link key={o.id} href={`${base}/reach/${o.id}/send`} className="block truncate hover:underline" title={`${o.firms} firms, ${o.sent} sent: open the Send page`}>
+                    {o.name.replace(/^(Sponsor reach out|Reach out) · /, "")} · {o.sent}/{o.firms} sent
                   </Link>
                 ))}
               </div>
@@ -215,7 +225,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
           </div>
         )}
         <div className="mb-3 flex items-center justify-between">
-          <span className="text-sm font-semibold">Deal specs</span>
+          <span className="text-sm font-semibold">{sponsor ? "Filters" : "Deal specs"}</span>
           {active > 0 && (
             <button type="button" className="text-xs text-sky-600 hover:underline" onClick={() => setSpec(EMPTY)}>
               Clear
@@ -250,7 +260,14 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
           <input value={spec.city} onChange={(e) => setSpec((s) => ({ ...s, city: e.target.value }))} placeholder="City" className="input mt-1 py-1 text-xs" />
         </div>
         {sel("assetClass", "Asset class", ASSET_CLASSES)}
-        <div className="mb-2.5 text-xs text-muted">
+        {sponsor && sel("strategy", "Acquisition or development", ["Acquisitions", "Development", "Both"])}
+        {sponsor && (
+          <label className="mb-2.5 flex cursor-pointer items-center gap-1.5 text-xs text-muted" title="Only sponsors that have sent us a deal">
+            <input type="checkbox" className="accent-ink" checked={spec.withDeals} onChange={(e) => { setSpec((s) => ({ ...s, withDeals: e.target.checked })); setPage(1); }} />
+            sent us a deal before
+          </label>
+        )}
+        {!sponsor && <div className="mb-2.5 text-xs text-muted">
           <div className="flex items-center justify-between">
             <span>Check size</span>
             <label className="flex cursor-pointer items-center gap-1" title="Firms whose criteria have no check size yet, so you can fill them in">
@@ -269,15 +286,15 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
             <span>$1MM</span>
             <span>$100MM+</span>
           </div>
-        </div>
-        {sel("investmentType", "Position in the capital stacks", INVESTMENT_TYPES)}
-        {sel("strategy", "Acquisition or development", ["Acquisitions", "Development", "Both"])}
-        {sel("returnProfile", "Return profile", RETURN_PROFILES)}
-        {sel("holdPeriod", "Hold period", HOLD_PERIODS)}
-        {sel("vintage", "Year built", VINTAGES)}
-        {sel("oz", "Opportunity Zone", ["Yes", "No"])}
-        {sel("closing", "Closing time frame", CLOSING_TIMEFRAMES)}
-        {sel("minority", "Open to minority position", ["Yes", "No"])}
+        </div>}
+        {!sponsor && sel("investmentType", "Position in the capital stacks", INVESTMENT_TYPES)}
+        {!sponsor && sel("strategy", "Acquisition or development", ["Acquisitions", "Development", "Both"])}
+        {!sponsor && sel("returnProfile", "Return profile", RETURN_PROFILES)}
+        {!sponsor && sel("holdPeriod", "Hold period", HOLD_PERIODS)}
+        {!sponsor && sel("vintage", "Year built", VINTAGES)}
+        {!sponsor && sel("oz", "Opportunity Zone", ["Yes", "No"])}
+        {!sponsor && sel("closing", "Closing time frame", CLOSING_TIMEFRAMES)}
+        {!sponsor && sel("minority", "Open to minority position", ["Yes", "No"])}
       </aside>
 
       <section className="card flex h-[calc(100vh-140px)] min-h-[480px] flex-col overflow-hidden">
@@ -309,7 +326,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
             )}
             <span className="text-xs text-muted">Next comes the Send page: write the email, add the brochure, launch; one email at a time, as a deal goes out.</span>
             <div className="ml-auto flex flex-col items-end gap-1">
-              <button type="button" className="btn-primary" disabled={!picked.size || starting} onClick={() => { setReachError(null); startNow(async () => { const r = await startOutreach([...picked]); if (r.ok) router.push(`/investors/reach/${r.id}/send`); else setReachError(r.reason); }); }}>
+              <button type="button" className="btn-primary" disabled={!picked.size || starting} onClick={() => { setReachError(null); startNow(async () => { const r = await startOutreach([...picked], audience); if (r.ok) router.push(`${base}/reach/${r.id}/send`); else setReachError(r.reason); }); }}>
                 {starting ? "Setting up…" : "Next: write the email"}
               </button>
               {reachError && <span className="max-w-[320px] text-right text-xs text-red-700">{reachError}</span>}
@@ -335,7 +352,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
         )}
         <div className="flex items-center justify-between border-b border-line px-4 py-2 text-sm">
           <div>
-            <span className="font-semibold">{out.length.toLocaleString()}</span> investor firms
+            <span className="font-semibold">{out.length.toLocaleString()}</span> {noun}
             {active > 0 && (
               <span className="text-muted">
                 {" "}
@@ -355,16 +372,20 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
                 <th className="w-[240px]">Company name</th>
                 <th className="w-[130px]">Based in</th>
                 <th className="w-[260px]">Deal locations</th>
-                <th className="w-[170px]">
+                {sponsor && <th className="w-[230px]">Asset classes</th>}
+                {sponsor && <th className="w-[110px]">Acq / Dev</th>}
+                {sponsor && <th className="w-[110px]">Deals with us</th>}
+                {sponsor && <th>Last touch</th>}
+                {!sponsor && <th className="w-[170px]">
                   <button type="button" className="hover:underline" title="Sort: firms with no check size first, then biggest checks first, then as before" onClick={() => { setSort((x) => (x === "" ? "missing" : x === "missing" ? "check" : "")); setPage(1); }}>
                     Check size{sort === "missing" ? " · none first" : sort === "check" ? " · biggest first" : ""}
                   </button>
-                </th>
-                <th className="w-[230px]">Asset classes</th>
-                <th className="w-[180px]">Position in the capital stack</th>
-                <th className="w-[110px]">Acq / Dev</th>
-                <th className="w-[160px]">Return profile</th>
-                <th>Hold period</th>
+                </th>}
+                {!sponsor && <th className="w-[230px]">Asset classes</th>}
+                {!sponsor && <th className="w-[180px]">Position in the capital stack</th>}
+                {!sponsor && <th className="w-[110px]">Acq / Dev</th>}
+                {!sponsor && <th className="w-[160px]">Return profile</th>}
+                {!sponsor && <th>Hold period</th>}
               </tr>
             </thead>
             <tbody>
@@ -383,18 +404,29 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
                   </td>
                   <td className="whitespace-nowrap text-xs">{[r.city, r.state].filter(Boolean).join(", ") || <span className="text-muted">—</span>}</td>
                   <Cell text={r.crit?.geographyNotes} />
-                  <td className="whitespace-nowrap">{r.crit && r.crit.checkMin != null ? rangeLabel(CHECK_STOPS, r.crit.checkMin, r.crit.checkMax) : <span className="text-muted">—</span>}</td>
-                  <Cell items={r.crit?.assetClasses} />
-                  <Cell items={r.crit?.investmentTypes} />
-                  <Cell text={r.crit?.strategy} />
-                  <Cell items={r.crit?.returnProfile} />
-                  <Cell items={r.crit?.holdPeriods} />
+                  {sponsor ? (
+                    <>
+                      <Cell items={r.crit?.assetClasses} />
+                      <Cell text={r.crit?.strategy} />
+                      <td className="whitespace-nowrap">{r.deals ? r.deals : <span className="text-muted">—</span>}</td>
+                      <td className="whitespace-nowrap text-xs">{r.lastActivityAt ? new Date(r.lastActivityAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : <span className="text-muted">—</span>}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="whitespace-nowrap">{r.crit && r.crit.checkMin != null ? rangeLabel(CHECK_STOPS, r.crit.checkMin, r.crit.checkMax) : <span className="text-muted">—</span>}</td>
+                      <Cell items={r.crit?.assetClasses} />
+                      <Cell items={r.crit?.investmentTypes} />
+                      <Cell text={r.crit?.strategy} />
+                      <Cell items={r.crit?.returnProfile} />
+                      <Cell items={r.crit?.holdPeriods} />
+                    </>
+                  )}
                 </tr>
               ))}
               {pageRows.length === 0 && (
                 <tr>
                   <td colSpan={9} className="py-10 text-center text-muted">
-                    No firms match all of these specs.
+                    No {noun} match all of these {sponsor ? "filters" : "specs"}.
                   </td>
                 </tr>
               )}
