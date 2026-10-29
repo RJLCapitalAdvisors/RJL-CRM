@@ -44,3 +44,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Claude Code personal settings (permissions per machine)
+.claude/settings.local.json

@@ -24,6 +24,7 @@ export function DealContextNav({ section = "deals" }: { section?: "deals" | "inv
   const dealId = fromPath && !["new", "list"].includes(fromPath[1]) ? fromPath[1] : params.get("dealId");
   const [info, setInfo] = useState<Info | null>(null);
   const [latest, setLatest] = useState<Info | null>(null);
+  const [latestRead, setLatestRead] = useState(false); // the latest reach out has been looked up (none may exist yet)
 
   useEffect(() => {
     if (!dealId) return;
@@ -43,7 +44,9 @@ export function DealContextNav({ section = "deals" }: { section?: "deals" | "inv
     if (section === "deals") return;
     let cancelled = false;
     latestOutreachNavInfo(section === "sponsors" ? "sponsor" : "investor").then((r) => {
-      if (!cancelled) setLatest(r);
+      if (cancelled) return;
+      setLatest(r);
+      setLatestRead(true);
     });
     return () => {
       cancelled = true;
@@ -55,6 +58,19 @@ export function DealContextNav({ section = "deals" }: { section?: "deals" | "inv
   const outreachOpen = current?.stage === "Outreach" && (current.audience ?? "investor") === audience;
   // Deals: the deal open (never a reach out). Investor search / Sponsor search: the reach out open there, else the latest one for that audience.
   const shown: Info | null = section === "deals" ? (current && current.stage !== "Outreach" ? current : null) : outreachOpen ? current : latest;
+  // Investor search / Sponsor search with no reach out yet (Jonathan, Oct 29, 2026: "have the dropdown stay open like investor search"):
+  // the block is there from the start, with the way to begin one; the first reach out takes its place
+  if (!shown && section !== "deals" && latestRead) {
+    return (
+      <div className="ml-3 mt-0.5 mb-1 border-l-2 border-line pl-2">
+        <div className="px-1 pb-1 text-[10px] uppercase tracking-wide text-muted">No reach out yet</div>
+        <Link href={`/${section}`} className="flex items-center gap-2 rounded px-2 py-1 text-xs text-ink-soft hover:bg-sky/40" title={`Tick up to 30 ${section === "sponsors" ? "sponsors" : "investor firms"} on ${section === "sponsors" ? "Sponsor" : "Investor"} search and click Reach out`}>
+          <Mail className="h-3.5 w-3.5" />
+          Start a reach out
+        </Link>
+      </div>
+    );
+  }
   if (!shown) return null;
   const id = shown.id;
   const outreach = shown.stage === "Outreach";
