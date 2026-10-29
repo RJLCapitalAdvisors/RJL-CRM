@@ -393,17 +393,18 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
               {pageRows.map((r) => (
                 <tr key={r.id} className={picking && picked.has(r.id) ? "bg-cream" : ""}>
                   {picking && (
-                    <td className="whitespace-nowrap">
+                    <td>
                       <input type="checkbox" className="accent-ink" checked={picked.has(r.id)} disabled={pick === "reach" && !picked.has(r.id) && picked.size >= MAX_REACH} onChange={() => togglePick(r.id)} aria-label={`Pick ${r.name}`} />
-                      {pick === "reach" && r.lastReachAt && (
-                        <span className="ml-1.5 text-xs font-semibold text-red-700" title={`Reach-out email sent ${new Date(r.lastReachAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}: ticking them again sends a second one`}>
-                          {new Date(r.lastReachAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                        </span>
-                      )}
                     </td>
                   )}
                   <td>
                     <Link href={`/companies/${r.id}`} className="flex items-center gap-2 font-medium hover:underline">
+                      {pick === "reach" && r.lastReachAt && (
+                        // the firm already got a reach-out email: its date in red, left of the name (Jonathan, Oct 29, 2026: "so I know I'm not duplicating")
+                        <span className="shrink-0 rounded bg-red-50 px-1 text-[11px] font-semibold leading-5 text-red-700" title={`Reach-out email sent ${new Date(r.lastReachAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}: ticking them again sends a second one`}>
+                          {new Date(r.lastReachAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </span>
+                      )}
                       <CompanyLogo domain={r.domain} name={r.name} />
                       <span className="truncate">{r.name}</span>
                     </Link>
