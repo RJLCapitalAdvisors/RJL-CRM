@@ -66,6 +66,15 @@ function Window({ title, count, children, empty }: { title: string; count: numbe
   );
 }
 
+/** A Data updates button for a teammate who is not Jonathan: greyed, with the reason on hover. */
+function Locked({ children }: { children: ReactNode }) {
+  return (
+    <button type="button" disabled className="btn-grey act cursor-not-allowed opacity-50" title="Only Jonathan can approve this. If it has been sitting here, remind him.">
+      {children}
+    </button>
+  );
+}
+
 /** A proposed check size is stored as buckets; on screen it is the range they cover ("$8MM to $20MM"). Everything else shows as written. */
 function showProposalValue(field: string, v: unknown): string {
   const text = Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v);
@@ -82,15 +91,18 @@ export default async function Dashboard() {
   // went out are picked up after the page is served (throttled); the next load shows the result.
   kickDashboardRefresh(me?.email);
   const showCriteria = Boolean(me?.canEditCriteria);
+  // Data updates is on every teammate's dashboard (Jonathan, Oct 29, 2026: Aviel sees what is waiting on Jonathan and can remind
+  // him); the buttons only work for Jonathan, everyone else sees them greyed out
+  const showData = Boolean(me);
   const todos = me?.email ? await prisma.reminder.findMany({ where: { userEmail: me.email.toLowerCase(), doneAt: null }, orderBy: { createdAt: "desc" } }) : [];
   const [proposals, quiet, momentum, intros, readyDeals, stale, dupes, reports] = await Promise.all([
-    showCriteria ? prisma.criteriaProposal.findMany({ where: { status: "PENDING", createdAt: { gte: HOME_SINCE } }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]),
+    showData ? prisma.criteriaProposal.findMany({ where: { status: "PENDING", createdAt: { gte: HOME_SINCE } }, orderBy: { createdAt: "desc" } }) : Promise.resolve([]),
     quietInvestors(),
     listMomentum(HOME_SINCE),
     quietIntros(),
     prisma.deal.findMany({ where: { stage: "Engagement Letter Signed" }, include: { owner: { select: { name: true } }, _count: { select: { investors: true } } }, orderBy: { updatedAt: "desc" } }),
-    showCriteria ? staleDeals() : Promise.resolve([]),
-    showCriteria ? possibleDuplicates() : Promise.resolve([]),
+    showData ? staleDeals() : Promise.resolve([]),
+    showData ? possibleDuplicates() : Promise.resolve([]),
     reportsDue().catch(() => [] as ReportDue[]),
   ]);
 
@@ -105,7 +117,7 @@ export default async function Dashboard() {
   const dataCount = proposals.length - olderRemovals.length + (olderRemovals.length ? 1 : 0) + stale.length + dupes.length;
   const today = new Date();
   const quietCount = quiet.reduce((n, g) => n + g.rows.length, 0);
-  const cols = showCriteria ? "2xl:grid-cols-5" : "2xl:grid-cols-4";
+  const cols = showData ? "2xl:grid-cols-5" : "2xl:grid-cols-4";
 
   return (
     <>
@@ -293,8 +305,8 @@ export default async function Dashboard() {
             </ul>
           </Window>
         )}
-        {showCriteria && (
-          <Window title="Data updates" count={dataCount} empty="Nothing to approve. Criteria corrections from investor emails, notes, calls or teammates, people who left their firm, and deals that went quiet land here.">
+        {showData && (
+          <Window title={showCriteria ? "Data updates" : "Data updates · waiting on Jonathan"} count={dataCount} empty="Nothing to approve. Criteria corrections from investor emails, notes, calls or teammates, people who left their firm, and deals that went quiet land here.">
             {dupes.length > 0 && (
               <div className="border-b border-line bg-cream-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
                 Possible duplicates ({dupes.length}) · one deal, one ticket
@@ -319,8 +331,8 @@ export default async function Dashboard() {
                     </div>
                   </div>
                   <div className="act-col">
-                    <ItemForm action={mergeDealsAction.bind(null, d.b.id, d.a.id)} className="btn-soft act" title={`Fold "${d.b.name}" into "${d.a.name}" (the ticket with more on it); emails, files, report rows and notes all move over`}>Merge into first</ItemForm>
-                    <ItemForm action={notDuplicateAction.bind(null, d.a.id, d.b.id)} className="btn-grey act">Not the same</ItemForm>
+                    {showCriteria ? <ItemForm action={mergeDealsAction.bind(null, d.b.id, d.a.id)} className="btn-soft act" title={`Fold "${d.b.name}" into "${d.a.name}" (the ticket with more on it); emails, files, report rows and notes all move over`}>Merge into first</ItemForm> : <Locked>Merge into first</Locked>}
+                    {showCriteria ? <ItemForm action={notDuplicateAction.bind(null, d.a.id, d.b.id)} className="btn-grey act">Not the same</ItemForm> : <Locked>Not the same</Locked>}
                   </div>
                 </Item>
               ))}
@@ -342,9 +354,9 @@ export default async function Dashboard() {
                     </div>
                   </div>
                   <div className="act-col">
-                    <DraftButton block label="Handle" action={handleStaleDeal.bind(null, d.id)} title="Open a check-in email on the thread this deal came through" />
-                    <ItemForm action={keepDealAction.bind(null, d.id)} className="btn-grey act" title={`Still alive; ask me again in ${STALE_DAYS} quiet days`}>Keep</ItemForm>
-                    <ItemForm action={markDealLostAction.bind(null, d.id)} className="act-lost" title="Move to Deal Lost; it leaves Deal momentum and LP follow-ups">Mark as deal lost</ItemForm>
+                    {showCriteria ? <DraftButton block label="Handle" action={handleStaleDeal.bind(null, d.id)} title="Open a check-in email on the thread this deal came through" /> : <Locked>Handle</Locked>}
+                    {showCriteria ? <ItemForm action={keepDealAction.bind(null, d.id)} className="btn-grey act" title={`Still alive; ask me again in ${STALE_DAYS} quiet days`}>Keep</ItemForm> : <Locked>Keep</Locked>}
+                    {showCriteria ? <ItemForm action={markDealLostAction.bind(null, d.id)} className="act-lost" title="Move to Deal Lost; it leaves Deal momentum and LP follow-ups">Mark as deal lost</ItemForm> : <Locked>Mark as deal lost</Locked>}
                   </div>
                 </Item>
               ))}
@@ -356,8 +368,8 @@ export default async function Dashboard() {
                     <div className="mt-1 line-clamp-3 text-xs text-ink-soft">{olderRemovals.map((p) => `${p.contactId ? people.get(p.contactId) || "Contact" : "Contact"}${p.companyId && companies.get(p.companyId) ? ` (${companies.get(p.companyId)})` : ""}`).join(" · ")}</div>
                   </div>
                   <div className="act-col">
-                    <ItemForm action={approveProposals.bind(null, olderRemovals.map((p) => p.id))} className="btn-soft act">Approve all</ItemForm>
-                    <ItemForm action={dismissProposals.bind(null, olderRemovals.map((p) => p.id))} className="btn-grey act">Dismiss all</ItemForm>
+                    {showCriteria ? <ItemForm action={approveProposals.bind(null, olderRemovals.map((p) => p.id))} className="btn-soft act">Approve all</ItemForm> : <Locked>Approve all</Locked>}
+                    {showCriteria ? <ItemForm action={dismissProposals.bind(null, olderRemovals.map((p) => p.id))} className="btn-grey act">Dismiss all</ItemForm> : <Locked>Dismiss all</Locked>}
                   </div>
                 </Item>
               )}
@@ -382,8 +394,8 @@ export default async function Dashboard() {
                     </ul>
                     </div>
                     <div className="act-col">
-                      <ItemForm action={approveProposal.bind(null, p.id)} className="btn-soft act">Approve</ItemForm>
-                      <ItemForm action={dismissProposal.bind(null, p.id)} className="btn-grey act">Dismiss</ItemForm>
+                      {showCriteria ? <ItemForm action={approveProposal.bind(null, p.id)} className="btn-soft act">Approve</ItemForm> : <Locked>Approve</Locked>}
+                      {showCriteria ? <ItemForm action={dismissProposal.bind(null, p.id)} className="btn-grey act">Dismiss</ItemForm> : <Locked>Dismiss</Locked>}
                     </div>
                   </Item>
                 );
