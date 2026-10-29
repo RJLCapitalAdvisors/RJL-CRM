@@ -11,6 +11,7 @@ import { scanAllIntros } from "@/lib/intros";
 import { detectIntroCalls } from "@/lib/intro-calls";
 import { enrichActiveDealsFromCalls } from "@/lib/fireflies";
 import { servesSide } from "@/lib/side";
+import { syncOutreachReplies } from "@/lib/outreach";
 
 export const maxDuration = 800; // a forward with three deals and a dozen PDFs needs more than five minutes (Sep 17)
 
@@ -27,6 +28,7 @@ export async function GET(req: Request) {
   }
   const [result, deals, subscription] = await Promise.all([syncAllMailboxes(), processDealsInbox().catch((e) => String(e)), ensureDealsSubscription().catch((e) => String(e))]);
   const stray = await linkStrayEmails().catch(() => 0);
+  const outreach = await syncOutreachReplies().catch((e) => String(e)); // replies to reach outs: answered, passed or unsubscribed rows leave the follow-up list
   await refreshDashboardSignals().catch(() => undefined);
   const naming = await proposeNamingConventions().catch((e) => String(e));
   const momentum = await refreshMomentum().catch((e) => String(e));
@@ -40,5 +42,5 @@ export async function GET(req: Request) {
   const israelMentions = await detectIsraelMentions().catch((e) => String(e));
   await closeLandedMentions().catch(() => 0);
   const israelSubscription = await ensureIsraelSubscription().catch((e) => String(e));
-  return Response.json({ ok: true, result, deals, subscription, stray, momentum, intros, introCalls, calls, indices, israel, israelMail, acquisitionsMail, israelMentions, israelSubscription, naming });
+  return Response.json({ ok: true, result, deals, subscription, stray, outreach, momentum, intros, introCalls, calls, indices, israel, israelMail, acquisitionsMail, israelMentions, israelSubscription, naming });
 }

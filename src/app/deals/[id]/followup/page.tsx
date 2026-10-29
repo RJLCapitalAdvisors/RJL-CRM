@@ -10,7 +10,7 @@ import { SendClient, type Firm, type SendState } from "../send/send-client";
 import { SendToOne } from "../send-to-one";
 import { after } from "next/server";
 import { firstSentMessageIds, launchStatus, pumpLaunches } from "@/lib/launch-queue";
-import { BROCHURE_KEY, ensureOutreachTemplate, isOutreach, outreachAudience, reachBase } from "@/lib/outreach";
+import { BROCHURE_KEY, ensureOutreachTemplate, isOutreach, outreachAudience, reachBase, syncOutreachReplies } from "@/lib/outreach";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,6 +29,7 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
   // round 1: firms sent and quiet; round 2 (the final follow-up): firms still quiet after follow-up 1 (Jonathan, Oct 8, 2026)
   const round = Math.max(1, Math.min(3, Number(Array.isArray(sp.round) ? sp.round[0] : sp.round) || 1));
   await syncSendDrafts().catch(() => 0);
+  await syncOutreachReplies(id).catch(() => null); // a reach out's replies move its rows off quiet before the tokens are drawn (Oct 29, 2026)
   let templates: { id: string; name: string }[];
   const [deal, templatesDeal] = await Promise.all([
     prisma.deal.findUnique({ where: { id }, include: { investors: { include: { contact: { include: { company: { include: { contacts: { where: { email: { not: null }, departedAt: null }, orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }] } } } } } }, orderBy: { createdAt: "asc" } } } }),
@@ -102,7 +103,7 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
     status: r.status,
     company: r.contact.company?.name ?? [r.contact.firstName, r.contact.lastName].filter(Boolean).join(" "),
     domain: r.contact.company?.domain ?? null,
-    people: (r.contact.company?.contacts ?? [{ id: r.contact.id, firstName: r.contact.firstName, lastName: r.contact.lastName, email: r.contact.email, title: null }]).map((c) => ({ id: c.id, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "", firstName: c.firstName ?? "", lastName: c.lastName ?? null, email: c.email ?? "", title: c.title ?? null, bounced: Boolean(c.email && bouncedEmails.has(c.email.toLowerCase())), phone: (c as { phone?: string | null }).phone ?? null, linkedin: (c as { linkedin?: string | null }).linkedin ?? null, lastActivityAt: (c as { lastActivityAt?: Date | null }).lastActivityAt?.toISOString() ?? null })),
+    people: (r.contact.company?.contacts ?? [{ id: r.contact.id, firstName: r.contact.firstName, lastName: r.contact.lastName, email: r.contact.email, title: null }]).map((c) => ({ id: c.id, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "", firstName: c.firstName ?? "", lastName: c.lastName ?? null, email: c.email ?? "", title: c.title ?? null, bounced: Boolean(c.email && bouncedEmails.has(c.email.toLowerCase())), phone: (c as { phone?: string | null }).phone ?? null, linkedin: (c as { linkedin?: string | null }).linkedin ?? null, lastActivityAt: (c as { lastActivityAt?: Date | null }).lastActivityAt?.toISOString() ?? null, unsubscribed: Boolean((c as { unsubscribed?: boolean }).unsubscribed) })),
     primaryContactId: r.contactId,
     // who we usually write to at this firm (from the email log); falls back to the report's contact
     // exactly the people the deal email went to (from the launch row, else the email log), never the firm's usual recipients

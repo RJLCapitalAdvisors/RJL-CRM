@@ -9,6 +9,7 @@ import { mergeNote, passReasonOnly } from "@/lib/tracker";
 import { loadReportRules } from "@/lib/report-rules";
 import { stripDashes } from "@/lib/style";
 import { houseSubjectMatches, subjectMatchesDeal } from "@/lib/deal-match";
+import { asksToUnsubscribe } from "@/lib/outreach";
 
 /**
  * When an LP replies to a deal asking for something (a 5-year model, the sponsor's markets, a rent roll),
@@ -156,7 +157,10 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     // Rule: a real reply from an LP means they are looking at it. Confirming receipt is Taking a look, not Sent awaiting
     // response. Only an auto-reply or out-of-office leaves the status alone.
     const autoReply = /^(?:\s*(?:re|fw|fwd)\s*:\s*)*(automatic reply|auto-?reply|autoreply|out of (?:the )?office)/i.test(a.subject ?? "") || /^\s*(i am|i'm) (currently )?out of (the )?office/i.test(body);
-    const newStatus = parsed.stance === "pass" ? 8 : parsed.stance === "interested" ? 5 : autoReply ? null : 4;
+    // "please unsubscribe": a pass on the report, and the person is never emailed again (Jonathan, Oct 29, 2026)
+    const unsub = !autoReply && asksToUnsubscribe(body);
+    if (unsub && a.contactId) await prisma.contact.update({ where: { id: a.contactId }, data: { unsubscribed: true } }).catch(() => null);
+    const newStatus = unsub || parsed.stance === "pass" ? 8 : parsed.stance === "interested" ? 5 : autoReply ? null : 4;
     // "looping in Sarah": colleagues at the LP's firm on the reply join the row (and the CRM), so the next email reaches them too
     const loopedIn = await loopInColleagues(a.companyId!, a.company?.domain ?? null, a.contactId, [...(meta.to ?? []), ...(meta.cc ?? [])]).catch(() => [] as string[]);
     // A note is written only on the deal it is about. If the LP's words name a different deal the firm is on

@@ -14,7 +14,7 @@ import { EmailRow, type EmailRowData } from "@/components/email-row";
 import { statusOf } from "@/lib/tracker";
 import type { LaunchStatus } from "@/lib/launch-queue";
 
-export type Person = { id: string; name: string; firstName?: string; lastName?: string | null; email: string; title: string | null; bounced?: boolean; phone?: string | null; linkedin?: string | null; lastActivityAt?: string | null };
+export type Person = { id: string; name: string; firstName?: string; lastName?: string | null; email: string; title: string | null; bounced?: boolean; unsubscribed?: boolean; phone?: string | null; linkedin?: string | null; lastActivityAt?: string | null };
 export type Firm = { rowId: string; status: number; company: string; domain: string | null; people: Person[]; primaryContactId: string; addressTo?: string[]; extraContactIds: string[]; defaultContactIds: string[]; openingLine: string | null; bodyOverride: string | null; draftOpen: boolean; followupTo?: string | null; sentOn?: string | null; sentEmail?: EmailRowData | null; followups?: number; departures?: { contactId: string; name: string; replacements: string[] }[]; unreached?: boolean };
 export type DealFileLite = { key: string; name: string; size: number; url?: string | null };
 /** fields: each marked ticket field as it was last refreshed, so a later refresh can tell an edited paragraph (kept) from an untouched one (replaced). */
@@ -458,7 +458,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   const sendOne = (f: Firm) => {
     commitEdit();
     const d = draftFor(f);
-    const ids = [...(to[f.rowId] ?? [])].filter((id) => !f.people.find((p) => p.id === id)?.bounced);
+    const ids = [...(to[f.rowId] ?? [])].filter((id) => { const p = f.people.find((x) => x.id === id); return !p?.bounced && !p?.unsubscribed; });
     if (!ids.length) {
       setPicker(f.rowId);
       return setNote(`Pick who at ${f.company} gets it first (▾), then click ➤ again.`);
@@ -813,7 +813,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                         {res.to.map((p, i) => (
                           <span key={p.id}>
                             {i ? ", " : ""}
-                            {bouncedFor(f, p.id) ? <span className="text-red-700 line-through" title={`Bounced: ${p.email} did not get it`}>{p.name.split(" ")[0]}</span> : departedIds(f).has(p.id) ? <span className="text-red-700 line-through" title={`${p.name} got it, but has left ${f.company} (their firm wrote back saying so)`}>{p.name.split(" ")[0]}</span> : <span title={`Got it: ${p.email}`}>{p.name.split(" ")[0]}</span>}
+                            {f.people.find((x) => x.id === p.id)?.unsubscribed ? <span className="text-red-700 line-through" title={`${p.name} asked off our emails; the CRM never writes to them again`}>{p.name.split(" ")[0]}</span> : bouncedFor(f, p.id) ? <span className="text-red-700 line-through" title={`Bounced: ${p.email} did not get it`}>{p.name.split(" ")[0]}</span> : departedIds(f).has(p.id) ? <span className="text-red-700 line-through" title={`${p.name} got it, but has left ${f.company} (their firm wrote back saying so)`}>{p.name.split(" ")[0]}</span> : <span title={`Got it: ${p.email}`}>{p.name.split(" ")[0]}</span>}
                           </span>
                         ))}
                         {freshFor(f).map((id) => <span key={id} className="text-sky-700" title="Ticked; has not had this email yet">{` + ${f.people.find((x) => x.id === id)?.name.split(" ")[0] ?? ""}`}</span>)}
@@ -826,7 +826,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                     {res?.pending && <span className="text-xs text-sky-700">queued</span>}
                     {needsResend(f) && <span className="text-xs font-medium text-red-700" title={`Nobody still at ${f.company} has this email: ${resendWhy(f, res!)}`}>needs resend</span>}
                     {!followup && f.status >= 2 && !res && <span className="text-xs text-muted">{on ? "sending again" : "sent earlier"}</span>}
-                    {followup && !res && <span className="text-xs text-muted">{f.unreached ? "nobody there has it (bounced or left): send it again from Send deal" : !f.followupTo ? "no sent email on record" : f.status === 2 ? `sent ${f.sentOn ? new Date(f.sentOn).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "earlier"}, quiet` : f.status === 3 ? `followed up${(f.followups ?? 0) > 1 ? ` ${f.followups}x` : ""}, quiet` : f.status >= 7 ? "passed" : "answered"}</span>}
+                    {followup && !res && <span className="text-xs text-muted">{f.unreached ? "nobody there has it (bounced or left): send it again from Send deal" : !f.followupTo ? "no sent email on record" : f.status === 2 ? `sent ${f.sentOn ? new Date(f.sentOn).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "earlier"}, quiet` : f.status === 3 ? `followed up${(f.followups ?? 0) > 1 ? ` ${f.followups}x` : ""}, quiet` : f.status >= 7 ? (f.defaultContactIds.some((id) => f.people.find((p) => p.id === id)?.unsubscribed) ? "unsubscribed" : "passed") : "answered"}</span>}
                     {followup && res?.ok && <span className="text-xs text-muted">{round > 1 ? `follow-up ${round} sent` : "followed up"}</span>}
                   </button>
                   {(
@@ -867,6 +867,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                         <span className="min-w-0 flex-1 truncate">
                           {p.name} <span className="text-xs text-muted">{p.title ?? p.email}</span>
                           {(p.bounced || (results[f.rowId]?.bounced ?? []).includes(p.email.toLowerCase())) && <span className="ml-1 text-xs text-red-700" title="The deal email to this address bounced; they have probably left">bounced</span>}
+                          {p.unsubscribed && <span className="ml-1 text-xs text-red-700" title="They asked off our emails; the CRM never writes to them again">unsubscribed</span>}
                           {departedIds(f).has(p.id) && <span className="ml-1 text-xs text-amber-700" title="Their firm wrote that they have left">left</span>}
                         </span>
                       </label>
@@ -930,6 +931,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                               )}
                               {when(p.lastActivityAt) && <span className="text-[11px] text-muted">last touch {when(p.lastActivityAt)}</span>}
                               {(p.bounced || (results[f.rowId]?.bounced ?? []).includes(p.email.toLowerCase())) && <span className="text-xs text-red-700">bounced</span>}
+                              {p.unsubscribed && <span className="text-xs text-red-700" title="They asked off our emails; the CRM never writes to them again">unsubscribed</span>}
                             </div>
                           );
                         }),

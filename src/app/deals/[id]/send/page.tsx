@@ -10,7 +10,7 @@ import { SendClient, type Firm, type SendState } from "./send-client";
 import { SendToOne } from "../send-to-one";
 import { after } from "next/server";
 import { launchStatus, pumpLaunches } from "@/lib/launch-queue";
-import { brochureInfo, BROCHURE_KEY, ensureOutreachTemplate, isOutreach, outreachAudience, reachBase } from "@/lib/outreach";
+import { brochureInfo, BROCHURE_KEY, ensureOutreachTemplate, isOutreach, outreachAudience, reachBase, syncOutreachReplies } from "@/lib/outreach";
 import { BrochureCard } from "@/components/brochure-card";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +26,7 @@ export const maxDuration = 300; // a launch paces itself: one email at a time, a
 export default async function SendDealPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await syncSendDrafts().catch(() => 0);
+  await syncOutreachReplies(id).catch(() => null); // a reach out's replies move its rows off quiet before the tokens are drawn (Oct 29, 2026)
   const deal = await prisma.deal.findUnique({ where: { id }, include: { investors: { include: { contact: { include: { company: { include: { contacts: { where: { email: { not: null }, departedAt: null }, orderBy: [{ lastActivityAt: "desc" }, { lastName: "asc" }] } } } } } }, orderBy: { createdAt: "asc" } } } });
   if (!deal) notFound();
   // a reach out (Investor search > Reach out, Oct 28, 2026): the same page, its own template kind, the brochure as the file
@@ -77,7 +78,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
     status: r.status,
     company: r.contact.company?.name ?? [r.contact.firstName, r.contact.lastName].filter(Boolean).join(" "),
     domain: r.contact.company?.domain ?? null,
-    people: (r.contact.company?.contacts ?? [{ id: r.contact.id, firstName: r.contact.firstName, lastName: r.contact.lastName, email: r.contact.email, title: null }]).map((c) => ({ id: c.id, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "", firstName: c.firstName ?? "", lastName: c.lastName ?? null, email: c.email ?? "", title: c.title ?? null, bounced: Boolean(c.email && bouncedEmails.has(c.email.toLowerCase())), phone: (c as { phone?: string | null }).phone ?? null, linkedin: (c as { linkedin?: string | null }).linkedin ?? null, lastActivityAt: (c as { lastActivityAt?: Date | null }).lastActivityAt?.toISOString() ?? null })),
+    people: (r.contact.company?.contacts ?? [{ id: r.contact.id, firstName: r.contact.firstName, lastName: r.contact.lastName, email: r.contact.email, title: null }]).map((c) => ({ id: c.id, name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "", firstName: c.firstName ?? "", lastName: c.lastName ?? null, email: c.email ?? "", title: c.title ?? null, bounced: Boolean(c.email && bouncedEmails.has(c.email.toLowerCase())), phone: (c as { phone?: string | null }).phone ?? null, linkedin: (c as { linkedin?: string | null }).linkedin ?? null, lastActivityAt: (c as { lastActivityAt?: Date | null }).lastActivityAt?.toISOString() ?? null, unsubscribed: Boolean((c as { unsubscribed?: boolean }).unsubscribed) })),
     primaryContactId: r.contactId,
     // starred on the company page: the people the email is addressed to (their first names in the greeting)
     addressTo: (r.contact.company?.contacts ?? []).filter((c) => c.dealAddress).map((c) => c.id),

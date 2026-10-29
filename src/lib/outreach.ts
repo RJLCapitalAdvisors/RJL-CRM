@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import { graph, graphConfigured, listAttachments } from "@/lib/graph";
 import { bestContactForCompany } from "@/lib/engagement";
 import type { DealFile } from "@/lib/send-deal";
+import { stripDashes } from "@/lib/style";
+import { AWAITING_RESPONSE, mergeNote } from "@/lib/tracker";
 
 /**
  * Reach out (Jonathan, Oct 28, 2026): from Investor search, tick up to thirty LPs and send them the firm's brochure through the
@@ -169,4 +171,73 @@ export async function ensureOutreachTemplate(audience: Audience = "investor"): P
   const seed = SEED[audience];
   const t = await prisma.emailTemplate.create({ data: { name: seed.name, kind, workspace: "CA", subject: seed.subject, bodyHtml: seed.body.join("") }, select: { id: true, name: true } });
   return [t];
+}
+
+// ---------- replies ----------
+
+/**
+ * Replies to a reach out (Jonathan, Oct 29, 2026: Russell at Aceana wrote "not for us, please unsubscribe" and his token stayed
+ * purple, a follow-up away). The readers that move a deal's rows on a reply (the LP ask scan, the mail sync) only look at deals in
+ * active stages, so a reach out's replies went unread. This sweep reads them: for every quiet row (sent or followed up) it looks in
+ * the email log for an inbound email from that firm, after the send, on the subject the reach-out email went out with. Anyone who
+ * answers is off the follow-up list: a pass or an unsubscribe turns the row red (Pass), anything else green (Taking a look). Someone
+ * who asks off our emails is marked unsubscribed on their contact and never written to again by the CRM.
+ */
+export const asksToUnsubscribe = (text: string) => /\bunsubscribe\b|\bremove (?:me|us) from\b|\btake (?:me|us) off\b|\bopt(?:ing|ed)? out\b|\bstop (?:sending|emailing)\b|\bdo not (?:email|contact)\b|\bno (?:more|further) (?:emails?|messages?|solicitations?)\b|\bnot interested in (?:receiving|any further)/i.test(text);
+const PASS_WORDS = /\bnot for us\b|\bnot (?:a )?(?:good |great |right )?fit\b|\bno(?:t a)? interest|\bwe(?:'ll| will) pass\b|\bpass on this\b|\bno thanks?\b|\bnot (?:something|what) we\b|\bdoesn'?t fit\b|\bdon'?t (?:do|invest in)\b|\bnot (?:currently )?(?:looking|investing|pursuing|taking on|raising|deploying)\b|\bdecline\b/i;
+const AUTO_SUBJECT = /^(?:\s*(?:re|fw|fwd|aw|wg)\s*:\s*)*(?:automatic reply|auto-?reply|autoreply|out of (?:the )?office)/i;
+const AUTO_BODY = /^\s*(?:thank you for your (?:e-?mail|message)[.!]?\s*)?(?:i am|i'm|i will be|i'll be) (?:currently )?(?:out of|away from) (?:the )?office/i;
+const normSubject = (s: string) => s.replace(/^(?:\s*(?:re|fw|fwd|aw|wg)\s*:\s*)+/i, "").replace(/\s+/g, " ").trim().toLowerCase();
+/** The same subject once the reply and forward prefixes are off: how a reply is matched to the email it answers. */
+export const sameSubject = (a: string, b: string) => normSubject(a).length > 0 && normSubject(a) === normSubject(b);
+/** What a reply says: an auto-reply (ignored), an unsubscribe, a pass, or an answer worth a conversation. */
+export function readReply(subject: string | null | undefined, body: string | null | undefined): "auto" | "unsubscribe" | "pass" | "answer" {
+  const text = (body ?? "").replace(/\s+/g, " ").trim();
+  if (AUTO_SUBJECT.test(subject ?? "") || AUTO_BODY.test(text)) return "auto";
+  if (asksToUnsubscribe(text)) return "unsubscribe";
+  // what they wrote, not what they quoted or signed: the first few hundred characters are theirs
+  if (PASS_WORDS.test(text.slice(0, 400))) return "pass";
+  return "answer";
+}
+const GREETING = /^(?:hi|hello|hey|dear|good (?:morning|afternoon|evening))\b[^.!?]{0,40}[,:!.]?$/i;
+const PLEASANTRY = /^(?:(?:many )?thanks?(?: you)?(?: so much| very much| a lot)? for (?:reaching out|your (?:e-?mail|note|message)|the (?:e-?mail|note|intro(?:duction)?))|(?:it was |it is )?(?:very |so )?(?:nice|great|good|a pleasure) to (?:e-)?meet you|(?:i )?hope (?:you(?: are|'re)|all is|this finds you)|i hope this (?:e-?mail|note) finds you)/i;
+/** The first line they actually wrote, for a row's note: past the greeting and the pleasantries, before the signature. Up to 160 characters, cut at a word. */
+export function firstLineWritten(body: string | null | undefined): string {
+  const lines = (body ?? "").split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter((l) => l.length > 1);
+  const line = lines.find((l) => !GREETING.test(l) && !(l.length < 80 && PLEASANTRY.test(l))) ?? lines[0] ?? "";
+  const cut = stripDashes(line).replace(/[.\s]+$/, "");
+  return cut.length <= 160 ? cut : cut.slice(0, 160).replace(/\s+\S*$/, "");
+}
+const DAY_MS = 86_400_000;
+
+/** Read the replies to every recent reach out (or one), move the rows, mark unsubscribes. Cheap: quiet rows only, one query per firm. */
+export async function syncOutreachReplies(dealId?: string): Promise<{ moved: number; unsubscribed: number }> {
+  const deals = await prisma.deal.findMany({ where: { stage: OUTREACH_STAGE, ...(dealId ? { id: dealId } : { updatedAt: { gte: new Date(Date.now() - 120 * DAY_MS) } }) }, select: { id: true } });
+  let moved = 0, unsubscribed = 0;
+  for (const d of deals) {
+    const rows = await prisma.dealInvestor.findMany({ where: { dealId: d.id, status: { in: AWAITING_RESPONSE } }, select: { id: true, contactId: true, status: true, note: true, contact: { select: { companyId: true } } } });
+    if (!rows.length) continue;
+    const sends = await prisma.dealLaunch.findMany({ where: { dealId: d.id, kind: "SEND", status: { in: ["SENT", "BOUNCED"] }, rowId: { in: rows.map((r) => r.id) }, sentAt: { not: null } }, select: { rowId: true, subject: true, sentAt: true }, orderBy: { sentAt: "asc" } });
+    for (const r of rows) {
+      const mine = sends.filter((s) => s.rowId === r.id);
+      if (!mine.length || !r.contact.companyId) continue;
+      const replies = await prisma.activity.findMany({ where: { type: "EMAIL", direction: "INBOUND", companyId: r.contact.companyId, occurredAt: { gte: mine[0].sentAt! } }, orderBy: { occurredAt: "asc" }, select: { id: true, subject: true, body: true, contactId: true, occurredAt: true, dealId: true } });
+      const reply = replies.find((a) => mine.some((s) => sameSubject(s.subject, a.subject ?? "")) && readReply(a.subject, a.body) !== "auto");
+      if (!reply) continue;
+      const kind = readReply(reply.subject, reply.body);
+      const status = kind === "unsubscribe" || kind === "pass" ? 8 : 4;
+      const when = reply.occurredAt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const said = firstLineWritten(reply.body);
+      const note = kind === "unsubscribe" ? `Asked to unsubscribe${said ? `: ${said}` : ""} (${when})` : said ? `${said} (${when})` : null;
+      await prisma.dealInvestor.update({ where: { id: r.id }, data: { status, updatedAt: reply.occurredAt, ...(note ? { note: mergeNote(r.note, note), noteDate: reply.occurredAt } : {}) } });
+      if (!reply.dealId) await prisma.activity.update({ where: { id: reply.id }, data: { dealId: d.id } }).catch(() => null);
+      if (kind === "unsubscribe" && reply.contactId) {
+        await prisma.contact.update({ where: { id: reply.contactId }, data: { unsubscribed: true } }).catch(() => null);
+        await prisma.activity.create({ data: { type: "NOTE", contactId: reply.contactId, companyId: r.contact.companyId, dealId: d.id, body: `Unsubscribed: they asked off our emails in their reply to the reach out (${when}). The CRM will not write to them again.` } }).catch(() => null);
+        unsubscribed++;
+      }
+      moved++;
+    }
+  }
+  return { moved, unsubscribed };
 }
