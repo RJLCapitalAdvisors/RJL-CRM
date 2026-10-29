@@ -29,6 +29,7 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   // groups already on this deal's report start ticked; the letter only adds (Jonathan, Sep 24, 2026: the second Certes list)
   const onReport = [...new Set(onReportRows.map((r) => r.contact.companyId).filter((x): x is string => Boolean(x)))];
   const outreaches = mode === "search" ? await (await import("@/lib/outreach")).recentOutreaches("investor").catch(() => []) : [];
+  const reached = mode === "search" ? await (await import("@/lib/outreach")).lastReachOutByCompany().catch(() => new Map<string, Date>()) : new Map<string, Date>();
 
   const critByCompany = new Map(allCriteria.map((c) => [c.companyId!, c]));
   const rows: InvestorRow[] = companies.map((c) => {
@@ -39,6 +40,7 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
       domain: c.domain,
       city: c.city,
       state: c.state,
+      lastReachAt: reached.get(c.id)?.toISOString() ?? null,
       crit: cr
         ? {
             assetClasses: parseList(cr.assetClasses),

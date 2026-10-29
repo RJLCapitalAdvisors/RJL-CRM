@@ -241,3 +241,24 @@ export async function syncOutreachReplies(dealId?: string): Promise<{ moved: num
   }
   return { moved, unsubscribed };
 }
+
+/**
+ * When each firm last got a reach-out email, any audience (Jonathan, Oct 29, 2026: "so I know I'm not duplicating"). Shown in red
+ * beside the checkbox on Investor search and Sponsor search while a reach out is being picked.
+ */
+export async function lastReachOutByCompany(): Promise<Map<string, Date>> {
+  const outreachIds = (await prisma.deal.findMany({ where: { stage: OUTREACH_STAGE }, select: { id: true } })).map((d) => d.id);
+  if (!outreachIds.length) return new Map();
+  const sends = await prisma.dealLaunch.findMany({ where: { dealId: { in: outreachIds }, kind: "SEND", status: { in: ["SENT", "BOUNCED"] }, sentAt: { not: null } }, select: { rowId: true, sentAt: true } });
+  if (!sends.length) return new Map();
+  const rows = await prisma.dealInvestor.findMany({ where: { id: { in: [...new Set(sends.map((s) => s.rowId))] } }, select: { id: true, contact: { select: { companyId: true } } } });
+  const firmOf = new Map(rows.map((r) => [r.id, r.contact.companyId]));
+  const out = new Map<string, Date>();
+  for (const s of sends) {
+    const cid = firmOf.get(s.rowId);
+    if (!cid) continue;
+    const have = out.get(cid);
+    if (!have || have < s.sentAt!) out.set(cid, s.sentAt!);
+  }
+  return out;
+}

@@ -3,7 +3,7 @@ import { checkRangeFrom } from "@/lib/ranges";
 import { PageHeader } from "@/components/ui";
 import { parseList } from "@/lib/taxonomy";
 import { InvestorSearch, type InvestorRow } from "../investors/search";
-import { recentOutreaches } from "@/lib/outreach";
+import { lastReachOutByCompany, recentOutreaches } from "@/lib/outreach";
 
 export const metadata = { title: "Sponsor search" };
 
@@ -16,11 +16,12 @@ export const maxDuration = 120;
  * email, the brochure goes on every one, sent one at a time.
  */
 export default async function SponsorsPage() {
-  const [companies, allCriteria, outreaches] = await Promise.all([
+  const [companies, allCriteria, outreaches, reached] = await Promise.all([
     // a company with no name (an email domain the sync could not name) is nothing to reach out to
     prisma.company.findMany({ where: { roles: { contains: "Sponsor" }, NOT: { name: { startsWith: "(Unnamed" } } }, select: { id: true, name: true, domain: true, city: true, state: true, lastActivityAt: true, _count: { select: { deals: true } } }, orderBy: { name: "asc" } }),
     prisma.investorCriteria.findMany({ where: { companyId: { not: null } }, select: { companyId: true, assetClasses: true, checkSizes: true, checkMinMM: true, checkMaxMM: true, geographyNotes: true, investmentTypes: true, strategy: true, returnProfile: true, holdPeriods: true, vintages: true, ozInterest: true, closingTimeframe: true, openToMinority: true } }),
     recentOutreaches("sponsor").catch(() => []),
+    lastReachOutByCompany().catch(() => new Map<string, Date>()),
   ]);
   const critByCompany = new Map(allCriteria.map((c) => [c.companyId!, c]));
   const rows: InvestorRow[] = companies.map((c) => {
@@ -31,6 +32,7 @@ export default async function SponsorsPage() {
       domain: c.domain,
       city: c.city,
       state: c.state,
+      lastReachAt: reached.get(c.id)?.toISOString() ?? null,
       deals: c._count.deals,
       lastActivityAt: c.lastActivityAt?.toISOString() ?? null,
       crit: cr
