@@ -922,7 +922,8 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                               <span className="font-medium">{p.lastName ?? (p.name !== p.email ? p.name : "")}</span>
                               {nameSaved[p.id] && <span className="text-[11px] text-emerald-700">saved</span>}
                               {p.title && <span className="text-xs text-muted">{p.title}</span>}
-                              <a href={`mailto:${p.email}`} className="text-xs text-sky-700 hover:underline">{p.email}</a>
+                              {/* the email opens a Google search of the address in a new tab, to find the person's name (Jonathan, Oct 29, 2026) */}
+                              <a href={`https://www.google.com/search?q=${encodeURIComponent(p.email)}`} target="_blank" rel="noreferrer" className="text-xs text-sky-700 hover:underline" title="Search Google for this email address">{p.email}</a>
                               {p.phone && <span className="text-xs text-muted">{p.phone}</span>}
                               {p.linkedin ? (
                                 <a href={p.linkedin} target="_blank" rel="noreferrer" className="text-xs text-sky-700 hover:underline">LinkedIn</a>
