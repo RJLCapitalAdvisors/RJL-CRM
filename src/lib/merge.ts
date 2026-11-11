@@ -3,7 +3,7 @@ import { US_STATES } from "@/lib/taxonomy";
 import { cleanBusinessPlan } from "@/lib/style";
 import { uniqueChecklist, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
 import { acresClause, amountMM, cashOnCashSentence, dealMetricsListHtml, debtTermsLine, entitledUse, intro, landMetricsHtml, metricsHtml, multiple, portfolioMetricsListHtml, sellerSentence, shortSourcing, subjectLine, usd } from "@/lib/deal-copy";
-import { prefMetrics } from "@/lib/pref";
+import { prefMetrics, priceIsValue } from "@/lib/pref";
 import { rateNumber, rateText, rateTextAtClose } from "@/lib/rates";
 
 // Merge fields available in templates. Syntax: {{deal.propertyName}} or with a fallback {{contact.firstName|there}}
@@ -225,8 +225,19 @@ export function renderTemplate(text: string, ctx: MergeContext, opts?: { mark?: 
     const tag = /^\s*<(ul|ol|p|div|table)/i.test(v) ? "div" : "span";
     return `<${tag} data-deal="${path}">${v}</${tag}>`;
   });
+  const E = String.raw`(?:<span data-deal="[^"]*">\s*</span>\s*)*`; // a marked field that came back empty
+  const tidy = out
+    // Nov 11, 2026 (Glenwillow): a template that types its own "%" after a value that already carries one read "86.33%% LTV"
+    .replace(/%(<\/span>)%/g, "%$1")
+    .replace(/(\d)%%/g, "$1%")
+    // an empty value takes its unit with it: "( per foot)", "| % LTC", "(% LTV)"; the line then reads "$54,476,473 (86.33% LTV)"
+    .replace(new RegExp(String.raw`\s*\(\s*${E}(?:per [a-z]+)?\s*\)`, "gi"), "")
+    .replace(new RegExp(String.raw`\s*\(\s*${E}%\s*(?:LTC|LTV)[^)]*\)`, "gi"), "")
+    .replace(new RegExp(String.raw`\s*\|\s*${E}%\s*(?:LTC|LTV)\b`, "gi"), "");
+  // a property value, not a price (the sponsor owns the asset; pref.ts priceIsValue): the template's purchase wording follows
+  const valued = ctx.deal && priceIsValue(ctx.deal) ? tidy.replace(/Purchase Price:/g, "Property Value:").replace(/Purchase price:/g, "Property value:").replace(/\bfor the purchase of /g, "for ") : tidy;
   // a bullet whose value came back empty ("Year 1 Cap Rate:") is dropped rather than shown bare (Oct 22, 2026)
-  return out.replace(/<li\b[^>]*>(?:(?!<\/li>)[\s\S])*?<\/li>/gi, (li) => (/^[^:]{0,80}:\s*$/.test(li.replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#8203;/g, " ").replace(/\s+/g, " ").trim()) ? "" : li));
+  return valued.replace(/<li\b[^>]*>(?:(?!<\/li>)[\s\S])*?<\/li>/gi, (li) => (/^[^:]{0,80}:\s*$/.test(li.replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#8203;/g, " ").replace(/\s+/g, " ").trim()) ? "" : li));
 }
 
 const MARK_RE = /<(span|div)\b[^>]*\bdata-deal="([^"]+)"[^>]*>/g;

@@ -384,6 +384,20 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     };
   }, [picker]);
 
+  // Blank lines typed between paragraphs go when you leave the box (Jonathan, Nov 11, 2026: Aviel typed extra lines to space the
+  // email, and "they should all be the same and uniform"). Every paragraph already stands one empty line from the next, here and in
+  // Outlook (email-html.ts outlookBlankLines), so the email reads here the way it will go. The signature is never touched.
+  const dropBlankLines = () => {
+    const el = editor.current;
+    if (!el) return;
+    const sig = el.querySelector("[data-signature]");
+    el.querySelectorAll("p, div").forEach((b) => {
+      if (b === sig || sig?.contains(b) || (!sig && /line-height:\s*normal/i.test(b.getAttribute("style") ?? ""))) return; // an unmarked older signature's lines read line-height normal
+      if (b.querySelector("img, table, ul, ol, p, div, [data-deal], [data-first-name]") || [...b.attributes].some((a) => a.name.startsWith("data-"))) return;
+      if ((b.textContent ?? "").replace(/ /g, " ").trim() === "") b.remove();
+    });
+  };
+
   const commitEdit = () => {
     if (!editor.current) return;
     const html = editor.current.innerHTML;
@@ -1149,7 +1163,10 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                 ref={editor}
                 contentEditable
                 suppressContentEditableWarning
-                onBlur={commitEdit}
+                onBlur={() => {
+                  dropBlankLines();
+                  commitEdit();
+                }}
                 onInput={commitEdit}
                 onKeyUp={readCaretFont}
                 onMouseUp={readCaretFont}

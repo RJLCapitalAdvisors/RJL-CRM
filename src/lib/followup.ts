@@ -61,7 +61,7 @@ export function tidySignature(html: string): string {
     const rest = sm ? (attrs as string).replace(sm[0], "") : (attrs as string);
     return `<${tag}${rest} style="${style}">`;
   });
-  return s.replace(/\s*\n\s*/g, " ").replace(/mso-[a-z-]+\s*:\s*[^;"]*;?/gi, "");
+  return s.replace(/\s*\n\s*/g, " ").replace(/mso-[a-z-]+\s*:\s*(?:&quot;|[^;"])*;?/gi, "");
 }
 
 export async function signatureFor(mailbox: string): Promise<string> {
@@ -85,7 +85,7 @@ export function tidyWordBlocks(html: string): string {
       return `<${tag}${rest} style="margin:0;line-height:normal;${own ? own + ";" : ""}">`;
     })
     .replace(/(&nbsp;| )+(?=\s*(?:<\/span>|<\/b>|<\/p>|<\/div>))/gi, "");
-  return out.replace(/mso-[a-z-]+\s*:\s*[^;"]*;?/gi, "");
+  return out.replace(/mso-[a-z-]+\s*:\s*(?:&quot;|[^;"])*;?/gi, "");
 }
 
 async function signatureRaw(mailbox: string): Promise<string> {

@@ -80,3 +80,57 @@ export function outlookSpacing(html: string): string {
     return `${before}<${tag}${attrs} style="margin-top:10pt;">`;
   });
 }
+
+/** One empty line, the way Outlook writes it when you press Enter on an empty line. */
+export const BLANK_LINE = `<p style="margin:0;${FONT}">&nbsp;</p>`;
+
+// an empty paragraph: nothing in it but spaces, non-breaking spaces, line breaks or empty inline tags
+const EMPTY_BLOCK = /<(p|div)(?:\s[^>]*)?>(?:\s|&nbsp;|&#160;| |<br\s*\/?>|<(span|b|i|u|strong|em|font)(?:\s[^>]*)?>(?:\s|&nbsp;|&#160;| |<br\s*\/?>)*<\/\2>)*<\/\1>/gi;
+// where one block ends (with any wrappers closing after it) and the next begins
+const BETWEEN_BLOCKS = /(<\/(?:p|div|ul|ol|table)>(?:\s*<\/(?:div|span|font)>)*)\s*(?=<(?:p|div|ul|ol|table)\b)/gi;
+
+/**
+ * Where the signature starts: the marked signature block. Only without one (an older email) the first tidied Word line
+ * (margin 0, normal line height), which is how signatureFor writes a signature; with the marker, Word lines above it are
+ * the body (Aviel pastes his text from Word).
+ */
+function signatureStart(html: string): number {
+  const marked = html.search(/<div\b[^>]*\sdata-signature=/i);
+  if (marked >= 0) return marked;
+  const word = html.search(/<(?:p|div)\b[^>]*style="[^"]*line-height:\s*normal/i);
+  return word >= 0 ? word : html.length;
+}
+
+/**
+ * Paragraph spacing as real empty lines (Jonathan, Nov 11, 2026): Aviel had to type extra blank lines on the Send page
+ * to get the spacing he wanted, and the CRM threw them away, because the gaps came from Word's "space after paragraph"
+ * (a 10pt bottom margin on every paragraph) instead of lines. "When the crm opens an email draft in outlook there should
+ * be actual space of 1 line between paragraphs as if someone pressed enter twice ... and they should all be the same
+ * and uniform." So, where an email leaves the CRM for Outlook: every paragraph and list sits at margin 0, exactly one
+ * empty line (BLANK_LINE) stands between one block and the next and before the signature, and blank lines typed in the
+ * editor collapse into that one. List items stay tight; the signature is left exactly as it is. Running it twice
+ * changes nothing. Takes over from outlookSpacing on the way out (the empty line after a list covers it).
+ */
+export function outlookBlankLines(html: string): string {
+  if (!html) return html;
+  const cut = signatureStart(html);
+  let body = html.slice(0, cut);
+  const sig = html.slice(cut);
+  // blank lines already there (typed in the editor, or from an earlier pass) go; the one line goes back in below
+  let prev = "";
+  while (prev !== body) {
+    prev = body;
+    body = body.replace(EMPTY_BLOCK, "");
+  }
+  body = body.replace(/(<\/(?:p|div|ul|ol|table)>)\s*(?:<br\s*\/?>\s*)+(?=<(?:p|div|ul|ol|table)\b)/gi, "$1");
+  // margins: none on paragraphs and list items; a list keeps only its indent
+  body = body.replace(/<(p|div|li|ul|ol)(?=[\s>])([^>]*)>/gi, (_m, tag: string, attrs: string) => {
+    const t = tag.toLowerCase();
+    const margin = t === "ul" || t === "ol" ? "margin:0 0 0 18pt;" : "margin:0;";
+    const sm = attrs.match(/\sstyle="([^"]*)"/i);
+    const own = sm ? sm[1].split(";").map((d) => d.trim()).filter((d) => d && !/^margin(?:-top|-bottom|-left|-right)?\s*:/i.test(d)).join(";") : "";
+    const rest = sm ? attrs.replace(sm[0], "") : attrs;
+    return `<${t}${rest} style="${margin}${own ? own + ";" : ""}">`;
+  });
+  return (body + sig).replace(BETWEEN_BLOCKS, (m: string, close: string, offset: number) => (offset < body.length ? `${close}${BLANK_LINE}` : m));
+}
