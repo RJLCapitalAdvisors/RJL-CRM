@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BROCHURE_PART_BYTES, isOutreach, MAX_OUTREACH, OUTREACH_STAGE } from "../src/lib/outreach";
+import { BROCHURE_PART_BYTES, isOutreach, MAX_OUTREACH, maxOutreach, OUTREACH_STAGE } from "../src/lib/outreach";
 import { STAGE_ORDER } from "../src/lib/taxonomy";
 
 // Oct 28, 2026: Investor search > Reach out sends the brochure through the deal send machinery on a record in the stage "Outreach"
@@ -9,6 +9,9 @@ test("a reach out is never a deal stage, so no board, reader or sweep lists it",
   assert.equal(isOutreach({ stage: OUTREACH_STAGE }), true);
   assert.equal(isOutreach({ stage: "Deal Taken To Market" }), false);
   assert.equal(MAX_OUTREACH, 30);
+  // Nov 11, 2026: a sponsor reach out takes up to 100 firms; an investor one stays at 30
+  assert.equal(maxOutreach("investor"), 30);
+  assert.equal(maxOutreach("sponsor"), 100);
 });
 
 test("brochure parts suit Graph (320 KiB multiples) and Vercel (under 4.5 MB a request)", () => {

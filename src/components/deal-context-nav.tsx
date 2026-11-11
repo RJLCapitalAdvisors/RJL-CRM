@@ -64,7 +64,7 @@ export function DealContextNav({ section = "deals" }: { section?: "deals" | "inv
     return (
       <div className="ml-3 mt-0.5 mb-1 border-l-2 border-line pl-2">
         <div className="px-1 pb-1 text-[10px] uppercase tracking-wide text-muted">No reach out yet</div>
-        <Link href={`/${section}`} className="flex items-center gap-2 rounded px-2 py-1 text-xs text-ink-soft hover:bg-sky/40" title={`Tick up to 30 ${section === "sponsors" ? "sponsors" : "investor firms"} on ${section === "sponsors" ? "Sponsor" : "Investor"} search and click Reach out`}>
+        <Link href={`/${section}`} className="flex items-center gap-2 rounded px-2 py-1 text-xs text-ink-soft hover:bg-sky/40" title={`Tick up to ${section === "sponsors" ? "100 sponsors" : "30 investor firms"} on ${section === "sponsors" ? "Sponsor" : "Investor"} search and click Reach out`}>
           <Mail className="h-3.5 w-3.5" />
           Start a reach out
         </Link>

@@ -57,7 +57,7 @@ export default async function SponsorsPage() {
 
   return (
     <>
-      <PageHeader title="Sponsor search" subtitle={`${rows.length.toLocaleString()} companies marked Sponsor. Filter on the left; Reach out ticks up to 30 and sends them the brochure one at a time.`} />
+      <PageHeader title="Sponsor search" subtitle={`${rows.length.toLocaleString()} companies marked Sponsor. Filter on the left; Reach out ticks up to 100 and sends them the brochure one at a time.`} />
       <InvestorSearch rows={rows} preset={null} presetDealName={null} deals={[]} mode="search" audience="sponsor" outreaches={outreaches.map((o) => ({ id: o.id, name: o.name, firms: o.firms, sent: o.sent }))} />
     </>
   );

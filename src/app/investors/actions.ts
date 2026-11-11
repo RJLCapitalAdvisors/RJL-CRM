@@ -36,9 +36,10 @@ export async function createInvestorListDraft(companyIds: string[]) {
 export async function startOutreach(companyIds: string[], audience: "investor" | "sponsor" = "investor") {
   const me = await currentUser();
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) first; the emails go from your own mailbox." };
-  const { createOutreach, MAX_OUTREACH } = await import("@/lib/outreach");
+  const { createOutreach, maxOutreach } = await import("@/lib/outreach");
+  const most = maxOutreach(audience);
   if (!companyIds.length) return { ok: false as const, reason: "Tick at least one group." };
-  if (companyIds.length > MAX_OUTREACH) return { ok: false as const, reason: `${MAX_OUTREACH} firms is the most for one reach out.` };
+  if (companyIds.length > most) return { ok: false as const, reason: `${most} firms is the most for one reach out.` };
   try {
     const r = await createOutreach(companyIds, audience);
     if (!r.firms) return { ok: false as const, reason: "None of the ticked firms has a person with an email address." };

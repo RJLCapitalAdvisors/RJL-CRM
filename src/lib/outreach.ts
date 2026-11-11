@@ -13,6 +13,8 @@ import { AWAITING_RESPONSE, mergeNote } from "@/lib/tracker";
  */
 export const OUTREACH_STAGE = "Outreach";
 export const MAX_OUTREACH = 30;
+/** A sponsor reach out takes up to 100 firms (Jonathan, Nov 11, 2026); an investor one stays at 30. */
+export const MAX_OUTREACH_SPONSOR = 100;
 export const isOutreach = (d: { stage?: string | null } | null | undefined) => d?.stage === OUTREACH_STAGE;
 /** Who a reach out goes to: LPs (Investor search) or sponsors (Sponsor search, Jonathan, Oct 28, 2026). Kept in the record's details. */
 export type Audience = "investor" | "sponsor";
@@ -25,13 +27,15 @@ export const outreachAudience = (details: string | null | undefined): Audience =
 };
 /** The pages of a reach out live under the search it came from: /investors/reach/<id> or /sponsors/reach/<id>. */
 export const reachBase = (audience: Audience) => (audience === "sponsor" ? "/sponsors" : "/investors");
+/** The most firms in one reach out for an audience. */
+export const maxOutreach = (audience: Audience) => (audience === "sponsor" ? MAX_OUTREACH_SPONSOR : MAX_OUTREACH);
 const NAME_PREFIX = (audience: Audience) => (audience === "sponsor" ? "Sponsor reach out · " : "Reach out · ");
 
 const DEALS_MAILBOX = () => process.env.DEALS_MAILBOX ?? "deals@rjlcapadvisors.com";
 
 /** One reach out: a record with the ticked firms as Deal Not Sent rows, ready for the Send page. */
 export async function createOutreach(companyIds: string[], audience: Audience = "investor"): Promise<{ id: string; firms: number }> {
-  const ids = [...new Set(companyIds)].slice(0, MAX_OUTREACH);
+  const ids = [...new Set(companyIds)].slice(0, maxOutreach(audience));
   const day = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
   const sameDay = await prisma.deal.count({ where: { stage: OUTREACH_STAGE, name: { startsWith: `${NAME_PREFIX(audience)}${day}` } } });
   const name = `${NAME_PREFIX(audience)}${day}${sameDay ? ` (${sameDay + 1})` : ""}`;

@@ -53,7 +53,8 @@ export type Spec = {
   city: string; // the firm's own location: city, contains
 };
 
-const MAX_REACH = 30; // the most firms in one reach out (Jonathan, Oct 28, 2026); outreach.ts MAX_OUTREACH enforces it on the server
+// the most firms in one reach out: 30 investors (Jonathan, Oct 28, 2026), 100 sponsors (Nov 11, 2026); outreach.ts maxOutreach enforces it on the server
+const MAX_REACH_BY = { investor: 30, sponsor: 100 } as const;
 const EMPTY: Spec = { assetClass: [], checkMM: null, checkMissing: false, withDeals: false, investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [], state: [], city: "" };
 const any = (have: string[], want: string[]) => want.some((w) => have.includes(w));
 
@@ -115,6 +116,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
   const engagement = mode === "engagement" && Boolean(dealId);
   // Sponsor search (Jonathan, Oct 28, 2026): the same page for sponsors, fewer filters, no Make list, the reach out as on Investor search
   const sponsor = audience === "sponsor";
+  const MAX_REACH = MAX_REACH_BY[audience];
   const base = sponsor ? "/sponsors" : "/investors";
   const noun = sponsor ? "sponsors" : "investor firms";
   // the ticks survive leaving the page (Jonathan, Sep 24, 2026): kept in the browser per deal until Done; groups already on
