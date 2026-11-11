@@ -10,7 +10,7 @@ import { ASSUMPTION, RATE_INDEXES, parseSpread } from "@/lib/rates";
 
 /** Detail fields that are dropdowns on the deal ticket: the extractor picks one of the options or leaves the field blank. Sentences about sourcing or the seller belong in the notes, not here. */
 const ENUM_DETAILS: Record<string, readonly string[]> = { sourcing: SOURCING_OPTIONS, sellerProfile: SELLER_PROFILES };
-import { uniqueChecklist, missingFor, type DealLikeForChecklist } from "@/lib/checklist";
+import { CHECKLIST, uniqueChecklist, missingFor, type DealLikeForChecklist } from "@/lib/checklist";
 import { loadChecklist } from "@/lib/required-items";
 
 export const ExtractedDealSchema = z.object({
@@ -127,16 +127,21 @@ const LAND_FIELDS = (scope: ExtractScope) =>
         deliveryDate: str("Land deals only: when the built project opens or delivers, as 'Month Year' or 'Q# Year'."),
       }
     : {};
+// Scoped first, one per key after (Nov 11, 2026, Glenwillow's 35 acres never reached the ticket): the live list carries each
+// item once per window (residential, land, the default for every other class), and taking the first copy of each key before
+// scoping kept the residential copies, which an industrial deal then filtered out, so the extractor got no detail questions at all.
 const detailItems = (scope: ExtractScope) => {
-  const all = uniqueChecklist().filter((it) => !it.core);
-  if (!scope.assetClass && !scope.strategy) return all.filter((it) => !it.onlyAssetClasses?.every((c) => c === "Land"));
+  const all = CHECKLIST.filter((it) => !it.core);
+  if (!scope.assetClass && !scope.strategy) return uniqueChecklist(all.filter((it) => !it.onlyAssetClasses?.every((c) => c === "Land")));
   const strat = scope.strategy ?? undefined;
-  return all.filter((it) => {
-    if (strat && !it.strategy.includes(strat as "Acquisitions" | "Development")) return false;
-    if (scope.assetClass && it.onlyAssetClasses && !it.onlyAssetClasses.includes(scope.assetClass)) return false;
-    if (scope.assetClass && it.excludeAssetClasses?.includes(scope.assetClass)) return false;
-    return true;
-  });
+  return uniqueChecklist(
+    all.filter((it) => {
+      if (strat && !it.strategy.includes(strat as "Acquisitions" | "Development")) return false;
+      if (scope.assetClass && it.onlyAssetClasses && !it.onlyAssetClasses.includes(scope.assetClass)) return false;
+      if (scope.assetClass && it.excludeAssetClasses?.includes(scope.assetClass)) return false;
+      return true;
+    }),
+  );
 };
 const classifyOutput = z.object({
   assetClass: z.enum([...ASSET_CLASSES, ""]).describe("Asset class of the deal TODAY, or empty. Land when the capital is for buying, holding or entitling land before vertical construction (a land-stage recapitalization, pre-development or entitlement financing, approvals still to come), even when the plan is to build a hotel or apartments later: the building is what it will become, Land is what it is. A building under construction or standing is its own class."),
