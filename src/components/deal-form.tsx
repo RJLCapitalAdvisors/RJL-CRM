@@ -182,6 +182,8 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
   const derivedPerUnit = sellout && count ? Math.round(sellout / count) : null;
   const derivedPerFoot = sellout && sf ? Math.round((sellout / sf) * 100) / 100 : null;
   const [acres, setAcres] = useState<number | null>(num(details.acres));
+  const [priceBasis, setPriceBasis] = useState<string>(typeof details.priceBasis === "string" ? details.priceBasis : "");
+  const valueBased = priceBasis === "Property value";
   const p = useMemo(() => assetProfile(assetClass), [assetClass]);
   const vp = useMemo(() => assetProfile(entitledFor || null), [entitledFor]); // the vertical build's own profile: a hotel per key
   const per = perCountWord(p.countLabel);
@@ -325,11 +327,16 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
         </Row>
         {!isLand && (
           <>
-            <Row label={isDev ? "Land purchase price" : "Purchase price"}>
+            {!isDev && (
+              <Row label="Price or value" hint="Property value when the sponsor already owns the asset (a recap, or a pref behind an existing loan): the number below reads Property Value on the ticket and the email, and the pref LTV is measured on it.">
+                <Select name="detail.priceBasis" value={priceBasis} options={["Property value"]} blank="Purchase price" onChange={setPriceBasis} />
+              </Row>
+            )}
+            <Row label={isDev ? "Land purchase price" : valueBased ? "Property value" : "Purchase price"}>
               <NumberInput name="purchasePrice" defaultValue={d?.purchasePrice} decimals={false} onValue={setPrice} prefix="$" />
             </Row>
-            {p.perCount && !isDev && <Calc label={`Purchase price per ${per}`} value={money(ratio(price, count))} />}
-            {p.perFoot && !isDev && <Calc label="Purchase price per SF" value={money(ratio(price, sf))} />}
+            {p.perCount && !isDev && <Calc label={`${valueBased ? "Property value" : "Purchase price"} per ${per}`} value={money(ratio(price, count))} />}
+            {p.perFoot && !isDev && <Calc label={`${valueBased ? "Property value" : "Purchase price"} per SF`} value={money(ratio(price, sf))} />}
             {p.perAcre && <Calc label="Purchase price per acre" value={money(ratio(price, acres))} />}
             <Row label="Total capitalization" hint="From sources and uses">
               <NumberInput name="totalCapitalization" defaultValue={d?.totalCapitalization} decimals={false} onValue={setCap} prefix="$" />

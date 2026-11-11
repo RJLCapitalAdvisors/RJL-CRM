@@ -4,7 +4,7 @@ import { rateText, rateTextAtClose } from "@/lib/rates";
 import { SOURCING_OPTIONS } from "@/lib/taxonomy";
 import { parseDetails } from "@/lib/checklist";
 import { US_STATES } from "@/lib/taxonomy";
-import { isCondo, isLand, isPref, prefMetrics } from "@/lib/pref";
+import { isCondo, isLand, isPref, prefMetrics, priceIsValue } from "@/lib/pref";
 
 /**
  * Generates the pieces of RJL's deal email exactly in the house style of the sent emails
@@ -308,7 +308,7 @@ export function metrics(d: D): string[] {
   const cap = n(d.totalCapitalization);
   if (cap) out.push(`Total Capitalization: ${usd(cap)}${perBits(cap)}`);
   const price = n(d.purchasePrice);
-  if (price && !dev) out.push(`Purchase Price: ${usd(price)}${perBits(price)}`);
+  if (price && !dev) out.push(`${priceIsValue(d) ? "Property Value" : "Purchase Price"}: ${usd(price)}${perBits(price)}`);
   if (price && dev) out.push(`Land Price: ${usd(price)}${perBits(price)}`);
   // a condo sells out (Jonathan, Sep 23, 2026): the sellout stands where yield on cost and cash on cash would
   const condo = isCondo(d.assetClass);

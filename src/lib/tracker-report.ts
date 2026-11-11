@@ -1,3 +1,4 @@
+import { priceIsValue } from "@/lib/pref";
 import { prisma } from "@/lib/db";
 import { fmtMoney } from "@/lib/format";
 import { missingFor, itemLabel } from "@/lib/checklist";
@@ -33,7 +34,7 @@ export async function loadReport(dealId: string, opts: { refresh?: boolean } = {
       ? { label: "Property", value: [deal.units ? `${deal.units.toLocaleString()} units` : null, deal.squareFeet ? `${deal.squareFeet.toLocaleString()} SF` : null, deal.yearBuilt ? `Built ${deal.yearBuilt}` : null, deal.occupancy != null ? `${deal.occupancy}% occupied` : null].filter(Boolean).join(" · ") }
       : null,
     deal.irr || deal.equityMultiple || deal.holdPeriod ? { label: "Returns", value: [deal.irr ? `${deal.irr}% IRR` : null, deal.equityMultiple ? `${deal.equityMultiple}x EM` : null, deal.holdPeriod, deal.cashOnCash ? `${deal.cashOnCash}% CoC` : null].filter(Boolean).join(" · ") } : null,
-    deal.purchasePrice ? { label: "Purchase price", value: [fmtMoney(deal.purchasePrice), deal.capRateT12 ? `${deal.capRateT12}% T12 cap` : null].filter(Boolean).join(" · ") } : null,
+    deal.purchasePrice ? { label: priceIsValue(deal) ? "Property value" : "Purchase price", value: [fmtMoney(deal.purchasePrice), deal.capRateT12 ? `${deal.capRateT12}% T12 cap` : null].filter(Boolean).join(" · ") } : null,
     deal.expectedClose ? { label: "Target close", value: deal.expectedClose } : null,
   ].filter(Boolean) as { label: string; value: string }[];
   return { deal, name, rows, lastUpdated, itemsNeeded, chips, fmt: fmtReportDate, addressLines };

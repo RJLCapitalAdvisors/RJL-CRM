@@ -24,6 +24,20 @@ export const isCondo = (assetClass: unknown) => assetClass === "Condo";
 export const isLand = (assetClass: unknown) => assetClass === "Land";
 
 type D = Record<string, unknown>;
+
+/**
+ * The purchase price field holds a property value when the sponsor already owns the asset (a recap or a pref behind an
+ * existing loan): Glenwillow, Jonathan, Nov 11, 2026, "use 63,100MM as property value". Set by the deal form's
+ * "Price or value" choice (details.priceBasis). The pref LTV is measured on it either way; only the label changes.
+ */
+export const priceIsValue = (d: { details?: unknown }) => {
+  try {
+    const det = typeof d.details === "string" ? JSON.parse(d.details) : d.details;
+    return (det as { priceBasis?: unknown } | null)?.priceBasis === "Property value";
+  } catch {
+    return false;
+  }
+};
 const n = (v: unknown) => (typeof v === "number" && !isNaN(v) ? v : typeof v === "string" && v.trim() ? Number(v.replace(/[^0-9.-]/g, "")) || null : null);
 
 export type PrefMetrics = {
