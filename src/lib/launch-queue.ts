@@ -334,7 +334,9 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
         await (await import("@/lib/outreach")).syncOutreachReplies(next.dealId).catch(() => null);
       }
       const row = await prisma.dealInvestor.findUniqueOrThrow({ where: { id: next.rowId }, include: { contact: { select: { companyId: true } } } });
-      if (followup && !AWAITING_RESPONSE.includes(row.status)) {
+      // only a change AFTER the launch stops it (Nov 12, 2026: Jonathan's pref follow-up on Waters at Millerville went to firms that had
+      // passed or answered weeks before, on purpose, and every one was cancelled): a firm already past quiet when it was picked was picked on purpose
+      if (followup && !AWAITING_RESPONSE.includes(row.status) && row.updatedAt > next.createdAt) {
         await prisma.dealLaunch.update({ where: { id: next.id }, data: { status: "CANCELLED", claimedAt: null, error: row.status >= 7 ? "passed or unsubscribed since this was queued: no follow-up" : "answered since this was queued: no follow-up" } });
         continue;
       }
