@@ -20,7 +20,17 @@ const RANGES: { key: UsageRange; label: string; lower: string }[] = [
  */
 export async function ClaudeUsagePage({ workspace, range }: { workspace: Workspace; range?: string }) {
   const picked = RANGES.find((r) => r.key === range) ?? RANGES[2];
-  const report = await usageReport(picked.key);
+  // a database that does not have the log table yet (a deployment whose database was not updated) gets a plain message, not an error page
+  const report = await usageReport(picked.key).catch(() => null);
+  if (!report)
+    return (
+      <>
+        <PageHeader title="Claude usage" />
+        <div className="mx-auto max-w-4xl px-8 py-6">
+          <div className="card px-5 py-4 text-sm text-ink-soft">The usage log could not be read. If this is a new deployment, its database needs the ClaudeCall table: run &quot;npx prisma db push&quot; against it once.</div>
+        </div>
+      </>
+    );
   const started = report.firstCall && report.firstCall > usagePeriods().chart ? report.firstCall : null;
   return (
     <>
