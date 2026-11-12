@@ -188,6 +188,46 @@ export async function ensureOutreachTemplate(audience: Audience = "investor"): P
  * who asks off our emails is marked unsubscribed on their contact and never written to again by the CRM.
  */
 export const asksToUnsubscribe = (text: string) => /\bunsubscribe\b|\bremove (?:me|us) from\b|\btake (?:me|us) off\b|\bopt(?:ing|ed)? out\b|\bstop (?:sending|emailing)\b|\bdo not (?:email|contact)\b|\bno (?:more|further) (?:emails?|messages?|solicitations?)\b|\bnot interested in (?:receiving|any further)/i.test(text);
+/**
+ * A colleague asked off our emails by the person replying (Nov 12, 2026: an LP asked twice, "no need to copy" and then "please remove"
+ * a colleague "from all emails from your office"; the CRM only ever read a request about the writer themselves, so the colleague kept
+ * getting follow-ups). Returns the names (or emails) asked off; the caller unsubscribes the firm's contact they
+ * name. "me" and "us" are the writer's own unsubscribe (asksToUnsubscribe), never a colleague.
+ */
+export function colleaguesAskedOff(text: string): string[] {
+  const t = (text ?? "").replace(/\s+/g, " ");
+  const who = String.raw`([A-Z][a-z'’-]+(?: [A-Z][a-z'’-]+)?|[\w.+-]+@[\w.-]+\.\w+)`;
+  const patterns = [
+    new RegExp(String.raw`\bremove ${who} from\b`, "g"),
+    new RegExp(String.raw`\b(?:take|drop|leave) ${who} off\b`, "g"),
+    new RegExp(String.raw`\bno need to (?:copy|cc|include|loop in|email) ${who}`, "g"),
+    new RegExp(String.raw`\b(?:do not|don'?t|don’t|please stop|stop) (?:copy|copying|cc|cc'?ing|include|including|email|emailing) ${who}`, "gi"),
+  ];
+  const out = new Set<string>();
+  for (const re of patterns) for (const m of t.matchAll(re)) {
+    const name = m[1].trim();
+    if (/^(?:me|us|our|my|all|the|this|these|him|her|them|everyone|anyone)$/i.test(name.split(" ")[0])) continue;
+    out.add(name);
+  }
+  return [...out];
+}
+
+/** The firm's contacts a colleague-removal request names: by email, full name, or a first name only one person at the firm has. */
+export function contactsNamed<T extends { id: string; firstName: string | null; lastName: string | null; email: string | null }>(names: string[], people: T[]): T[] {
+  const hits = new Map<string, T>();
+  for (const n of names) {
+    const low = n.toLowerCase();
+    const byEmail = people.filter((p) => p.email?.toLowerCase() === low);
+    const byFull = people.filter((p) => `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim().toLowerCase() === low);
+    const first = low.split(" ")[0];
+    const byFirst = people.filter((p) => (p.firstName ?? "").toLowerCase() === first);
+    // one person may sit on the firm twice (an old address): a first name shared only by duplicates of one full name still names them
+    const oneName = new Set(byFirst.map((p) => `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim().toLowerCase())).size === 1;
+    for (const p of byEmail.length ? byEmail : byFull.length ? byFull : oneName ? byFirst : []) hits.set(p.id, p);
+  }
+  return [...hits.values()];
+}
+
 const PASS_WORDS = /\bnot for us\b|\bnot (?:a )?(?:good |great |right )?fit\b|\bno(?:t a)? interest|\bwe(?:'ll| will) pass\b|\bpass on this\b|\bno thanks?\b|\bnot (?:something|what) we\b|\bdoesn'?t fit\b|\bdon'?t (?:do|invest in)\b|\bnot (?:currently )?(?:looking|investing|pursuing|taking on|raising|deploying)\b|\bdecline\b/i;
 const AUTO_SUBJECT = /^(?:\s*(?:re|fw|fwd|aw|wg)\s*:\s*)*(?:automatic reply|auto-?reply|autoreply|out of (?:the )?office)/i;
 const AUTO_BODY = /^\s*(?:thank you for your (?:e-?mail|message)[.!]?\s*)?(?:i am|i'm|i will be|i'll be) (?:currently )?(?:out of|away from) (?:the )?office/i;
@@ -239,6 +279,16 @@ export async function syncOutreachReplies(dealId?: string): Promise<{ moved: num
         await prisma.contact.update({ where: { id: reply.contactId }, data: { unsubscribed: true } }).catch(() => null);
         await prisma.activity.create({ data: { type: "NOTE", contactId: reply.contactId, companyId: r.contact.companyId, dealId: d.id, body: `Unsubscribed: they asked off our emails in their reply to the reach out (${when}). The CRM will not write to them again.` } }).catch(() => null);
         unsubscribed++;
+      }
+      // a colleague asked off ("please don't copy Dana"): that person is never written to again either
+      const askedOff = kind === "auto" ? [] : colleaguesAskedOff(reply.body ?? "");
+      if (askedOff.length && r.contact.companyId) {
+        const firm = await prisma.contact.findMany({ where: { companyId: r.contact.companyId, unsubscribed: false, ...(reply.contactId ? { NOT: { id: reply.contactId } } : {}) }, select: { id: true, firstName: true, lastName: true, email: true } });
+        for (const p of contactsNamed(askedOff, firm)) {
+          await prisma.contact.update({ where: { id: p.id }, data: { unsubscribed: true } }).catch(() => null);
+          await prisma.activity.create({ data: { type: "NOTE", contactId: p.id, companyId: r.contact.companyId, dealId: d.id, body: `Unsubscribed: a colleague asked that ${[p.firstName, p.lastName].filter(Boolean).join(" ") || p.email} be taken off our emails (${when}). The CRM will not write to them again.` } }).catch(() => null);
+          unsubscribed++;
+        }
       }
       moved++;
     }

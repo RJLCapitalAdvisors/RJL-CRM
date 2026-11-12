@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { logActivity } from "@/lib/activity";
 import { isSponsorSide } from "@/lib/report-guard";
 import { graph } from "@/lib/graph";
 import { ACTIVE_STAGES, isBlindIntro, isLegacyIntroTicket } from "@/lib/taxonomy";
@@ -9,7 +10,7 @@ import { mergeNote, passReasonOnly } from "@/lib/tracker";
 import { loadReportRules } from "@/lib/report-rules";
 import { stripDashes } from "@/lib/style";
 import { houseSubjectMatches, subjectMatchesDeal } from "@/lib/deal-match";
-import { asksToUnsubscribe } from "@/lib/outreach";
+import { asksToUnsubscribe, colleaguesAskedOff, contactsNamed } from "@/lib/outreach";
 
 /**
  * When an LP replies to a deal asking for something (a 5-year model, the sponsor's markets, a rent roll),
@@ -160,6 +161,17 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     // "please unsubscribe": a pass on the report, and the person is never emailed again (Jonathan, Oct 29, 2026)
     const unsub = !autoReply && asksToUnsubscribe(body);
     if (unsub && a.contactId) await prisma.contact.update({ where: { id: a.contactId }, data: { unsubscribed: true } }).catch(() => null);
+    // "please remove Dana from all emails": the colleague named is never emailed again either (Nov 12, 2026)
+    if (!autoReply && a.companyId) {
+      const askedOff = colleaguesAskedOff(body);
+      if (askedOff.length) {
+        const firm = await prisma.contact.findMany({ where: { companyId: a.companyId, unsubscribed: false, ...(a.contactId ? { NOT: { id: a.contactId } } : {}) }, select: { id: true, firstName: true, lastName: true, email: true } });
+        for (const p of contactsNamed(askedOff, firm)) {
+          await prisma.contact.update({ where: { id: p.id }, data: { unsubscribed: true } }).catch(() => null);
+          await logActivity({ type: "NOTE", body: `Unsubscribed: ${a.contact?.firstName ?? "their colleague"} asked that ${[p.firstName, p.lastName].filter(Boolean).join(" ") || p.email} be taken off our emails (${a.occurredAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}).`, contactId: p.id, companyId: a.companyId, dealId }).catch(() => null);
+        }
+      }
+    }
     const newStatus = unsub || parsed.stance === "pass" ? 8 : parsed.stance === "interested" ? 5 : autoReply ? null : 4;
     // "looping in Sarah": colleagues at the LP's firm on the reply join the row (and the CRM), so the next email reaches them too
     const loopedIn = await loopInColleagues(a.companyId!, a.company?.domain ?? null, a.contactId, [...(meta.to ?? []), ...(meta.cc ?? [])]).catch(() => [] as string[]);

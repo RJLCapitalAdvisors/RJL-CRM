@@ -44,3 +44,23 @@ test("a row's note is the first line they wrote, past the greeting and the pleas
   assert.equal(firstLineWritten("Hi there"), "Hi there");
   assert.equal(firstLineWritten("Hello,\n" + "word ".repeat(60)).length <= 160, true);
 });
+
+test("a colleague asked off our emails is found and matched to the firm's contact (Nov 12, 2026)", async () => {
+  const { colleaguesAskedOff, contactsNamed, asksToUnsubscribe } = await import("../src/lib/outreach");
+  const firm = [
+    { id: "k1", firstName: "Dana", lastName: "Reyes", email: "dreyes.old@example.com" },
+    { id: "k2", firstName: "Dana", lastName: "Reyes", email: "dreyes@example.com" },
+    { id: "a", firstName: "Sam", lastName: "Ortiz", email: "sortiz@example.com" },
+  ];
+  const nov12 = "Again, please remove Dana from all emails from your office. Thanks, Pat";
+  const oct28 = "Please direct all future emails to my attention and no need to copy Dana. Appreciate the opportunity.";
+  assert.deepEqual(colleaguesAskedOff(nov12), ["Dana"]);
+  assert.deepEqual(colleaguesAskedOff(oct28), ["Dana"]);
+  assert.deepEqual(contactsNamed(["Dana"], firm).map((p) => p.id), ["k1", "k2"]); // both addresses of the one person
+  assert.deepEqual(colleaguesAskedOff("Please don't cc Sarah Lee going forward"), ["Sarah Lee"]);
+  assert.equal(asksToUnsubscribe(nov12), false, "the writer asked about a colleague, not themselves");
+  // the writer's own request, and ordinary sentences, name no colleague
+  for (const s of ["Please remove me from your list", "Take us off this distribution", "No need to copy me on the next one", "We will remove the pref from the structure", "Happy to jump on a call"]) assert.deepEqual(colleaguesAskedOff(s), [], s);
+  // a first name two different people share is not enough to pick one
+  assert.deepEqual(contactsNamed(["Dana"], [...firm, { id: "x", firstName: "Dana", lastName: "Other", email: "dother@example.com" }]), []);
+});
