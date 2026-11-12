@@ -1375,3 +1375,22 @@ model IlRent {
   @@unique([neighborhoodId, rooms])
   @@index([rooms])
 }
+
+// Every call the CRM makes to the Claude API (Nov 12, 2026): which feature made it, the model, the tokens, the cost in
+// dollars at Anthropic's prices that day, and the error when it failed. Written only by src/lib/claude.ts; read by the
+// sidebar meter, the out-of-credits banner and Settings > Claude usage.
+model ClaudeCall {
+  id               String   @id @default(cuid())
+  at               DateTime @default(now())
+  feature          String // a short name for what made the call, e.g. "deal-intake"
+  model            String
+  inputTokens      Int      @default(0) // every input token: plain, written to the cache and read from it
+  outputTokens     Int      @default(0)
+  cacheWriteTokens Int      @default(0) // the part of inputTokens written to the prompt cache
+  cacheReadTokens  Int      @default(0) // the part of inputTokens read from the prompt cache
+  costUsd          Float    @default(0)
+  error            String?
+  outOfCredits     Boolean  @default(false) // the error says the Anthropic account has no credits left
+
+  @@index([at])
+}

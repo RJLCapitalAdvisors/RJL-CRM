@@ -1,4 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { prisma } from "@/lib/db";
 import { IL_SYSTEM, IL_TOOLS, runIl } from "@/lib/ask-israel";
 import { ACTIVE_STAGES, parseList } from "@/lib/taxonomy";
@@ -224,7 +225,7 @@ export async function askCrm(history: ChatMessage[], userName: string, workspace
   const system = israel ? IL_SYSTEM : SYSTEM;
   const exec = israel ? runIl : run;
   if (!process.env.ANTHROPIC_API_KEY) return { answer: "Claude is not configured on this server.", lookups: [] };
-  const client = new Anthropic();
+  const client = claude("ask-crm");
   const messages: Anthropic.MessageParam[] = history.slice(-12).map((m) => ({ role: m.role, content: m.content }));
   const lookups: string[] = [];
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });

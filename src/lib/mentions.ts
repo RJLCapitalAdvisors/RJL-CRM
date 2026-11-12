@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -70,7 +70,7 @@ export async function detectMentionedDeals(): Promise<{ threads: number; created
   }
   const created: string[] = [];
   let scanned = 0;
-  const client = new Anthropic();
+  const client = claude("deal-mentions");
   for (const [, msgs] of threads) {
     const newest = msgs[0];
     if (await prisma.mentionScan.findUnique({ where: { externalId: newest.externalId! } })) continue; // this thread state already read

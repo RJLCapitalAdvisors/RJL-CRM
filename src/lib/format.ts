@@ -30,3 +30,9 @@ export function fmtPct(n: number | null | undefined) {
 export function str(v: string | string[] | undefined): string {
   return Array.isArray(v) ? v[0] ?? "" : v ?? "";
 }
+
+/** Dollars and cents for the Claude meter and usage page: "$1,204.50", and "under $0.01" for a real cost that rounds to nothing. */
+export function fmtUsd(n: number): string {
+  if (n > 0 && n < 0.005) return "under $0.01";
+  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}

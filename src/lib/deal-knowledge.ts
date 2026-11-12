@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { isCondo } from "@/lib/pref";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
@@ -26,7 +26,7 @@ const SameDeal = z.object({ sameDeal: z.boolean().describe("True only if the ema
 export async function confirmSameDeal(deal: { name: string; propertyName: string | null; sponsorName: string | null; city: string | null; state: string | null; summary: string | null }, subject: string, senderEmail: string | null | undefined, bodyText: string, attachments: { names: string[]; text: string }): Promise<boolean> {
   if (!process.env.ANTHROPIC_API_KEY) return false;
   try {
-    const client = new Anthropic();
+    const client = claude("same-deal-check");
     const res = await client.messages.parse({
       model: "claude-sonnet-5",
       max_tokens: 200,
@@ -165,7 +165,7 @@ export async function fillMissingFromText(dealId: string, text: string, source: 
     return "one to three sentences in the sponsor's words (empty if not stated)";
   };
   const schema = z.object(Object.fromEntries(items.map((it) => [it.key, z.string().describe(`${it.question} Answer: ${shape(it)}.`)])) as Record<string, z.ZodString>);
-  const client = new Anthropic();
+  const client = claude("ticket-fill");
   let out: Record<string, string>;
   try {
     const res = await client.messages.parse({
@@ -212,7 +212,7 @@ export async function extractDealFacts(dealId: string, text: string, source: str
   if (!process.env.ANTHROPIC_API_KEY || text.trim().length < 20) return 0;
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, include: { facts: { orderBy: { createdAt: "desc" }, take: 60 } } });
   if (!deal) return 0;
-  const client = new Anthropic();
+  const client = claude("deal-facts");
   const known = deal.facts.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n");
   // what investors asked the sponsor for: an answer to one of these is recorded even when brief ("see the attached roof map")
   const { parseAsks } = await import("@/lib/momentum");
@@ -372,7 +372,7 @@ const Split = z.object({
  */
 export async function detectMultipleDeals(bodyText: string, attachmentNames: string[], attachmentTexts: { name: string; text: string }[]): Promise<{ name: string; attachments: string[]; hint: string }[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
-  const client = new Anthropic();
+  const client = claude("multi-deal-check");
   const peek = attachmentTexts.map((a) => `=== ${a.name} ===\n${a.text.slice(0, attachmentTexts.length > 12 ? 600 : 1500)}`).join("\n\n");
   const res = await client.messages.parse({
     model: "claude-sonnet-5",

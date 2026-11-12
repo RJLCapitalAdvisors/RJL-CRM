@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -26,7 +26,7 @@ const Read = z.object({
 type Thread = { subject: string | null; direction: string | null; occurredAt: Date; body: string | null; from: string; externalId: string | null; contactId: string | null };
 
 async function readThread(kind: "sponsor" | "intro", dealName: string, party: string, msgs: Thread[]) {
-  const client = new Anthropic();
+  const client = claude("deal-momentum");
   const text = msgs
     .slice(-6)
     .map((m) => `[${m.occurredAt.toISOString().slice(0, 10)}] ${m.direction === "OUTBOUND" ? "RJL" : party} (${m.from}): ${m.subject ?? ""}\n${(m.body ?? "").slice(0, 600)}`)

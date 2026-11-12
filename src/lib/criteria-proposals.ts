@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -73,7 +73,7 @@ export async function proposeCriteriaChanges(opts: { companyId: string; contactI
   const onFile = (Object.keys(PROPOSAL_FIELDS) as ProposalField[]).map((f) => `${PROPOSAL_FIELDS[f].label}: ${current(crit, f) || "(blank)"}`).join("\n");
   const allowed = (Object.keys(PROPOSAL_FIELDS) as ProposalField[]).filter((f) => PROPOSAL_FIELDS[f].allowed).map((f) => `${f}: ${(PROPOSAL_FIELDS[f].allowed as readonly string[]).join(" | ")}`).join("\n");
 
-  const client = new Anthropic();
+  const client = claude("criteria-proposals");
   const res = await client.messages.parse({
     model: "claude-opus-5",
     max_tokens: 1500,

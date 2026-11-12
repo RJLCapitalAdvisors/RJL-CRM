@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -44,7 +44,7 @@ export async function generateTrackerSummary(dealId: string, opts: { force?: boo
     await prisma.deal.update({ where: { id: dealId }, data: { trackerSummaryAt: new Date() } }).catch(() => null);
     return { themes: [], items: [] };
   }
-  const client = new Anthropic();
+  const client = claude("report-summary");
   const res = await client.messages.parse({
     model: "claude-opus-5",
     max_tokens: 1500,

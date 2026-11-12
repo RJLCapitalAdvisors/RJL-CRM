@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -89,7 +89,7 @@ export async function suggestInvestors(dealId: string, opts: { force?: boolean }
     })
     .join("\n");
 
-  const client = new Anthropic();
+  const client = claude("suggest-investors");
   const res = await client.messages.parse({
     model: "claude-opus-5",
     max_tokens: 8000,

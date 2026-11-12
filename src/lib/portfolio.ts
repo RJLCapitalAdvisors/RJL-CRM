@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -88,7 +88,7 @@ async function portfolioPlan(sponsor: string, assetClass: string | null, cities:
   const plans = children.map((c) => c.summary).filter((s): s is string => Boolean(s?.trim()));
   if (plans.length && process.env.ANTHROPIC_API_KEY) {
     try {
-      const client = new Anthropic();
+      const client = claude("portfolio-plan");
       const res = await client.messages.parse({ model: "claude-opus-5", max_tokens: 800, system: "You write the business plan paragraph of a real estate capital raise email for RJL Capital Advisors. Plain, factual, house style: location and market context first, then anchor tenants or resident profile, the value-add thesis, then physical attributes. 4 to 6 sentences. Never include prices, returns, costs, exit strategy, timing, square footage, unit counts, seller profile or lender type: those live in their own fields. No dashes anywhere.", messages: [{ role: "user", content: `Sponsor: ${sponsor}\nPortfolio of ${children.length} ${assetClass ?? ""} properties in ${cities}:\n\n${children.map((c) => `${c.propertyName ?? c.name} (${[c.city, c.state].filter(Boolean).join(", ")}):\n${c.summary ?? ""}`).join("\n\n")}` }], output_config: { format: zodOutputFormat(Plan) } });
       if (res.parsed_output) return cleanBusinessPlan(stripDashes(res.parsed_output.summary));
     } catch {

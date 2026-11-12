@@ -4,8 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
-import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks, BookOpen, Table2, Inbox, Map, Trash2, Coins } from "lucide-react";
+import { Building2, Users, KanbanSquare, LayoutDashboard, Mail, FileText, Search, ClipboardList, Settings, MessageSquare, Home, ListChecks, BookOpen, Table2, Inbox, Map, Trash2, Coins, Sparkles } from "lucide-react";
 import { NavLink } from "@/components/nav-link";
+import { ClaudeMeter } from "@/components/claude-meter";
 import { DealContextNav } from "@/components/deal-context-nav";
 import { ApartmentContextNav } from "@/components/apartment-context-nav";
 import { isAcquisitionsPath, isIsraelPath } from "@/lib/workspace";
@@ -105,8 +106,7 @@ export function WorkspaceSidebar({ user, sides = [] }: { user: { name: string; w
       </div>
       {user && !single && showCA && showIL && !(openCA && openIL) && <div className="px-4 pt-2 text-[11px] leading-snug text-muted">{openCA ? "RJL Israel is faded until you sign in with your @rjlisrael.com account. Click its logo." : "RJL Capital Advisors is faded until you sign in with your @rjlcapadvisors.com account. Click its logo."}</div>}
       {user && showAQ && !single && !openAQ && <div className="px-4 pt-2 text-[11px] leading-snug text-muted">RJL Acquisitions is faded until you click its logo and sign in once with your @rjlcapadvisors.com account.</div>}
-      <div className="px-3 pt-3">{israel ? <Nav items={IL_NAV} apartmentSteps /> : acquisitions ? <Nav items={AQ_NAV} propertySteps /> : <Nav items={CA_NAV} dealSteps />}</div>
-      <div className="flex-1" />
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-3">{israel ? <Nav items={IL_NAV} apartmentSteps /> : acquisitions ? <Nav items={AQ_NAV} propertySteps /> : <Nav items={CA_NAV} dealSteps />}</div>
       <div className="px-5 py-4 text-xs text-muted">
         {user ? (
           <>
@@ -124,6 +124,7 @@ export function WorkspaceSidebar({ user, sides = [] }: { user: { name: string; w
           </a>
         )}
       </div>
+      <ClaudeMeter />
     </aside>
   );
 }
@@ -208,11 +209,13 @@ function SettingsSubnav() {
   const onUsers = pathname.startsWith("/settings/users");
   const onRules = pathname.startsWith("/settings/underwriting");
   const onData = pathname.startsWith("/settings/data-rules");
+  const onClaude = pathname.startsWith("/settings/claude-usage");
   const items = [
-    { href: "/settings", label: "Settings", icon: Settings, on: !onUsers && !onRules && !onData },
+    { href: "/settings", label: "Settings", icon: Settings, on: !onUsers && !onRules && !onData && !onClaude },
     { href: "/settings/users", label: "Users", icon: Users, on: onUsers },
     { href: "/settings/underwriting", label: "Underwriting rules", icon: BookOpen, on: onRules },
     { href: "/settings/data-rules", label: "Data rules", icon: Table2, on: onData },
+    { href: "/settings/claude-usage", label: "Claude usage", icon: Sparkles, on: onClaude },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">
@@ -294,11 +297,13 @@ function SideSettingsSubnav({ base }: { base: string }) {
   if (!pathname.startsWith(base)) return null;
   const onData = pathname.startsWith(base + "/data-rules");
   const onImport = pathname.startsWith(base + "/import-instructions");
+  const onClaude = pathname.startsWith(base + "/claude-usage");
   const items = [
-    { href: base, label: "Users", icon: Users, on: !onData && !onImport },
+    { href: base, label: "Users", icon: Users, on: !onData && !onImport && !onClaude },
     { href: base + "/data-rules", label: "Data rules", icon: Table2, on: onData },
     // Acquisitions only (Oct 5, 2026): the standing instructions every imported call list is read with
     ...(base.startsWith("/acquisitions") ? [{ href: base + "/import-instructions", label: "Import instructions", icon: BookOpen, on: onImport }] : []),
+    { href: base + "/claude-usage", label: "Claude usage", icon: Sparkles, on: onClaude },
   ];
   return (
     <div className="ml-3 mt-0.5 mb-1 border-l-2 border-sky-600 pl-2">

@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -94,7 +94,7 @@ export type Extracted = z.infer<typeof Out>;
 const SYSTEM = `You read a real-estate-industry company's website text and fill in a CRM record for a capital advisory firm. Use only what the text supports. Leave a field empty rather than guessing. Keep the description factual and short, written the way an analyst would note it (no marketing adjectives).`;
 
 export async function extractCompany(snap: SiteSnapshot): Promise<Extracted> {
-  const client = new Anthropic();
+  const client = claude("company-enrich");
   const res = await client.messages.parse({
     model: "claude-sonnet-5",
     max_tokens: 2000,

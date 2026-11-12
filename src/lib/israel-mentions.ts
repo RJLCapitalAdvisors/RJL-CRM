@@ -1,4 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { graph } from "@/lib/graph";
@@ -67,7 +68,7 @@ export async function detectIsraelMentions(): Promise<{ threads: number; created
     if (list.length < 5) list.push(a);
     threads.set(key, list);
   }
-  const client = new Anthropic();
+  const client = claude("israel-mentions");
   const created: string[] = [];
   let scanned = 0;
   for (const [, msgs] of threads) {

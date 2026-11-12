@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { cleanInterestRate } from "@/lib/rates";
 import { FORMAT_RULES, loadUnderwritingRules } from "@/lib/underwriting-rules";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
@@ -439,7 +439,7 @@ function systemPrompt(rules: string[]): string {
 export async function extractWithClaude(rawText: string, subject?: string | null, attachments: string[] = [], known: Partial<ExtractScope> = {}): Promise<ExtractedDeal> {
   await loadChecklist(); // the Required Items List as Jonathan last edited it
   const rules = await loadUnderwritingRules(); // Settings > Underwriting rules, as last saved
-  const client = new Anthropic();
+  const client = claude("deal-intake");
   const content = `Subject: ${subject ?? ""}\nAttachments: ${attachments.length ? attachments.join(", ") : "(none)"}\n\n${rawText}`;
   // first, what kind of deal this is, so the full schema carries only the fields that apply (Oct 6, 2026)
   let scope: ExtractScope = { assetClass: known.assetClass ?? null, strategy: known.strategy ?? null };

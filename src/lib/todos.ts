@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -33,7 +33,7 @@ export async function createTodoFromEmail(opts: { userEmail: string; subject: st
   let people: string[] = [];
   if (process.env.ANTHROPIC_API_KEY) {
     try {
-      const client = new Anthropic();
+      const client = claude("email-todo");
       const res = await client.messages.parse({
         model: "claude-sonnet-5",
         max_tokens: 400,

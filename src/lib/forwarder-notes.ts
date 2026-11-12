@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -35,7 +35,7 @@ const STAGE_ORDER = DEAL_STAGES as readonly string[];
 export async function applyForwarderInstructions(dealId: string, bodyText: string): Promise<{ stage?: string; introduced: string[] } | null> {
   const note = forwarderNote(bodyText);
   if (!note || !process.env.ANTHROPIC_API_KEY) return null;
-  const client = new Anthropic();
+  const client = claude("forwarder-notes");
   const res = await client.messages.parse({
     model: "claude-sonnet-5",
     max_tokens: 400,

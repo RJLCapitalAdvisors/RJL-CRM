@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClaudeMark } from "@/components/claude-mark";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
@@ -40,6 +41,7 @@ export default async function AgreedGroupsPage({ params }: { params: Promise<{ i
           <>
             <Link href={`/investors?dealId=${deal.id}&mode=engagement`} className="btn-secondary">
               Engagement letter
+              <ClaudeMark />
             </Link>
             <Link href={`/deals/${deal.id}/send`} className="btn-primary">
               Send deal

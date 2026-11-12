@@ -1,5 +1,5 @@
 import { US_STATES } from "@/lib/taxonomy";
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -53,7 +53,7 @@ export async function writeBusinessPlan(dealId: string, text: string, source: st
     "A physical descriptor of the site (riverfront, waterfront, lakeside, hilltop, wooded, corner) is stated only when the material's own site plan or description says it of this site; never inferred from the town's general description. A site near a highway and a lake is near them, not on a river.",
     "Never name investor groups. No dashes as punctuation, no bullet points, no headings.",
   ].join(" ");
-  const client = new Anthropic();
+  const client = claude("business-plan");
   let plan: string | null = null;
   try {
     const res = await client.messages.parse({ model: "claude-sonnet-5", max_tokens: 1500, system, messages: [{ role: "user", content: `DEAL: ${deal.propertyName ?? deal.name}${deal.city ? ` (${deal.city}, ${deal.state ?? ""})` : ""}\nSPONSOR: ${deal.sponsorName ?? "unknown"}\nASSET CLASS: ${deal.assetClass ?? ""} · STRATEGY: ${deal.strategy ?? ""}\n\nTHE MATERIAL (${source}):\n${text.slice(0, 60000)}` }], output_config: { format: zodOutputFormat(Plan) } });
@@ -84,7 +84,7 @@ export async function improveNarratives(dealId: string, text: string, source: st
   if (!deal) return none;
   let out: z.infer<typeof Out> | null = null;
   for (let attempt = 0; attempt < 2 && !out; attempt++) try {
-    const res = await new Anthropic().messages.parse({
+    const res = await claude("deal-narratives").messages.parse({
       model: "claude-sonnet-5",
       max_tokens: 4000, // the reply carries its reasoning too; 1,500 cut Sunder's answers off mid-string (Sep 28, 2026)
       system: [

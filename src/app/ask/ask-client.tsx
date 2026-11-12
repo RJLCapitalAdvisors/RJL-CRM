@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { ClaudeMark } from "@/components/claude-mark";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowUp, Check, FileSpreadsheet, MessageSquare, PanelLeft, Paperclip, Plus, Sparkles, Trash2, X } from "lucide-react";
@@ -406,9 +407,12 @@ export function AskClient({ userName, initialThreads, initialThreadId, initialMe
           </button>
           <span className="hidden text-[11px] text-muted sm:inline">Enter to send, Shift+Enter for a new line</span>
         </div>
-        <button type="submit" className="btn-primary flex h-8 w-8 items-center justify-center rounded-full p-0" disabled={pending || (!draft.trim() && !files.length)} title="Send">
-          <ArrowUp className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <ClaudeMark className="text-sky-600" />
+          <button type="submit" className="btn-primary flex h-8 w-8 items-center justify-center rounded-full p-0" disabled={pending || (!draft.trim() && !files.length)} title="Send">
+            <ArrowUp className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </form>
   );
@@ -480,6 +484,7 @@ export function AskClient({ userName, initialThreads, initialThreadId, initialMe
               {STARTERS[workspace].map((s) => (
                 <button key={s} type="button" className="chip text-sm hover:bg-cream" onClick={() => send(s)}>
                   {s}
+                  <ClaudeMark />
                 </button>
               ))}
             </div>

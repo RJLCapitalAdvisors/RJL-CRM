@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClaudeMark } from "@/components/claude-mark";
 import { PageHeader } from "@/components/ui";
 import { claudeConfigured } from "@/lib/intake";
 import { submitPastedEmail } from "./actions";
@@ -63,6 +64,7 @@ export default function PasteDealPage() {
             <span className="text-xs text-muted">{claudeConfigured() ? "Claude reads the email and fills the deal in about 20 seconds." : "Basic pattern parsing is active. Add ANTHROPIC_API_KEY to .env for full extraction."}</span>
             <button className="btn-primary" type="submit">
               Create deal
+              {claudeConfigured() && <ClaudeMark />}
             </button>
           </div>
         </form>

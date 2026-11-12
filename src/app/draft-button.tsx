@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ClaudeMark } from "@/components/claude-mark";
 import { useRouter } from "next/navigation";
 
 /**
@@ -18,7 +19,7 @@ const desktopHref = (r: Links) => {
 };
 
 /** block: fill the action column (dashboard rows), so Handle sits flush with the grey and red buttons under it. */
-export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", action, disabled, title, block = false }: { label?: string; readyLabel?: string; action: () => Promise<DraftLinks>; disabled?: boolean; title?: string; block?: boolean }) {
+export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", action, disabled, title, block = false, claude = false }: { label?: string; readyLabel?: string; action: () => Promise<DraftLinks>; disabled?: boolean; title?: string; block?: boolean; claude?: boolean }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState<Extract<DraftLinks, { ok: true }> | null>(null);
@@ -64,6 +65,7 @@ export function DraftButton({ label = "Handle", readyLabel = "Open in Outlook", 
         }}
       >
         {pending ? "Preparing draft…" : label}
+        {claude && <ClaudeMark />}
       </button>
       {error && <span className="max-w-[220px] break-words text-right text-xs text-red-700">{error}</span>}
     </div>

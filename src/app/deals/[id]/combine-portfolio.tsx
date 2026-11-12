@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { ClaudeMark } from "@/components/claude-mark";
 import { combinePortfolioAction, portfolioCandidatesAction, portfolioSelfAction } from "../actions";
 
 type Cand = { id: string; name: string; city: string | null; stage: string; ask: string | null };
@@ -92,6 +93,7 @@ export function CombinePortfolio({ dealId, dealName }: { dealId: string; dealNam
             <span className="text-xs text-muted">{picked.length + 1} tickets</span>
             <button type="button" className="btn-primary px-3 py-1.5 text-xs" disabled={busy || picked.length === 0 || self === null} onClick={go}>
               {busy ? "Combining…" : self ? "Add to this portfolio" : "Create portfolio"}
+              <ClaudeMark />
             </button>
           </div>
         </div>

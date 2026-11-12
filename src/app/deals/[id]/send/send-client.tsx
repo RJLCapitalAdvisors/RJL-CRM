@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { ClaudeMark } from "@/components/claude-mark";
 import { useRouter } from "next/navigation";
 import { Bold, File, FileImage, FileSpreadsheet, FileText, Italic, List, ListOrdered, PenLine, Presentation, Underline } from "lucide-react";
 import { CompanyLogo } from "@/components/company-logo";
@@ -1062,6 +1063,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
               />
               <button type="button" className="btn-primary mt-2 w-full justify-center" disabled={pending || !general || !ask.trim()} onClick={revise}>
                 {pending ? "Working…" : "Revise"}
+                <ClaudeMark />
               </button>
               <p className="mt-2 text-[11px] text-muted">Enter sends. Shift+Enter for a new line.</p>
             </div>
@@ -1094,6 +1096,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
               {!cur && (
                 <button type="button" className="text-xs text-sky-700 hover:underline disabled:opacity-50" onClick={refreshLatest} disabled={pending || rendering} title="Read the newest model on the deal into the ticket, then update the figures in this email. Paragraphs you edited keep your wording; any whose figures changed are named so you can check them.">
                   refresh from latest info
+                  <ClaudeMark />
                 </button>
               )}
               {shown?.touched && (

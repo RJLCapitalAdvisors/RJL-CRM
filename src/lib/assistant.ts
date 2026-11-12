@@ -1,4 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import type { Workspace } from "@/lib/access";
@@ -37,6 +38,8 @@ const clip = (s: unknown, n = 12_000) => {
 };
 const ci = "insensitive" as const;
 const NAMES: Record<Workspace, string> = { CA: "RJL Capital Advisors", IL: "RJL Israel", AQ: "RJL Acquisitions" };
+/** The name each side's chat goes under in the Claude usage log (src/lib/claude.ts). */
+const ASK_FEATURE: Record<Workspace, string> = { CA: "ask-crm", IL: "ask-israel", AQ: "ask-acquisitions" };
 
 // ---------- files ----------
 
@@ -342,7 +345,7 @@ export async function assistantTurn(ws: Workspace, history: HistoryMessage[], us
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   // the long, stable part of the system prompt (the guide, the standing instructions, the rules) is cached across turns; the date and name sit after it
   const system: Anthropic.TextBlockParam[] = [{ type: "text", text: `${base}\n${importGuide(ws, rules, instructions)}`, cache_control: { type: "ephemeral" } }, { type: "text", text: `Today is ${today}. You are talking with ${userName}.` }];
-  const client = new Anthropic();
+  const client = claude(ASK_FEATURE[ws]);
   const messages: Anthropic.MessageParam[] = history.slice(-14).map((m) => ({ role: m.role, content: m.content }));
   const used: string[] = [];
   const savedRules: string[] = [];

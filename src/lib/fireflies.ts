@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -111,7 +111,7 @@ export async function enrichFromCalls(dealId: string, transcripts?: Transcript[]
     await prisma.deal.update({ where: { id: dealId }, data: { callsEnrichedAt: new Date() } }).catch(() => null);
     return { calls: 0, changed: false, facts: 0 };
   }
-  const client = new Anthropic();
+  const client = claude("call-transcripts");
   const known = deal.facts.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n");
   void transcripts;
   const oneCall = (c: Transcript) => `=== ${c.title} (${c.date.toISOString().slice(0, 10)}; ${c.participants.join(", ")}) ===\n${c.overview}\n${c.bullets}\n${c.actionItems}`;

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClaudeMark } from "@/components/claude-mark";
 import { RefreshButton } from "./refresh-button";
 import { DownloadPdfButton } from "./download-pdf";
 import { notFound } from "next/navigation";
@@ -62,11 +63,16 @@ export default async function TrackerPage({ params, searchParams }: { params: Pr
             </Link>
             <a href={shareUrl} target="_blank" className="btn-secondary" title="What the sponsor sees. Print from there to save a PDF.">
               Sponsor view / PDF
+              <ClaudeMark />
             </a>
-            <DraftButton label="Send to sponsor" action={openReportDraftAction.bind(null, deal.id)} title="Reply all on your latest exchange with the sponsor, today's progress report attached" />
+            <DraftButton claude label="Send to sponsor" action={openReportDraftAction.bind(null, deal.id)} title="Reply all on your latest exchange with the sponsor, today's progress report attached" />
           </>
         }
       />
+      <div className="mx-8 mt-2 text-[11px] text-muted">
+        <ClaudeMark className="ml-0 mr-1 text-sky-600" />
+        Typing a note, or changing the status of a row that has a note, also rewrites the themes and items with Claude.
+      </div>
 
       {removals.length > 0 && (
         <div className="mx-8 mb-3 flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">

@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -52,7 +52,7 @@ export async function processSponsorReplies(): Promise<{ read: number; confirmed
   const since = new Date(Date.now() - DAYS * 86_400_000);
   const deals = await prisma.deal.findMany({ where: { stage: { in: [...ACTIVE_STAGES] }, sponsorCompanyId: { not: null } }, select: { id: true, name: true, propertyName: true, stage: true, details: true, sponsorCompanyId: true } });
   let read = 0, confirmed = 0, facts = 0;
-  const client = new Anthropic();
+  const client = claude("sponsor-replies");
   for (const d of deals) {
     const acts = await prisma.activity.findMany({ where: { type: "EMAIL", direction: "INBOUND", occurredAt: { gte: since }, externalId: { not: null }, OR: [{ dealId: d.id, companyId: d.sponsorCompanyId }, { dealId: d.id, contact: { companyId: d.sponsorCompanyId } }] }, orderBy: { occurredAt: "asc" } });
     for (const a of acts) {

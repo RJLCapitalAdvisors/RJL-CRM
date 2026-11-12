@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -59,7 +59,7 @@ export async function detectSponsorAnswers(): Promise<{ emails: number; items: n
     byDeal.set(a.dealId, list);
   }
   if (!byDeal.size) return { emails: 0, items: 0 };
-  const client = new Anthropic();
+  const client = claude("sponsor-answers");
   let emails = 0, items = 0;
   for (const [dealId, dealAsks] of byDeal) {
     const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, name: true, propertyName: true, stage: true, sponsorCompanyId: true, sponsorName: true } });

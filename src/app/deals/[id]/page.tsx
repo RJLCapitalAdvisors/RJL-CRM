@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClaudeMark } from "@/components/claude-mark";
 import { CA_TEAM } from "@/lib/access";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -81,6 +82,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                 </Link>
                 <Link href={`/investors?dealId=${deal.id}&mode=engagement`} className="btn-secondary" title="Pick the equity groups to carve out, then the letter drafts itself to the sponsor">
                   Generate engagement letter
+                  <ClaudeMark />
                 </Link>
                 <Link href={`/deals/${deal.id}/groups`} className="btn-secondary" title="The groups on the letter: tick what the sponsor agreed to, see what they struck, mark the letter signed">
                   Agreed groups

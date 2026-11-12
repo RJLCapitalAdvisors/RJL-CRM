@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -42,7 +42,7 @@ export async function detectLpAsks(): Promise<LpAsk[]> {
     orderBy: { occurredAt: "desc" },
   });
   const out: LpAsk[] = [];
-  const client = new Anthropic();
+  const client = claude("lp-replies");
   for (const a of inbound) {
     // a bounce is the mail system talking, not the investor (NYL on Park Station, Oct 1, 2026): nothing on the report moves
     if (/^(?:s*(?:re|fw|fwd)s*:s*)*(?:undeliverable|undelivered|delivery (?:status notification|has failed|failure)|mail delivery failed|returned mail|failure notice|non-?deliverable)/i.test(a.subject ?? "")) {

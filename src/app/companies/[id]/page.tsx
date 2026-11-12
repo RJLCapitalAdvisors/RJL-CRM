@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClaudeMark } from "@/components/claude-mark";
 import { CA_TEAM } from "@/lib/access";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -84,6 +85,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
                   <form action={refresh}>
                     <button className="btn-secondary" type="submit" title={company.enrichedAt ? `Last read ${fmtDate(company.enrichedAt)}. Fills blanks from the website; never overwrites what you typed.` : "Read the website and fill in the blanks"}>
                       Refresh from website
+                      <ClaudeMark />
                     </button>
                   </form>
                 )}

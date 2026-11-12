@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClaudeMark } from "@/components/claude-mark";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
@@ -98,6 +99,7 @@ export default async function IntakeDetail({ params, searchParams }: { params: P
                 <form action={reprocessIntake.bind(null, it.id)}>
                   <button className="btn-secondary" type="submit">
                     Re-parse
+                    <ClaudeMark />
                   </button>
                 </form>
                 <form action={dismissIntake.bind(null, it.id)}>
@@ -108,6 +110,7 @@ export default async function IntakeDetail({ params, searchParams }: { params: P
                 <form action={convertIntakeToDeal.bind(null, it.id)}>
                   <button className="btn-primary" type="submit">
                     Create deal
+                    <ClaudeMark />
                   </button>
                 </form>
               </>

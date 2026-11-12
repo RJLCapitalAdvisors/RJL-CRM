@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, use, useEffect, useMemo, useState, useTransition } from "react";
+import { ClaudeMark } from "@/components/claude-mark";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DraftButton } from "@/app/draft-button";
@@ -310,6 +311,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
               </Suspense>
               <Link href={`/investors?dealId=${dealId}&mode=engagement&refresh=1`} className="ml-auto text-xs text-muted hover:underline" title="Re-read criteria, tracker history and emails for this deal">
                 refresh
+                <ClaudeMark />
               </Link>
             </div>
           </div>

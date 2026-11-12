@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ClaudeMark } from "@/components/claude-mark";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { refreshReportAction } from "./actions";
@@ -28,6 +29,7 @@ export function RefreshButton({ dealId }: { dealId: string }) {
       >
         <RefreshCw className={`h-4 w-4 ${pending ? "animate-spin" : ""}`} />
         {pending ? "Refreshing…" : "Refresh report"}
+        <ClaudeMark />
       </button>
       {note && <span className="text-xs text-muted">{note}</span>}
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ClaudeMark } from "@/components/claude-mark";
 import { flushAutosaves } from "@/components/autosave-form";
 
 /** Download PDF waits for anything still saving on the page, so the file carries what is on screen (Oct 13, 2026). */
@@ -19,6 +20,7 @@ export function DownloadPdfButton({ url }: { url: string }) {
       }}
     >
       {busy ? "Saving…" : "Download PDF"}
+      <ClaudeMark />
     </button>
   );
 }

@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -41,7 +41,7 @@ export async function settleAsksFromTicket(dealId: string, opts: { force?: boole
   const asks = items.flatMap((m) => m.open.filter((q, i, arr) => arr.findIndex((x) => sameAsk(x, q)) === i).map((q) => `- [${m.party}] ${q}`)).join("\n");
   let out: z.infer<typeof Out> | null = null;
   try {
-    const res = await new Anthropic().messages.parse({
+    const res = await claude("settle-asks").messages.parse({
       model: "claude-sonnet-5",
       max_tokens: 4000,
       system: SYSTEM,

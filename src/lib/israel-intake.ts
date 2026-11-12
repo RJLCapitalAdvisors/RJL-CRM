@@ -1,4 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { claude } from "@/lib/claude";
 import { syncProjectToUnits } from "@/lib/israel-sync";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -236,7 +237,7 @@ async function extract(subject: string | null, body: string, files: IntakeFile[]
 
 
 async function extractOnce(subject: string | null, body: string, files: IntakeFile[], docs: IntakeFile[], rendered: import("@/lib/pdf-images").PageImage[] = []): Promise<Extracted> {
-  const client = new Anthropic();
+  const client = claude("israel-intake");
   const content: Anthropic.ContentBlockParam[] = [];
   const parts = [`Subject: ${subject ?? ""}`, `Message:\n${body.slice(0, 40_000)}`, ...files.filter((f) => f.text).map((f) => `Attachment ${f.name}:\n${(f.text ?? "").slice(0, 40_000)}`)];
   if (docs.length) parts.push(`The document${docs.length > 1 ? "s" : ""} attached below (${docs.map((d) => d.name).join(", ")}) ${docs.length > 1 ? "are" : "is"} a floor plan deck or brochure: look at the drawings, tables and compass rose on every page.`);
