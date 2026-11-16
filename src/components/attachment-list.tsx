@@ -43,7 +43,8 @@ export function AttachmentList({ files, onDelete }: { files: AttachmentRow[]; on
               e.dataTransfer.effectAllowed = "copy";
             }}
             className="flex min-w-0 flex-1 cursor-grab items-center gap-2 py-2 pl-4 pr-2 text-sm active:cursor-grabbing"
-            title="Click to download, or drag into an Outlook email"
+            // the card is narrow and cuts names short, so hovering a row shows the whole name first (Jonathan, Nov 16, 2026)
+            title={`${f.name}\nClick to download, or drag into an Outlook email`}
           >
             {iconFor(f.name, f.kind)}
             <span className="min-w-0 flex-1 truncate">{f.name}</span>
