@@ -117,7 +117,7 @@ export default async function SendDealPage({ params }: { params: Promise<{ id: s
           <BrochureCard brochure={brochure ? { name: brochure.name, size: brochure.size, uploadedAt: brochure.uploadedAt, by: brochure.by } : null} />
         </div>
       )}
-      <OutreachOwnerNote outreach={outreach} ownerId={deal.ownerId} meId={me?.id} />
+      <OutreachOwnerNote outreach={outreach} ownerId={deal.ownerId} meId={me?.id} details={deal.details} page="send" />
       <SendClient dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size, url: fileUrl(f.key) }))} saved={sendState} team={team} initialLaunch={launch && (launch.queued > 0 || launch.failed > 0 || launch.bounced > 0) ? launch : null} filesEmptyNote={outreach ? "Attachments: no brochure on file yet. Add it above and it is ticked here for every email." : undefined} />
     </>
   );

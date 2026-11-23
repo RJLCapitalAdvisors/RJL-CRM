@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { ClipboardList, FileText, ListChecks, Mail, Reply, ScrollText } from "lucide-react";
 import { dealNavInfo, latestOutreachNavInfo } from "@/app/deal-nav-actions";
 
-type Info = { id: string; name: string; stage: string; audience?: "investor" | "sponsor" };
+type Info = { id: string; name: string; stage: string; audience?: "investor" | "sponsor"; others?: boolean };
 
 /**
  * When you are inside a deal (its ticket, progress report, send page, investor search or engagement letter),
@@ -55,7 +55,8 @@ export function DealContextNav({ section = "deals" }: { section?: "deals" | "inv
 
   const current = dealId && info?.id === dealId ? info : null;
   const audience = section === "sponsors" ? "sponsor" : "investor";
-  const outreachOpen = current?.stage === "Outreach" && (current.audience ?? "investor") === audience;
+  // a colleague's reach out open on the page never takes the block over: the links stay on your own latest (Jonathan, Nov 23, 2026)
+  const outreachOpen = current?.stage === "Outreach" && (current.audience ?? "investor") === audience && !current.others;
   // Deals: the deal open (never a reach out). Investor search / Sponsor search: the reach out open there, else the latest one for that audience.
   const shown: Info | null = section === "deals" ? (current && current.stage !== "Outreach" ? current : null) : outreachOpen ? current : latest;
   // Investor search / Sponsor search with no reach out yet (Jonathan, Oct 29, 2026: "have the dropdown stay open like investor search"):
@@ -93,7 +94,7 @@ export function DealContextNav({ section = "deals" }: { section?: "deals" | "inv
       <div className="truncate px-1 pb-1 text-xs font-semibold" title={shown.name}>
         {shown.name}
       </div>
-      <div className="px-1 pb-1 text-[10px] uppercase tracking-wide text-muted">{outreach ? (outreachOpen ? "Reach out" : "Latest reach out") : shown.stage}</div>
+      <div className="px-1 pb-1 text-[10px] uppercase tracking-wide text-muted">{outreach ? (outreachOpen ? "Reach out" : "Your latest reach out") : shown.stage}</div>
       {steps.map((s) => (
         <Link key={s.label} href={s.href} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${s.on ? "bg-sky text-ink font-medium" : "text-ink-soft hover:bg-sky/40"}`}>
           <s.icon className="h-3.5 w-3.5" />

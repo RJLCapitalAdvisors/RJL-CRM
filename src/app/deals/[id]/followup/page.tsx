@@ -147,7 +147,7 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
           </>
         }
       />
-      <OutreachOwnerNote outreach={outreach} ownerId={deal.ownerId} meId={me?.id} />
+      <OutreachOwnerNote outreach={outreach} ownerId={deal.ownerId} meId={me?.id} details={deal.details} page="followup" />
       <SendClient mode="followup" round={round} dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size, url: fileUrl(f.key) }))} saved={sendState} team={team} initialLaunch={launch && (launch.queued > 0 || launch.failed > 0 || launch.bounced > 0) ? launch : null} />
     </>
   );

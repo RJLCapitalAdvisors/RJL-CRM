@@ -3,9 +3,12 @@
 import { prisma } from "@/lib/db";
 
 /** Name and stage of a deal for the sidebar's deal widget. */
-export async function dealNavInfo(dealId: string): Promise<{ id: string; name: string; stage: string; audience?: "investor" | "sponsor" } | null> {
-  const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, name: true, propertyName: true, stage: true, details: true } });
-  return d ? { id: d.id, name: d.propertyName ?? d.name, stage: d.stage, audience: (await import("@/lib/outreach")).outreachAudience(d.details) } : null;
+export async function dealNavInfo(dealId: string): Promise<{ id: string; name: string; stage: string; audience?: "investor" | "sponsor"; others?: boolean } | null> {
+  const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, name: true, propertyName: true, stage: true, details: true, ownerId: true } });
+  if (!d) return null;
+  // a reach out a colleague started: the sidebar keeps pointing at your own (Jonathan, Nov 23, 2026)
+  const me = d.stage === "Outreach" && d.ownerId ? await (await import("@/lib/current-user")).currentUser().catch(() => null) : null;
+  return { id: d.id, name: d.propertyName ?? d.name, stage: d.stage, audience: (await import("@/lib/outreach")).outreachAudience(d.details), others: Boolean(me && d.ownerId !== me.id) };
 }
 
 /**
