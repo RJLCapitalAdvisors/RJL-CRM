@@ -179,6 +179,9 @@ export async function refreshFromLatestAction(dealId: string) {
 export async function saveSendStateAction(dealId: string, state: Record<string, unknown>, mode: Mode = "send", round = 1) {
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { details: true } });
   if (!deal) return { ok: false as const };
+  // looking at a colleague's reach out saves nothing onto it: the page autosaves on open, and Jonathan's visit had put his signature in Aviel's General follow-up (Nov 23, 2026)
+  const me = await currentUser();
+  if (me && (await reachOutOwnedByOther(dealId, me.id))) return { ok: false as const };
   const details = JSON.parse(deal.details || "{}") as Record<string, unknown>;
   details[STATE_KEY(mode, round)] = state;
   await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify(details) } });

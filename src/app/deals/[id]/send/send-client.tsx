@@ -358,7 +358,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
       setSaveState("saving");
       const state: SendState = { templateId, general, drafts, include: [...include], to: Object.fromEntries(Object.entries(to).map(([k, v]) => [k, [...v]])), primary: Object.fromEntries(Object.entries(primary).map(([k, v]) => [k, [...v]])), chosenFiles: [...chosenFiles], cc, savedAt: new Date().toISOString(), autoTicked: [...autoTicked] };
       saveSendStateAction(dealId, state, mode, round)
-        .then(() => setSaveState("saved"))
+        .then((r) => setSaveState(r?.ok === false ? "idle" : "saved")) // a colleague's reach out is look-only: nothing was saved, so it does not say Saved
         .catch(() => setSaveState("dirty"));
     }, 1000);
     return () => {
