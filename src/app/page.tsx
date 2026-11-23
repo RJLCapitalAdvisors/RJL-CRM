@@ -55,9 +55,13 @@ async function quietInvestors() {
 }
 
 /** One dashboard window: title band, count, scrolling body. Compact so five fit in a row. */
-function Window({ title, count, children, empty }: { title: string; count: number; children: ReactNode; empty: string }) {
+/**
+ * One dashboard window. `slot` is for two windows sharing a column (To do over Data updates): "top" is as tall as its
+ * items, up to 45% of the column, and "fill" takes the rest.
+ */
+function Window({ title, count, children, empty, slot }: { title: string; count: number; children: ReactNode; empty: string; slot?: "top" | "fill" }) {
   return (
-    <div className="card flex h-[calc(100vh-140px)] min-h-[420px] flex-col">
+    <div className={slot === "top" ? "card flex max-h-[45%] shrink-0 flex-col" : slot === "fill" ? "card flex min-h-0 flex-1 flex-col" : "card flex h-[calc(100vh-140px)] min-h-[420px] flex-col"}>
       <div className="flex items-center justify-between rounded-t-lg border-b border-line bg-cream px-3 py-2.5">
         <h2 className="text-sm font-semibold">{title}</h2>
         <span className="text-xs text-muted">{count}</span>
@@ -119,6 +123,9 @@ export default async function Dashboard() {
   const today = new Date();
   const quietCount = quiet.reduce((n, g) => n + g.rows.length, 0);
   const cols = showData ? "2xl:grid-cols-5" : "2xl:grid-cols-4";
+  // Jonathan's To do shows only when something is on it; everyone else's is always there
+  const showTodo = !showCriteria || todos.length > 0;
+  const stacked = showTodo && showData;
 
   return (
     <>
@@ -277,8 +284,11 @@ export default async function Dashboard() {
           </ul>
         </Window>
 
-        {(!showCriteria || todos.length > 0) && (
-          <Window title="To do" count={todos.length} empty="Nothing on your list. Forward an email to deals@ with a note like “remind me to handle this” and it lands here with the people from the email.">
+        {/* To do and Data updates share the fifth column, To do on top, so the dashboard stays one row of five (Jonathan, Nov 23, 2026:
+            his first To do item added a sixth window and pushed Data updates to a second row). Alone, each is a full window as before. */}
+        <div className={stacked ? "flex h-[calc(100vh-140px)] min-h-[420px] flex-col gap-3" : "contents"}>
+        {showTodo && (
+          <Window slot={stacked ? "top" : undefined} title="To do" count={todos.length} empty="Nothing on your list. Forward an email to deals@ with a note like “remind me to handle this” and it lands here with the people from the email.">
             <ul className="divide-y divide-line">
               {todos.map((t) => {
                 let people: string[] = [];
@@ -307,7 +317,7 @@ export default async function Dashboard() {
           </Window>
         )}
         {showData && (
-          <Window title={showCriteria ? "Data updates" : "Data updates · waiting on Jonathan"} count={dataCount} empty="Nothing to approve. Criteria corrections from investor emails, notes, calls or teammates, people who left their firm, and deals that went quiet land here.">
+          <Window slot={stacked ? "fill" : undefined} title={showCriteria ? "Data updates" : "Data updates · waiting on Jonathan"} count={dataCount} empty="Nothing to approve. Criteria corrections from investor emails, notes, calls or teammates, people who left their firm, and deals that went quiet land here.">
             {dupes.length > 0 && (
               <div className="border-b border-line bg-cream-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
                 Possible duplicates ({dupes.length}) · one deal, one ticket
@@ -404,6 +414,7 @@ export default async function Dashboard() {
             </ul>
           </Window>
         )}
+        </div>
       </div>
     </>
   );

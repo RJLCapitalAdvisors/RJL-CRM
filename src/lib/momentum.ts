@@ -1,4 +1,4 @@
-import { claude } from "@/lib/claude";
+import { claude, failure } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -54,6 +54,24 @@ async function upsert(dealId: string, kind: string, party: string, dataIn: { com
 
 async function close(dealId: string, kind: string, party: string) {
   await prisma.momentum.updateMany({ where: { dealId, kind, party, status: "OPEN" }, data: { status: "DONE" } });
+}
+
+/**
+ * Claude read the thread and nobody is being waited on: remember that against the thread's latest email, so the same emails are
+ * not read again until a newer one arrives (Jonathan, Nov 23, 2026: deal momentum was most of the Claude bill). Until now only a
+ * "waiting" verdict was kept, so every other thread, about seventy of them, was re-read on every refresh, some twenty times a day.
+ * An open item closes; a dismissed one stays dismissed; with no row yet, a closed one is written to hold the marker.
+ */
+async function settled(dealId: string, kind: string, party: string, at: { companyId?: string | null; contactId?: string | null; waitingSince: Date; lastMessageId: string | null }) {
+  const existing = await prisma.momentum.findUnique({ where: { dealId_kind_party: { dealId, kind, party } }, select: { id: true, status: true } });
+  if (existing) await prisma.momentum.update({ where: { id: existing.id }, data: { lastMessageId: at.lastMessageId, ...(existing.status === "OPEN" ? { status: "DONE" } : {}) } });
+  else await prisma.momentum.create({ data: { dealId, kind, party, companyId: at.companyId ?? null, contactId: at.contactId ?? null, summary: "", waitingSince: at.waitingSince, lastMessageId: at.lastMessageId, status: "DONE" } });
+}
+
+/** The latest forty emails matching, oldest first. (Asking for the first forty oldest-first read a busy sponsor's thread as it stood weeks ago.) */
+async function latestEmails(where: Record<string, unknown>) {
+  const rows = await prisma.activity.findMany({ where: { ...where, type: "EMAIL" }, orderBy: { occurredAt: "desc" }, take: 40, select: { subject: true, direction: true, occurredAt: true, body: true, meta: true, externalId: true, contactId: true } });
+  return rows.reverse();
 }
 
 /** Two wordings of one ask ("Roof age and last repair dates" / "Roof age / when the last time these were repaired"): same after normalizing, one inside the other, or most words shared. */
@@ -122,25 +140,35 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
     include: { sponsorCompany: { select: { id: true, name: true } }, investors: { where: { status: 6 }, include: { contact: { include: { company: { select: { id: true, name: true } } } } } } },
   });
   let checked = 0;
+  // a read that failed (Claude down, out of credits) decides nothing: the item stays as it was and the thread is read again next
+  // time. It used to close the item. Out of credits ends the reading for this run, so a dry account is not asked a hundred times.
+  let noCredits = false;
+  const read = (kind: "sponsor" | "intro", dealName: string, party: string, thread: Thread[]) =>
+    readThread(kind, dealName, party, thread).catch((e) => {
+      if (failure(e).outOfCredits) noCredits = true;
+      return null;
+    });
 
   for (const d of deals) {
     const name = d.propertyName ?? d.name;
 
     // 1) sponsor: the latest thread with the sponsor company
     if (d.sponsorCompany) {
-      const msgs = await prisma.activity.findMany({ where: { companyId: d.sponsorCompany.id, type: "EMAIL", occurredAt: { gte: new Date(now - 90 * DAY) } }, orderBy: { occurredAt: "asc" }, take: 40, select: { subject: true, direction: true, occurredAt: true, body: true, meta: true, externalId: true, contactId: true } });
+      const msgs = await latestEmails({ companyId: d.sponsorCompany.id, occurredAt: { gte: new Date(now - 90 * DAY) } });
       if (msgs.length) {
         const last = msgs[msgs.length - 1];
         const party = d.sponsorCompany.name;
         const existing = await prisma.momentum.findUnique({ where: { dealId_kind_party: { dealId: d.id, kind: "SPONSOR_ITEMS", party } } });
         const stale = now - last.occurredAt.getTime() >= QUIET_DAYS * DAY;
         if (!stale) await close(d.id, "SPONSOR_ITEMS", party);
-        else if (!existing || existing.lastMessageId !== last.externalId) {
+        else if ((!existing || existing.lastMessageId !== last.externalId) && !noCredits) {
           checked++;
           const thread: Thread[] = msgs.slice(-6).map((m) => ({ ...m, from: (JSON.parse(m.meta ?? "{}").from?.address as string) ?? "" }));
-          const r = await readThread("sponsor", name, party, thread).catch(() => null);
-          if (r?.waitingOn === "sponsor") await upsert(d.id, "SPONSOR_ITEMS", party, { companyId: d.sponsorCompany.id, contactId: last.contactId, summary: r.summary, waitingSince: last.occurredAt, lastMessageId: last.externalId });
-          else await close(d.id, "SPONSOR_ITEMS", party);
+          const r = await read("sponsor", name, party, thread);
+          if (!r) {
+            // no verdict: nothing changes
+          } else if (r.waitingOn === "sponsor") await upsert(d.id, "SPONSOR_ITEMS", party, { companyId: d.sponsorCompany.id, contactId: last.contactId, summary: r.summary, waitingSince: last.occurredAt, lastMessageId: last.externalId });
+          else await settled(d.id, "SPONSOR_ITEMS", party, { companyId: d.sponsorCompany.id, contactId: last.contactId, waitingSince: last.occurredAt, lastMessageId: last.externalId });
         }
       }
     }
@@ -149,7 +177,7 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
     for (const r of d.investors) {
       const lpCo = r.contact.company;
       const party = investorLabel(r.contact);
-      const msgs = await prisma.activity.findMany({ where: { type: "EMAIL", occurredAt: { gte: new Date(r.updatedAt.getTime() - 3 * DAY) }, OR: [{ dealId: d.id }, ...(lpCo ? [{ companyId: lpCo.id }] : []), { contactId: r.contactId }] }, orderBy: { occurredAt: "asc" }, take: 40, select: { subject: true, direction: true, occurredAt: true, body: true, meta: true, externalId: true, contactId: true } });
+      const msgs = await latestEmails({ occurredAt: { gte: new Date(r.updatedAt.getTime() - 3 * DAY) }, OR: [{ dealId: d.id }, ...(lpCo ? [{ companyId: lpCo.id }] : []), { contactId: r.contactId }] });
       const last = msgs[msgs.length - 1];
       const since = last?.occurredAt ?? r.updatedAt;
       if (now - since.getTime() < QUIET_DAYS * DAY) {
@@ -157,16 +185,19 @@ export async function refreshMomentum(): Promise<{ checked: number; open: number
         continue;
       }
       const existing = await prisma.momentum.findUnique({ where: { dealId_kind_party: { dealId: d.id, kind: "INTRO", party } } });
-      if (existing && existing.lastMessageId === (last?.externalId ?? null) && existing.status !== "DONE") continue;
+      // these same emails were already read (a closed row included; only an intro with no emails at all is looked at again, which costs nothing)
+      if (existing && existing.lastMessageId === (last?.externalId ?? null) && (existing.status !== "DONE" || msgs.length > 0)) continue;
+      if (msgs.length && noCredits) continue;
       checked++;
       if (!msgs.length) {
         await upsert(d.id, "INTRO", party, { companyId: lpCo?.id, contactId: r.contactId, summary: `Intro made ${r.updatedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}; no emails since`, waitingSince: r.updatedAt, lastMessageId: null });
         continue;
       }
       const thread: Thread[] = msgs.slice(-6).map((m) => ({ ...m, from: (JSON.parse(m.meta ?? "{}").from?.address as string) ?? "" }));
-      const read = await readThread("intro", name, `${party} / ${d.sponsorName ?? "sponsor"}`, thread).catch(() => null);
-      if (read && read.waitingOn !== "nobody" && read.waitingOn !== "us") await upsert(d.id, "INTRO", party, { companyId: lpCo?.id, contactId: r.contactId, summary: `${read.waitingOn === "lp" ? "LP" : "Sponsor"} slow: ${read.summary}`, waitingSince: last.occurredAt, lastMessageId: last.externalId });
-      else await close(d.id, "INTRO", party);
+      const verdict = await read("intro", name, `${party} / ${d.sponsorName ?? "sponsor"}`, thread);
+      if (!verdict) continue; // no verdict: nothing changes
+      if (verdict.waitingOn !== "nobody" && verdict.waitingOn !== "us") await upsert(d.id, "INTRO", party, { companyId: lpCo?.id, contactId: r.contactId, summary: `${verdict.waitingOn === "lp" ? "LP" : "Sponsor"} slow: ${verdict.summary}`, waitingSince: last.occurredAt, lastMessageId: last.externalId });
+      else await settled(d.id, "INTRO", party, { companyId: lpCo?.id, contactId: r.contactId, waitingSince: last.occurredAt, lastMessageId: last.externalId });
     }
   }
 
