@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { templateForDeal } from "@/lib/deal-template";
 import { currentUser } from "@/lib/current-user";
 import { PageHeader } from "@/components/ui";
+import { OutreachOwnerNote } from "@/components/outreach-owner-note";
 import { dealFiles, syncSendDrafts } from "@/lib/send-deal";
 import { SendClient, type Firm, type SendState } from "../send/send-client";
 import { SendToOne } from "../send-to-one";
@@ -146,6 +147,7 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
           </>
         }
       />
+      <OutreachOwnerNote outreach={outreach} ownerId={deal.ownerId} meId={me?.id} />
       <SendClient mode="followup" round={round} dealId={deal.id} firms={firms} templates={templates} defaultTemplateId={house?.id ?? ""} files={files.map((f) => ({ key: f.key, name: f.name, size: f.size, url: fileUrl(f.key) }))} saved={sendState} team={team} initialLaunch={launch && (launch.queued > 0 || launch.failed > 0 || launch.bounced > 0) ? launch : null} />
     </>
   );

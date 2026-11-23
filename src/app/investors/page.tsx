@@ -28,7 +28,8 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   ]);
   // groups already on this deal's report start ticked; the letter only adds (Jonathan, Sep 24, 2026: the second Certes list)
   const onReport = [...new Set(onReportRows.map((r) => r.contact.companyId).filter((x): x is string => Boolean(x)))];
-  const outreaches = mode === "search" ? await (await import("@/lib/outreach")).recentOutreaches("investor").catch(() => []) : [];
+  const me = mode === "search" ? await (await import("@/lib/current-user")).currentUser().catch(() => null) : null;
+  const outreaches = mode === "search" ? await (await import("@/lib/outreach")).recentOutreaches("investor", me?.id ?? null).catch(() => ({ mine: [], others: [] })) : { mine: [], others: [] };
   const reached = mode === "search" ? await (await import("@/lib/outreach")).lastReachOutByCompany().catch(() => new Map<string, Date>()) : new Map<string, Date>();
 
   const critByCompany = new Map(allCriteria.map((c) => [c.companyId!, c]));
@@ -74,7 +75,7 @@ export default async function InvestorsPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <PageHeader title="Investor search" compact={mode === "engagement"} subtitle={mode === "engagement" ? `${rows.length.toLocaleString()} investors` : `${rows.length.toLocaleString()} companies marked Investor. Type your deal specs on the left; the list updates as you go.`} />
-      <InvestorSearch rows={rows} preset={preset} presetDealName={deal ? deal.propertyName ?? deal.name : null} presetPlace={deal ? { city: deal.city, state: deal.state } : null} deals={deals.map((d) => ({ id: d.id, name: d.propertyName ?? d.name }))}  mode={mode} dealId={dealId || null} suggestions={suggestions} onReport={onReport} outreaches={outreaches.map((o) => ({ id: o.id, name: o.name, firms: o.firms, sent: o.sent }))} />
+      <InvestorSearch rows={rows} preset={preset} presetDealName={deal ? deal.propertyName ?? deal.name : null} presetPlace={deal ? { city: deal.city, state: deal.state } : null} deals={deals.map((d) => ({ id: d.id, name: d.propertyName ?? d.name }))}  mode={mode} dealId={dealId || null} suggestions={suggestions} onReport={onReport} outreaches={outreaches.mine} otherOutreaches={outreaches.others} />
     </>
   );
 }

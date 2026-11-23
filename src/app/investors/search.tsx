@@ -82,6 +82,8 @@ function passes(c: InvestorRow["crit"], s: Spec, where: { city: string | null; s
 }
 
 export type Suggestion = { companyId: string; name: string; reason: string };
+/** A reach out in the list under the Reach out button; `by` is the first name of whoever started it. */
+type ReachItem = { id: string; name: string; firms: number; sent: number; by?: string | null };
 
 /** The suggested groups, read from the page's promise so the rest of the page never waits for them. */
 function SuggestedGroups({ source, picked, toggle }: { source: Suggestion[] | Promise<Suggestion[]>; picked: Set<string>; toggle: (id: string) => void }) {
@@ -111,7 +113,7 @@ function SuggestedGroups({ source, picked, toggle }: { source: Suggestion[] | Pr
   );
 }
 
-export function InvestorSearch({ rows, preset, presetDealName, presetPlace = null, deals, mode = "search", dealId = null, suggestions = [], onReport = [], outreaches = [], audience = "investor" }: { rows: InvestorRow[]; outreaches?: { id: string; name: string; firms: number; sent: number }[]; audience?: "investor" | "sponsor"; preset: Partial<Spec> | null; presetDealName: string | null; presetPlace?: { city: string | null; state: string | null } | null; onReport?: string[]; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] | Promise<Suggestion[]> }) {
+export function InvestorSearch({ rows, preset, presetDealName, presetPlace = null, deals, mode = "search", dealId = null, suggestions = [], onReport = [], outreaches = [], otherOutreaches = [], audience = "investor" }: { rows: InvestorRow[]; outreaches?: ReachItem[]; otherOutreaches?: ReachItem[]; audience?: "investor" | "sponsor"; preset: Partial<Spec> | null; presetDealName: string | null; presetPlace?: { city: string | null; state: string | null } | null; onReport?: string[]; deals: { id: string; name: string }[]; mode?: "search" | "engagement"; dealId?: string | null; suggestions?: Suggestion[] | Promise<Suggestion[]> }) {
   const PAGE = 100;
   const router = useRouter();
   const engagement = mode === "engagement" && Boolean(dealId);
@@ -219,9 +221,21 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
             </button>
             {outreaches.length > 0 && (
               <div className="text-[11px] text-muted">
+                {otherOutreaches.length > 0 && <div className="font-semibold uppercase tracking-wide">Yours</div>}
                 {outreaches.map((o) => (
                   <Link key={o.id} href={`${base}/reach/${o.id}/send`} className="block truncate hover:underline" title={`${o.firms} firms, ${o.sent} sent: open the Send page`}>
                     {o.name.replace(/^(Sponsor reach out|Reach out) · /, "")} · {o.sent}/{o.firms} sent
+                  </Link>
+                ))}
+              </div>
+            )}
+            {/* the team's, so a colleague's reach out is still a click away, but never the one the sidebar opens (Jonathan, Nov 23, 2026) */}
+            {otherOutreaches.length > 0 && (
+              <div className="text-[11px] text-muted">
+                <div className="font-semibold uppercase tracking-wide">The team&apos;s</div>
+                {otherOutreaches.map((o) => (
+                  <Link key={o.id} href={`${base}/reach/${o.id}/send`} className="block truncate hover:underline" title={`${o.by ? `${o.by}'s reach out` : "A reach out"}: ${o.firms} firms, ${o.sent} sent. Its follow-ups are theirs to send.`}>
+                    {o.by ? `${o.by} · ` : ""}{o.name.replace(/^(Sponsor reach out|Reach out) · /, "")} · {o.sent}/{o.firms} sent
                   </Link>
                 ))}
               </div>

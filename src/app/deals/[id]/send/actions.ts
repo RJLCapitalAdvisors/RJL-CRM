@@ -10,6 +10,15 @@ import { cancelLaunch, kickPump, launchStatus, pumpLaunches, queueDealEmails, re
 type Mode = "send" | "followup";
 const KIND = (mode: Mode) => (mode === "followup" ? "FOLLOWUP" : "SEND") as "SEND" | "FOLLOWUP";
 const STATE_KEY = (mode: Mode, round = 1) => (mode === "followup" ? (round > 1 ? `followupState${round}` : "followupState") : "sendState");
+/**
+ * A reach out someone else started: the first name of its owner, else null (Jonathan, Nov 23, 2026). Each person sends and follows up
+ * on their own reach outs; a follow-up replies to the original email, which sits in the owner's mailbox. Deals are not affected.
+ */
+async function reachOutOwnedByOther(dealId: string, meId: string): Promise<string | null> {
+  const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { stage: true, ownerId: true, owner: { select: { name: true } } } });
+  if (!d || d.stage !== "Outreach" || !d.ownerId || d.ownerId === meId) return null;
+  return d.owner?.name?.split(" ")[0] ?? "a colleague";
+}
 /** The pump runs on the server from here on; when it cannot be reached (no CRON_SECRET locally), this request pumps for a while itself. */
 async function drive(mailbox: string) {
   if (!(await kickPump())) after(() => pumpLaunches(mailbox, 270_000).catch(() => null));
@@ -76,6 +85,8 @@ export async function createSendDraftsAction(dealId: string, templateId: string,
 export async function launchAction(dealId: string, items: LaunchItem[], fileKeys?: string[], mode: Mode = "send", round = 1) {
   const me = await currentUser();
   if (!me) return { ok: false as const, reason: "Sign in with Microsoft (bottom of the sidebar) so the emails go from your own mailbox." };
+  const other = await reachOutOwnedByOther(dealId, me.id);
+  if (other) return { ok: false as const, reason: `This is ${other}'s reach out: its emails and follow-ups go from ${other}'s mailbox, so ${other} launches them. Start your own from Sponsor search or Investor search.` };
   await queueDealEmails(dealId, items, me.email, fileKeys, { followup: mode === "followup", round });
   await pumpLaunches(me.email, 5_000);
   // the server keeps sending on its own from here (the pump route calls itself while anything is queued)

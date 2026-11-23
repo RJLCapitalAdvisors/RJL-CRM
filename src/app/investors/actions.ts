@@ -41,7 +41,7 @@ export async function startOutreach(companyIds: string[], audience: "investor" |
   if (!companyIds.length) return { ok: false as const, reason: "Tick at least one group." };
   if (companyIds.length > most) return { ok: false as const, reason: `${most} firms is the most for one reach out.` };
   try {
-    const r = await createOutreach(companyIds, audience);
+    const r = await createOutreach(companyIds, audience, me.id);
     if (!r.firms) return { ok: false as const, reason: "None of the ticked firms has a person with an email address." };
     revalidatePath(audience === "sponsor" ? "/sponsors" : "/investors");
     return { ok: true as const, id: r.id, firms: r.firms };

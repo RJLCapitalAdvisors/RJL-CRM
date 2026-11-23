@@ -33,13 +33,16 @@ const NAME_PREFIX = (audience: Audience) => (audience === "sponsor" ? "Sponsor r
 
 const DEALS_MAILBOX = () => process.env.DEALS_MAILBOX ?? "deals@rjlcapadvisors.com";
 
-/** One reach out: a record with the ticked firms as Deal Not Sent rows, ready for the Send page. */
-export async function createOutreach(companyIds: string[], audience: Audience = "investor"): Promise<{ id: string; firms: number }> {
+/**
+ * One reach out: a record with the ticked firms as Deal Not Sent rows, ready for the Send page. The person who starts it owns it
+ * (Deal.ownerId), and the sidebar and the list under Reach out show each person their own (Jonathan, Nov 23, 2026).
+ */
+export async function createOutreach(companyIds: string[], audience: Audience = "investor", ownerId: string | null = null): Promise<{ id: string; firms: number }> {
   const ids = [...new Set(companyIds)].slice(0, maxOutreach(audience));
   const day = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
   const sameDay = await prisma.deal.count({ where: { stage: OUTREACH_STAGE, name: { startsWith: `${NAME_PREFIX(audience)}${day}` } } });
   const name = `${NAME_PREFIX(audience)}${day}${sameDay ? ` (${sameDay + 1})` : ""}`;
-  const deal = await prisma.deal.create({ data: { name, stage: OUTREACH_STAGE, details: JSON.stringify({ outreach: true, audience }) } });
+  const deal = await prisma.deal.create({ data: { name, stage: OUTREACH_STAGE, ownerId, details: JSON.stringify({ outreach: true, audience }) } });
   let firms = 0;
   for (const cid of ids) {
     const c = await bestContactForCompany(cid);
@@ -50,10 +53,23 @@ export async function createOutreach(companyIds: string[], audience: Audience = 
   return { id: deal.id, firms };
 }
 
-/** The latest reach outs, for the Investor search rail: a launch still going is a click away. */
-export async function recentOutreaches(audience: Audience = "investor", take = 5): Promise<{ id: string; name: string; firms: number; sent: number; createdAt: Date }[]> {
-  const rows = await prisma.deal.findMany({ where: { stage: OUTREACH_STAGE, details: audience === "sponsor" ? { contains: '"audience":"sponsor"' } : { not: { contains: '"audience":"sponsor"' } } }, orderBy: { createdAt: "desc" }, take, select: { id: true, name: true, createdAt: true, investors: { select: { status: true } } } });
-  return rows.map((r) => ({ id: r.id, name: r.name, firms: r.investors.length, sent: r.investors.filter((i) => i.status >= 2).length, createdAt: r.createdAt }));
+export const audienceWhere = (audience: Audience) => ({ stage: OUTREACH_STAGE, details: audience === "sponsor" ? { contains: '"audience":"sponsor"' } : { not: { contains: '"audience":"sponsor"' } } });
+
+export type OutreachListItem = { id: string; name: string; firms: number; sent: number; createdAt: Date; by: string | null };
+
+/**
+ * The latest reach outs, for the rail under Reach out: a launch still going is a click away. Each person's own come first and
+ * the team's after them, named (Jonathan, Nov 23, 2026: "silo our two reach outs"); with nobody signed in, everyone's together.
+ */
+export async function recentOutreaches(audience: Audience = "investor", me: string | null = null, take = 5): Promise<{ mine: OutreachListItem[]; others: OutreachListItem[] }> {
+  const select = { id: true, name: true, createdAt: true, owner: { select: { name: true } }, investors: { select: { status: true } } } as const;
+  const shape = (r: { id: string; name: string; createdAt: Date; owner: { name: string | null } | null; investors: { status: number }[] }): OutreachListItem => ({ id: r.id, name: r.name, firms: r.investors.length, sent: r.investors.filter((i) => i.status >= 2).length, createdAt: r.createdAt, by: r.owner?.name?.split(" ")[0] ?? null });
+  if (!me) return { mine: (await prisma.deal.findMany({ where: audienceWhere(audience), orderBy: { createdAt: "desc" }, take, select })).map(shape), others: [] };
+  const [mine, others] = await Promise.all([
+    prisma.deal.findMany({ where: { ...audienceWhere(audience), ownerId: me }, orderBy: { createdAt: "desc" }, take, select }),
+    prisma.deal.findMany({ where: { ...audienceWhere(audience), OR: [{ ownerId: null }, { ownerId: { not: me } }] }, orderBy: { createdAt: "desc" }, take: 3, select }),
+  ]);
+  return { mine: mine.map(shape), others: others.map(shape) };
 }
 
 // ---------- the brochure: one file, kept as an attachment on a draft in deals@, attached to every reach-out email ----------

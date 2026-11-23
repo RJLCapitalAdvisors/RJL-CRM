@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui";
 import { parseList } from "@/lib/taxonomy";
 import { InvestorSearch, type InvestorRow } from "../investors/search";
 import { lastReachOutByCompany, recentOutreaches } from "@/lib/outreach";
+import { currentUser } from "@/lib/current-user";
 
 export const metadata = { title: "Sponsor search" };
 
@@ -16,11 +17,12 @@ export const maxDuration = 120;
  * email, the brochure goes on every one, sent one at a time.
  */
 export default async function SponsorsPage() {
+  const me = await currentUser().catch(() => null);
   const [companies, allCriteria, outreaches, reached] = await Promise.all([
     // a company with no name (an email domain the sync could not name) is nothing to reach out to
     prisma.company.findMany({ where: { roles: { contains: "Sponsor" }, NOT: { name: { startsWith: "(Unnamed" } } }, select: { id: true, name: true, domain: true, city: true, state: true, lastActivityAt: true, _count: { select: { deals: true } } }, orderBy: { name: "asc" } }),
     prisma.investorCriteria.findMany({ where: { companyId: { not: null } }, select: { companyId: true, assetClasses: true, checkSizes: true, checkMinMM: true, checkMaxMM: true, geographyNotes: true, investmentTypes: true, strategy: true, returnProfile: true, holdPeriods: true, vintages: true, ozInterest: true, closingTimeframe: true, openToMinority: true } }),
-    recentOutreaches("sponsor").catch(() => []),
+    recentOutreaches("sponsor", me?.id ?? null).catch(() => ({ mine: [], others: [] })),
     lastReachOutByCompany().catch(() => new Map<string, Date>()),
   ]);
   const critByCompany = new Map(allCriteria.map((c) => [c.companyId!, c]));
@@ -58,7 +60,7 @@ export default async function SponsorsPage() {
   return (
     <>
       <PageHeader title="Sponsor search" subtitle={`${rows.length.toLocaleString()} companies marked Sponsor. Filter on the left; Reach out ticks up to 100 and sends them the brochure one at a time.`} />
-      <InvestorSearch rows={rows} preset={null} presetDealName={null} deals={[]} mode="search" audience="sponsor" outreaches={outreaches.map((o) => ({ id: o.id, name: o.name, firms: o.firms, sent: o.sent }))} />
+      <InvestorSearch rows={rows} preset={null} presetDealName={null} deals={[]} mode="search" audience="sponsor" outreaches={outreaches.mine} otherOutreaches={outreaches.others} />
     </>
   );
 }
