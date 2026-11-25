@@ -32,7 +32,9 @@ const isPassing = (msg: string) => /ErrorItemNotFound|\b50[234]\b|ECONNRESET|ETI
 const backoffMs = (attempt: number) => Math.min(30, 10 * attempt) * 60_000;
 const bytesOf = (src: Awaited<ReturnType<typeof chosenFiles>>) => (src ? src.atts.reduce((t, a) => t + ((a as { size?: number }).size ?? (a as { _bytes?: Uint8Array })._bytes?.byteLength ?? 0), 0) : 0);
 
-export type LaunchStatus = { total: number; sent: number; failed: number; bounced: number; queued: number; nextInMs: number; nextAt: string | null; serverNow: string; gapMs: number; heldUntil: string | null; rows: LaunchRowStatus[] };
+export type LaunchStatus = { total: number; sent: number; failed: number; bounced: number; queued: number; nextInMs: number; nextAt: string | null; serverNow: string; gapMs: number; heldUntil: string | null; ahead?: LaunchAhead | null; rows: LaunchRowStatus[] };
+/** Another campaign on the same mailbox goes first: how many of its emails are left, what it is, and about when this one starts. */
+export type LaunchAhead = { emails: number; campaigns: number; name: string; startsAt: string };
 /**
  * One firm's launch: the latest attempt's status, and across this week's sends to it who it went to and who it bounced for
  * (Jonathan, Oct 27, 2026: "it only bounced to one of the people. Could we specify in the list of recipients which one bounced?").
@@ -286,6 +288,40 @@ async function waitFor(mailbox: string, gapMs = LAUNCH_GAP_MS): Promise<number> 
 /** Queued emails that may go now (none held back by a throttle wait). */
 const ready = (mailbox: string) => ({ mailbox, status: "QUEUED", OR: [{ notBefore: null }, { notBefore: { lte: new Date() } }] });
 /**
+ * One campaign at a time from a mailbox (Jonathan, Nov 25, 2026: a new reach out started while another is still going out
+ * "only starts sending once the first one finishes"). A campaign is one deal's send or its follow-ups (dealId and kind). The
+ * campaign whose oldest waiting email was queued first goes first, whole; the next starts when none of it is left waiting.
+ * Before this the queue was simply oldest email first, which kept campaigns apart except when two were queued in the same
+ * minute (their emails interleaved) or an email of the first sat out a retry (the second campaign's went out meanwhile).
+ */
+export type Waiting = { dealId: string; kind: string; createdAt: Date; bytes: number; notBefore?: Date | null };
+export const campaignKey = (r: { dealId: string; kind: string }) => `${r.dealId}:${r.kind}`;
+/** The campaigns waiting on one mailbox in the order they send: by each one's oldest waiting email. */
+export function campaignLine<T extends Waiting>(waiting: T[]): { key: string; dealId: string; kind: string; rows: T[] }[] {
+  const by = new Map<string, { key: string; dealId: string; kind: string; first: number; rows: T[] }>();
+  for (const r of waiting) {
+    const key = campaignKey(r);
+    const c = by.get(key) ?? { key, dealId: r.dealId, kind: r.kind, first: Infinity, rows: [] };
+    c.first = Math.min(c.first, r.createdAt.getTime());
+    c.rows.push(r);
+    by.set(key, c);
+  }
+  return [...by.values()].sort((a, b) => a.first - b.first || a.key.localeCompare(b.key)).map(({ key, dealId, kind, rows }) => ({ key, dealId, kind, rows }));
+}
+/** What stands between a campaign and its turn: the waiting emails of the campaigns ahead of it, and the milliseconds they take at the mailbox's pace. */
+export function aheadOf<T extends Waiting>(waiting: T[], mine: { dealId: string; kind: string }): { campaigns: number; first: { dealId: string; kind: string } | null; rows: T[]; gapsMs: number; holdUntil: number } {
+  const line = campaignLine(waiting);
+  const before = line.slice(0, Math.max(0, line.findIndex((c) => c.key === campaignKey(mine))));
+  const rows = before.flatMap((c) => c.rows);
+  return { campaigns: before.length, first: before[0] ? { dealId: before[0].dealId, kind: before[0].kind } : null, rows, gapsMs: rows.reduce((t, r) => t + gapForBytes(r.bytes), 0), holdUntil: Math.max(0, ...rows.map((r) => r.notBefore?.getTime() ?? 0)) };
+}
+/** The next email a mailbox sends: the oldest ready one of the campaign at the head of its line (none while that campaign sits out a hold). */
+async function nextInLine(mailbox: string) {
+  const head = await prisma.dealLaunch.findFirst({ where: { mailbox, status: "QUEUED" }, orderBy: { createdAt: "asc" }, select: { dealId: true, kind: true } });
+  if (!head) return null;
+  return prisma.dealLaunch.findFirst({ where: { ...ready(mailbox), dealId: head.dealId, kind: head.kind }, orderBy: { createdAt: "asc" } });
+}
+/**
  * Claim one email, in one statement that also checks the pacing: the claim fails when another pump sent (or started
  * sending) from this mailbox inside the gap. Oct 7, 2026: three pumps that had each slept through the same gap woke
  * together and each claimed a different email, so three went out within three seconds; a check before the sleep is not
@@ -310,7 +346,7 @@ export async function pumpLaunches(mailbox: string, budgetMs = 8_000): Promise<{
   if (!graphConfigured()) return { sent: 0, remaining: await prisma.dealLaunch.count({ where: { mailbox, status: "QUEUED" } }) };
   await sweepStale();
   for (;;) {
-    const next = await prisma.dealLaunch.findFirst({ where: ready(mailbox), orderBy: { createdAt: "asc" } });
+    const next = await nextInLine(mailbox); // one campaign at a time: the head campaign's emails, oldest first
     if (!next) break;
     const gap = gapForBytes(next.bytes);
     const wait = await waitFor(mailbox, gap);
@@ -439,11 +475,20 @@ export async function launchStatus(dealId: string, kind: "SEND" | "FOLLOWUP" = "
   const allHeld = holds.length > 0 && holds.length === n(["QUEUED"]);
   const heldUntil = allHeld ? new Date(Math.min(...holds)).toISOString() : null;
   // the next email in line for this mailbox (any deal) sets the gap; the countdown on the page is this moment, not a guess
-  const nextRow = mailbox ? await prisma.dealLaunch.findFirst({ where: ready(mailbox), orderBy: { createdAt: "asc" }, select: { bytes: true } }) : null;
+  const nextRow = mailbox ? await nextInLine(mailbox) : null;
   const gapMs = gapForBytes(nextRow?.bytes ?? list.find((r) => r.status === "QUEUED")?.bytes ?? 0);
   const now = Date.now();
   const mark = mailbox ? await lastSendMark(mailbox) : 0;
-  const due = Math.max(mark + gapMs, heldUntil ? Math.min(...holds) : 0, now);
+  // another campaign on this mailbox goes first (one at a time): say whose, how many emails are left of it, and about when this one starts
+  let ahead: LaunchAhead | null = null;
+  if (mailbox && n(["QUEUED"]) > 0) {
+    const a = aheadOf(await prisma.dealLaunch.findMany({ where: { mailbox, status: "QUEUED" }, select: { dealId: true, kind: true, createdAt: true, bytes: true, notBefore: true } }), { dealId, kind });
+    if (a.first) {
+      const name = (await prisma.deal.findUnique({ where: { id: a.first.dealId }, select: { name: true } }))?.name ?? "another send";
+      ahead = { emails: a.rows.length, campaigns: a.campaigns, name: a.first.kind === "FOLLOWUP" ? `${name} (follow-ups)` : name, startsAt: new Date(Math.max(mark, now, a.holdUntil) + a.gapsMs).toISOString() };
+    }
+  }
+  const due = ahead ? new Date(ahead.startsAt).getTime() : Math.max(mark + gapMs, heldUntil ? Math.min(...holds) : 0, now);
   const sendingNow = list.some((r) => r.status === "SENDING");
-  return { total: list.length, sent: n(["SENT"]), failed: n(["FAILED"]), bounced: n(["BOUNCED"]), queued: n(["QUEUED", "SENDING"]), nextInMs: due - now, nextAt: n(["QUEUED", "SENDING"]) > 0 ? new Date(sendingNow ? now : due).toISOString() : null, serverNow: new Date(now).toISOString(), gapMs, heldUntil, rows: list.map((r) => ({ rowId: r.rowId, status: r.status, error: r.error, ...reachOf(r.rowId) })) };
+  return { total: list.length, sent: n(["SENT"]), failed: n(["FAILED"]), bounced: n(["BOUNCED"]), queued: n(["QUEUED", "SENDING"]), nextInMs: due - now, nextAt: n(["QUEUED", "SENDING"]) > 0 ? new Date(sendingNow ? now : due).toISOString() : null, serverNow: new Date(now).toISOString(), gapMs, heldUntil, ahead, rows: list.map((r) => ({ rowId: r.rowId, status: r.status, error: r.error, ...reachOf(r.rowId) })) };
 }

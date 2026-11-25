@@ -601,12 +601,16 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
     const held = st.heldUntil ? new Date(st.heldUntil) : null;
     // the server says when the next email goes (its clock); shown on this clock by the difference between the two
     const skew = Date.now() - new Date(st.serverNow).getTime();
-    setNextAt(st.queued > 0 && !held && st.nextAt ? new Date(st.nextAt).getTime() + skew : null);
+    // another campaign from this mailbox goes first: no seconds countdown, the note says when this one starts
+    const ahead = st.queued > 0 && !held ? st.ahead ?? null : null;
+    setNextAt(st.queued > 0 && !held && !ahead && st.nextAt ? new Date(st.nextAt).getTime() + skew : null);
     setGapS(Math.round(st.gapMs / 1000));
     setNote(
       st.queued > 0
         ? held
           ? `${st.sent} of ${st.total} sent · ${st.queued} waiting. Microsoft paused attachment uploads from your mailbox for a few minutes (too many megabytes in a short time); sending resumes on its own at ${held.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}. Nothing is lost; the server keeps going whether or not this page is open.`
+          : ahead
+            ? `${st.sent} of ${st.total} sent · ${st.queued} waiting their turn. Your mailbox sends one campaign at a time, so two never go out on top of each other: ${ahead.emails} email${ahead.emails === 1 ? "" : "s"} from ${ahead.name}${ahead.campaigns > 1 ? ` and ${ahead.campaigns - 1} other send${ahead.campaigns === 2 ? "" : "s"}` : ""} go first, and this one starts on its own at about ${new Date(new Date(ahead.startsAt).getTime() + skew).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}. The server keeps going if you leave or your laptop sleeps.`
           : `${st.sent} of ${st.total} sent · ${st.queued} to go. One email every ${Math.round(st.gapMs / 1000)} seconds (set by the attachments' size: Microsoft limits the megabytes a mailbox may upload per minute), so each lands as an individually sent email. The server keeps going if you leave or your laptop sleeps.`
         : `${st.sent} of ${st.total} sent.${trouble.length ? ` Needs resend, nobody still at the firm has it: ${trouble.join("; ")}. Click the red button on the firm (pick someone there with ▾ first if nobody is ticked).` : " Every firm has it."}`,
     );
