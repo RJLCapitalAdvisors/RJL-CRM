@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
+import { fileDrag } from "@/components/file-drag";
 
 /**
  * Pictures of a unit or project: renderings and photos, above the floorplan. Drop files or pick several at once;
@@ -66,7 +67,7 @@ export function PhotosWindow({ kind, id, photos }: { kind: "apartments" | "house
         <div className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4">
           {photos.map((p) => (
             <div key={p.id} className="group relative aspect-square overflow-hidden rounded-md border border-line bg-cream">
-              <a href={`/api/israel/photos/${p.id}`} target="_blank" title={p.name}>
+              <a href={`/api/israel/photos/${p.id}`} target="_blank" title={`${p.name}\nClick to open, or drag it to your desktop, a folder or an email`} {...fileDrag(p.name, `/api/israel/photos/${p.id}`)}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 {/\.pdf$/i.test(p.name) ? <span className="flex h-full w-full items-center justify-center bg-cream px-2 text-center text-[11px] text-ink-soft">{p.name}</span> : <img src={`/api/israel/photos/${p.id}`} alt={p.name} className="h-full w-full object-cover" loading="lazy" />}
               </a>

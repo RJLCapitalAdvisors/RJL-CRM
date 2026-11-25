@@ -51,7 +51,7 @@ export default async function FollowUpsPage({ params, searchParams }: { params: 
   const { signFileToken } = await import("@/lib/tokens");
   const rows = await (await import("@/lib/send-deal")).fileRowsFor(deal.id);
   const fileUrl = (key: string) => {
-    if (key === "faq") return `/api/deals/${deal.id}/faq.pdf`;
+    if (key === "faq") return `/api/deals/${deal.id}/faq.pdf?t=${signFileToken(`faq:${deal.id}`)}`;
     if (key === BROCHURE_KEY) return "/api/outreach/brochure";
     const r = rows.find((x) => `${x.graphId}::${x.attachmentId}` === key);
     return r ? `/api/deals/${deal.id}/files/${r.id}?t=${signFileToken(`file:${r.id}`)}&preview=1` : null;

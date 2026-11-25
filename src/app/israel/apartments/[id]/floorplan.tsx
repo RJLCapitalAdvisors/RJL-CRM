@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { fileDrag } from "@/components/file-drag";
 
 /**
  * The big middle window of an apartment ticket: the floorplan, open as soon as the ticket opens.
@@ -49,10 +50,10 @@ export function FloorplanWindow({ apartmentId, kind = "apartments", endpoint, ti
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-2">
         <div className="shrink-0 text-sm font-semibold">{title}</div>
-        {name && <span className="min-w-0 flex-1 truncate text-xs text-muted" title={name}>{name}</span>}
+        {name && <span className={`min-w-0 flex-1 truncate text-xs text-muted ${has ? "cursor-grab active:cursor-grabbing" : ""}`} title={has ? `${name}\nDrag it to your desktop, a folder or an email` : name} {...(has ? fileDrag(name, src, type) : {})}>{name}</span>}
         <div className="ml-auto flex shrink-0 items-center gap-2 text-xs">
           {has && (
-            <a href={src} target="_blank" className="btn-secondary px-2 py-1 text-xs">
+            <a href={src} target="_blank" className="btn-secondary px-2 py-1 text-xs" title="Click to open, or drag it to your desktop, a folder or an email" {...fileDrag(name ?? title, src, type)}>
               Open
             </a>
           )}

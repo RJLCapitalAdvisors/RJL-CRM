@@ -11,6 +11,7 @@ import { Send, Star } from "lucide-react";
 import { dealFieldsOf, MERGE_FIELDS, refreshDealFields } from "@/lib/merge";
 import { refreshFromLatestAction, addFirmAction, cancelLaunchAction, launchAction, learnFirstNameAction, previewFollowupEmail, previewGeneralEmail, previewToMeAction, pumpLaunchAction, retryFailedAction, reviseGeneralEmailAction, saveSendStateAction, searchInvestorCompanies } from "./actions";
 import { Eye } from "lucide-react";
+import { fileDrag } from "@/components/file-drag";
 import { EmailRow, type EmailRowData } from "@/components/email-row";
 import { statusOf } from "@/lib/tracker";
 import type { LaunchStatus } from "@/lib/launch-queue";
@@ -991,7 +992,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
                   <div className="max-h-[7.25rem] space-y-0.5 overflow-y-auto pr-1">
                     {group.length === 0 && <div className="text-xs text-stone-400">none</div>}
                     {group.map((f) => (
-                      <label key={f.key} className="flex cursor-pointer items-center gap-1.5 leading-tight" title={f.name}>
+                      <label key={f.key} className="flex cursor-pointer items-center gap-1.5 leading-tight" title={f.url ? `${f.name}\nTick it to attach it. Drag it to your desktop, a folder or an Outlook email.` : f.name} {...(f.url ? fileDrag(f.name, f.url) : {})}>
                         <input type="checkbox" className="shrink-0 accent-ink" checked={chosenFiles.has(f.key)} onChange={() => setChosenFiles((s) => { const n = new Set(s); if (n.has(f.key)) n.delete(f.key); else n.add(f.key); return n; })} />
                         <FileIcon name={f.name} />
                         <span className="min-w-0 truncate">{f.name}</span>

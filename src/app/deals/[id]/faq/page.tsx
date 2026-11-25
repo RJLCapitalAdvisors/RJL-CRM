@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { signFileToken } from "@/lib/tokens";
 import { FaqEditor } from "./faq-editor";
+import { DragFileLink } from "@/components/file-drag";
+import { faqFileName } from "@/lib/faq-pdf";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -26,9 +28,9 @@ export default async function FaqPage({ params }: { params: Promise<{ id: string
         subtitle={`${deal.facts.filter((f) => f.inFaq).length} questions on the FAQ · ${deal.facts.length} answered on the ticket in all`}
         actions={
           <>
-            <a href={`/api/deals/${deal.id}/faq.pdf?t=${signFileToken(`faq:${deal.id}`)}`} target="_blank" rel="noreferrer" className="btn-secondary">
+            <DragFileLink name={faqFileName(name)} url={`/api/deals/${deal.id}/faq.pdf?t=${signFileToken(`faq:${deal.id}`)}`} target="_blank" rel="noreferrer" className="btn-secondary" title="Click to see the PDF, or drag it to your desktop, a folder or an Outlook email">
               See the PDF
-            </a>
+            </DragFileLink>
             <Link href={`/deals/${deal.id}`} className="btn-secondary">
               Back to deal
             </Link>

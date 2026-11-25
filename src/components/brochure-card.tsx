@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Eye } from "lucide-react";
+import { fileDrag } from "@/components/file-drag";
 
 const PART = 327_680 * 10; // the same part size the route expects (outreach.ts BROCHURE_PART_BYTES)
 const mb = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1000))} KB`);
@@ -41,12 +42,12 @@ export function BrochureCard({ brochure }: { brochure: { name: string; size: num
       <span className="text-xs font-semibold text-sky-600">Brochure</span>
       {brochure ? (
         <>
-          <span className="font-medium">{brochure.name}</span>
+          <span className="cursor-grab font-medium active:cursor-grabbing" title="Drag it to your desktop, a folder or an Outlook email" {...fileDrag(brochure.name, "/api/outreach/brochure")}>{brochure.name}</span>
           <span className="text-xs text-muted">
             {mb(brochure.size)} · added {new Date(brochure.uploadedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
             {brochure.by ? ` by ${brochure.by.split("@")[0]}` : ""}
           </span>
-          <a href="/api/outreach/brochure" target="_blank" rel="noreferrer" className="text-muted hover:text-ink" title="See the brochure (opens in a new tab)">
+          <a href="/api/outreach/brochure" target="_blank" rel="noreferrer" className="text-muted hover:text-ink" title="See the brochure (opens in a new tab)" {...fileDrag(brochure.name, "/api/outreach/brochure")}>
             <Eye className="h-3.5 w-3.5" />
           </a>
           <span className="text-xs text-muted">It is ticked in the files below and goes on every email of this reach out.</span>

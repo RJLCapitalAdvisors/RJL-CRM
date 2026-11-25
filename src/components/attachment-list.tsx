@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { FileSpreadsheet, FileText, File as FileIcon, Presentation, FileImage, BookOpen, Trash2 } from "lucide-react";
+import { fileDrag } from "@/components/file-drag";
 
 export type AttachmentRow = { id: string; name: string; size: number; date: string; url: string; kind?: "faq" };
 
@@ -13,10 +14,6 @@ const iconFor = (name: string, kind?: string) => {
   if (["ppt", "pptx"].includes(ext)) return <Presentation className="h-4 w-4 shrink-0 text-orange-600" />;
   if (["png", "jpg", "jpeg", "gif"].includes(ext)) return <FileImage className="h-4 w-4 shrink-0 text-muted" />;
   return <FileIcon className="h-4 w-4 shrink-0 text-muted" />;
-};
-const mimeFor = (name: string) => {
-  const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  return { pdf: "application/pdf", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsm: "application/vnd.ms-excel.sheet.macroEnabled.12", xls: "application/vnd.ms-excel", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }[ext] ?? "application/octet-stream";
 };
 const size = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : n > 0 ? `${Math.max(1, Math.round(n / 1000))} KB` : "");
 
@@ -31,20 +28,14 @@ export function AttachmentList({ files, onDelete }: { files: AttachmentRow[]; on
   return (
     <>
       {files.filter((f) => !gone.has(f.id)).map((f) => {
-        const abs = typeof window !== "undefined" ? new URL(f.url, window.location.origin).toString() : f.url;
         return (
           <div key={f.id} className="group flex items-center hover:bg-cream">
           <a
             href={f.url}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("DownloadURL", `${mimeFor(f.name)}:${f.name}:${abs}`);
-              e.dataTransfer.setData("text/uri-list", abs);
-              e.dataTransfer.effectAllowed = "copy";
-            }}
+            {...fileDrag(f.name, f.url)}
             className="flex min-w-0 flex-1 cursor-grab items-center gap-2 py-2 pl-4 pr-2 text-sm active:cursor-grabbing"
             // the card is narrow and cuts names short, so hovering a row shows the whole name first (Jonathan, Nov 16, 2026)
-            title={`${f.name}\nClick to download, or drag into an Outlook email`}
+            title={`${f.name}\nClick to download, or drag it to your desktop, a folder or an Outlook email`}
           >
             {iconFor(f.name, f.kind)}
             <span className="min-w-0 flex-1 truncate">{f.name}</span>
