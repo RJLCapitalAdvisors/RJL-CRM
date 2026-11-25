@@ -181,7 +181,8 @@ export async function saveSendStateAction(dealId: string, state: Record<string, 
   if (!deal) return { ok: false as const };
   // looking at a colleague's reach out saves nothing onto it: the page autosaves on open, and Jonathan's visit had put his signature in Aviel's General follow-up (Nov 23, 2026)
   const me = await currentUser();
-  if (me && (await reachOutOwnedByOther(dealId, me.id))) return { ok: false as const };
+  if (!me) return { ok: false as const }; // nobody signed in (the local preview, which reads the live database): look only, so opening a Send page there never writes over the saved state of a deal someone is sending (Nov 25, 2026)
+  if (await reachOutOwnedByOther(dealId, me.id)) return { ok: false as const };
   const details = JSON.parse(deal.details || "{}") as Record<string, unknown>;
   details[STATE_KEY(mode, round)] = state;
   await prisma.deal.update({ where: { id: dealId }, data: { details: JSON.stringify(details) } });

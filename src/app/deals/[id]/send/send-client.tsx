@@ -93,12 +93,21 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   // what each firm's launch did this session; declared before the helpers below read it (the Follow ups page crashed on first render when it came after them, Oct 1, 2026)
   // per firm: the launch's result, who it went to and who it bounced for (to/received span this week's sends to the firm)
   const [results, setResults] = useState<Record<string, { ok: boolean; error?: string; pending?: boolean; bounced?: string[]; to?: { id: string; name: string; email: string }[]; received?: string[] }>>({});
-  /** The stage as it stands now: a follow-up sent in this session reads Followed Up at once (yellow, at the bottom), before the page refreshes (Jonathan, Oct 1, 2026). */
-  const statusNow = (f: Firm) => (followup && results[f.rowId]?.ok && f.status === 2 ? 3 : f.status);
+  /**
+   * The stage as it stands now: a follow-up sent in this session reads Followed Up at once (yellow, at the bottom), before the page
+   * refreshes (Jonathan, Oct 1, 2026); on Send deal a firm whose email went out reads Deal Sent at once (purple; Nov 25, 2026).
+   */
+  const statusNow = (f: Firm) => (!results[f.rowId]?.ok ? f.status : followup ? (f.status === 2 ? 3 : f.status) : f.status <= 1 ? 2 : f.status);
   /** This round's firms: at the stage the round is for, with the earlier rounds behind them, a thread to reply on, and not sent in this session. A firm turned on with + gets whatever round it is due. */
   const shaded = (f: Firm) => followup && (statusNow(f) !== wantStatus || (round > 1 ? (f.followups ?? 0) < round - 1 : (f.followups ?? 0) !== 0) || !f.followupTo || Boolean(f.unreached) || Boolean(results[f.rowId]?.ok));
   /** Follow ups: this round's firms first, then the other followed up or quiet ones, then the ones that answered, then passes, then firms with no sent email on record. */
   const bucket = (f: Firm) => (!f.followupTo ? 5 : !shaded(f) ? 0 : statusNow(f) === 2 || statusNow(f) === 3 ? 1 : statusNow(f) === 7 || statusNow(f) === 8 ? 4 : statusNow(f) === 1 ? 2 : 3);
+  /**
+   * Send deal: the tokens sit together by colour (Jonathan, Nov 25, 2026: "as they change color they'll organize themselves by color",
+   * as Follow ups does): not sent yet first, then sent, followed up, taking a look, interested, intro made, term sheet, and the
+   * passes last. A firm moves the moment its email goes out; inside a colour the firms keep the order they came in.
+   */
+  const sendBucket = (f: Firm) => { const st = statusNow(f); return st <= 1 ? 0 : st === 7 || st === 8 ? 20 : st; };
   /** Each token wears its stage colour, see-through; a pass is a light red (Follow ups since Oct 2026; Send deal too, Jonathan, Oct 28, 2026). */
   const tone = (f: Firm, selected = false): React.CSSProperties | undefined => {
     const st = statusOf(statusNow(f));
@@ -792,7 +801,7 @@ export function SendClient({ mode = "send", round = 1, dealId, firms, templates,
   const saveLabel = saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "dirty" ? "Unsaved changes" : saved?.savedAt ? `Saved ${new Date(saved.savedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "";
 
   // the order of the tokens is worked out here, after every piece of state it reads exists (it crashed the Follow ups page when it ran above the results state, Oct 1, 2026)
-  const ordered = followup ? [...firms].sort((a, b) => bucket(a) - bucket(b)) : firms;
+  const ordered = [...firms].sort((a, b) => (followup ? bucket(a) - bucket(b) : sendBucket(a) - sendBucket(b)));
   return (
     <div className="mx-auto max-w-[1400px] space-y-3 px-5 py-4">
       {/* recipients */}
