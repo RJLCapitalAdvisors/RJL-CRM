@@ -4,7 +4,7 @@ import { FORMAT_RULES, loadUnderwritingRules } from "@/lib/underwriting-rules";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { houseText, cleanBusinessPlan, cleanSponsorBio } from "@/lib/style";
-import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
+import { ASSET_CLASSES, US_STATES, strategyKind } from "@/lib/taxonomy";
 import { AMORTIZATIONS, DEAL_HOLD_PERIODS, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES } from "@/lib/taxonomy";
 import { ASSUMPTION, RATE_INDEXES, parseSpread } from "@/lib/rates";
 
@@ -20,7 +20,7 @@ export const ExtractedDealSchema = z.object({
   city: z.string().nullable(),
   state: z.string().nullable().describe("Two-letter US state code"),
   assetClass: z.string().nullable().describe(`One of: ${ASSET_CLASSES.join(", ")}`),
-  strategy: z.enum(["Acquisitions", "Development"]).nullable(),
+  strategy: z.enum(["Acquisitions", "Development", "Recapitalization"]).nullable(), // Recapitalization is picked by a person (the deal page, the intake review, a forwarder's note); the extractor reads an existing building as Acquisitions
   requestType: z.enum(["Equity", "Debt", "Both"]).nullable(),
   requestedAmount: z.number().nullable().describe("US dollars, e.g. 12000000"),
   purchasePrice: z.number().nullable().describe("Purchase price or total project cost in USD"),
@@ -133,7 +133,7 @@ const LAND_FIELDS = (scope: ExtractScope) =>
 const detailItems = (scope: ExtractScope) => {
   const all = CHECKLIST.filter((it) => !it.core);
   if (!scope.assetClass && !scope.strategy) return uniqueChecklist(all.filter((it) => !it.onlyAssetClasses?.every((c) => c === "Land")));
-  const strat = scope.strategy ?? undefined;
+  const strat = strategyKind(scope.strategy) ?? undefined;
   return uniqueChecklist(
     all.filter((it) => {
       if (strat && !it.strategy.includes(strat as "Acquisitions" | "Development")) return false;

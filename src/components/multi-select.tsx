@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
  * Ticks are held while the list is open and handed to the form when it closes: an autosaving form used to
  * save (and refresh the page) on every tick, which snapped the list shut under the cursor.
  */
-export function MultiSelect({ name, options, selected, placeholder = "Select…", value, onChange }: { name?: string; options: readonly string[]; selected?: string[]; placeholder?: string; value?: string[]; onChange?: (v: string[]) => void }) {
+export function MultiSelect({ name, options, selected, placeholder = "Select…", value, onChange, label = (o) => o }: { name?: string; options: readonly string[]; selected?: string[]; placeholder?: string; value?: string[]; onChange?: (v: string[]) => void; /** how an option reads, when that is not its stored value */ label?: (o: string) => string }) {
   const [open, setOpen] = useState(false);
   const [inner, setInner] = useState<string[]>(selected ?? []);
   // the page can hand in a new selection (the Owners and Operators links change ?role while the page stays mounted)
@@ -55,7 +55,7 @@ export function MultiSelect({ name, options, selected, placeholder = "Select…"
             .filter((o) => sel.includes(o))
             .map((v) => (
               <span key={v} className="chip bg-sky text-ink">
-                {v}
+                {label(v)}
               </span>
             ))
         )}
@@ -77,7 +77,7 @@ export function MultiSelect({ name, options, selected, placeholder = "Select…"
           {options.map((o) => (
             <label key={o} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-cream">
               <input type="checkbox" checked={sel.includes(o)} onChange={() => toggle(o)} className="accent-ink" />
-              {o}
+              {label(o)}
             </label>
           ))}
         </div>

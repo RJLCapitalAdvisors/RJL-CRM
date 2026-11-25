@@ -1,5 +1,5 @@
 import { fullAddress } from "@/lib/zip";
-import { US_STATES } from "@/lib/taxonomy";
+import { transactionWord, US_STATES } from "@/lib/taxonomy";
 import { cleanBusinessPlan } from "@/lib/style";
 import { uniqueChecklist, factsBlock, parseDetails, type DealLikeForChecklist } from "@/lib/checklist";
 import { acresClause, amountMM, cashOnCashSentence, dealMetricsListHtml, debtTermsLine, entitledUse, intro, landMetricsHtml, metricsHtml, multiple, portfolioMetricsListHtml, sellerSentence, shortSourcing, subjectLine, usd } from "@/lib/deal-copy";
@@ -25,7 +25,8 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: "deal.capPerFoot", label: "Total capitalization per SF (computed)" },
   { key: "deal.avgUnitSize", label: "Average unit size (number only; write SF after it)" },
   { key: "deal.assetClass", label: "Asset class" },
-  { key: "deal.strategy", label: "Strategy" },
+  { key: "deal.strategy", label: "Strategy: Acquisition, Development or Recapitalization" },
+  { key: "deal.transaction", label: "purchase, development or recapitalization, for a sentence: for the {{deal.transaction}} of {{deal.propertyName}}" },
   { key: "deal.requestType", label: "Equity / Debt" },
   { key: "deal.requestedAmount", label: "Requested amount ($)" },
   { key: "deal.requestedAmountMM", label: "Requested amount for a subject line, no dollar sign (4MM)" },
@@ -139,6 +140,7 @@ function lookup(ctx: MergeContext, path: string): unknown {
   if (path === "deal.landMetrics") return ctx.deal ? landMetricsHtml(ctx.deal) : "";
   // the intro always says where an existing asset stands today (Jonathan, Oct 6, 2026): "consists of 358 units (currently 91% occupied)"
   if (path === "deal.occupancyNote") { const o = ctx.deal?.occupancy; return typeof o === "number" && ctx.deal?.strategy !== "Development" ? ` (currently ${o}% occupied)` : ""; }
+  if (path === "deal.transaction") return transactionWord(typeof ctx.deal?.strategy === "string" ? ctx.deal.strategy : null);
   if (path === "deal.entitledUse") return ctx.deal ? entitledUse(ctx.deal) ?? "" : "";
   if (path === "deal.dealMetrics") return ctx.deal ? dealMetricsListHtml(ctx.deal) : "";
   if (path === "deal.portfolioMetrics") return ctx.deal ? portfolioMetricsListHtml(ctx.deal) : "";

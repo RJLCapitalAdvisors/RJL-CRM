@@ -3,7 +3,7 @@ import { ClaudeMark } from "@/components/claude-mark";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
-import { ASSET_CLASSES, US_STATES } from "@/lib/taxonomy";
+import { ASSET_CLASSES, US_STATES, strategyLabel } from "@/lib/taxonomy";
 import { EMPTY, toChecklistDeal, type ExtractedDeal } from "@/lib/intake";
 import { applicableItems, completeness, followUpText, labelFor, missingFor } from "@/lib/checklist";
 import { loadChecklist } from "@/lib/required-items";
@@ -81,7 +81,7 @@ export default async function IntakeDetail({ params, searchParams }: { params: P
             <span className={`chip ${missing.length === 0 ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>
               {answered}/{total} checklist items
             </span>
-            {d.strategy && <span>{d.strategy}</span>}
+            {d.strategy && <span>{strategyLabel(d.strategy)}</span>}
             {d.assetClass && <span>· {d.assetClass}</span>}
             <span>· from {it.fromName ?? it.fromEmail ?? "paste"}</span>
             <span>· {fmtDate(it.createdAt)}</span>
@@ -145,7 +145,7 @@ export default async function IntakeDetail({ params, searchParams }: { params: P
                 </div>
                 <div className="grid grid-cols-4 gap-3">
                   <Select id="assetClass" label="Asset class" value={d.assetClass ?? ""} options={ASSET_CLASSES.map((s) => ({ v: s, l: s }))} />
-                  <Select id="strategy" label="Acquisition / development" value={d.strategy ?? ""} options={[{ v: "Acquisitions", l: "Acquisitions" }, { v: "Development", l: "Development" }]} />
+                  <Select id="strategy" label="Acquisition / development" value={d.strategy ?? ""} options={[{ v: "Acquisitions", l: "Acquisition" }, { v: "Development", l: "Development" }, { v: "Recapitalization", l: "Recapitalization" }]} />
                   <Select id="requestType" label="Equity / debt" value={d.requestType ?? ""} options={[{ v: "Equity", l: "Equity" }, { v: "Debt", l: "Debt" }, { v: "Both", l: "Both" }]} />
                   <Select id="onMarket" label="On / off market" value={d.onMarket == null ? "" : d.onMarket ? "on" : "off"} options={[{ v: "on", l: "On market" }, { v: "off", l: "Off market" }]} />
                 </div>
@@ -181,7 +181,7 @@ export default async function IntakeDetail({ params, searchParams }: { params: P
               <div className="mb-1 flex items-center justify-between">
                 <h2 className="font-semibold">Deal ticket checklist</h2>
                 <span className="text-xs text-muted">
-                  {d.strategy ? `${d.strategy} list` : "Set acquisition/development above to narrow the list"}
+                  {d.strategy ? `${strategyLabel(d.strategy)} list` : "Set acquisition/development above to narrow the list"}
                   {d.assetClass ? ` · ${d.assetClass}` : ""} · {applicableItems(d.strategy, d.assetClass).length} items
                 </span>
               </div>
@@ -207,7 +207,7 @@ export default async function IntakeDetail({ params, searchParams }: { params: P
           <div className="card p-5">
             <h2 className="mb-3 font-semibold">Still needed from the sponsor ({missing.length})</h2>
             {missing.length === 0 ? (
-              <div className="text-sm text-emerald-800">Everything on the {d.strategy ?? ""} checklist is present.</div>
+              <div className="text-sm text-emerald-800">Everything on the {strategyLabel(d.strategy)} checklist is present.</div>
             ) : (
               <ol className="list-decimal space-y-1 pl-5 text-sm">
                 {missing.map((it) => (

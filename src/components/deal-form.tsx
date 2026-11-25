@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AMORTIZATIONS, ASSET_CLASSES, DEAL_HOLD_PERIODS, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES, US_STATES } from "@/lib/taxonomy";
+import { AMORTIZATIONS, ASSET_CLASSES, DEAL_HOLD_PERIODS, LENDER_TYPES, LOAN_TERMS, SELLER_PROFILES, SOURCING_OPTIONS, UNIT_MIXES, US_STATES, DEAL_STRATEGIES, strategyLabel } from "@/lib/taxonomy";
 import { assetProfile, perCountWord, ratio } from "@/lib/asset-profile";
 import { NumberInput } from "./number-input";
 import { SponsorPicker } from "./sponsor-picker";
@@ -125,7 +125,7 @@ function Text({ name, value, placeholder }: { name: string; value?: string | num
   return <input name={name} defaultValue={value ?? ""} placeholder={placeholder} className="input" />;
 }
 /** Dropdown that keeps a stored value visible even if it is not in the standard list. */
-function Select({ name, value, options, blank = "—", onChange }: { name: string; value: string; options: readonly string[]; blank?: string; onChange?: (v: string) => void }) {
+function Select({ name, value, options, blank = "—", onChange, label = (o) => o }: { name: string; value: string; options: readonly string[]; blank?: string; onChange?: (v: string) => void; label?: (o: string) => string }) {
   const [inner, setInner] = useState(value);
   const list = value && !options.includes(value) ? [value, ...options] : options;
   return (
@@ -133,7 +133,7 @@ function Select({ name, value, options, blank = "—", onChange }: { name: strin
       <option value="">{blank}</option>
       {list.map((o) => (
         <option key={o} value={o}>
-          {o}
+          {label(o)}
         </option>
       ))}
     </select>
@@ -217,7 +217,7 @@ export function DealForm({ deal, users, action, submitLabel = "Save", autosave =
           </Row>
         )}
         <Row label="Acquisition or development" hint={isLand ? "Land being entitled is usually a development." : undefined}>
-          <Select name="strategy" value={strategy} options={["Acquisitions", "Development"]} onChange={setStrategy} />
+          <Select name="strategy" value={strategy} options={DEAL_STRATEGIES} onChange={setStrategy} label={strategyLabel} />
         </Row>
         {lost && (
           <Row label="Why it died">

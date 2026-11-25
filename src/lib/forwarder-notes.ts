@@ -17,7 +17,7 @@ import { logActivity } from "@/lib/activity";
 const Out = z.object({
   stage: z.enum([...DEAL_STAGES, ""]).describe("Pipeline stage the note asks for, mapped to the closest stage. 'intro made' / 'introduced to the sponsor' -> Intro To Capital Made; 'engagement letter sent/signed' -> that stage; 'underwriting' -> Deal Underwritten; 'taken out' / 'in market' -> Deal Taken To Market. Empty if the note does not say."),
   investorsIntroduced: z.array(z.string()).describe("Names of investor groups the note says were already introduced to the sponsor / copied on the deal (e.g. 'UFUND')."),
-  strategy: z.enum(["Acquisitions", "Development", ""]).describe("When the note says what kind of deal this is: 'acquisition', 'existing asset', 'recap', 'refi' -> Acquisitions; 'development', 'ground-up', 'construction' -> Development. Empty when the note does not say (Jonathan, Sep 16: 'This is an acquisition. Please treat it as such.' must land)."),
+  strategy: z.enum(["Acquisitions", "Development", "Recapitalization", ""]).describe("When the note says what kind of deal this is: 'acquisition', 'existing asset', 'refi' -> Acquisitions; 'recap', 'recapitalization' -> Recapitalization; 'development', 'ground-up', 'construction' -> Development. Empty when the note does not say (Jonathan, Sep 16: 'This is an acquisition. Please treat it as such.' must land)."),
   assetClass: z.enum([...ASSET_CLASSES, ""]).describe("When the note names the property type ('this is retail', 'a multifamily deal'), the matching listed value; otherwise empty."),
   note: z.string().describe("The instruction in the forwarder's words, trimmed. Empty if there was no note."),
 });

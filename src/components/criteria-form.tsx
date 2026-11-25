@@ -1,4 +1,4 @@
-import { ASSET_CLASSES, CLOSING_TIMEFRAMES, INVESTMENT_TYPES, RETURN_PROFILES, ROLES, STRATEGIES, parseList } from "@/lib/taxonomy";
+import { ASSET_CLASSES, CLOSING_TIMEFRAMES, INVESTMENT_TYPES, RETURN_PROFILES, ROLES, STRATEGIES, parseList, strategyLabel } from "@/lib/taxonomy";
 import { MultiSelect } from "./multi-select";
 import { RangeSlider } from "./range-slider";
 import { CHECK_STOPS, HOLD_STOPS, VINTAGE_STOPS, checkRangeFrom, holdRangeFrom, vintageRangeFrom } from "@/lib/ranges";
@@ -56,11 +56,11 @@ export function CriteriaForm({ criteria, roles, action }: { criteria: CriteriaLi
       <Field label="Return profile">
         <MultiSelect name="returnProfile" options={RETURN_PROFILES} selected={parseList(c?.returnProfile)} />
       </Field>
-      <Field label="Development, acquisitions, or both" htmlFor="strategy">
+      <Field label="Development, acquisition, or both" htmlFor="strategy">
         <SelectField id="strategy" name="strategy" defaultValue={c?.strategy ?? ""} className="input">
           <option value="">—</option>
           {STRATEGIES.map((o) => (
-            <option key={o}>{o}</option>
+            <option key={o} value={o}>{strategyLabel(o)}</option>
           ))}
         </SelectField>
       </Field>

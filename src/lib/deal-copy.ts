@@ -84,7 +84,7 @@ export function subjectLine(d: D): string {
   const kids = childrenOf(d);
   // land: "Land Entitlement Opportunity in Cudjoe Key, FL | $4MM of Preferred Equity" (Jonathan, Oct 6, 2026)
   // a portfolio of developments is a "pipeline" (Jonathan, Oct 8, 2026): "Industrial Development Pipeline Opportunity in Nevada and Arizona"
-  const parts = isLand(d.assetClass) ? `Land Entitlement${entitledUse(d) ? ` (${entitledUse(d)})` : ""} Opportunity` : kids.length ? [s(d.assetClass), d.strategy === "Development" ? "Development Pipeline" : "Portfolio Acquisition", "Opportunity"].filter(Boolean).join(" ") : [s(d.assetClass), d.strategy === "Development" ? "Development" : d.strategy === "Acquisitions" ? "Acquisition" : null, "Opportunity"].filter(Boolean).join(" ");
+  const parts = isLand(d.assetClass) ? `Land Entitlement${entitledUse(d) ? ` (${entitledUse(d)})` : ""} Opportunity` : kids.length ? [s(d.assetClass), d.strategy === "Development" ? "Development Pipeline" : d.strategy === "Recapitalization" ? "Portfolio Recapitalization" : "Portfolio Acquisition", "Opportunity"].filter(Boolean).join(" ") : [s(d.assetClass), d.strategy === "Development" ? "Development" : d.strategy === "Acquisitions" ? "Acquisition" : d.strategy === "Recapitalization" ? "Recapitalization" : null, "Opportunity"].filter(Boolean).join(" ");
   const loc = kids.length ? portfolioSubjectLoc(kids) : location(d);
   const ask = n(d.requestedAmount);
   const exec = s(d.executionType) ?? (s(d.requestType) === "Debt" ? "Debt" : s(d.requestType) ? "Equity" : null);

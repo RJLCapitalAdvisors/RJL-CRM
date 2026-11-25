@@ -317,7 +317,7 @@ export async function mergeIntoDeal(dealId: string, rawText: string, subject: st
   maybe("verticalCost", d.verticalCost); maybe("verticalDebt", d.verticalDebt); maybe("verticalDebtTerms", d.verticalDebtTerms); maybe("verticalHold", d.verticalHold); maybe("deliveryDate", d.deliveryDate);
   if (d.unlevered === true && !deal.unlevered) { core.unlevered = true; core.totalDebt = 0; filled++; }
   maybe("summary", d.summary); maybe("propertyAddress", d.propertyAddress); maybe("city", d.city); maybe("state", d.state); maybe("totalEquity", d.totalEquity);
-  if (opts.overwrite) { maybe("assetClass", d.assetClass); maybe("strategy", d.strategy); maybe("executionType", d.executionType); maybe("requestType", d.requestType); maybe("projectedSellout", d.projectedSellout); }
+  if (opts.overwrite) { maybe("assetClass", d.assetClass); if (!(deal.strategy === "Recapitalization" && d.strategy === "Acquisitions")) maybe("strategy", d.strategy); /* the extractor reads a recap as Acquisitions: it never undoes a person's Recapitalization */ maybe("executionType", d.executionType); maybe("requestType", d.requestType); maybe("projectedSellout", d.projectedSellout); }
   const fileNames = (await prisma.dealFile.findMany({ where: { dealId }, select: { name: true } })).map((f) => f.name);
   const reconciled = reconcileDocuments(details as Record<string, string | null | undefined>, fileNames);
   // recomputed ltv/ltc: debt over price and debt over total capitalization follow whatever dollars the merge brought (Jonathan's rule, Sep 16)

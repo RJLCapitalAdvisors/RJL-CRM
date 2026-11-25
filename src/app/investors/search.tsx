@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DraftButton } from "@/app/draft-button";
 import { createEngagementLetter, createInvestorListDraft, startOutreach } from "./actions";
-import { ASSET_CLASSES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, VINTAGES } from "@/lib/taxonomy";
+import { ASSET_CLASSES, CLOSING_TIMEFRAMES, HOLD_PERIODS, INVESTMENT_TYPES, RETURN_PROFILES, VINTAGES, strategyLabel } from "@/lib/taxonomy";
 import { CHECK_MAX, CHECK_STOPS, labelFor, rangeLabel } from "@/lib/ranges";
 import { CompanyLogo } from "@/components/company-logo";
 import { MultiSelect } from "@/components/multi-select";
@@ -180,11 +180,11 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
   const pages = Math.max(1, Math.ceil(out.length / PAGE));
   const pageRows = out.slice((page - 1) * PAGE, page * PAGE);
 
-  const sel = (k: Exclude<keyof Spec, "checkMM" | "city" | "checkMissing" | "withDeals">, label: string, options: readonly string[]) => (
+  const sel = (k: Exclude<keyof Spec, "checkMM" | "city" | "checkMissing" | "withDeals">, label: string, options: readonly string[], optionLabel?: (o: string) => string) => (
     <div key={k} className="mb-2.5 text-xs text-muted">
       {label}
       <div className="mt-1">
-        <MultiSelect options={options} value={spec[k]} onChange={(v) => set(k, v)} placeholder="Any" />
+        <MultiSelect options={options} value={spec[k]} onChange={(v) => set(k, v)} placeholder="Any" label={optionLabel} />
       </div>
     </div>
   );
@@ -278,7 +278,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
           <input value={spec.city} onChange={(e) => setSpec((s) => ({ ...s, city: e.target.value }))} placeholder="City" className="input mt-1 py-1 text-xs" />
         </div>
         {sel("assetClass", "Asset class", ASSET_CLASSES)}
-        {sponsor && sel("strategy", "Acquisition or development", ["Acquisitions", "Development", "Both"])}
+        {sponsor && sel("strategy", "Acquisition or development", ["Acquisitions", "Development", "Both"], strategyLabel)}
         {sponsor && (
           <label className="mb-2.5 flex cursor-pointer items-center gap-1.5 text-xs text-muted" title="Only sponsors that have sent us a deal">
             <input type="checkbox" className="accent-ink" checked={spec.withDeals} onChange={(e) => { setSpec((s) => ({ ...s, withDeals: e.target.checked })); setPage(1); }} />
@@ -306,7 +306,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
           </div>
         </div>}
         {!sponsor && sel("investmentType", "Position in the capital stacks", INVESTMENT_TYPES)}
-        {!sponsor && sel("strategy", "Acquisition or development", ["Acquisitions", "Development", "Both"])}
+        {!sponsor && sel("strategy", "Acquisition or development", ["Acquisitions", "Development", "Both"], strategyLabel)}
         {!sponsor && sel("returnProfile", "Return profile", RETURN_PROFILES)}
         {!sponsor && sel("holdPeriod", "Hold period", HOLD_PERIODS)}
         {!sponsor && sel("vintage", "Year built", VINTAGES)}
@@ -432,7 +432,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
                   {sponsor ? (
                     <>
                       <Cell items={r.crit?.assetClasses} />
-                      <Cell text={r.crit?.strategy} />
+                      <Cell text={strategyLabel(r.crit?.strategy)} />
                       <td className="whitespace-nowrap">{r.deals ? r.deals : <span className="text-muted">—</span>}</td>
                       <td className="whitespace-nowrap text-xs">{r.lastActivityAt ? new Date(r.lastActivityAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : <span className="text-muted">—</span>}</td>
                     </>
@@ -441,7 +441,7 @@ export function InvestorSearch({ rows, preset, presetDealName, presetPlace = nul
                       <td className="whitespace-nowrap">{r.crit && r.crit.checkMin != null ? rangeLabel(CHECK_STOPS, r.crit.checkMin, r.crit.checkMax) : <span className="text-muted">—</span>}</td>
                       <Cell items={r.crit?.assetClasses} />
                       <Cell items={r.crit?.investmentTypes} />
-                      <Cell text={r.crit?.strategy} />
+                      <Cell text={strategyLabel(r.crit?.strategy)} />
                       <Cell items={r.crit?.returnProfile} />
                       <Cell items={r.crit?.holdPeriods} />
                     </>

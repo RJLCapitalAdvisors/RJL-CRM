@@ -43,7 +43,7 @@ const TOOLS = [
         query: { type: "string", description: "Words from the deal, property, sponsor, city or state (optional)" },
         stage: { type: "string", description: "Exact stage, e.g. Deal Received, Engagement Letter Signed, Deal Taken To Market, Intro To Capital Made, Term Sheet Issued, Deal Closed, Deal Lost (optional)" },
         assetClass: { type: "string", description: "Asset class, e.g. Multifamily, Industrial, Retail, Land (optional)" },
-        strategy: { type: "string", description: "Development or Acquisitions (optional)" },
+        strategy: { type: "string", description: "Development, Acquisitions or Recapitalization (optional)" },
         live: { type: "boolean", description: "true: only deals not lost or closed (default true)" },
         limit: { type: "integer", description: "How many to return, default 25, max 100" },
       },

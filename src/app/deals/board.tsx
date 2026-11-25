@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { DEAL_STAGES } from "@/lib/taxonomy";
+import { DEAL_STAGES, strategyLabel } from "@/lib/taxonomy";
 
 // Deal Lost sits first so dead deals are parked at the front and the live pipeline reads left to right after it.
 const BOARD_ORDER = ["Deal Lost", ...DEAL_STAGES.filter((s) => s !== "Deal Lost")];
@@ -143,7 +143,7 @@ function Card({ deal, overlay = false, onLost }: { deal: BoardDeal; overlay?: bo
       {!deal.intro && (
         <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-muted">
           <span className={`chip ${deal.assetClass ? "bg-cream" : "border border-dashed border-line bg-transparent"}`}>{deal.assetClass ?? "asset class?"}</span>
-          <span className={`chip ${deal.strategy ? "bg-cream" : "border border-dashed border-line bg-transparent"}`}>{deal.strategy ?? "dev / acq?"}</span>
+          <span className={`chip ${deal.strategy ? "bg-cream" : "border border-dashed border-line bg-transparent"}`}>{deal.strategy ? strategyLabel(deal.strategy) : "dev / acq?"}</span>
           <span className={`chip ${deal.city || deal.state ? "bg-cream" : "border border-dashed border-line bg-transparent"}`}>{[deal.city, deal.state].filter(Boolean).join(", ") || "city, state?"}</span>
         </div>
       )}

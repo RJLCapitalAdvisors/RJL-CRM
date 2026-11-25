@@ -2,7 +2,7 @@ import { claude } from "@/lib/claude";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { parseList } from "@/lib/taxonomy";
+import { parseList, strategyKind } from "@/lib/taxonomy";
 import { checkRangeFrom, CHECK_MAX } from "@/lib/ranges";
 import { statusOf } from "@/lib/tracker";
 
@@ -53,7 +53,7 @@ export async function suggestInvestors(dealId: string, opts: { force?: boolean }
     if (!covers(range?.[0] ?? null, range?.[1] ?? null, askMM)) return false;
     const pos = parseList(cr.investmentTypes);
     if (deal.executionType && pos.length && !pos.includes(deal.executionType)) return false;
-    if (deal.strategy && cr.strategy && cr.strategy !== "Both" && cr.strategy !== deal.strategy) return false;
+    if (deal.strategy && cr.strategy && cr.strategy !== "Both" && cr.strategy !== strategyKind(deal.strategy)) return false;
     return true;
   });
   if (!candidates.length) return [];

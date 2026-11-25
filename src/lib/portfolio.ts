@@ -67,7 +67,7 @@ export function portfolioTotals(children: Kid[]) {
     city: (() => { const cs = [...new Set(children.map((c) => c.city).filter((x): x is string => Boolean(x)))]; return cs.length <= 1 ? cs[0] ?? null : `${cs.slice(0, -1).join(", ")} and ${cs[cs.length - 1]}`; })(),
     state: states.length === 1 ? states[0] : null,
     propertyAddress: children.map((c) => c.propertyAddress).filter(Boolean).join("; ") || null,
-    strategy: children.length && children.every((c) => c.strategy === "Development") ? "Development" : "Acquisitions",
+    strategy: children.length && children.every((c) => c.strategy === "Development") ? "Development" : children.length && children.every((c) => c.strategy === "Recapitalization") ? "Recapitalization" : "Acquisitions",
     states,
   };
 }

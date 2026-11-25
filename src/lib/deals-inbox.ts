@@ -69,7 +69,7 @@ ${drafted ? `<p style="margin:0 0 8pt 0;"><b>Subject:</b> ${drafted.subject}</p>
 <p style="margin:0 0 8pt 0;white-space:pre-wrap;">${intro(deal)}</p>
 ${metricsHtml(deal)}`}
 </div>
-<p><b>Still missing${strategy ? ` (${strategy.toLowerCase()} checklist)` : ""}</b></p>
+<p><b>Still missing${strategy ? ` (${strategy === "Development" ? "development" : "acquisitions"} checklist)` : ""}</b></p>
 ${list}
 ${linkNotes.length ? `<p><b>Links I could not open</b></p><ul style="margin:0 0 10pt 18pt;">${linkNotes.map((n) => `<li>${n}</li>`).join("")}</ul>` : ""}
 <p style="color:#6b716e;font-size:9pt;">Reply to the sponsor for the missing items; when their answers come back to this mailbox the ticket updates itself. Edit anything on the ticket in the CRM.</p>

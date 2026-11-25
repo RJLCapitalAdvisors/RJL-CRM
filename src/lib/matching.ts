@@ -1,4 +1,4 @@
-import { parseList, US_STATES } from "@/lib/taxonomy";
+import { parseList, strategyKind, US_STATES } from "@/lib/taxonomy";
 
 // Which regions a state belongs to, for matching deal location against investor geography tags.
 const STATE_REGIONS: Record<string, string[]> = {
@@ -137,7 +137,7 @@ export function matchDeal(criteria: CriteriaLike, deal: DealLike): MatchResult {
 
   if (deal.strategy && criteria.strategy) {
     possible++;
-    if (criteria.strategy === "Both" || criteria.strategy === deal.strategy) reasons.push(`Strategy: ${criteria.strategy}`);
+    if (criteria.strategy === "Both" || criteria.strategy === strategyKind(deal.strategy)) reasons.push(`Strategy: ${criteria.strategy}`);
     else misses.push("strategy");
   }
 

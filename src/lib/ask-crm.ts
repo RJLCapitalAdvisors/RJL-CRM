@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { claude } from "@/lib/claude";
 import { prisma } from "@/lib/db";
 import { IL_SYSTEM, IL_TOOLS, runIl } from "@/lib/ask-israel";
-import { ACTIVE_STAGES, parseList } from "@/lib/taxonomy";
+import { ACTIVE_STAGES, parseList, strategyKind } from "@/lib/taxonomy";
 import { investorLabel, statusOf } from "@/lib/tracker";
 import { missingFor, itemLabel } from "@/lib/checklist";
 import { loadChecklist } from "@/lib/required-items";
@@ -168,7 +168,7 @@ export async function run(name: string, input: Record<string, unknown>): Promise
         const cr = c.criteria!;
         const ac = parseList(cr.assetClasses), it = parseList(cr.investmentTypes);
         if (spec.assetClass && ac.length && !ac.some((x) => x === spec.assetClass || /agnostic/i.test(x))) return false;
-        if (spec.strategy && cr.strategy && cr.strategy !== "Both" && cr.strategy !== spec.strategy) return false;
+        if (spec.strategy && cr.strategy && cr.strategy !== "Both" && cr.strategy !== strategyKind(spec.strategy)) return false;
         if (spec.investmentType && it.length && !it.includes(spec.investmentType)) return false;
         if (spec.checkMM && cr.checkMinMM != null && cr.checkMaxMM != null && (spec.checkMM < cr.checkMinMM || spec.checkMM > cr.checkMaxMM)) return false;
         return true;

@@ -44,6 +44,14 @@ export const CLOSING_TIMEFRAMES = ["Fast", "Average", "Slow"] as const;
 export const DEAL_SIZES = ["$1-5MM", "$5-10MM", "$10-20MM", "$20-50MM", "$50MM+"] as const;
 export const INVESTMENT_TYPES = ["Senior Debt", "Mezz Debt", "Preferred Equity", "Participating Preferred Equity", "JV Equity", "Co-GP Equity", "Co-GP + LP Equity", "Programmatic"] as const; // capital stack order, top down; Programmatic added 2026-09-07 (not in HubSpot)
 export const STRATEGIES = ["Development", "Acquisitions", "Both"] as const;
+/** How that value reads on a page: "Acquisition", no s (Jonathan, Nov 25, 2026). The stored value stays "Acquisitions": the checklists, Required Items Lists, matching and rules key on it. */
+export const strategyLabel = (v: string | null | undefined): string => (v === "Acquisitions" ? "Acquisition" : v ?? "");
+/** What a deal is (Jonathan, Nov 25, 2026: "add a 3rd option called Recapitalization that flows through to the email template"): a purchase, a ground-up development, or a recapitalization of a building the sponsor already owns. An investor's criteria keep STRATEGIES. */
+export const DEAL_STRATEGIES = ["Acquisitions", "Development", "Recapitalization"] as const;
+/** The bucket a deal falls in for the checklists, Required Items Lists and investor criteria, which know Acquisitions and Development only: a recapitalization is an existing building, so Acquisitions. */
+export const strategyKind = (v: string | null | undefined): string | null => (v === "Recapitalization" ? "Acquisitions" : v || null);
+/** The word for what the money is for, in a sentence: "as they source Preferred Equity for the recapitalization of The Reserve". */
+export const transactionWord = (v: string | null | undefined): string => (v === "Recapitalization" ? "recapitalization" : v === "Development" ? "development" : "purchase");
 export const VINTAGES = ["Older than 1960", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s", "New Construction"] as const;
 export const VINTAGE_MIGRATION: Record<string, string> = { "<1960's": "Older than 1960", "1960's": "1960s", "1970's": "1970s", "1980's": "1980s", "1990's": "1990s", "2000's": "2000s", "2010's": "2010s", "2020's": "2020s" };
 
@@ -217,6 +225,7 @@ export function normalizeStrategy(raw: string | undefined | null): string | null
   if (v.startsWith("both")) return "Both";
   if (v.startsWith("dev")) return "Development";
   if (v.startsWith("acq")) return "Acquisitions";
+  if (v.startsWith("recap")) return "Recapitalization";
   return raw!.trim();
 }
 

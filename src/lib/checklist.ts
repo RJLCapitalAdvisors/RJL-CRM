@@ -3,6 +3,7 @@
  * Items apply by strategy (Acquisitions / Development) and optionally by asset class.
  * Answers live on Deal.details (JSON) unless `core` points at a real Deal column.
  */
+import { strategyKind } from "@/lib/taxonomy";
 
 export type ItemKind = "short" | "text" | "number" | "yesno" | "doc";
 
@@ -99,7 +100,7 @@ const DEBT_ITEMS = new Set(["debtTerms", "loanTerms", "lender", "constructionLoa
 export function applicableItems(strategy: string | null | undefined, assetClass: string | null | undefined, opts: { unlevered?: boolean | null } = {}): ChecklistItem[] {
   // no strategy on the ticket yet: the acquisitions list, never both. Development only when someone said so
   // (Bethesda, Sep 16: a null strategy handed the sponsor the development questions).
-  const strat = strategy || "Acquisitions";
+  const strat = strategyKind(strategy) || "Acquisitions"; // a recapitalization answers the acquisitions list (an existing building)
   return uniqueChecklist(
     CHECKLIST.filter((it) => {
       if (!it.strategy.includes(strat as "Acquisitions" | "Development")) return false;
