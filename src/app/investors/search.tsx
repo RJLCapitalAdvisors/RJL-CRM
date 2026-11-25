@@ -54,8 +54,8 @@ export type Spec = {
   city: string; // the firm's own location: city, contains
 };
 
-// the most firms in one reach out: 30 investors (Jonathan, Oct 28, 2026), 100 sponsors (Nov 11, 2026); outreach.ts maxOutreach enforces it on the server
-const MAX_REACH_BY = { investor: 30, sponsor: 100 } as const;
+// the most firms in one reach out: 100 investors (Jonathan, Nov 25, 2026; 30 before), 100 sponsors (Nov 11, 2026); outreach.ts maxOutreach enforces it on the server
+const MAX_REACH_BY = { investor: 100, sponsor: 100 } as const;
 const EMPTY: Spec = { assetClass: [], checkMM: null, checkMissing: false, withDeals: false, investmentType: [], strategy: [], returnProfile: [], holdPeriod: [], vintage: [], oz: [], closing: [], minority: [], state: [], city: "" };
 const any = (have: string[], want: string[]) => want.some((w) => have.includes(w));
 

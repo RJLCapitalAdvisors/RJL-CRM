@@ -8,9 +8,9 @@ test("a reach out is never a deal stage, so no board, reader or sweep lists it",
   assert.equal(STAGE_ORDER.includes(OUTREACH_STAGE), false);
   assert.equal(isOutreach({ stage: OUTREACH_STAGE }), true);
   assert.equal(isOutreach({ stage: "Deal Taken To Market" }), false);
-  assert.equal(MAX_OUTREACH, 30);
-  // Nov 11, 2026: a sponsor reach out takes up to 100 firms; an investor one stays at 30
-  assert.equal(maxOutreach("investor"), 30);
+  assert.equal(MAX_OUTREACH, 100);
+  // Nov 11, 2026: a sponsor reach out takes up to 100 firms; Nov 25, 2026: an investor one does too (it was 30)
+  assert.equal(maxOutreach("investor"), 100);
   assert.equal(maxOutreach("sponsor"), 100);
 });
 

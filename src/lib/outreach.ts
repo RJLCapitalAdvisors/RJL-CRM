@@ -12,8 +12,8 @@ import { AWAITING_RESPONSE, mergeNote } from "@/lib/tracker";
  * report, reader or sweep lists (every one of those picks stages by name), so it never passes for a deal.
  */
 export const OUTREACH_STAGE = "Outreach";
-export const MAX_OUTREACH = 30;
-/** A sponsor reach out takes up to 100 firms (Jonathan, Nov 11, 2026); an investor one stays at 30. */
+/** The most firms in one reach out: 100 for investors (Jonathan, Nov 25, 2026; it was 30) and 100 for sponsors (Nov 11, 2026). */
+export const MAX_OUTREACH = 100;
 export const MAX_OUTREACH_SPONSOR = 100;
 export const isOutreach = (d: { stage?: string | null } | null | undefined) => d?.stage === OUTREACH_STAGE;
 /** Who a reach out goes to: LPs (Investor search) or sponsors (Sponsor search, Jonathan, Oct 28, 2026). Kept in the record's details. */
